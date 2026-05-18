@@ -5306,7 +5306,12 @@ function initMap() {
     zoomControl: false,
     attributionControl: true,
     maxBounds: [[-90, -180], [90, 180]],
-    maxBoundsViscosity: 1.0
+    maxBoundsViscosity: 1.0,
+    preferCanvas: false,
+    fadeAnimation: true,
+    markerZoomAnimation: true,
+    zoomSnap: 0.5,
+    wheelPxPerZoomLevel: 120
   });
 
   // Custom pane for all radar WMS layers — CSS filter applied here for palette switching
@@ -5320,7 +5325,7 @@ function initMap() {
   const mtAttr = '© <a href="https://www.maptiler.com/">MapTiler</a> © <a href="https://www.openstreetmap.org/">OpenStreetMap</a>';
 
   // Dark (DataViz Dark — great for radar overlays)
-  const _mtOpts = { attribution: mtAttr, maxZoom: 20, noWrap: true, crossOrigin: true, keepBuffer: 2, updateWhenZooming: false };
+  const _mtOpts = { attribution: mtAttr, maxZoom: 20, noWrap: true, crossOrigin: true, keepBuffer: 4, updateWhenZooming: false };
   const cartoDark  = L.tileLayer(`https://api.maptiler.com/maps/dataviz-dark/{z}/{x}/{y}.png?key=${MT_KEY}`, _mtOpts);
   const cartoLight = L.tileLayer(`https://api.maptiler.com/maps/dataviz/{z}/{x}/{y}.png?key=${MT_KEY}`,        _mtOpts);
   const satellite  = L.tileLayer(`https://api.maptiler.com/maps/hybrid/{z}/{x}/{y}.jpg?key=${MT_KEY}`,         _mtOpts);
@@ -5653,7 +5658,7 @@ function _ensureNexradLayer(i) {
     version: '1.1.1', TIME: radarFrames[i].iso,
     opacity: 0, zIndex: 10, pane: 'radarPane',
     crossOrigin: 'anonymous', noWrap: true, tileSize: 512,
-    keepBuffer: 0, updateWhenIdle: true, updateWhenZooming: false,
+    keepBuffer: 2, updateWhenIdle: false, updateWhenZooming: false,
     detectRetina: false,
     attribution: 'NEXRAD © NOAA via Iowa Mesonet',
   });
@@ -5674,7 +5679,7 @@ function _ensureCanadaLayer(i) {
     version: '1.1.1', TIME: radarFrames[i].iso,
     opacity: 0, zIndex: 11, pane: 'radarPane',
     crossOrigin: 'anonymous', noWrap: true, tileSize: 512,
-    keepBuffer: 0, updateWhenIdle: true, updateWhenZooming: false,
+    keepBuffer: 2, updateWhenIdle: false, updateWhenZooming: false,
     detectRetina: false,
     attribution: 'Canada Radar © ECCC via Iowa Mesonet',
   });
@@ -18104,6 +18109,23 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   // Always open tutorial on every fresh page load
   setTimeout(() => openTutorial(), 1400);
+
+  // Background radar preload — silently initialize the radar tile pool so that
+  // when the user first enables radar, tiles are already fetched and appear immediately.
+  setTimeout(() => {
+    try {
+      if (!activeLayers.nexrad && typeof _buildNexradFrames === 'function' && window.map) {
+        radarFrames = _buildNexradFrames();
+        lastPastIdx = radarFrames.length - 1;
+        currentFrame = lastPastIdx;
+        _buildRadarPool();
+        _ensureNexradLayer(currentFrame);
+        _ensureCanadaLayer(currentFrame);
+      }
+    } catch(e) {
+      // Silently ignore — this is a best-effort preload only
+    }
+  }, 4000);
 });
 
 
