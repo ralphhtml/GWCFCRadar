@@ -12949,11 +12949,13 @@ async function _fetchWindyWebcams(bounds) {
   try {
     const s = bounds.getSouth().toFixed(4), w = bounds.getWest().toFixed(4);
     const n = bounds.getNorth().toFixed(4), e = bounds.getEast().toFixed(4);
-    // Key as query param (works alongside header; avoids pre-flight CORS issues)
-    // Omit 'show' — let the API return all fields to avoid undocumented 400s
-    const url = `https://api.windy.com/api/webcams/v3/webcams` +
-      `?key=${WINDY_CAM_KEY}&bbox=${s},${w},${n},${e}&limit=100`;
-    const res = await fetch(url, { signal: _abortSignal(15000) });
+    const url = `https://api.windy.com/webcams/api/v3/webcams` +
+      `?northLat=${n}&southLat=${s}&eastLon=${e}&westLon=${w}&limit=100` +
+      `&include=location,images,player,urls`;
+    const res = await fetch(url, {
+      signal: _abortSignal(15000),
+      headers: { 'x-windy-api-key': WINDY_CAM_KEY },
+    });
     if (!res.ok) {
       const body = await res.text().catch(() => res.status);
       console.error(`[Windy] ${res.status}:`, body);
@@ -13373,10 +13375,12 @@ async function loadWindyCams() {
 // Debug helper — call windyTest() in the browser console to inspect the raw API response
 window.windyTest = async function() {
   const b = map.getBounds();
-  const url = `https://api.windy.com/api/webcams/v3/webcams?key=${WINDY_CAM_KEY}` +
-    `&bbox=${b.getSouth().toFixed(4)},${b.getWest().toFixed(4)},${b.getNorth().toFixed(4)},${b.getEast().toFixed(4)}&limit=5`;
+  const url = `https://api.windy.com/webcams/api/v3/webcams` +
+    `?northLat=${b.getNorth().toFixed(4)}&southLat=${b.getSouth().toFixed(4)}` +
+    `&eastLon=${b.getEast().toFixed(4)}&westLon=${b.getWest().toFixed(4)}&limit=5` +
+    `&include=location,images,player,urls`;
   console.log('[windyTest] GET', url);
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: { 'x-windy-api-key': WINDY_CAM_KEY } });
   console.log('[windyTest] status:', res.status, res.statusText);
   const text = await res.text();
   console.log('[windyTest] body:', text.slice(0, 2000));
