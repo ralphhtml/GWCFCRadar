@@ -4409,6 +4409,170 @@ body.gwcfc-crosshair #map::after {
 .srch-item .si-label em { color: var(--accent2); font-style: normal; font-weight: 600; }
 #lqm-search-row { position: relative; }
 
+/* ── MY OUTLOOK ── */
+#sb-tropical { display:none; }
+.mo-card {
+  background: rgba(0,30,60,0.7);
+  border: 1px solid rgba(0,200,255,0.22);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: rgba(220,240,255,0.85);
+}
+.mo-text {
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 6px;
+}
+.mo-json-wrap {
+  margin-top: 6px;
+  cursor: pointer;
+}
+.mo-json-wrap summary {
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: rgba(0,200,255,0.7);
+  user-select: none;
+  margin-bottom: 4px;
+}
+.mo-json {
+  background: rgba(0,0,0,0.4);
+  border: 1px solid rgba(0,200,255,0.15);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 9px;
+  overflow-x: auto;
+  max-height: 160px;
+  overflow-y: auto;
+  color: rgba(180,230,255,0.8);
+  white-space: pre;
+}
+.mo-ts {
+  margin-top: 6px;
+  font-size: 9px;
+  color: rgba(150,180,210,0.55);
+  text-align: right;
+}
+.mo-empty {
+  color: rgba(150,180,210,0.45);
+  font-size: 10px;
+  text-align: center;
+  padding: 6px 0;
+}
+.mo-edit-btn {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px 0;
+  border-radius: 8px;
+  background: rgba(0,80,160,0.5);
+  border: 1px solid rgba(0,200,255,0.3);
+  color: rgba(0,220,255,0.9);
+  font-family: var(--mono);
+  font-size: 10px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: background 0.15s;
+}
+.mo-edit-btn:hover { background: rgba(0,100,200,0.65); }
+/* Outlook editor modal */
+#outlook-editor-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9100;
+  background: rgba(0,0,0,0.82);
+  align-items: center;
+  justify-content: center;
+}
+#outlook-editor-modal.open { display: flex; }
+#oe-box {
+  background: rgb(6,14,28);
+  border: 1px solid rgba(0,200,255,0.35);
+  border-radius: 14px;
+  padding: 22px 24px 18px;
+  width: min(480px, 92vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  font-family: var(--mono);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.85);
+}
+#oe-box h3 {
+  font-family: var(--display);
+  font-size: 14px;
+  color: #00cfff;
+  margin: 0 0 14px;
+  letter-spacing: 1px;
+}
+.oe-label {
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: rgba(150,200,230,0.6);
+  margin-bottom: 5px;
+  display: block;
+}
+#oe-text, #oe-json {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(0,20,40,0.8);
+  border: 1px solid rgba(0,200,255,0.2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: rgba(220,240,255,0.9);
+  resize: vertical;
+  outline: none;
+  margin-bottom: 10px;
+}
+#oe-text:focus, #oe-json:focus { border-color: rgba(0,200,255,0.5); }
+.oe-pub-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 10px;
+  color: rgba(200,220,240,0.7);
+}
+#oe-err {
+  font-size: 10px;
+  color: #ff5566;
+  min-height: 14px;
+  margin-bottom: 8px;
+}
+.oe-btns { display: flex; gap: 8px; }
+.oe-btns button {
+  flex: 1;
+  padding: 9px 0;
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+  border: 1px solid rgba(0,200,255,0.25);
+  background: rgba(0,30,60,0.6);
+  color: rgba(200,230,255,0.8);
+  transition: background 0.15s;
+}
+.oe-btns button:hover { background: rgba(0,50,100,0.7); }
+#oe-save-btn {
+  background: rgba(0,80,180,0.7) !important;
+  border-color: rgba(0,200,255,0.5) !important;
+  color: #fff !important;
+  font-weight: 700;
+}
+#oe-save-btn:hover { background: rgba(0,100,220,0.8) !important; }
+#oe-del-btn {
+  border-color: rgba(200,40,40,0.4) !important;
+  color: rgba(255,100,100,0.8) !important;
+  flex: 0 0 auto;
+  padding: 9px 14px !important;
+}
+#oe-del-btn:hover { background: rgba(120,0,0,0.5) !important; }
+
 </style>
 <!-- Firebase SDK (compat v9 — drop in your config keys to activate) -->
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
@@ -4648,6 +4812,15 @@ body.gwcfc-crosshair #map::after {
 
     <!-- RADAR section -->
     <div class="sb-section" id="sb-radar">
+    </div>
+
+    <!-- TROPICAL MY OUTLOOK section -->
+    <div class="sb-section" id="sb-tropical" style="display:none">
+      <div class="sb-title">My Outlook</div>
+      <div class="mo-card">
+        <div id="mo-card-body"><div class="mo-empty">Loading…</div></div>
+        <button id="mo-edit-btn" class="mo-edit-btn" onclick="openOutlookEditor()" style="display:none">✏ Edit Outlook</button>
+      </div>
     </div>
 
     <!-- ALERTS section -->
@@ -10453,7 +10626,7 @@ function switchTab(tab) {
 
   // Auto-select product per tab
   if (tab === 'regular')  selectProduct('ref');
-  if (tab === 'tropical') { selectProduct('ref'); loadTropical(); }
+  if (tab === 'tropical') { selectProduct('ref'); loadTropical(); _loadMyOutlook(); }
   if (tab === 'severe')   { selectProduct('ref'); loadSPCOutlook('spc1'); }
   if (tab === 'ice')      selectProduct('ref');
   if (tab === 'fire')     selectProduct('ref');
@@ -17913,6 +18086,10 @@ const GWCFC_FB_CONFIG = {
 };
 const FIREBASE_READY = GWCFC_FB_CONFIG.apiKey !== "YOUR_API_KEY";
 
+// ── OWNER IDENTITY — set either or both to restrict outlook editing to you ──
+const OWNER_UID   = '';  // your Firebase UID  (e.g. "abc123xyz")
+const OWNER_EMAIL = '';  // your sign-in email (e.g. "you@example.com")
+
 let _fbApp, _fbAuth, _fbDb, _currentUser = null;
 
 function _fbInit() {
@@ -17931,6 +18108,7 @@ function _onSignedIn(user) {
   _currentUser = user;
   _updateProfileBadge(user);
   _loadUserPrefs(user.uid);
+  if (currentTab === 'tropical') _loadMyOutlook();
 }
 
 function _onSignedOut() {
@@ -18618,6 +18796,123 @@ document.addEventListener('DOMContentLoaded', () => {
   _makeDraggable(document.getElementById('s3-panel'),            document.getElementById('s3-drag'));
 });
 
+// ── MY OUTLOOK ────────────────────────────────────────────────────
+function _isOwner() {
+  if (!_currentUser) return false;
+  if (OWNER_UID   && _currentUser.uid   === OWNER_UID)   return true;
+  if (OWNER_EMAIL && _currentUser.email === OWNER_EMAIL) return true;
+  return false;
+}
+
+async function _loadMyOutlook() {
+  const card   = document.getElementById('mo-card-body');
+  const editBtn = document.getElementById('mo-edit-btn');
+  if (editBtn) editBtn.style.display = _isOwner() ? 'block' : 'none';
+  if (!FIREBASE_READY || !_fbDb) {
+    if (card) card.innerHTML = '<div class="mo-empty">Outlook unavailable.</div>';
+    return;
+  }
+  try {
+    const snap = await _fbDb.collection('outlooks').doc('my_outlook').get();
+    if (!snap.exists || snap.data().published === false) {
+      if (card) card.innerHTML = '<div class="mo-empty">No outlook posted yet.</div>';
+      return;
+    }
+    _renderMyOutlook(snap.data(), card);
+  } catch(e) {
+    if (card) card.innerHTML = '<div class="mo-empty">Could not load outlook.</div>';
+  }
+}
+
+function _renderMyOutlook(data, card) {
+  if (!card) card = document.getElementById('mo-card-body');
+  if (!card) return;
+  const ts = data.timestamp?.toDate
+    ? data.timestamp.toDate().toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', timeZoneName:'short' })
+    : '';
+  let html = '';
+  if (data.text) {
+    const safe = data.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    html += `<div class="mo-text">${safe.replace(/\n/g,'<br>')}</div>`;
+  }
+  if (data.json) {
+    try {
+      const pretty = typeof data.json === 'string' ? data.json : JSON.stringify(data.json, null, 2);
+      const safeJson = pretty.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      html += `<details class="mo-json-wrap"><summary>JSON Data</summary><pre class="mo-json">${safeJson}</pre></details>`;
+    } catch(e) {}
+  }
+  if (ts) html += `<div class="mo-ts">Posted ${ts}</div>`;
+  card.innerHTML = html || '<div class="mo-empty">No content.</div>';
+}
+
+function openOutlookEditor() {
+  if (!_isOwner()) return;
+  _fbInit();
+  const modal = document.getElementById('outlook-editor-modal');
+  if (!modal) return;
+  document.getElementById('oe-err').textContent = '';
+  if (FIREBASE_READY && _fbDb) {
+    _fbDb.collection('outlooks').doc('my_outlook').get().then(snap => {
+      const d = snap.exists ? snap.data() : {};
+      document.getElementById('oe-text').value  = d.text || '';
+      document.getElementById('oe-json').value  = d.json ? (typeof d.json === 'string' ? d.json : JSON.stringify(d.json, null, 2)) : '';
+      document.getElementById('oe-pub').checked = d.published !== false;
+    }).catch(() => {});
+  }
+  modal.classList.add('open');
+}
+
+function closeOutlookEditor() {
+  const modal = document.getElementById('outlook-editor-modal');
+  if (modal) modal.classList.remove('open');
+}
+
+async function saveOutlook() {
+  if (!_isOwner() || !FIREBASE_READY) return;
+  _fbInit();
+  const textVal = document.getElementById('oe-text').value.trim();
+  const jsonVal = document.getElementById('oe-json').value.trim();
+  const pubVal  = document.getElementById('oe-pub').checked;
+  const saveBtn = document.getElementById('oe-save-btn');
+  const errEl   = document.getElementById('oe-err');
+  errEl.textContent = '';
+  let jsonParsed = null;
+  if (jsonVal) {
+    try { jsonParsed = JSON.parse(jsonVal); }
+    catch(e) { errEl.textContent = 'Invalid JSON — fix before saving.'; return; }
+  }
+  saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+  try {
+    await _fbDb.collection('outlooks').doc('my_outlook').set({
+      text:       textVal,
+      json:       jsonParsed,
+      published:  pubVal,
+      timestamp:  firebase.firestore.FieldValue.serverTimestamp(),
+      authorUid:  _currentUser.uid,
+      authorName: _currentUser.displayName || _currentUser.email || 'Owner'
+    });
+    closeOutlookEditor();
+    _loadMyOutlook();
+  } catch(e) {
+    errEl.textContent = 'Save failed: ' + e.message;
+  } finally {
+    saveBtn.disabled = false; saveBtn.textContent = 'Save';
+  }
+}
+
+async function deleteOutlook() {
+  if (!_isOwner() || !FIREBASE_READY) return;
+  if (!confirm('Delete and unpublish this outlook?')) return;
+  try {
+    await _fbDb.collection('outlooks').doc('my_outlook').delete();
+    closeOutlookEditor();
+    _loadMyOutlook();
+  } catch(e) { alert('Delete failed: ' + e.message); }
+}
+// ── END MY OUTLOOK ────────────────────────────────────────────────
+
+
 // ── PLAYSTATION / GAMEPAD CONTROLLER SUPPORT ──────────────────────
 // PlayStation button indices (Standard Gamepad API mapping):
 //   4 = L1  (zoom out)   5 = R1  (zoom in)
@@ -18862,6 +19157,29 @@ document.addEventListener('DOMContentLoaded', () => {
   <div id="cam-popup-body">
     <div id="cam-popup-meta"></div>
     <a id="cam-popup-link" href="#" target="_blank" rel="noopener">🔗 View full camera</a>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     MY OUTLOOK — EDITOR MODAL
+     ══════════════════════════════════════════════ -->
+<div id="outlook-editor-modal" onclick="if(event.target===this)closeOutlookEditor()">
+  <div id="oe-box">
+    <h3>🌀 My Outlook</h3>
+    <label class="oe-label" for="oe-text">Discussion (text)</label>
+    <textarea id="oe-text" rows="7" placeholder="Write your tropical weather discussion here…"></textarea>
+    <label class="oe-label" for="oe-json">Structured Data (JSON)</label>
+    <textarea id="oe-json" rows="6" placeholder='{"storms": [], "summary": "…"}'></textarea>
+    <div class="oe-pub-row">
+      <input type="checkbox" id="oe-pub" checked>
+      <label for="oe-pub">Publish (visible to all visitors)</label>
+    </div>
+    <div id="oe-err"></div>
+    <div class="oe-btns">
+      <button id="oe-save-btn" onclick="saveOutlook()">Save</button>
+      <button onclick="closeOutlookEditor()">Cancel</button>
+      <button id="oe-del-btn" onclick="deleteOutlook()">🗑</button>
+    </div>
   </div>
 </div>
 
