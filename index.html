@@ -4375,6 +4375,153 @@ body.gwcfc-crosshair #map::after {
 }
 #oe-del-btn:hover { background: rgba(120,0,0,0.5) !important; }
 
+/* ── FNV3 TROPICAL ENSEMBLE PANEL ──────────────────────────────── */
+#fnv3-panel {
+  position: fixed;
+  top: 52px;
+  left: 8px;
+  width: min(300px, calc(100vw - 24px));
+  max-height: calc(100dvh - 68px);
+  overflow-y: auto;
+  background: rgb(4,12,26);
+  border: 1px solid rgba(0,200,255,0.35);
+  border-radius: 12px;
+  box-shadow: 0 4px 32px rgba(0,0,0,0.7), 0 0 12px rgba(0,200,255,0.1);
+  z-index: 900;
+  display: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: rgba(200,230,255,0.9);
+}
+#fnv3-panel::-webkit-scrollbar { width: 3px; }
+#fnv3-panel::-webkit-scrollbar-thumb { background: rgba(0,200,255,0.5); border-radius: 2px; }
+#fnv3-panel { scrollbar-width: thin; scrollbar-color: rgba(0,200,255,0.5) transparent; }
+#fnv3-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, rgba(0,30,60,0.95) 0%, rgba(4,12,26,0.95) 100%);
+  border-radius: 12px 12px 0 0;
+  border-bottom: 1px solid rgba(0,200,255,0.2);
+}
+#fnv3-title {
+  color: rgba(0,200,255,0.95);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+#fnv3-close-btn {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.15);
+  color: rgba(200,220,255,0.7);
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+#fnv3-close-btn:hover { background: rgba(200,0,0,0.5); color: #fff; border-color: rgba(255,80,80,0.5); }
+#fnv3-controls {
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fnv3-label {
+  font-size: 8px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: rgba(232,184,0,0.7);
+  margin-bottom: 3px;
+}
+.fnv3-select {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 10px;
+  background: rgba(4,14,32,0.95);
+  color: rgba(200,230,255,0.9);
+  border: 1px solid rgba(0,200,255,0.35);
+  border-radius: 6px;
+  padding: 5px 28px 5px 8px;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='rgba(0,200,255,0.6)'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  cursor: pointer;
+}
+.fnv3-select:focus { outline: none; border-color: rgba(0,200,255,0.7); }
+#fnv3-status {
+  font-size: 9px;
+  color: rgba(160,190,220,0.55);
+  padding: 4px 12px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+#fnv3-storm-info {
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fnv3-track-row {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
+  font-size: 9px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  padding: 3px 0;
+}
+.fnv3-track-row span:first-child { color: rgba(160,190,220,0.55); min-width: 90px; }
+.fnv3-det-badge {
+  background: rgba(255,255,255,0.15);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 8px;
+  letter-spacing: 0.5px;
+}
+#fnv3-load-url-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+#fnv3-url-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(4,14,32,0.95);
+  border: 1px solid rgba(0,200,255,0.35);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 5px 8px;
+  color: #fff;
+}
+#fnv3-url-input:focus { outline: none; border-color: rgba(0,200,255,0.7); }
+#fnv3-url-input::placeholder { color: rgba(160,190,220,0.35); }
+.fnv3-btn {
+  background: rgba(4,20,48,0.9);
+  border: 1px solid rgba(0,200,255,0.4);
+  border-radius: 6px;
+  color: rgba(0,200,255,0.9);
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  align-self: flex-start;
+}
+.fnv3-btn:hover { background: rgba(0,60,120,0.8); border-color: rgba(0,200,255,0.8); color: #fff; }
+
 </style>
 <!-- Firebase SDK (compat v9 — drop in your config keys to activate) -->
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
@@ -4646,6 +4793,31 @@ body.gwcfc-crosshair #map::after {
       <div class="mi-row"><span>Fcst</span><span class="mi-val" id="mi-fcst">F+000</span></div>
     </div>
 
+
+    <!-- FNV3 Tropical Models Panel -->
+    <div id="fnv3-panel">
+      <div id="fnv3-header">
+        <span id="fnv3-title">🌀 FNV3 Ensemble</span>
+        <button id="fnv3-close-btn" onclick="closeFNV3Panel()">×</button>
+      </div>
+      <div id="fnv3-controls">
+        <div>
+          <div class="fnv3-label">Model Run</div>
+          <select id="fnv3-run-sel" class="fnv3-select" onchange="_fnv3SetRun(this.value)"></select>
+        </div>
+        <div>
+          <div class="fnv3-label">Storm</div>
+          <select id="fnv3-storm-sel" class="fnv3-select" onchange="_fnv3SetStorm(this.value)"></select>
+        </div>
+      </div>
+      <div id="fnv3-status">Initializing…</div>
+      <div id="fnv3-storm-info"></div>
+      <div id="fnv3-load-url-row">
+        <div class="fnv3-label">Load custom CSV URL</div>
+        <input id="fnv3-url-input" type="text" placeholder="https://storage.googleapis.com/weathernext-public/fnv3/FNV3_…_paired.csv">
+        <button class="fnv3-btn" onclick="_fnv3LoadUrl()">↳ Load</button>
+      </div>
+    </div>
 
     <!-- Severe Models Panel -->
     <div id="severe-model-panel">
@@ -9127,7 +9299,7 @@ const MAIN_BUBBLES = BASE_BUBBLES; // alias for compat
 
 const TAB_BUBBLES = {
   regular:  BASE_BUBBLES,
-  tropical: BASE_BUBBLES,
+  tropical: [...BASE_BUBBLES, { id: 'models', icon: '🌀', label: 'Models', action: () => openFNV3Panel() }],
   severe:   [...BASE_BUBBLES, { id: 'models', icon: '🌩', label: 'Models', action: () => toggleSevereModelPanel() }],
   ice:      BASE_BUBBLES,
   fire:     BASE_BUBBLES
@@ -10220,6 +10392,258 @@ window.addEventListener('load', init);
     const el = document.getElementById(id);
     if (el) el.src = logoSrc;
   });
+
+
+// ── FNV3 TROPICAL ENSEMBLE MODELS ──────────────────────────────────────────
+const FNV3_BASE = 'https://storage.googleapis.com/weathernext-public/fnv3/';
+
+const FNV3_ENS_COLORS = [
+  '#ff6b6b','#ffa94d','#ffe066','#69db7c','#4dabf7','#cc5de8',
+  '#f783ac','#a9e34b','#38d9a9','#748ffc','#ff8787','#ffec99',
+];
+
+let _fnv3Open = false;
+let _fnv3Data = null;          // parsed CSV rows
+let _fnv3Layers = [];          // Leaflet polylines on map
+let _fnv3CurrentStorm = null;
+let _fnv3CurrentRun = null;    // "YYYY_MM_DDThh"
+let _fnv3RefreshTimer = null;
+
+// Build run stamp list: last 8 synoptic times (6-hourly)
+function _fnv3RunStamps() {
+  const stamps = [];
+  const now = new Date();
+  for (let i = 0; i < 8; i++) {
+    const t = new Date(now);
+    t.setUTCHours(Math.floor(t.getUTCHours() / 6) * 6 - i * 6, 0, 0, 0);
+    const Y = t.getUTCFullYear();
+    const M = pad(t.getUTCMonth() + 1);
+    const D = pad(t.getUTCDate());
+    const H = pad(t.getUTCHours());
+    stamps.push({ stamp: `${Y}_${M}_${D}T${H}`, label: `${M}/${D} ${H}z` });
+  }
+  return stamps;
+}
+
+function _fnv3CsvUrl(stamp) {
+  return `${FNV3_BASE}FNV3_${stamp}_00_paired.csv`;
+}
+
+// Parse the Google WeatherNext FNV3 CSV format
+function _fnv3ParseCSV(text) {
+  const lines = text.split('\n').filter(l => !l.startsWith('#') && l.trim());
+  if (!lines.length) return [];
+  const header = lines[0].split(',');
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const vals = lines[i].split(',');
+    if (vals.length < 7) continue;
+    const row = {};
+    header.forEach((h, j) => { row[h.trim()] = vals[j] ? vals[j].trim() : ''; });
+    row.lat = parseFloat(row.lat);
+    row.lon = parseFloat(row.lon);
+    row.sample = parseInt(row.sample);
+    row.max_wind = parseFloat(row.maximum_sustained_wind_speed_knots) || 0;
+    row.min_pres = parseFloat(row.minimum_sea_level_pressure_hpa) || 0;
+    if (isNaN(row.lat) || isNaN(row.lon)) continue;
+    rows.push(row);
+  }
+  return rows;
+}
+
+function _fnv3ClearLayers() {
+  _fnv3Layers.forEach(l => { try { map.removeLayer(l); } catch(e){} });
+  _fnv3Layers = [];
+}
+
+function _fnv3PlotTracks(rows, stormId) {
+  _fnv3ClearLayers();
+  if (!rows || !rows.length) return;
+
+  const stormRows = stormId
+    ? rows.filter(r => r.track_id === stormId)
+    : rows;
+
+  // Group by sample
+  const bySample = {};
+  stormRows.forEach(r => {
+    if (!bySample[r.sample]) bySample[r.sample] = [];
+    bySample[r.sample].push(r);
+  });
+
+  // Sort each sample by valid_time
+  Object.values(bySample).forEach(arr => arr.sort((a, b) => a.valid_time < b.valid_time ? -1 : 1));
+
+  const samples = Object.keys(bySample).map(Number).sort((a, b) => a - b);
+
+  samples.forEach((s, idx) => {
+    const pts = bySample[s].map(r => [r.lat, r.lon]);
+    if (pts.length < 2) return;
+
+    const isDet = s === -1;
+    const color = isDet ? '#ffffff' : FNV3_ENS_COLORS[idx % FNV3_ENS_COLORS.length];
+    const weight = isDet ? 3 : 1.2;
+    const opacity = isDet ? 0.92 : 0.55;
+
+    const line = L.polyline(pts, {
+      color, weight, opacity,
+      dashArray: isDet ? null : '4,3',
+    });
+
+    if (isDet) {
+      // Add tooltips at each point for the deterministic track
+      bySample[s].forEach(r => {
+        const validStr = r.valid_time.replace(' ', 'T').substring(0, 16) + 'Z';
+        const tip = `<b>${r.track_id}</b> det.<br>${validStr}<br>` +
+          `Wind: ${Math.round(r.max_wind)} kt<br>Pres: ${Math.round(r.min_pres)} hPa`;
+        const cm = L.circleMarker([r.lat, r.lon], {
+          radius: 3.5, color: '#fff', fillColor: _fnv3WindColor(r.max_wind), fillOpacity: 0.9, weight: 1.5
+        }).bindTooltip(tip, { sticky: true, opacity: 0.92 }).addTo(map);
+        _fnv3Layers.push(cm);
+      });
+    }
+
+    line.addTo(map);
+    _fnv3Layers.push(line);
+  });
+
+  // Fit map to deterministic track if present
+  const detPts = bySample[-1] ? bySample[-1].map(r => [r.lat, r.lon]) : null;
+  if (detPts && detPts.length) {
+    try { map.fitBounds(L.latLngBounds(detPts).pad(0.3), { maxZoom: 6 }); } catch(e){}
+  }
+}
+
+function _fnv3WindColor(kt) {
+  if (kt >= 137) return '#ff00ff';
+  if (kt >= 113) return '#ff4500';
+  if (kt >= 96)  return '#ff8c00';
+  if (kt >= 83)  return '#ffd700';
+  if (kt >= 64)  return '#ff6347';
+  if (kt >= 50)  return '#ffff00';
+  if (kt >= 34)  return '#00ffff';
+  return '#7ec8e3';
+}
+
+function _fnv3RenderStormInfo(rows, stormId) {
+  const el = document.getElementById('fnv3-storm-info');
+  if (!el) return;
+  const stormRows = (stormId ? rows.filter(r => r.track_id === stormId) : rows)
+    .filter(r => r.sample === -1)
+    .sort((a, b) => a.valid_time < b.valid_time ? -1 : 1);
+
+  if (!stormRows.length) { el.innerHTML = ''; return; }
+
+  let html = '<table style="width:100%;border-collapse:collapse;font-size:10px">';
+  html += '<tr><th style="text-align:left;color:rgba(160,190,220,0.55);padding:2px 0">Time</th>' +
+    '<th style="color:rgba(160,190,220,0.55)">kt</th>' +
+    '<th style="color:rgba(160,190,220,0.55)">hPa</th></tr>';
+  stormRows.forEach(r => {
+    const t = r.valid_time.replace(' ', 'T').substring(5, 16).replace('T', ' ');
+    const wColor = _fnv3WindColor(r.max_wind);
+    html += `<tr>
+      <td style="color:#cde;padding:1px 0">${t}</td>
+      <td style="color:${wColor};text-align:center">${Math.round(r.max_wind)}</td>
+      <td style="color:#9bd;text-align:center">${Math.round(r.min_pres)}</td>
+    </tr>`;
+  });
+  html += '</table>';
+  el.innerHTML = html;
+}
+
+function _fnv3PopulateStormSel(rows) {
+  const sel = document.getElementById('fnv3-storm-sel');
+  if (!sel) return;
+  const storms = [...new Set(rows.map(r => r.track_id))].sort();
+  sel.innerHTML = '';
+  if (!storms.length) { sel.innerHTML = '<option>No storms</option>'; return; }
+  storms.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s; opt.textContent = s;
+    sel.appendChild(opt);
+  });
+  _fnv3CurrentStorm = storms[0];
+  sel.value = _fnv3CurrentStorm;
+}
+
+async function _fnv3FetchCSV(url) {
+  const status = document.getElementById('fnv3-status');
+  if (status) status.textContent = 'Fetching…';
+  try {
+    const resp = await proxiedFetch(url, { signal: _abortSignal(20000) });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const text = await resp.text();
+    const rows = _fnv3ParseCSV(text);
+    if (!rows.length) throw new Error('No valid rows');
+    _fnv3Data = rows;
+    _fnv3PopulateStormSel(rows);
+    _fnv3PlotTracks(rows, _fnv3CurrentStorm);
+    _fnv3RenderStormInfo(rows, _fnv3CurrentStorm);
+    if (status) status.textContent = `✓ ${rows.length} points loaded`;
+  } catch(e) {
+    if (status) status.textContent = `⚠ ${e.message}`;
+    console.warn('[FNV3] fetch failed:', e);
+  }
+}
+
+function _fnv3SetRun(stamp) {
+  _fnv3CurrentRun = stamp;
+  _fnv3FetchCSV(_fnv3CsvUrl(stamp));
+}
+
+function _fnv3SetStorm(stormId) {
+  _fnv3CurrentStorm = stormId;
+  if (_fnv3Data) {
+    _fnv3PlotTracks(_fnv3Data, stormId);
+    _fnv3RenderStormInfo(_fnv3Data, stormId);
+  }
+}
+
+function _fnv3LoadUrl() {
+  const inp = document.getElementById('fnv3-url-input');
+  if (!inp || !inp.value.trim()) return;
+  _fnv3FetchCSV(inp.value.trim());
+}
+
+function openFNV3Panel() {
+  const panel = document.getElementById('fnv3-panel');
+  if (!panel) return;
+
+  if (_fnv3Open) {
+    closeFNV3Panel();
+    return;
+  }
+  _fnv3Open = true;
+  panel.style.display = 'flex';
+
+  // Populate run selector
+  const runSel = document.getElementById('fnv3-run-sel');
+  if (runSel && !runSel.options.length) {
+    const stamps = _fnv3RunStamps();
+    stamps.forEach(({ stamp, label }) => {
+      const opt = document.createElement('option');
+      opt.value = stamp; opt.textContent = label;
+      runSel.appendChild(opt);
+    });
+    _fnv3CurrentRun = stamps[0].stamp;
+    runSel.value = _fnv3CurrentRun;
+    _fnv3FetchCSV(_fnv3CsvUrl(_fnv3CurrentRun));
+  }
+
+  // Auto-refresh every 10min
+  _fnv3RefreshTimer = setInterval(() => {
+    if (_fnv3Open && _fnv3CurrentRun) _fnv3FetchCSV(_fnv3CsvUrl(_fnv3CurrentRun));
+  }, 10 * 60 * 1000);
+}
+
+function closeFNV3Panel() {
+  _fnv3Open = false;
+  const panel = document.getElementById('fnv3-panel');
+  if (panel) panel.style.display = 'none';
+  _fnv3ClearLayers();
+  if (_fnv3RefreshTimer) { clearInterval(_fnv3RefreshTimer); _fnv3RefreshTimer = null; }
+}
+// ── END FNV3 ────────────────────────────────────────────────────────────────
 
 </script>
 
@@ -17600,8 +18024,8 @@ const GWCFC_FB_CONFIG = {
 const FIREBASE_READY = GWCFC_FB_CONFIG.apiKey !== "YOUR_API_KEY";
 
 // ── OWNER IDENTITY — set either or both to restrict outlook editing to you ──
-const OWNER_UID   = '';  // your Firebase UID  (e.g. "abc123xyz")
-const OWNER_EMAIL = '';  // your sign-in email (e.g. "you@example.com")
+const OWNER_UID   = 'tVZPD8NTEoXLDnu6qIOmsJOi0wA3';
+const OWNER_EMAIL = '';
 
 let _fbApp, _fbAuth, _fbDb, _currentUser = null;
 
