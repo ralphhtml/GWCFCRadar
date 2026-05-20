@@ -12773,7 +12773,41 @@ function _showCamPopup(cam) {
     return;
   }
 
-  // ── JPEG / snapshot image (Windy snapshot, WSDOT, etc.) ─────────
+  // ── Traffic camera: HLS / direct video stream ────────────────────
+  if (cam.type === 'traffic_video' && cam.videoSrc) {
+    ph.style.display = 'none';
+    if (badge) badge.textContent = '▶ LIVE';
+    const vid = document.createElement('video');
+    vid.src = cam.videoSrc;
+    vid.controls = true; vid.autoplay = true; vid.muted = true; vid.playsInline = true;
+    vid.style.cssText = 'width:100%;max-height:240px;background:#000;border-radius:0;display:block;';
+    iframe.replaceWith(vid);
+    iframe.style.display = 'none';
+    popup.style.display = 'block';
+    return;
+  }
+
+  // ── Traffic camera: HTML player page iframe ───────────────────────
+  if (cam.type === 'traffic_player' && cam.videoUrl) {
+    ph.style.display = 'none';
+    if (badge) badge.textContent = '▶ LIVE';
+    iframe.src = cam.videoUrl;
+    iframe.style.display = 'block';
+    popup.style.display = 'block';
+    return;
+  }
+
+  // ── Traffic camera: MJPEG stream (direct img src) ─────────────────
+  if (cam.type === 'traffic_mjpeg' && cam.img) {
+    ph.style.display = 'none';
+    if (badge) badge.textContent = '▶ LIVE';
+    img.src = cam.img;
+    img.style.display = 'block';
+    popup.style.display = 'block';
+    return;
+  }
+
+  // ── JPEG / snapshot image (Windy snapshot, WSDOT, traffic_static, etc.) ─────────
   const imgUrl = cam.img || cam.imgUrl || '';
   if (badge) badge.textContent = cam.type === 'windy_snapshot' ? '📷 PREVIEW' : '↻ LIVE';
 
@@ -12810,26 +12844,32 @@ function _placeCamMarker(cam) {
   const thumbUrl = cam.imgThumb || cam.img || cam.imgUrl ||
     (cam.images?.current?.thumbnail) || '';
 
-  const isWindyLive  = cam.type === 'windy_live';
-  const isVideo = cam.type === 'earthcam' || isWindyLive;
-  const thumbStyle = thumbUrl
+  const isWindyLive   = cam.type === 'windy_live';
+  const isTrafficCam  = cam.type?.startsWith('traffic_');
+  const isVideo = cam.type === 'earthcam' || isWindyLive || cam.type === 'traffic_video';
+  const thumbStyle = thumbUrl && !isTrafficCam
     ? `background-image:url('${thumbUrl}');background-size:cover;background-position:center;`
-    : isWindyLive
-      ? 'background:rgba(0,170,100,0.92);'   // green  = Windy live stream
-      : cam.type === 'windy_snapshot'
-        ? 'background:rgba(0,130,180,0.92);' // teal   = Windy snapshot
-        : isVideo
-          ? 'background:rgba(200,30,30,0.92);'   // red = EarthCam live video
-          : 'background:rgba(0,150,180,0.90);';
+    : isTrafficCam
+      ? 'background:rgba(220,100,0,0.92);'     // orange = traffic/DOT camera
+      : isWindyLive
+        ? 'background:rgba(0,170,100,0.92);'   // green  = Windy live stream
+        : cam.type === 'windy_snapshot'
+          ? 'background:rgba(0,130,180,0.92);' // teal   = Windy snapshot
+          : isVideo
+            ? 'background:rgba(200,30,30,0.92);'   // red = EarthCam live video
+            : 'background:rgba(0,150,180,0.90);';
   const shortName = (cam.name || cam.title || 'Cam').replace('EarthCam: ', '').slice(0, 18);
 
-  const innerIcon = thumbUrl
-    ? ''
-    : isVideo
-      ? '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21"/></svg>'
-      : cam.type && cam.type.startsWith('windy')
-        ? '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4"/><path d="M16 12h-4"/></svg>'
-        : '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>';
+  // Traffic cam: road/camera icon; video: play triangle; windy: globe; default: video camera
+  const innerIcon = (!thumbUrl || isTrafficCam)
+    ? isTrafficCam
+      ? '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="16" height="12" rx="2"/><path d="M22 8l-4 4 4 4V8z"/><circle cx="8" cy="12" r="2" fill="white" stroke="none"/></svg>'
+      : isVideo
+        ? '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21"/></svg>'
+        : cam.type?.startsWith('windy')
+          ? '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4"/><path d="M16 12h-4"/></svg>'
+          : '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>'
+    : '';
 
   const icon = L.divIcon({
     className: '',
@@ -13409,7 +13449,80 @@ async function _fetchEarthCamStreams() {
   return CAM_EARTHCAM_DB.map(c => ({ ...c, type: 'earthcam' }));
 }
 
-// In-memory cache of webcams loaded from the GH-Actions-generated JSON file
+// ── Traffic Cameras — loaded from /traffic_cameras.json ──────────────────────
+// Data format matches traffic_cameras.js: { [state]: [{ lat, lon, name, facing,
+//   stream: { static, video, encoding, format } }] }
+let _trafficCamCache = null;
+let _trafficCamCacheLoaded = false;
+
+async function _loadTrafficCamData() {
+  if (_trafficCamCacheLoaded) return _trafficCamCache;
+  _trafficCamCacheLoaded = true;
+  try {
+    const r = await fetch('/GWCFCRadar/traffic_cameras.json', { signal: _abortSignal(10000) });
+    if (r.ok) {
+      _trafficCamCache = await r.json();
+      console.log(`[TrafficCams] loaded: ${Object.keys(_trafficCamCache).length} states`);
+    }
+  } catch(e) { console.warn('[TrafficCams] load failed:', e); }
+  return _trafficCamCache;
+}
+
+function _tcIsHls(url)    { return /\.m3u8(?:$|\?|#)/i.test(String(url||'')); }
+function _tcIsVideo(url)  { return /\.(mp4|webm|ogg|ogv|mov|m4v)(?:$|\?|#)/i.test(String(url||'')); }
+function _tcIsMjpeg(url)  { return /mjpeg|mjpg/i.test(String(url||'')); }
+function _tcIsPlayer(url) { return /\/Video\/GetVideo\//i.test(String(url||'')); }
+
+function _normalizeTrafficCam(state, camera, idx) {
+  const lat = parseFloat(camera?.lat);
+  const lon = parseFloat(camera?.lon);
+  if (!isFinite(lat) || !isFinite(lon)) return null;
+
+  const staticUrl = String(camera?.stream?.static || '').trim();
+  const videoUrl  = String(camera?.stream?.video  || '').trim();
+  if (!staticUrl && !videoUrl) return null;
+
+  const name    = String(camera?.name || 'Traffic Camera');
+  const facing  = String(camera?.facing || '').trim();
+  const fullName = facing ? `${name}, facing ${facing}` : name;
+  const id      = `traffic_${String(state).replace(/\s/g,'_')}_${idx}`;
+
+  let type = 'traffic_static', img = staticUrl, videoSrc = '';
+
+  if (videoUrl) {
+    if (_tcIsPlayer(videoUrl))                          { type = 'traffic_player'; }
+    else if (_tcIsMjpeg(videoUrl))                      { type = 'traffic_mjpeg'; img = videoUrl; }
+    else if (_tcIsHls(videoUrl) || _tcIsVideo(videoUrl)){ type = 'traffic_video'; videoSrc = videoUrl; img = staticUrl; }
+    else                                                 { type = 'traffic_player'; }
+  }
+
+  return {
+    id, name: fullName, lat, lon,
+    img, videoSrc, videoUrl, staticUrl,
+    link: videoUrl || staticUrl,
+    meta: `Traffic · ${state}`,
+    type,
+  };
+}
+
+async function _fetchTrafficCams(bounds) {
+  const data = await _loadTrafficCamData();
+  if (!data || typeof data !== 'object') return [];
+  const s = bounds.getSouth(), w = bounds.getWest(),
+        n = bounds.getNorth(), e = bounds.getEast();
+  const out = [];
+  for (const [state, cameras] of Object.entries(data)) {
+    if (!Array.isArray(cameras)) continue;
+    cameras.forEach((cam, idx) => {
+      const c = _normalizeTrafficCam(state, cam, idx);
+      if (!c || c.lat < s || c.lat > n || c.lon < w || c.lon > e) return;
+      out.push(c);
+    });
+  }
+  return out;
+}
+
+
 let _windyCacheData = null;
 let _windyCacheLoaded = false;
 
@@ -13512,16 +13625,17 @@ async function _fetchCamsForViewport() {
 
     const bounds = map.getBounds();
 
-    const [ecCams, wsdotCams, caltransCams, windyCams] = await Promise.all([
+    const [ecCams, wsdotCams, caltransCams, windyCams, trafficCams] = await Promise.all([
       _fetchEarthCamStreams(),
       _fetchWSDOTCams(),
       _fetchCaltransCams(bounds),
       _fetchWindyWebcams(bounds),
+      _fetchTrafficCams(bounds),
     ]);
 
-    console.log(`[Cams] EC:${ecCams.length} WSDOT:${wsdotCams.length} Caltrans:${caltransCams.length} Windy:${windyCams.length}`);
+    console.log(`[Cams] EC:${ecCams.length} WSDOT:${wsdotCams.length} Caltrans:${caltransCams.length} Windy:${windyCams.length} Traffic:${trafficCams.length}`);
 
-    const allCams = [...ecCams, ...wsdotCams, ...caltransCams, ...windyCams];
+    const allCams = [...ecCams, ...wsdotCams, ...caltransCams, ...windyCams, ...trafficCams];
     let added = 0;
     allCams.forEach(cam => {
       if (_camsSeenIds.has(cam.id)) return;
@@ -13531,7 +13645,7 @@ async function _fetchCamsForViewport() {
     });
 
     const windyStatus = _windyDomainBlocked ? 'blocked' : windyCams.length;
-    if (added > 0) showToast(`📹 ${added} cams · EC:${ecCams.length} CA:${caltransCams.length} W:${windyStatus}`, 2500);
+    if (added > 0) showToast(`📹 ${added} cams · EC:${ecCams.length} CA:${caltransCams.length} W:${windyStatus} TC:${trafficCams.length}`, 2500);
     else           showToast(`📹 No cameras · CA:${caltransCams.length} W:${windyStatus}`, 2000);
   } catch(err) {
     console.error('[Cams] _fetchCamsForViewport error:', err);
