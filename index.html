@@ -2417,65 +2417,110 @@ body {
 #dtb-close:active { background:#cc0000; }
 
 /* ── DRAW TEXT POPUP ── */
-#dtb-text-popup {
-  display: none;
-  position: fixed;
-  z-index: 2500;
-  flex-direction: column;
-  gap: 6px;
-  background: rgba(8,12,20,0.97);
-  border: 1.5px solid rgba(0,160,255,0.5);
-  border-radius: 10px;
-  padding: 8px 10px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.85);
-  pointer-events: all;
+/* ── TEXT TOOL — placed text on map ── */
+.dtb-ti-wrap {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
   user-select: none;
-  min-width: 260px;
 }
-#dtb-text-popup.open { display: flex; }
-#dtb-text-popup-row1 { display: flex; align-items: center; gap: 5px; }
-#dtb-text-input {
-  background: transparent;
-  border: none;
-  outline: none;
-  color: #e8f4ff;
-  font-family: var(--sans);
-  font-size: 13px;
-  min-width: 160px;
-  flex: 1;
-  caret-color: #4af;
+.dtb-ti-text {
+  white-space: nowrap;
+  font-weight: 700;
+  pointer-events: none;
+  text-shadow: 1px 1px 4px rgba(0,0,0,0.95), -1px -1px 4px rgba(0,0,0,0.95), 0 0 8px rgba(0,0,0,0.8);
 }
-#dtb-text-input::placeholder { color: rgba(255,255,255,0.28); }
-#dtb-text-ok {
-  background: rgba(0,150,255,0.25);
-  border: 1px solid rgba(0,180,255,0.45);
-  border-radius: 5px;
-  color: #4af;
-  cursor: pointer;
-  font-size: 13px;
-  padding: 2px 7px;
+/* Handles — hidden until selected */
+.dtb-ti-rot, .dtb-ti-rsz {
+  display: none;
+  position: absolute;
+  width: 18px; height: 18px;
+  background: #fff;
+  border-radius: 50%;
+  border: 2px solid rgba(0,160,255,0.9);
+  box-shadow: 0 1px 6px rgba(0,0,0,0.6);
+  cursor: grab;
+  z-index: 10;
+}
+.dtb-ti-rot { top: -24px; left: 50%; transform: translateX(-50%); border-radius: 50%; font-size: 10px; display: none; align-items: center; justify-content: center; }
+.dtb-ti-rsz { bottom: -12px; right: -12px; border-radius: 3px; cursor: se-resize; }
+.dtb-ti-line { display: none; position: absolute; left: 50%; width: 1px; top: -22px; height: 20px; background: rgba(0,160,255,0.6); transform: translateX(-50%); }
+.dtb-ti-wrap.selected .dtb-ti-rot,
+.dtb-ti-wrap.selected .dtb-ti-rsz,
+.dtb-ti-wrap.selected .dtb-ti-line { display: flex; }
+.dtb-ti-wrap.selected .dtb-ti-rsz { display: block; }
+.dtb-ti-wrap.selected .dtb-ti-line { display: block; }
+.dtb-ti-wrap.selected .dtb-ti-text { outline: 1.5px dashed rgba(0,180,255,0.55); outline-offset: 3px; border-radius: 2px; }
+
+/* ── TEXT TOOL — pull-up panel ── */
+#dtb-tp {
+  position: fixed;
+  left: 50%;
+  bottom: -220px;
+  transform: translateX(-50%);
+  width: min(500px, 100vw);
+  z-index: 3100;
+  background: rgba(6,10,20,0.97);
+  border: 1.5px solid rgba(0,160,255,0.3);
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -6px 36px rgba(0,0,0,0.75);
+  transition: bottom 0.24s cubic-bezier(.4,0,.2,1);
+  pointer-events: all;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+#dtb-tp.open { bottom: 0; }
+#dtb-tp-pill {
+  width: 32px; height: 3px;
+  background: rgba(255,255,255,0.18);
+  border-radius: 2px;
+  margin: 8px auto 4px;
+}
+#dtb-tp-fonts {
+  display: flex; gap: 7px;
+  padding: 0 14px 10px;
+  overflow-x: auto; scrollbar-width: none;
+}
+#dtb-tp-fonts::-webkit-scrollbar { display: none; }
+.dtb-tp-fc {
   flex-shrink: 0;
-  transition: background 0.12s;
-}
-#dtb-text-ok:hover { background: rgba(0,160,255,0.45); }
-#dtb-font-row {
-  display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
-}
-.dtb-font-chip {
-  padding: 3px 8px;
-  border-radius: 5px;
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(255,255,255,0.05);
-  color: #cde;
+  padding: 5px 11px;
+  border-radius: 8px;
+  border: 1.5px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04);
+  color: #b8d4ff;
   cursor: pointer;
-  font-size: 13px;
-  transition: border-color 0.12s, background 0.12s;
-  line-height: 1.3;
+  font-size: 15px;
+  line-height: 1.2;
+  transition: border-color .12s, background .12s;
+  white-space: nowrap;
 }
-.dtb-font-chip:hover { background: rgba(0,160,255,0.18); border-color: rgba(0,200,255,0.5); }
-.dtb-font-chip.active { background: rgba(0,160,255,0.28); border-color: #4af; color: #fff; }
+.dtb-tp-fc:hover { background: rgba(0,160,255,0.14); border-color: rgba(0,200,255,0.35); }
+.dtb-tp-fc.active { background: rgba(0,130,255,0.22); border-color: #4af; color: #fff; }
+#dtb-tp-row2 {
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 14px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.dtb-tp-col {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.15);
+  cursor: pointer; flex-shrink: 0;
+  transition: transform .1s, border-color .12s;
+}
+.dtb-tp-col:hover { transform: scale(1.18); }
+.dtb-tp-col.active { border-color: #fff; transform: scale(1.22); box-shadow: 0 0 0 2px rgba(0,160,255,0.6); }
+#dtb-tp-sz-wrap { display: flex; align-items: center; gap: 5px; margin-left: auto; }
+#dtb-tp-sz { width: 72px; }
+#dtb-tp-sz-lbl { font-family: var(--mono); font-size: 10px; color: var(--accent2); min-width: 24px; }
+#dtb-tp-input {
+  display: block; width: 100%;
+  background: transparent; border: none; outline: none;
+  color: #e8f4ff; caret-color: #4af;
+  font-size: 24px; font-weight: 700; font-family: var(--sans);
+  padding: 10px 14px 14px;
+  box-sizing: border-box;
+}
 
 /* ── CITY MARKERS ── */
 .city-dot {
@@ -5166,22 +5211,34 @@ body.gwcfc-crosshair #map::after {
   <button id="dtb-close" onclick="deactivateTool()" title="Exit draw mode">✕</button>
 </div>
 <div id="dtb-status">Drawing mode paused</div>
-<div id="dtb-text-popup">
-  <div id="dtb-font-row">
-    <button class="dtb-font-chip active" style="font-family:'IBM Plex Sans',sans-serif;" onclick="_dtbSetFont('IBM Plex Sans, sans-serif',this)">Aa</button>
-    <button class="dtb-font-chip" style="font-family:'Rajdhani',sans-serif;" onclick="_dtbSetFont('Rajdhani, sans-serif',this)"><span style="font-family:'Rajdhani';font-weight:700;">Aa</span></button>
-    <button class="dtb-font-chip" style="font-family:'Oswald',sans-serif;" onclick="_dtbSetFont('Oswald, sans-serif',this)"><span style="font-family:'Oswald';">Aa</span></button>
-    <button class="dtb-font-chip" style="font-family:'Bebas Neue',sans-serif;" onclick="_dtbSetFont('Bebas Neue, sans-serif',this)"><span style="font-family:'Bebas Neue';">Aa</span></button>
-    <button class="dtb-font-chip" style="font-family:'Pacifico',cursive;" onclick="_dtbSetFont('Pacifico, cursive',this)"><span style="font-family:'Pacifico';font-size:12px;">Aa</span></button>
-    <button class="dtb-font-chip" style="font-family:'Permanent Marker',cursive;" onclick="_dtbSetFont('Permanent Marker, cursive',this)"><span style="font-family:'Permanent Marker';font-size:12px;">Aa</span></button>
-    <button class="dtb-font-chip" style="font-family:Georgia,serif;" onclick="_dtbSetFont('Georgia, serif',this)"><span style="font-family:Georgia;">Aa</span></button>
-    <button class="dtb-font-chip" style="font-family:Impact,sans-serif;" onclick="_dtbSetFont('Impact, sans-serif',this)"><span style="font-family:Impact;">Aa</span></button>
-    <button class="dtb-font-chip" style="font-family:'IBM Plex Mono',monospace;" onclick="_dtbSetFont('IBM Plex Mono, monospace',this)"><span style="font-family:'IBM Plex Mono';font-size:11px;">Aa</span></button>
+<div id="dtb-tp">
+  <div id="dtb-tp-pill"></div>
+  <div id="dtb-tp-fonts">
+    <button class="dtb-tp-fc active" data-font="IBM Plex Sans,sans-serif" style="font-family:'IBM Plex Sans',sans-serif">Sans</button>
+    <button class="dtb-tp-fc" data-font="Rajdhani,sans-serif" style="font-family:'Rajdhani',sans-serif;font-weight:700">Rajdhani</button>
+    <button class="dtb-tp-fc" data-font="Oswald,sans-serif" style="font-family:'Oswald',sans-serif">Oswald</button>
+    <button class="dtb-tp-fc" data-font="Bebas Neue,sans-serif" style="font-family:'Bebas Neue',sans-serif">Bebas</button>
+    <button class="dtb-tp-fc" data-font="Pacifico,cursive" style="font-family:'Pacifico',cursive">Pacifico</button>
+    <button class="dtb-tp-fc" data-font="Permanent Marker,cursive" style="font-family:'Permanent Marker',cursive">Marker</button>
+    <button class="dtb-tp-fc" data-font="Georgia,serif" style="font-family:Georgia,serif">Georgia</button>
+    <button class="dtb-tp-fc" data-font="Impact,sans-serif" style="font-family:Impact,sans-serif">Impact</button>
+    <button class="dtb-tp-fc" data-font="IBM Plex Mono,monospace" style="font-family:'IBM Plex Mono',monospace;font-size:13px">Mono</button>
   </div>
-  <div id="dtb-text-popup-row1">
-    <input id="dtb-text-input" type="text" placeholder="Type here…" autocomplete="off" spellcheck="false">
-    <button id="dtb-text-ok" onclick="_dtbSubmitText()">✓</button>
+  <div id="dtb-tp-row2">
+    <div class="dtb-tp-col active" data-c="#ff2222" style="background:#ff2222"></div>
+    <div class="dtb-tp-col" data-c="#ffffff" style="background:#ffffff"></div>
+    <div class="dtb-tp-col" data-c="#ffff00" style="background:#ffff00"></div>
+    <div class="dtb-tp-col" data-c="#00ccff" style="background:#00ccff"></div>
+    <div class="dtb-tp-col" data-c="#00ff88" style="background:#00ff88"></div>
+    <div class="dtb-tp-col" data-c="#ff6600" style="background:#ff6600"></div>
+    <div class="dtb-tp-col" data-c="#cc44ff" style="background:#cc44ff"></div>
+    <div class="dtb-tp-col" data-c="#000000" style="background:#000;border-color:rgba(255,255,255,0.3)"></div>
+    <div id="dtb-tp-sz-wrap">
+      <input type="range" id="dtb-tp-sz" min="10" max="120" value="24">
+      <span id="dtb-tp-sz-lbl">24</span>
+    </div>
   </div>
+  <input id="dtb-tp-input" type="text" autocomplete="off" spellcheck="false">
 </div>
 <div id="track-toolbar">
   <div class="dtb-drag" id="track-drag" title="Drag to move"><span></span><span></span><span></span></div>
@@ -11915,77 +11972,232 @@ function _onDrawUp() {
 function _onDrawClick() {}
 
 // ── TEXT TOOL ────────────────────────────────────────────────────────────────
-let _dtbTextLatlng = null;
+const _dtbTexts = [];        // all placed text objects
+let _dtbTextLatlng  = null;  // latlng where map was clicked
+let _dtbPreviewMkr  = null;  // live preview marker while panel is open
+let _dtbSelectedTxt = null;  // currently selected text object
 
-function _dtbSetFont(fontValue, btn) {
-  _dtbFont = fontValue;
-  document.querySelectorAll('.dtb-font-chip').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-  const inp = document.getElementById('dtb-text-input');
-  if (inp) inp.style.fontFamily = fontValue;
+function _dtbTpBuildIcon(text, font, color, size, rotation, selected) {
+  const safe = String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return L.divIcon({
+    className: '',
+    html: `<div class="dtb-ti-wrap${selected?' selected':''}">
+      <div class="dtb-ti-line"></div>
+      <div class="dtb-ti-rot">↻</div>
+      <div class="dtb-ti-text" style="font-family:${font};font-size:${size}px;color:${color};transform:rotate(${rotation}deg);transform-origin:left top;">${safe}</div>
+      <div class="dtb-ti-rsz"></div>
+    </div>`,
+    iconAnchor: [0, 0],
+  });
+}
+
+function _dtbTpOpenPanel() {
+  const p = document.getElementById('dtb-tp');
+  const i = document.getElementById('dtb-tp-input');
+  if (!p) return;
+  p.classList.add('open');
+  if (i) { i.style.fontFamily = _dtbFont; i.style.color = _dtbColor; i.value = ''; }
+  setTimeout(() => i && i.focus(), 120);
+}
+
+function _dtbTpClosePanel() {
+  document.getElementById('dtb-tp')?.classList.remove('open');
+  // Remove preview marker
+  if (_dtbPreviewMkr) { try { map.removeLayer(_dtbPreviewMkr); } catch(e){} _dtbPreviewMkr = null; }
+  _dtbTextLatlng = null;
+  _dtbSelectedTxt = null;
+}
+
+function _dtbTpUpdatePreview() {
+  if (!_dtbTextLatlng) return;
+  const inp  = document.getElementById('dtb-tp-input');
+  const text = inp ? inp.value : '';
+  const icon = _dtbTpBuildIcon(text || '|', _dtbFont, _dtbColor, _dtbSize, 0, false);
+  if (_dtbPreviewMkr) {
+    _dtbPreviewMkr.setIcon(icon);
+  } else {
+    _dtbPreviewMkr = L.marker(_dtbTextLatlng, { icon, interactive: false, zIndexOffset: 200 }).addTo(map);
+  }
+}
+
+function _dtbTpCommit() {
+  const inp  = document.getElementById('dtb-tp-input');
+  if (!inp || !_dtbTextLatlng) return;
+  const text = inp.value.trim();
+  if (!text) { _dtbTpClosePanel(); return; }
+
+  const item = { latlng: _dtbTextLatlng, text, font: _dtbFont, color: _dtbColor, size: _dtbSize, rotation: 0, marker: null };
+  const icon = _dtbTpBuildIcon(text, item.font, item.color, item.size, item.rotation, false);
+  item.marker = L.marker(item.latlng, { icon, interactive: true, zIndexOffset: 100 }).addTo(map);
+  item.marker.on('click', e => { L.DomEvent.stopPropagation(e); _dtbTpSelect(item); });
+  _dtbTexts.push(item);
+  _allToolLayers.push(item.marker);
+  _dtbRedoStack.length = 0;
+  document.getElementById('dtb-redo-btn')?.classList.remove('active');
+
+  _dtbTpClosePanel();
+}
+
+function _dtbTpSelect(item) {
+  if (_dtbMode !== 'text') return;
+  // Deselect previous
+  if (_dtbSelectedTxt && _dtbSelectedTxt !== item) _dtbTpDeselect(_dtbSelectedTxt);
+  _dtbSelectedTxt = item;
+  item.rotation = item.rotation || 0;
+  // Re-render with selected state
+  item.marker.setIcon(_dtbTpBuildIcon(item.text, item.font, item.color, item.size, item.rotation, true));
+  // Wire handles after short delay so DOM is ready
+  setTimeout(() => {
+    const el = item.marker.getElement();
+    if (!el) return;
+    const wrap = el.querySelector('.dtb-ti-wrap');
+    const rh   = el.querySelector('.dtb-ti-rot');
+    const sh   = el.querySelector('.dtb-ti-rsz');
+    if (rh) _dtbBindRot(rh, item, el);
+    if (sh) _dtbBindRsz(sh, item, el);
+  }, 40);
+}
+
+function _dtbTpDeselect(item) {
+  if (!item || !item.marker) return;
+  item.marker.setIcon(_dtbTpBuildIcon(item.text, item.font, item.color, item.size, item.rotation, false));
+}
+
+function _dtbBindRot(handle, item, markerEl) {
+  let dragging = false, startAngle = 0, startRot = 0;
+  function center() {
+    const wrap = markerEl.querySelector('.dtb-ti-text');
+    const r = (wrap || markerEl).getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+  function onStart(e) {
+    e.stopPropagation(); e.preventDefault();
+    dragging = true; startRot = item.rotation;
+    const c = center(), cx = e.clientX ?? e.touches?.[0]?.clientX, cy = e.clientY ?? e.touches?.[0]?.clientY;
+    startAngle = Math.atan2(cy - c.y, cx - c.x) * 180 / Math.PI;
+    window.addEventListener('mousemove', onMove); window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('mouseup', onEnd); window.addEventListener('touchend', onEnd);
+  }
+  function onMove(e) {
+    if (!dragging) return; e.preventDefault();
+    const c = center(), cx = e.clientX ?? e.touches?.[0]?.clientX, cy = e.clientY ?? e.touches?.[0]?.clientY;
+    const angle = Math.atan2(cy - c.y, cx - c.x) * 180 / Math.PI;
+    item.rotation = startRot + (angle - startAngle);
+    const txt = markerEl.querySelector('.dtb-ti-text');
+    if (txt) txt.style.transform = `rotate(${item.rotation}deg)`;
+  }
+  function onEnd() {
+    dragging = false;
+    window.removeEventListener('mousemove', onMove); window.removeEventListener('touchmove', onMove);
+    window.removeEventListener('mouseup', onEnd); window.removeEventListener('touchend', onEnd);
+  }
+  handle.addEventListener('mousedown', onStart);
+  handle.addEventListener('touchstart', onStart, { passive: false });
+}
+
+function _dtbBindRsz(handle, item, markerEl) {
+  let dragging = false, startSize = 0, startDist = 0;
+  function center() {
+    const txt = markerEl.querySelector('.dtb-ti-text');
+    const r = (txt || markerEl).getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+  function onStart(e) {
+    e.stopPropagation(); e.preventDefault();
+    dragging = true; startSize = item.size;
+    const c = center(), cx = e.clientX ?? e.touches?.[0]?.clientX, cy = e.clientY ?? e.touches?.[0]?.clientY;
+    startDist = Math.hypot(cx - c.x, cy - c.y) || 1;
+    window.addEventListener('mousemove', onMove); window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('mouseup', onEnd); window.addEventListener('touchend', onEnd);
+  }
+  function onMove(e) {
+    if (!dragging) return; e.preventDefault();
+    const c = center(), cx = e.clientX ?? e.touches?.[0]?.clientX, cy = e.clientY ?? e.touches?.[0]?.clientY;
+    const dist = Math.hypot(cx - c.x, cy - c.y);
+    item.size = Math.max(10, Math.min(200, Math.round(startSize * dist / startDist)));
+    const txt = markerEl.querySelector('.dtb-ti-text');
+    if (txt) txt.style.fontSize = item.size + 'px';
+    const lbl = document.getElementById('dtb-tp-sz-lbl');
+    if (lbl) lbl.textContent = item.size;
+  }
+  function onEnd() {
+    dragging = false;
+    window.removeEventListener('mousemove', onMove); window.removeEventListener('touchmove', onMove);
+    window.removeEventListener('mouseup', onEnd); window.removeEventListener('touchend', onEnd);
+  }
+  handle.addEventListener('mousedown', onStart);
+  handle.addEventListener('touchstart', onStart, { passive: false });
 }
 
 function _dtbShowTextInput(latlng) {
+  // Deselect any selected text, close panel
+  if (_dtbSelectedTxt) { _dtbTpDeselect(_dtbSelectedTxt); _dtbSelectedTxt = null; }
   _dtbTextLatlng = latlng;
-  const popup = document.getElementById('dtb-text-popup');
-  const inp   = document.getElementById('dtb-text-input');
-  if (!popup || !inp) return;
-  // Position popup above the clicked point on screen
-  const cp   = map.latLngToContainerPoint(latlng);
-  const rect = map.getContainer().getBoundingClientRect();
-  const x    = rect.left + cp.x;
-  const y    = rect.top  + cp.y;
-  popup.style.borderColor = _dtbColor;
-  popup.style.left = Math.max(4, Math.min(x - 90, window.innerWidth - 220)) + 'px';
-  popup.style.top  = Math.max(4, y - 54) + 'px';
-  inp.value = '';
-  inp.style.color = _dtbColor;
-  inp.style.fontFamily = _dtbFont;
-  popup.classList.add('open');
-  setTimeout(() => inp.focus(), 30);
+  _dtbTpOpenPanel();
+  _dtbTpUpdatePreview();
 }
 
-function _dtbSubmitText() {
-  const inp   = document.getElementById('dtb-text-input');
-  const popup = document.getElementById('dtb-text-popup');
-  if (!inp || !_dtbTextLatlng) { _dtbCancelText(); return; }
-  const text = inp.value.trim();
-  if (text) {
-    const fontSize = Math.max(12, Math.round(_dtbSize * 2));
-    const safe = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const html = `<span style="font-family:${_dtbFont};font-size:${fontSize}px;color:${_dtbColor};` +
-      `font-weight:700;white-space:nowrap;` +
-      `text-shadow:1px 1px 4px rgba(0,0,0,0.95),-1px -1px 4px rgba(0,0,0,0.95),` +
-      `0 0 8px rgba(0,0,0,0.8);pointer-events:none;display:block;">${safe}</span>`;
-    const marker = L.marker(_dtbTextLatlng, {
-      icon: L.divIcon({ className: '', html, iconAnchor: [0, fontSize] }),
-      interactive: false
-    }).addTo(map);
-    _allToolLayers.push(marker);
-    _dtbRedoStack.length = 0;
-    document.getElementById('dtb-redo-btn')?.classList.remove('active');
-  }
-  popup.classList.remove('open');
-  _dtbTextLatlng = null;
-  _dtbSetStatus('Text mode – click the map to place text');
+function _dtbCancelText() { _dtbTpClosePanel(); }
+function _dtbSubmitText() { _dtbTpCommit(); }
+
+function _dtbSetFont(fontValue) {
+  _dtbFont = fontValue;
+  document.querySelectorAll('.dtb-tp-fc').forEach(b => b.classList.remove('active'));
+  const btn = document.querySelector(`.dtb-tp-fc[data-font="${fontValue}"]`);
+  if (btn) btn.classList.add('active');
+  const inp = document.getElementById('dtb-tp-input');
+  if (inp) inp.style.fontFamily = fontValue;
+  _dtbTpUpdatePreview();
 }
 
-function _dtbCancelText() {
-  const popup = document.getElementById('dtb-text-popup');
-  if (popup) popup.classList.remove('open');
-  _dtbTextLatlng = null;
-}
+// Init panel interactions
+(function _initTp() {
+  const panel = document.getElementById('dtb-tp');
+  if (!panel) { setTimeout(_initTp, 300); return; }
 
-// Wire up Enter/Escape on the text input once DOM is ready
-(function _initTextInput() {
-  const inp = document.getElementById('dtb-text-input');
-  if (!inp) { setTimeout(_initTextInput, 300); return; }
-  inp.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') { e.preventDefault(); _dtbSubmitText(); }
-    if (e.key === 'Escape') { e.preventDefault(); _dtbCancelText(); }
+  // Font chips
+  panel.querySelectorAll('.dtb-tp-fc').forEach(btn => {
+    btn.addEventListener('click', () => _dtbSetFont(btn.dataset.font));
   });
-  // Prevent map mousedown from firing while typing
-  inp.addEventListener('mousedown', e => e.stopPropagation());
+
+  // Color swatches
+  panel.querySelectorAll('.dtb-tp-col').forEach(dot => {
+    dot.addEventListener('click', () => {
+      panel.querySelectorAll('.dtb-tp-col').forEach(d => d.classList.remove('active'));
+      dot.classList.add('active');
+      _dtbColor = dot.dataset.c;
+      const inp = document.getElementById('dtb-tp-input');
+      if (inp) inp.style.color = _dtbColor;
+      _dtbTpUpdatePreview();
+    });
+  });
+
+  // Size slider
+  const sz = document.getElementById('dtb-tp-sz');
+  if (sz) sz.addEventListener('input', () => {
+    _dtbSize = +sz.value;
+    const lbl = document.getElementById('dtb-tp-sz-lbl');
+    if (lbl) lbl.textContent = sz.value;
+    _dtbTpUpdatePreview();
+  });
+
+  // Text input
+  const inp = document.getElementById('dtb-tp-input');
+  if (inp) {
+    inp.addEventListener('input', _dtbTpUpdatePreview);
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); _dtbTpCommit(); }
+      if (e.key === 'Escape') { e.preventDefault(); _dtbTpClosePanel(); }
+    });
+    inp.addEventListener('mousedown', e => e.stopPropagation());
+    inp.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
+  }
+
+  // Click outside panel → commit (if text present)
+  document.addEventListener('click', e => {
+    if (!panel.classList.contains('open')) return;
+    if (!panel.contains(e.target)) _dtbTpCommit();
+  });
 })();
 
 
