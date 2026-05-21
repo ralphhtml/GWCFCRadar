@@ -2417,35 +2417,101 @@ body {
 #dtb-close:active { background:#cc0000; }
 
 /* ── DRAW TEXT POPUP ── */
-/* ── TEXT TOOL PULL-UP PANEL ── */
-#dtb-text-panel {
+/* ── TEXT TOOL — L-SHAPED MENU above T button ── */
+#dtb-lmenu {
+  position: absolute;
+  bottom: calc(100% + 6px); /* sits above the toolbar */
+  /* JS sets left to align with T button */
   display: none;
+  z-index: 3100;
+  pointer-events: all;
+  /* L shape: flex-row containing [vertical font list] + bottom color strip */
+}
+#dtb-lmenu.open { display: flex; align-items: flex-end; }
+/* Vertical font column */
+#dtb-lmenu-fonts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: rgba(8,12,22,0.97);
+  border: 1.5px solid rgba(0,160,255,0.3);
+  border-radius: 10px 10px 0 10px;
+  padding: 6px 5px;
+  box-shadow: -4px -4px 24px rgba(0,0,0,0.7);
+  min-width: 110px;
+}
+.dtb-lm-font {
+  padding: 7px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #c8deff;
+  cursor: pointer;
+  font-size: 14px;
+  text-align: left;
+  white-space: nowrap;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  line-height: 1.2;
+}
+.dtb-lm-font:hover { background: rgba(0,160,255,0.14); border-color: rgba(0,200,255,0.3); }
+.dtb-lm-font.active { background: rgba(0,140,255,0.22); border-color: #4af; color: #fff; }
+/* Color strip — the foot of the L, below the font column */
+#dtb-lmenu-colorbar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(8,12,22,0.97);
+  border: 1.5px solid rgba(0,160,255,0.3);
+  border-left: none;
+  border-radius: 0 10px 10px 0;
+  padding: 6px 8px;
+  gap: 6px;
+  box-shadow: 4px -4px 24px rgba(0,0,0,0.7);
+  align-self: flex-end;
+}
+#dtb-lm-swatch {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 2.5px solid rgba(255,255,255,0.6);
+  cursor: pointer;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
+  transition: transform 0.1s;
+  flex-shrink: 0;
+}
+#dtb-lm-swatch:hover { transform: scale(1.12); }
+#dtb-lm-colorpicker {
+  position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;
+}
+
+/* ── TEXT TOOL PULL-UP PANEL (text input only, no font/color here) ── */
+#dtb-text-panel {
   position: fixed;
-  bottom: 0; left: 50%; transform: translateX(-50%);
+  bottom: -160px;
+  left: 50%; transform: translateX(-50%);
   z-index: 3000;
-  width: min(520px, 96vw);
+  width: min(520px, 100vw);
   background: rgba(6,10,18,0.98);
   border: 1.5px solid rgba(0,160,255,0.35);
   border-bottom: none;
   border-radius: 16px 16px 0 0;
   padding: 0 0 env(safe-area-inset-bottom,0);
   box-shadow: 0 -8px 40px rgba(0,0,0,0.7);
-  pointer-events: all;
+  pointer-events: none;
+  display: flex;
   flex-direction: column;
   gap: 0;
-  transition: transform 0.22s cubic-bezier(.4,0,.2,1);
+  transition: bottom 0.26s cubic-bezier(.4,0,.2,1);
 }
-#dtb-text-panel.open { display: flex; }
+#dtb-text-panel.open { bottom: 0; pointer-events: all; }
 #dtb-text-panel-handle {
   width: 36px; height: 4px;
   background: rgba(255,255,255,0.18);
   border-radius: 2px;
-  margin: 10px auto 0;
+  margin: 10px auto 4px;
   flex-shrink: 0;
 }
 #dtb-text-panel-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 16px 6px;
+  padding: 4px 16px 6px;
 }
 #dtb-text-panel-title {
   font-family: var(--display); font-size: 12px; font-weight: 700;
@@ -2457,45 +2523,29 @@ body {
   transition: color 0.12s, background 0.12s;
 }
 #dtb-text-panel-close:hover { color: #fff; background: rgba(255,255,255,0.1); }
-/* Font chips row */
-#dtb-tp-fonts {
-  display: flex; gap: 6px; padding: 4px 16px 10px; overflow-x: auto;
-  scrollbar-width: none;
+/* Placed text handles */
+.dtb-ti-wrap { position: relative; display: inline-block; cursor: pointer; user-select: none; }
+.dtb-ti-text { white-space: nowrap; font-weight: 700; display: block; }
+.dtb-ti-rot, .dtb-ti-rsz {
+  display: none; position: absolute;
+  width: 18px; height: 18px; background: #fff;
+  border: 2px solid rgba(0,160,255,0.9);
+  box-shadow: 0 1px 6px rgba(0,0,0,0.6); cursor: grab; z-index: 10;
 }
-#dtb-tp-fonts::-webkit-scrollbar { display: none; }
-.dtb-tp-font {
-  flex-shrink: 0;
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1.5px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.04);
-  color: #c8deff;
-  cursor: pointer;
-  font-size: 15px;
-  line-height: 1.2;
-  transition: border-color 0.12s, background 0.12s;
-  white-space: nowrap;
-}
-.dtb-tp-font:hover { background: rgba(0,160,255,0.14); border-color: rgba(0,200,255,0.4); }
-.dtb-tp-font.active { background: rgba(0,140,255,0.22); border-color: #4af; color: #fff; }
-/* Color + size row */
-#dtb-tp-controls {
-  display: flex; align-items: center; gap: 10px;
-  padding: 0 16px 10px; border-bottom: 1px solid rgba(255,255,255,0.07);
-}
-.dtb-tp-color {
-  width: 24px; height: 24px; border-radius: 50%;
-  border: 2px solid rgba(255,255,255,0.2);
-  cursor: pointer; flex-shrink: 0;
-  transition: transform 0.1s, border-color 0.12s;
-}
-.dtb-tp-color:hover { transform: scale(1.15); }
-.dtb-tp-color.active { border-color: #fff; transform: scale(1.2); }
+.dtb-ti-rot { top: -26px; left: 50%; transform: translateX(-50%); border-radius: 50%; font-size: 10px; align-items: center; justify-content: center; }
+.dtb-ti-rsz { bottom: -12px; right: -12px; border-radius: 3px; cursor: se-resize; }
+.dtb-ti-line { display: none; position: absolute; left: 50%; width: 1px; top: -24px; height: 22px; background: rgba(0,160,255,0.5); transform: translateX(-50%); }
+.dtb-ti-wrap.selected .dtb-ti-rot { display: flex; }
+.dtb-ti-wrap.selected .dtb-ti-rsz { display: block; }
+.dtb-ti-wrap.selected .dtb-ti-line { display: block; }
+.dtb-ti-wrap.selected .dtb-ti-text { outline: 1.5px dashed rgba(0,180,255,0.5); outline-offset: 3px; }
+
+/* Size slider in pull-up panel */
 #dtb-tp-size-wrap {
-  display: flex; align-items: center; gap: 6px; margin-left: auto;
+  display: flex; align-items: center; gap: 8px; padding: 0 16px 10px;
 }
-#dtb-tp-size-lbl { font-family: var(--mono); font-size: 10px; color: var(--accent2); min-width: 26px; }
-#dtb-tp-size { width: 80px; }
+#dtb-tp-size-lbl { font-family: var(--mono); font-size: 10px; color: var(--accent2); min-width: 28px; }
+#dtb-tp-size { flex: 1; }
 /* Big text input */
 #dtb-tp-input-wrap {
   padding: 12px 16px 0;
@@ -2507,21 +2557,7 @@ body {
   color: #e8f4ff; font-size: 22px; line-height: 1.4;
   caret-color: #4af; padding: 0; font-family: var(--sans);
 }
-#dtb-tp-input::placeholder { color: rgba(255,255,255,0.12); }
-/* Place button */
-#dtb-tp-place {
-  margin: 0 16px 16px;
-  padding: 10px;
-  background: rgba(0,140,255,0.2);
-  border: 1.5px solid rgba(0,180,255,0.4);
-  border-radius: 9px;
-  color: #7ef;
-  font-family: var(--display); font-size: 12px; font-weight: 700; letter-spacing: 1px;
-  cursor: pointer; transition: background 0.14s, border-color 0.14s;
-  text-transform: uppercase;
-}
-#dtb-tp-place:hover { background: rgba(0,160,255,0.35); border-color: #4af; color: #fff; }
-#dtb-tp-place.placing { background: rgba(0,220,120,0.18); border-color: rgba(0,220,120,0.6); color: #6fb; }
+#dtb-tp-input::placeholder { color: rgba(255,255,255,0.18); }
 
 /* ── CITY MARKERS ── */
 .city-dot {
@@ -5176,9 +5212,29 @@ body.gwcfc-crosshair #map::after {
   <button class="dtb-btn" id="dtb-mode-eraser" onclick="_dtbSetMode('eraser')" title="Eraser">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M20 20H7L3 16l10-10 7 7-3.5 3.5"/><path d="M6 11l7 7"/></svg>
   </button>
-  <button class="dtb-btn" id="dtb-mode-text" onclick="_dtbSetMode('text')" title="Text">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="16" height="16"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
-  </button>
+  <div style="position:relative;flex-shrink:0;">
+    <button class="dtb-btn" id="dtb-mode-text" onclick="_dtbSetMode('text')" title="Text">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="16" height="16"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+    </button>
+    <!-- L-shaped text menu: vertical font list + color swatch foot -->
+    <div id="dtb-lmenu">
+      <div id="dtb-lmenu-fonts">
+        <button class="dtb-lm-font active" data-font="IBM Plex Sans, sans-serif" style="font-family:'IBM Plex Sans',sans-serif">Sans</button>
+        <button class="dtb-lm-font" data-font="Rajdhani, sans-serif" style="font-family:'Rajdhani',sans-serif;font-weight:700">Rajdhani</button>
+        <button class="dtb-lm-font" data-font="Oswald, sans-serif" style="font-family:'Oswald',sans-serif">Oswald</button>
+        <button class="dtb-lm-font" data-font="Bebas Neue, sans-serif" style="font-family:'Bebas Neue',sans-serif">Bebas</button>
+        <button class="dtb-lm-font" data-font="Pacifico, cursive" style="font-family:'Pacifico',cursive">Pacifico</button>
+        <button class="dtb-lm-font" data-font="Permanent Marker, cursive" style="font-family:'Permanent Marker',cursive">Marker</button>
+        <button class="dtb-lm-font" data-font="Georgia, serif" style="font-family:Georgia,serif">Georgia</button>
+        <button class="dtb-lm-font" data-font="Impact, sans-serif" style="font-family:Impact,sans-serif">Impact</button>
+        <button class="dtb-lm-font" data-font="IBM Plex Mono, monospace" style="font-family:'IBM Plex Mono',monospace;font-size:12px">Mono</button>
+      </div>
+      <div id="dtb-lmenu-colorbar">
+        <div id="dtb-lm-swatch" title="Pick text color"></div>
+        <input type="color" id="dtb-lm-colorpicker" value="#ff2222">
+      </div>
+    </div>
+  </div>
   <div class="dtb-sep"></div>
   <!-- Color swatch + palette trigger -->
   <div style="position:relative;flex-shrink:0;">
@@ -5218,36 +5274,14 @@ body.gwcfc-crosshair #map::after {
     <span id="dtb-text-panel-title">Add Text</span>
     <button id="dtb-text-panel-close" type="button" onclick="_dtbCloseTextPanel()">✕</button>
   </div>
-  <div id="dtb-tp-fonts">
-    <button class="dtb-tp-font active" data-font="IBM Plex Sans, sans-serif" style="font-family:'IBM Plex Sans',sans-serif">Sans</button>
-    <button class="dtb-tp-font" data-font="Rajdhani, sans-serif" style="font-family:'Rajdhani',sans-serif;font-weight:700">Rajdhani</button>
-    <button class="dtb-tp-font" data-font="Oswald, sans-serif" style="font-family:'Oswald',sans-serif">Oswald</button>
-    <button class="dtb-tp-font" data-font="Bebas Neue, sans-serif" style="font-family:'Bebas Neue',sans-serif">Bebas</button>
-    <button class="dtb-tp-font" data-font="Pacifico, cursive" style="font-family:'Pacifico',cursive">Pacifico</button>
-    <button class="dtb-tp-font" data-font="Permanent Marker, cursive" style="font-family:'Permanent Marker',cursive">Marker</button>
-    <button class="dtb-tp-font" data-font="Georgia, serif" style="font-family:Georgia,serif">Georgia</button>
-    <button class="dtb-tp-font" data-font="Impact, sans-serif" style="font-family:Impact,sans-serif">Impact</button>
-    <button class="dtb-tp-font" data-font="IBM Plex Mono, monospace" style="font-family:'IBM Plex Mono',monospace;font-size:13px">Mono</button>
-  </div>
-  <div id="dtb-tp-controls">
-    <div class="dtb-tp-color active" style="background:#ff2222" data-color="#ff2222" onclick="_dtbTpPickColor(this)"></div>
-    <div class="dtb-tp-color" style="background:#ffffff" data-color="#ffffff" onclick="_dtbTpPickColor(this)"></div>
-    <div class="dtb-tp-color" style="background:#ffff00" data-color="#ffff00" onclick="_dtbTpPickColor(this)"></div>
-    <div class="dtb-tp-color" style="background:#00ccff" data-color="#00ccff" onclick="_dtbTpPickColor(this)"></div>
-    <div class="dtb-tp-color" style="background:#00ff88" data-color="#00ff88" onclick="_dtbTpPickColor(this)"></div>
-    <div class="dtb-tp-color" style="background:#ff6600" data-color="#ff6600" onclick="_dtbTpPickColor(this)"></div>
-    <div class="dtb-tp-color" style="background:#cc44ff" data-color="#cc44ff" onclick="_dtbTpPickColor(this)"></div>
-    <div class="dtb-tp-color" style="background:#000000;border-color:rgba(255,255,255,0.4)" data-color="#000000" onclick="_dtbTpPickColor(this)"></div>
-    <div id="dtb-tp-size-wrap">
-      <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">SIZE</span>
-      <input type="range" id="dtb-tp-size" min="1" max="40" value="8" oninput="_dtbTpSetSize(this.value)">
-      <span id="dtb-tp-size-lbl">8</span>
-    </div>
+  <div id="dtb-tp-size-wrap">
+    <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">SIZE</span>
+    <input type="range" id="dtb-tp-size" min="1" max="40" value="8" oninput="_dtbTpSetSize(this.value)">
+    <span id="dtb-tp-size-lbl">8</span>
   </div>
   <div id="dtb-tp-input-wrap">
-    <input id="dtb-tp-input" type="text" placeholder="" autocomplete="off" spellcheck="false">
+    <input id="dtb-tp-input" type="text" placeholder="Type here, press Enter to place…" autocomplete="off" spellcheck="false">
   </div>
-  <button id="dtb-tp-place" onclick="_dtbTpStartPlace()">Tap map to place text</button>
 </div>
 <div id="track-toolbar">
   <div class="dtb-drag" id="track-drag" title="Drag to move"><span></span><span></span><span></span></div>
@@ -11809,10 +11843,11 @@ function _dtbSetMode(mode) {
     _hideEraserCursor();
     _dtbCancelText();
     if (mode === 'text') {
-      map.getContainer().style.cursor = 'text';
-      _dtbOpenTextPanel();
-      _dtbSetStatus('Text mode – type your text then tap the map');
+      map.getContainer().style.cursor = 'crosshair';
+      _dtbToggleLMenu();
+      _dtbSetStatus('Text mode – pick font & color, then tap the map');
     } else {
+      _dtbCloseLMenu();
       _dtbCloseTextPanel();
       map.getContainer().style.cursor = '';
       _dtbSetStatus(mode === 'highlighter' ? 'Highlighter mode' : 'Pencil mode');
@@ -11982,26 +12017,55 @@ function _onDrawUp() {
 }
 function _onDrawClick() {}
 
-// ── TEXT TOOL — PULL-UP PANEL ─────────────────────────────────────────────────
+// ── TEXT TOOL — L-MENU + PULL-UP PANEL ────────────────────────────────────────
 let _dtbTextLatlng = null;
-let _dtbTpPlacing  = false; // waiting for map click to place
+let _dtbPreviewMkr = null;
+let _dtbSelectedTxt = null;
 
+// ─── L-MENU (font picker + color swatch above T button) ───
+function _dtbToggleLMenu() {
+  const menu = document.getElementById('dtb-lmenu');
+  if (!menu) return;
+  menu.classList.toggle('open');
+}
+
+function _dtbCloseLMenu() {
+  document.getElementById('dtb-lmenu')?.classList.remove('open');
+}
+
+function _dtbSetFont(fontValue, btn) {
+  _dtbFont = fontValue;
+  document.querySelectorAll('.dtb-lm-font').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  _dtbTpSyncInput();
+  _dtbTpUpdatePreview();
+}
+
+function _dtbLmPickColor(hex) {
+  _dtbColor = hex;
+  const swatch = document.getElementById('dtb-lm-swatch');
+  if (swatch) swatch.style.background = hex;
+  _dtbTpSyncInput();
+  _dtbTpUpdatePreview();
+}
+
+// ─── PULL-UP PANEL (text input + size, slides up on map click) ───
 function _dtbOpenTextPanel() {
   const panel = document.getElementById('dtb-text-panel');
   if (!panel) return;
   panel.classList.add('open');
   _dtbTpSyncInput();
-  setTimeout(() => document.getElementById('dtb-tp-input')?.focus(), 80);
+  setTimeout(() => document.getElementById('dtb-tp-input')?.focus(), 100);
 }
 
 function _dtbCloseTextPanel() {
   const panel = document.getElementById('dtb-text-panel');
   if (panel) panel.classList.remove('open');
-  _dtbTpPlacing = false;
-  map.getContainer().style.cursor = '';
-  const btn = document.getElementById('dtb-tp-place');
-  if (btn) btn.classList.remove('placing');
-  if (_dtbMode === 'text') _dtbSetMode('pencil');
+  _dtbTextLatlng = null;
+  if (_dtbPreviewMkr) { map.removeLayer(_dtbPreviewMkr); _dtbPreviewMkr = null; }
+  const inp = document.getElementById('dtb-tp-input');
+  if (inp) inp.value = '';
+  if (_dtbMode === 'text') map.getContainer().style.cursor = 'crosshair';
 }
 
 function _dtbTpSyncInput() {
@@ -12011,93 +12075,158 @@ function _dtbTpSyncInput() {
   inp.style.color      = _dtbColor;
 }
 
-function _dtbSetFont(fontValue, btn) {
-  _dtbFont = fontValue;
-  document.querySelectorAll('.dtb-tp-font').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-  _dtbTpSyncInput();
-}
-
-function _dtbTpPickColor(el) {
-  document.querySelectorAll('.dtb-tp-color').forEach(b => b.classList.remove('active'));
-  el.classList.add('active');
-  _dtbColor = el.dataset.color;
-  _dtbTpSyncInput();
-}
-
 function _dtbTpSetSize(val) {
   _dtbSize = +val;
   const lbl = document.getElementById('dtb-tp-size-lbl');
   if (lbl) lbl.textContent = val;
+  _dtbTpUpdatePreview();
 }
 
-function _dtbTpStartPlace() {
-  const text = (document.getElementById('dtb-tp-input')?.value || '').trim();
-  if (!text) { document.getElementById('dtb-tp-input')?.focus(); return; }
-  _dtbTpPlacing = true;
-  map.getContainer().style.cursor = 'crosshair';
-  const btn = document.getElementById('dtb-tp-place');
-  if (btn) { btn.classList.add('placing'); btn.textContent = 'Tap the map…'; }
+function _dtbTpUpdatePreview() {
+  if (!_dtbTextLatlng) return;
+  const text = document.getElementById('dtb-tp-input')?.value || '';
+  const fontSize = Math.max(12, Math.round(_dtbSize * 2.2));
+  const safe = (text || '…').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const html = `<span style="font-family:${_dtbFont};font-size:${fontSize}px;color:${_dtbColor};font-weight:700;white-space:nowrap;text-shadow:1px 1px 4px rgba(0,0,0,0.95),-1px -1px 4px rgba(0,0,0,0.95),0 0 8px rgba(0,0,0,0.8);">${safe}</span>`;
+  const icon = L.divIcon({ className: '', html, iconAnchor: [0, fontSize] });
+  if (_dtbPreviewMkr) { _dtbPreviewMkr.setIcon(icon); }
+  else { _dtbPreviewMkr = L.marker(_dtbTextLatlng, { icon, interactive: false, zIndexOffset: 1000 }).addTo(map); }
+}
+
+function _dtbTpCommit() {
+  const inp = document.getElementById('dtb-tp-input');
+  const text = (inp?.value || '').trim();
+  if (!text || !_dtbTextLatlng) { _dtbCloseTextPanel(); return; }
+
+  const latlng = _dtbTextLatlng;
+  const font = _dtbFont, color = _dtbColor, size = _dtbSize;
+  const fontSize = Math.max(12, Math.round(size * 2.2));
+  const item = { text, font, color, size, fontSize, rotation: 0 };
+
+  function buildIcon(sel) {
+    const safe = item.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const cls = 'dtb-ti-wrap' + (sel ? ' selected' : '');
+    return L.divIcon({
+      className: '',
+      html: `<div class="${cls}">` +
+        `<div class="dtb-ti-line"></div>` +
+        `<div class="dtb-ti-rot">↻</div>` +
+        `<span class="dtb-ti-text" style="font-family:${item.font};font-size:${item.fontSize}px;color:${item.color};font-weight:700;white-space:nowrap;text-shadow:1px 1px 4px rgba(0,0,0,0.95),-1px -1px 4px rgba(0,0,0,0.95),0 0 8px rgba(0,0,0,0.8);">${safe}</span>` +
+        `<div class="dtb-ti-rsz"></div></div>`,
+      iconAnchor: [0, item.fontSize]
+    });
+  }
+
+  if (_dtbPreviewMkr) { map.removeLayer(_dtbPreviewMkr); _dtbPreviewMkr = null; }
+
+  const marker = L.marker(latlng, { icon: buildIcon(false), interactive: true, zIndexOffset: 500 }).addTo(map);
+  _allToolLayers.push(marker);
+  _dtbRedoStack.length = 0;
+  document.getElementById('dtb-redo-btn')?.classList.remove('active');
+
+  marker.on('click', function(e) {
+    L.DomEvent.stopPropagation(e);
+    if (_dtbSelectedTxt?.marker === marker) {
+      _dtbSelectedTxt = null;
+      marker.setIcon(buildIcon(false));
+      return;
+    }
+    if (_dtbSelectedTxt) _dtbSelectedTxt.marker.setIcon(buildIcon(false));
+    _dtbSelectedTxt = { marker, item };
+    marker.setIcon(buildIcon(true));
+    requestAnimationFrame(() => _dtbWireHandles(marker, item, buildIcon));
+  });
+
+  _dtbCloseTextPanel();
+}
+
+function _dtbWireHandles(marker, item, buildIcon) {
+  const el = marker.getElement();
+  if (!el) return;
+  const rotH = el.querySelector('.dtb-ti-rot');
+  const rszH = el.querySelector('.dtb-ti-rsz');
+  if (!rotH || !rszH) return;
+
+  rotH.addEventListener('mousedown', function(e) {
+    e.stopPropagation(); e.preventDefault();
+    const wrap = el.querySelector('.dtb-ti-wrap');
+    const rect = wrap.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+    const startAngle = Math.atan2(e.clientY - cy, e.clientX - cx);
+    const startRot = item.rotation;
+    function onMove(ev) {
+      const angle = Math.atan2(ev.clientY - cy, ev.clientX - cx);
+      item.rotation = startRot + (angle - startAngle) * (180 / Math.PI);
+      if (wrap) wrap.style.transform = `rotate(${item.rotation}deg)`;
+    }
+    function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  rszH.addEventListener('mousedown', function(e) {
+    e.stopPropagation(); e.preventDefault();
+    const wrap = el.querySelector('.dtb-ti-wrap');
+    const rect = wrap.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+    const startDist = Math.hypot(e.clientX - cx, e.clientY - cy);
+    const startFS = item.fontSize;
+    function onMove(ev) {
+      const dist = Math.hypot(ev.clientX - cx, ev.clientY - cy);
+      item.fontSize = Math.max(10, Math.round(startFS * (dist / startDist)));
+      el.querySelector('.dtb-ti-text')?.style && (el.querySelector('.dtb-ti-text').style.fontSize = item.fontSize + 'px');
+    }
+    function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
 }
 
 function _dtbShowTextInput(latlng) {
-  // Called when map is clicked in text mode
-  if (!_dtbTpPlacing) return; // panel not in place mode — ignore
   _dtbTextLatlng = latlng;
-  _dtbSubmitText();
+  _dtbOpenTextPanel();
+  _dtbTpUpdatePreview();
 }
 
-function _dtbSubmitText() {
-  const inp = document.getElementById('dtb-tp-input');
-  if (!inp || !_dtbTextLatlng) return;
-  const text = inp.value.trim();
-  if (text) {
-    const fontSize = Math.max(12, Math.round(_dtbSize * 2.2));
-    const safe = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const html = `<span style="font-family:${_dtbFont};font-size:${fontSize}px;color:${_dtbColor};` +
-      `font-weight:700;white-space:nowrap;` +
-      `text-shadow:1px 1px 4px rgba(0,0,0,0.95),-1px -1px 4px rgba(0,0,0,0.95),` +
-      `0 0 8px rgba(0,0,0,0.8);pointer-events:none;display:block;">${safe}</span>`;
-    const marker = L.marker(_dtbTextLatlng, {
-      icon: L.divIcon({ className: '', html, iconAnchor: [0, fontSize] }),
-      interactive: false
-    }).addTo(map);
-    _allToolLayers.push(marker);
-    _dtbRedoStack.length = 0;
-    document.getElementById('dtb-redo-btn')?.classList.remove('active');
-  }
-  // Reset for next placement
-  _dtbTpPlacing = false;
-  _dtbTextLatlng = null;
-  map.getContainer().style.cursor = 'text';
-  const btn = document.getElementById('dtb-tp-place');
-  if (btn) { btn.classList.remove('placing'); btn.textContent = 'Tap map to place text'; }
-  inp.value = '';
-  setTimeout(() => inp.focus(), 50);
-}
+function _dtbCancelText() { _dtbTextLatlng = null; }
 
-function _dtbCancelText() { _dtbTpPlacing = false; _dtbTextLatlng = null; }
+// Init L-menu + panel
+(function _initTextTool() {
+  const lmenu = document.getElementById('dtb-lmenu');
+  if (!lmenu) { setTimeout(_initTextTool, 300); return; }
 
-// Init panel font chips + input listeners
-(function _initTextPanel() {
-  const panel = document.getElementById('dtb-text-panel');
-  if (!panel) { setTimeout(_initTextPanel, 300); return; }
-
-  // Font chip clicks
-  panel.querySelectorAll('.dtb-tp-font').forEach(btn => {
+  // Font buttons
+  lmenu.querySelectorAll('.dtb-lm-font').forEach(btn => {
     btn.addEventListener('click', () => _dtbSetFont(btn.dataset.font, btn));
   });
 
-  // Input — Enter to start placing, Escape to close
+  // Color swatch → open native color picker
+  const swatch = document.getElementById('dtb-lm-swatch');
+  const picker = document.getElementById('dtb-lm-colorpicker');
+  if (swatch) swatch.style.background = _dtbColor;
+  if (swatch && picker) {
+    swatch.addEventListener('click', () => picker.click());
+    picker.addEventListener('input', () => _dtbLmPickColor(picker.value));
+  }
+
+  // Pull-up panel input
   const inp = document.getElementById('dtb-tp-input');
   if (inp) {
+    inp.addEventListener('input', () => _dtbTpUpdatePreview());
     inp.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); _dtbTpStartPlace(); }
+      if (e.key === 'Enter') { e.preventDefault(); _dtbTpCommit(); }
       if (e.key === 'Escape') { e.preventDefault(); _dtbCloseTextPanel(); }
     });
     inp.addEventListener('mousedown', e => e.stopPropagation());
     inp.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
   }
+
+  // Close L-menu on click outside
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#dtb-lmenu') && !e.target.closest('#dtb-mode-text')) {
+      _dtbCloseLMenu();
+    }
+  });
 })();
 
 
