@@ -9268,7 +9268,7 @@ function loadGoesLayer(product) {
   map.off('moveend', _onGoesMoveEnd);
   currentGoesProduct = ['ir','vis','wv'].includes(product) ? product : 'ir';
   // Keep preloaded layer if it already matches product + region (showGoesFrame will setParams on it).
-  const _preRegion = _detectGoesRegion();
+  const _preRegion = _goesRegion || _detectGoesRegion();
   if (!(_goesActiveLayers.length && _goesActiveProduct === currentGoesProduct && _goesActiveRegion === _preRegion)) {
     _clearGoesActiveLayers();
   } else {
@@ -9289,7 +9289,7 @@ function loadGoesLayer(product) {
   // Pre-fetch RainViewer in background. When ready, upgrade Himawari regions automatically.
   _fetchRvSatFrames(frames => {
     if (!activeLayers.satellite) return;
-    if (_isHimawariRegion(_detectGoesRegion()) && currentGoesProduct === 'ir') {
+    if (_isHimawariRegion(_goesRegion || _detectGoesRegion()) && currentGoesProduct === 'ir') {
       goesFrames = frames;
       goesCurrentFrame = goesFrames.length - 1;
       const tl2 = document.getElementById('timeline');
@@ -9354,7 +9354,7 @@ function showGoesFrame(idx) {
 
   const frame   = goesFrames[idx];
   const prodKey = ['ir','vis','wv'].includes(currentGoesProduct) ? currentGoesProduct : 'ir';
-  const region  = _detectGoesRegion();
+  const region  = _goesRegion || _detectGoesRegion();
 
   if (frame.url) {
     // RainViewer global satellite tile frame (Himawari/GOES/Meteosat composite)
