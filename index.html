@@ -2812,10 +2812,13 @@ body {
   background: none;
   border: none;
   font-family: inherit;
-  pointer-events: all;
   touch-action: manipulation;
+  pointer-events: all;
+  touch-action: auto;
+  position: relative;
+  z-index: 10;
 }
-#cam-popup-close:hover { color: #fff; background: rgba(255,255,255,0.12); }
+#cam-popup-close:hover { color: #fff; background: rgba(255,255,255,0.1); }
 #cam-popup-img-wrap {
   position: relative;
   width: 100%;
@@ -13697,7 +13700,7 @@ function closeCamPopup() {
     window.addEventListener('mousemove',  onMove, { passive: false });
     window.addEventListener('mouseup',    onUp);
     window.addEventListener('touchend',   onUp);
-    // Close button is outside the header — wire it directly with no interference
+    // Close button is outside the header — wire directly, no drag interference
     const closeBtn = document.getElementById('cam-popup-close');
     if (closeBtn) {
       closeBtn.addEventListener('click',    () => closeCamPopup());
