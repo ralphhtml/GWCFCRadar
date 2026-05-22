@@ -11187,13 +11187,11 @@ async function _atcfLoad(stormId) {
     : `${ATCF_BASE}${fileId}.dat`;
 
   try {
-    const resp = await proxiedFetch(url, { signal: _abortSignal(15000) });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const text = await resp.text();
-    if (!text.trim()) throw new Error('Empty file');
+    const text = await proxiedFetch(url, 15000);
+    if (!text || !text.trim()) throw new Error('Empty file — storm may have no model data yet');
     const parsed = _atcfParseFile(text);
     const techCount = Object.keys(parsed).length;
-    if (!techCount) throw new Error('No model data found');
+    if (!techCount) throw new Error('No model data found in file');
     _atcfPlot(parsed, stormId);
     if (status) status.textContent = `✓ ${techCount} models loaded`;
   } catch(e) {
@@ -11434,11 +11432,10 @@ async function _fnv3FetchCSV(url) {
   const status = document.getElementById('fnv3-status');
   if (status) status.textContent = 'Fetching…';
   try {
-    const resp = await proxiedFetch(url, { signal: _abortSignal(20000) });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const text = await resp.text();
+    const text = await proxiedFetch(url, 20000);
+    if (!text || !text.trim()) throw new Error('No ensemble data for this run');
     const rows = _fnv3ParseCSV(text);
-    if (!rows.length) throw new Error('No valid rows');
+    if (!rows.length) throw new Error('No valid rows in ensemble data');
     _fnv3Data = rows;
     _fnv3PopulateStormSel(rows);
     _fnv3PlotTracks(rows, _fnv3CurrentStorm);
