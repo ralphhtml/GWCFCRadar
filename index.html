@@ -5239,6 +5239,9 @@ body.gwcfc-crosshair #map::after {
   <button class="dtb-btn" id="ttb-anim-btn" onclick="_ttbToggleAnim()" title="Animate track" disabled style="opacity:0.4">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polygon points="5,3 19,12 5,21" fill="currentColor" stroke="none"/></svg>
   </button>
+  <button class="dtb-btn" id="ttb-smooth-btn" onclick="_ttbToggleSmooth()" title="Smooth animation (no stops, curved path)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M4 18 Q8 6 12 12 Q16 18 20 6"/></svg>
+  </button>
   <button class="dtb-btn ttb-active" id="ttb-line-btn" onclick="_ttbToggleLine()" title="Toggle track line">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" width="16" height="16"><line x1="4" y1="20" x2="20" y2="4"/><circle cx="4" cy="20" r="2" fill="currentColor" stroke="none"/><circle cx="20" cy="4" r="2" fill="currentColor" stroke="none"/></svg>
   </button>
@@ -12818,11 +12821,19 @@ function _ttbSaveImage() {
 let _trackAnimating  = false;
 let _trackAnimRAF    = null;
 let _trackAnimMarker = null;
+let _trackSmoothMode = false;
+
+function _ttbToggleSmooth() {
+  _trackSmoothMode = !_trackSmoothMode;
+  const btn = document.getElementById('ttb-smooth-btn');
+  if (btn) btn.classList.toggle('ttb-active', _trackSmoothMode);
+}
 
 function _ttbToggleAnim() {
   if (_trackAnimating) { _ttbStopAnim(); return; }
   if (_trackPts.length < 2) return;
-  _ttbStartAnim();
+  if (_trackSmoothMode) _ttbStartSmoothAnim();
+  else _ttbStartAnim();
 }
 
 function _ttbStartAnim() {
@@ -12898,6 +12909,81 @@ function _ttbAnimStep(fromIdx) {
     } else {
       _trackAnimRAF = null;
       setTimeout(() => _ttbAnimStep(toIdx), 250);
+    }
+  }
+  _trackAnimRAF = requestAnimationFrame(frame);
+}
+
+function _ttbStartSmoothAnim() {
+  if (_trackPts.length < 2) return;
+  _trackAnimating = true;
+  _trackMarkers.forEach(m => m.setOpacity(0));
+  _trackSegs.forEach(s => s.setStyle({ opacity: _trackAnimShowLine ? 0.92 : 0 }));
+  map.off('click', _onTrackClick);
+  map.off('dblclick', _onTrackDbl);
+
+  const btn = document.getElementById('ttb-anim-btn');
+  if (btn) {
+    btn.disabled = false; btn.style.opacity = '1';
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="6" y="4" width="4" height="16" fill="currentColor" stroke="none"/><rect x="14" y="4" width="4" height="16" fill="currentColor" stroke="none"/></svg>';
+    btn.title = 'Stop animation';
+  }
+
+  _ttbEditClose();
+  if (_trackAnimMarker) { map.removeLayer(_trackAnimMarker); _trackAnimMarker = null; }
+  const pt0 = _trackPts[0];
+  _trackAnimMarker = _ttbMakeMarker(pt0.latlng, pt0.cat).addTo(map);
+  _trackAnimMarker._animCat = pt0.cat;
+
+  const totalDuration = (_trackPts.length - 1) * 1100;
+  let startTime = null;
+
+  function catmullRom(t, pts) {
+    const n = pts.length;
+    const seg = t * (n - 1);
+    const i = Math.min(Math.floor(seg), n - 2);
+    const s = seg - i;
+    const p0 = pts[Math.max(0, i - 1)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(n - 1, i + 2)];
+    const s2 = s * s, s3 = s2 * s;
+    return {
+      lat: 0.5 * (2*p1.lat + (-p0.lat+p2.lat)*s + (2*p0.lat-5*p1.lat+4*p2.lat-p3.lat)*s2 + (-p0.lat+3*p1.lat-3*p2.lat+p3.lat)*s3),
+      lng: 0.5 * (2*p1.lng + (-p0.lng+p2.lng)*s + (2*p0.lng-5*p1.lng+4*p2.lng-p3.lng)*s2 + (-p0.lng+3*p1.lng-3*p2.lng+p3.lng)*s3),
+      cat: s > 0.65 ? p2.cat : p1.cat
+    };
+  }
+
+  const latlngs = _trackPts.map(p => ({ lat: p.latlng.lat, lng: p.latlng.lng, cat: p.cat }));
+
+  function frame(now) {
+    if (!_trackAnimating) return;
+    if (!startTime) startTime = now;
+    const t = Math.min((now - startTime) / totalDuration, 1);
+    const { lat, lng, cat } = catmullRom(t, latlngs);
+    if (_trackAnimMarker) {
+      _trackAnimMarker.setLatLng(L.latLng(lat, lng));
+      if (cat !== _trackAnimMarker._animCat) {
+        _trackAnimMarker.setIcon(_ttbMakeIcon(cat));
+        _trackAnimMarker._animCat = cat;
+      }
+    }
+    if (t < 1) {
+      _trackAnimRAF = requestAnimationFrame(frame);
+    } else {
+      _trackAnimating = false;
+      _trackAnimRAF = null;
+      _trackSegs.forEach(s => s.setStyle({ opacity: 0.92 }));
+      _trackMarkers.forEach(m => m.setOpacity(1));
+      map.on('click', _onTrackClick);
+      map.on('dblclick', _onTrackDbl);
+      const b = document.getElementById('ttb-anim-btn');
+      if (b) {
+        b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polygon points="5,3 19,12 5,21" fill="currentColor" stroke="none"/></svg>';
+        b.title = 'Animate track';
+      }
+      setTimeout(() => { if (_trackAnimMarker) { map.removeLayer(_trackAnimMarker); _trackAnimMarker = null; } }, 900);
     }
   }
   _trackAnimRAF = requestAnimationFrame(frame);
