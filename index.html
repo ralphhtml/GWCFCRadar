@@ -12328,12 +12328,17 @@ function _dtbSubmitText() {
       ? 'text-shadow:1px 1px 4px rgba(0,0,0,0.95),-1px -1px 4px rgba(0,0,0,0.95),0 0 8px rgba(0,0,0,0.8);'
       : '';
     const html = `<span style="font-family:${_dtbFont};font-size:${fontSize}px;color:${_dtbColor};` +
-      `font-weight:${fw};font-style:${fs};white-space:nowrap;${shadow}pointer-events:none;display:block;">${safe}</span>`;
+      `font-weight:${fw};font-style:${fs};white-space:nowrap;${shadow}cursor:pointer;display:block;">${safe}</span>`;
     const latlng = _dtbTextLatlng;
+    const itemIdx = _dtbTextItems.length;
     const marker = L.marker(latlng, {
       icon: L.divIcon({ className: '', html, iconAnchor: [0, fontSize] }),
-      interactive: false
+      interactive: true
     }).addTo(map);
+    marker.on('click', function() {
+      const idx = _dtbTextItems.findIndex(it => it.marker === marker);
+      if (idx !== -1) _dtbTpSelectItem(idx);
+    });
     _allToolLayers.push(marker);
     _dtbTextItems.push({ marker, text, latlng });
     _dtbTpSelectedIdx = _dtbTextItems.length - 1;
