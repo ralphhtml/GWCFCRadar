@@ -12276,11 +12276,32 @@ function _dtbTpRenderItems() {
   });
 }
 
+let _dtbEditingIdx = -1; // index of item being edited (-1 = new placement)
+
 function _dtbTpSelectItem(idx) {
   _dtbTpSelectedIdx = idx;
   _dtbTpRenderItems();
   const item = _dtbTextItems[idx];
-  if (item && item.latlng) map.panTo(item.latlng);
+  if (!item) return;
+  map.panTo(item.latlng);
+  // Open edit popup pre-filled with existing text
+  _dtbEditingIdx = idx;
+  const popup = document.getElementById('dtb-text-popup');
+  const inp   = document.getElementById('dtb-text-input');
+  if (!popup || !inp) return;
+  const cp   = map.latLngToContainerPoint(item.latlng);
+  const rect = map.getContainer().getBoundingClientRect();
+  const x    = rect.left + cp.x;
+  const y    = rect.top  + cp.y;
+  popup.style.borderColor = _dtbColor;
+  popup.style.left = Math.max(4, Math.min(x - 90, window.innerWidth - 220)) + 'px';
+  popup.style.top  = Math.max(4, y - 54) + 'px';
+  inp.value = item.text;
+  inp.style.color = _dtbColor;
+  inp.style.fontFamily = _dtbFont;
+  inp.style.fontSize = _dtbTpFontSize + 'px';
+  popup.classList.add('open');
+  setTimeout(() => { inp.focus(); inp.select(); }, 30);
 }
 
 function _dtbTpDeleteItem(idx) {
@@ -12295,6 +12316,7 @@ function _dtbTpDeleteItem(idx) {
 }
 
 function _dtbShowTextInput(latlng) {
+  _dtbEditingIdx = -1; // new placement
   _dtbTextLatlng = latlng;
   const popup = document.getElementById('dtb-text-popup');
   const inp   = document.getElementById('dtb-text-input');
@@ -12314,40 +12336,58 @@ function _dtbShowTextInput(latlng) {
   setTimeout(() => inp.focus(), 30);
 }
 
+function _dtbMakeTextMarker(latlng, text) {
+  const fontSize = _dtbTpFontSize;
+  const safe = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const fw  = _dtbTpBold   ? 'bold'   : 'normal';
+  const fs  = _dtbTpItalic ? 'italic' : 'normal';
+  const shadow = _dtbTpShadow
+    ? 'text-shadow:1px 1px 4px rgba(0,0,0,0.95),-1px -1px 4px rgba(0,0,0,0.95),0 0 8px rgba(0,0,0,0.8);'
+    : '';
+  const html = `<span style="font-family:${_dtbFont};font-size:${fontSize}px;color:${_dtbColor};` +
+    `font-weight:${fw};font-style:${fs};white-space:nowrap;${shadow}cursor:pointer;display:block;">${safe}</span>`;
+  const marker = L.marker(latlng, {
+    icon: L.divIcon({ className: '', html, iconAnchor: [0, fontSize] }),
+    interactive: true
+  }).addTo(map);
+  marker.on('click', function() {
+    const idx = _dtbTextItems.findIndex(it => it.marker === marker);
+    if (idx !== -1) _dtbTpSelectItem(idx);
+  });
+  return marker;
+}
+
 function _dtbSubmitText() {
   const inp   = document.getElementById('dtb-text-input');
   const popup = document.getElementById('dtb-text-popup');
-  if (!inp || !_dtbTextLatlng) { _dtbCancelText(); return; }
+  const isEdit = _dtbEditingIdx !== -1;
+  const latlng = isEdit ? _dtbTextItems[_dtbEditingIdx].latlng : _dtbTextLatlng;
+  if (!inp || !latlng) { _dtbCancelText(); return; }
   const text = inp.value.trim();
   if (text) {
-    const fontSize = _dtbTpFontSize;
-    const safe = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const fw  = _dtbTpBold   ? 'bold'   : 'normal';
-    const fs  = _dtbTpItalic ? 'italic' : 'normal';
-    const shadow = _dtbTpShadow
-      ? 'text-shadow:1px 1px 4px rgba(0,0,0,0.95),-1px -1px 4px rgba(0,0,0,0.95),0 0 8px rgba(0,0,0,0.8);'
-      : '';
-    const html = `<span style="font-family:${_dtbFont};font-size:${fontSize}px;color:${_dtbColor};` +
-      `font-weight:${fw};font-style:${fs};white-space:nowrap;${shadow}cursor:pointer;display:block;">${safe}</span>`;
-    const latlng = _dtbTextLatlng;
-    const itemIdx = _dtbTextItems.length;
-    const marker = L.marker(latlng, {
-      icon: L.divIcon({ className: '', html, iconAnchor: [0, fontSize] }),
-      interactive: true
-    }).addTo(map);
-    marker.on('click', function() {
-      const idx = _dtbTextItems.findIndex(it => it.marker === marker);
-      if (idx !== -1) _dtbTpSelectItem(idx);
-    });
-    _allToolLayers.push(marker);
-    _dtbTextItems.push({ marker, text, latlng });
-    _dtbTpSelectedIdx = _dtbTextItems.length - 1;
+    if (isEdit) {
+      // Replace existing marker
+      const old = _dtbTextItems[_dtbEditingIdx];
+      map.removeLayer(old.marker);
+      const li = _allToolLayers.indexOf(old.marker);
+      if (li !== -1) _allToolLayers.splice(li, 1);
+      const marker = _dtbMakeTextMarker(latlng, text);
+      _allToolLayers.push(marker);
+      _dtbTextItems[_dtbEditingIdx] = { marker, text, latlng };
+      _dtbTpSelectedIdx = _dtbEditingIdx;
+    } else {
+      const marker = _dtbMakeTextMarker(latlng, text);
+      _allToolLayers.push(marker);
+      _dtbTextItems.push({ marker, text, latlng });
+      _dtbTpSelectedIdx = _dtbTextItems.length - 1;
+    }
     _dtbTpRenderItems();
     _dtbRedoStack.length = 0;
     document.getElementById('dtb-redo-btn')?.classList.remove('active');
   }
   popup.classList.remove('open');
   _dtbTextLatlng = null;
+  _dtbEditingIdx = -1;
   _dtbSetStatus('Text mode – click the map to place text');
 }
 
@@ -12355,6 +12395,7 @@ function _dtbCancelText() {
   const popup = document.getElementById('dtb-text-popup');
   if (popup) popup.classList.remove('open');
   _dtbTextLatlng = null;
+  _dtbEditingIdx = -1;
 }
 
 // Wire up Enter/Escape on the text input once DOM is ready
