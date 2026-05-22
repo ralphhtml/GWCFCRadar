@@ -2477,6 +2477,209 @@ body {
 .dtb-font-chip:hover { background: rgba(0,160,255,0.18); border-color: rgba(0,200,255,0.5); }
 .dtb-font-chip.active { background: rgba(0,160,255,0.28); border-color: #4af; color: #fff; }
 
+/* ── PERSISTENT TEXT PANEL ── */
+#dtb-text-panel {
+  display: none;
+  position: fixed;
+  z-index: 2600;
+  bottom: 90px;
+  right: 12px;
+  width: 220px;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(8,12,20,0.97);
+  border: 1.5px solid rgba(0,160,255,0.5);
+  border-radius: 12px;
+  padding: 10px 10px 8px;
+  box-shadow: 0 4px 28px rgba(0,0,0,0.9);
+  pointer-events: all;
+  user-select: none;
+  touch-action: none;
+}
+#dtb-text-panel.open { display: flex; }
+#dtb-tp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: rgba(0,200,255,0.75);
+  text-transform: uppercase;
+}
+#dtb-tp-hide {
+  background: none;
+  border: 1px solid rgba(0,160,255,0.3);
+  border-radius: 5px;
+  color: rgba(0,180,255,0.7);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 1px 6px;
+  line-height: 1.4;
+  transition: background 0.12s;
+}
+#dtb-tp-hide:hover { background: rgba(0,160,255,0.18); }
+#dtb-tp-toggle-btn {
+  position: fixed;
+  z-index: 2601;
+  bottom: 56px;
+  right: 12px;
+  background: rgba(8,12,20,0.95);
+  border: 1.5px solid rgba(0,160,255,0.45);
+  border-radius: 8px;
+  color: rgba(0,200,255,0.8);
+  font-size: 11px;
+  font-family: var(--mono);
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  padding: 4px 10px;
+  display: none;
+  pointer-events: all;
+  transition: background 0.12s, border-color 0.12s;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.7);
+}
+#dtb-tp-toggle-btn.visible { display: block; }
+#dtb-tp-toggle-btn:hover { background: rgba(0,80,160,0.5); border-color: #4af; }
+#dtb-tp-fonts { display: flex; gap: 4px; flex-wrap: wrap; }
+.dtb-tp-font {
+  padding: 2px 6px;
+  border-radius: 5px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.05);
+  color: #cde;
+  cursor: pointer;
+  font-size: 12px;
+  transition: border-color 0.12s, background 0.12s;
+}
+.dtb-tp-font:hover { background: rgba(0,160,255,0.18); border-color: rgba(0,200,255,0.5); }
+.dtb-tp-font.active { background: rgba(0,160,255,0.28); border-color: #4af; color: #fff; }
+#dtb-tp-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#dtb-tp-swatch {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  border: 1.5px solid rgba(255,255,255,0.25);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s;
+  background: #ff2222;
+}
+#dtb-tp-swatch:hover { border-color: #4af; }
+#dtb-tp-colorpicker {
+  position: absolute;
+  opacity: 0;
+  width: 0; height: 0;
+  pointer-events: none;
+}
+#dtb-tp-size-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+#dtb-tp-size-row label {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: rgba(255,255,255,0.45);
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+#dtb-tp-size {
+  flex: 1;
+  accent-color: #4af;
+  height: 4px;
+}
+#dtb-tp-size-val {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: #4af;
+  min-width: 24px;
+  text-align: right;
+}
+#dtb-tp-style-row {
+  display: flex;
+  gap: 5px;
+}
+.dtb-tp-style {
+  flex: 1;
+  padding: 3px 0;
+  border-radius: 5px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.05);
+  color: #cde;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: center;
+  transition: border-color 0.12s, background 0.12s;
+}
+.dtb-tp-style:hover { background: rgba(0,160,255,0.18); border-color: rgba(0,200,255,0.5); }
+.dtb-tp-style.active { background: rgba(0,160,255,0.28); border-color: #4af; color: #fff; }
+#dtb-tp-sep { height: 1px; background: rgba(255,255,255,0.08); flex-shrink: 0; }
+#dtb-tp-list-header {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: rgba(255,255,255,0.35);
+  text-transform: uppercase;
+}
+#dtb-tp-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 130px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+#dtb-tp-items:empty::after {
+  content: 'No text placed yet';
+  font-size: 11px;
+  color: rgba(255,255,255,0.25);
+  text-align: center;
+  padding: 6px 0;
+}
+.dtb-tp-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04);
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+.dtb-tp-item:hover { background: rgba(0,160,255,0.15); border-color: rgba(0,200,255,0.4); }
+.dtb-tp-item.selected { background: rgba(0,160,255,0.25); border-color: #4af; }
+.dtb-tp-item-num {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: rgba(0,200,255,0.7);
+  min-width: 14px;
+  flex-shrink: 0;
+}
+.dtb-tp-item-text {
+  flex: 1;
+  font-size: 12px;
+  color: #ddf;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dtb-tp-item-del {
+  background: none;
+  border: none;
+  color: rgba(255,80,80,0.6);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+  flex-shrink: 0;
+  transition: color 0.1s;
+}
+.dtb-tp-item-del:hover { color: #f55; }
+
 /* ── CITY MARKERS ── */
 .city-dot {
   width: 8px; height: 8px;
@@ -5187,6 +5390,44 @@ body.gwcfc-crosshair #map::after {
     <button id="dtb-text-ok" onclick="_dtbSubmitText()">✓</button>
   </div>
 </div>
+<!-- PERSISTENT TEXT PANEL -->
+<button id="dtb-tp-toggle-btn" onclick="_dtbTpToggle()" title="Show/hide text panel">✎ TEXT</button>
+<div id="dtb-text-panel">
+  <div id="dtb-tp-header">
+    <span>✎ Text Settings</span>
+    <button id="dtb-tp-hide" onclick="_dtbTpToggle()">Hide ▾</button>
+  </div>
+  <div id="dtb-tp-fonts">
+    <button class="dtb-tp-font active" data-font="IBM Plex Sans, sans-serif" style="font-family:'IBM Plex Sans',sans-serif" onclick="_dtbTpSetFont(this)">Aa</button>
+    <button class="dtb-tp-font" data-font="Rajdhani, sans-serif" style="font-family:'Rajdhani',sans-serif;font-weight:700" onclick="_dtbTpSetFont(this)">Aa</button>
+    <button class="dtb-tp-font" data-font="Oswald, sans-serif" style="font-family:'Oswald',sans-serif" onclick="_dtbTpSetFont(this)">Aa</button>
+    <button class="dtb-tp-font" data-font="Bebas Neue, sans-serif" style="font-family:'Bebas Neue',sans-serif" onclick="_dtbTpSetFont(this)">Aa</button>
+    <button class="dtb-tp-font" data-font="Pacifico, cursive" style="font-family:'Pacifico',cursive;font-size:11px" onclick="_dtbTpSetFont(this)">Aa</button>
+    <button class="dtb-tp-font" data-font="Permanent Marker, cursive" style="font-family:'Permanent Marker',cursive;font-size:11px" onclick="_dtbTpSetFont(this)">Aa</button>
+    <button class="dtb-tp-font" data-font="Georgia, serif" style="font-family:Georgia,serif" onclick="_dtbTpSetFont(this)">Aa</button>
+    <button class="dtb-tp-font" data-font="Impact, sans-serif" style="font-family:Impact,sans-serif" onclick="_dtbTpSetFont(this)">Aa</button>
+    <button class="dtb-tp-font" data-font="IBM Plex Mono, monospace" style="font-family:'IBM Plex Mono',monospace;font-size:11px" onclick="_dtbTpSetFont(this)">Aa</button>
+  </div>
+  <div id="dtb-tp-color-row">
+    <div id="dtb-tp-swatch" onclick="_dtbTpOpenColor()" title="Pick color"></div>
+    <input type="color" id="dtb-tp-colorpicker" value="#ff2222" oninput="_dtbTpPickColor(this.value)">
+    <span style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.4);letter-spacing:0.5px;">COLOR</span>
+  </div>
+  <div id="dtb-tp-size-row">
+    <label>SIZE</label>
+    <input type="range" id="dtb-tp-size" min="8" max="72" value="24" oninput="_dtbTpSetSize(this.value)">
+    <span id="dtb-tp-size-val">24</span>
+  </div>
+  <div id="dtb-tp-style-row">
+    <button class="dtb-tp-style active" id="dtb-tp-bold" onclick="_dtbTpToggleBold()" title="Bold"><b>B</b></button>
+    <button class="dtb-tp-style" id="dtb-tp-italic" onclick="_dtbTpToggleItalic()" title="Italic"><i>I</i></button>
+    <button class="dtb-tp-style active" id="dtb-tp-shadow" onclick="_dtbTpToggleShadow()" title="Shadow">S↗</button>
+  </div>
+  <div id="dtb-tp-sep"></div>
+  <div id="dtb-tp-list-header">Placed Text Boxes</div>
+  <div id="dtb-tp-items"></div>
+</div>
+
 <div id="track-toolbar">
   <div class="dtb-drag" id="track-drag" title="Drag to move"><span></span><span></span><span></span></div>
   <span class="dtb-label">
@@ -11752,9 +11993,11 @@ function _dtbSetMode(mode) {
     if (mode === 'text') {
       map.getContainer().style.cursor = 'text';
       _dtbSetStatus('Text mode – click the map to place text');
+      _dtbTpShowPanel();
     } else {
       map.getContainer().style.cursor = '';
       _dtbSetStatus(mode === 'highlighter' ? 'Highlighter mode' : 'Pencil mode');
+      _dtbTpHidePanel();
     }
   }
 }
@@ -11817,6 +12060,7 @@ deactivateTool = function() {
   if (typeof _trackAnimating !== 'undefined' && _trackAnimating) _ttbStopAnim();
   if (typeof _ttbEditClose === 'function') _ttbEditClose();
   if (typeof _dtbCancelText === 'function') _dtbCancelText();
+  if (typeof _dtbTpHidePanel === 'function') _dtbTpHidePanel();
 };
 
 
@@ -11922,7 +12166,56 @@ function _onDrawUp() {
 function _onDrawClick() {}
 
 // ── TEXT TOOL ────────────────────────────────────────────────────────────────
-let _dtbTextLatlng = null;
+let _dtbTextLatlng   = null;
+let _dtbTextItems    = [];      // [{marker, text, latlng}]
+let _dtbTpOpen       = true;   // panel visible state
+let _dtbTpBold       = true;
+let _dtbTpItalic     = false;
+let _dtbTpShadow     = true;
+let _dtbTpFontSize   = 24;
+let _dtbTpSelectedIdx = -1;
+
+// ─ Panel show/hide ─
+function _dtbTpShowPanel() {
+  const p = document.getElementById('dtb-text-panel');
+  const t = document.getElementById('dtb-tp-toggle-btn');
+  if (!p) return;
+  if (_dtbTpOpen) {
+    p.classList.add('open');
+    if (t) { t.classList.add('visible'); t.textContent = '✎ TEXT ▾'; }
+  } else {
+    p.classList.remove('open');
+    if (t) { t.classList.add('visible'); t.textContent = '✎ TEXT ▸'; }
+  }
+  // sync swatch
+  const sw = document.getElementById('dtb-tp-swatch');
+  if (sw) sw.style.background = _dtbColor;
+}
+
+function _dtbTpHidePanel() {
+  const p = document.getElementById('dtb-text-panel');
+  const t = document.getElementById('dtb-tp-toggle-btn');
+  if (p) p.classList.remove('open');
+  if (t) t.classList.remove('visible');
+}
+
+function _dtbTpToggle() {
+  _dtbTpOpen = !_dtbTpOpen;
+  _dtbTpShowPanel();
+}
+
+// ─ Font ─
+function _dtbTpSetFont(btn) {
+  const font = btn.dataset.font;
+  _dtbFont = font;
+  document.querySelectorAll('.dtb-tp-font').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  // also sync old popup chips
+  document.querySelectorAll('.dtb-font-chip').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.dtb-font-chip').forEach(b => {
+    if (b.getAttribute('onclick') && b.getAttribute('onclick').includes(font.split(',')[0])) b.classList.add('active');
+  });
+}
 
 function _dtbSetFont(fontValue, btn) {
   _dtbFont = fontValue;
@@ -11932,12 +12225,80 @@ function _dtbSetFont(fontValue, btn) {
   if (inp) inp.style.fontFamily = fontValue;
 }
 
+// ─ Color ─
+function _dtbTpOpenColor() {
+  const cp = document.getElementById('dtb-tp-colorpicker');
+  if (cp) { cp.style.pointerEvents = 'all'; cp.click(); cp.style.pointerEvents = 'none'; }
+}
+function _dtbTpPickColor(hex) {
+  _dtbColor = hex;
+  const sw = document.getElementById('dtb-tp-swatch');
+  if (sw) sw.style.background = hex;
+  // sync main swatch
+  const msw = document.getElementById('dtb-color-swatch');
+  if (msw) msw.style.background = hex;
+}
+
+// ─ Size ─
+function _dtbTpSetSize(val) {
+  _dtbTpFontSize = parseInt(val);
+  const lbl = document.getElementById('dtb-tp-size-val');
+  if (lbl) lbl.textContent = val;
+}
+
+// ─ Bold / Italic / Shadow ─
+function _dtbTpToggleBold() {
+  _dtbTpBold = !_dtbTpBold;
+  document.getElementById('dtb-tp-bold')?.classList.toggle('active', _dtbTpBold);
+}
+function _dtbTpToggleItalic() {
+  _dtbTpItalic = !_dtbTpItalic;
+  document.getElementById('dtb-tp-italic')?.classList.toggle('active', _dtbTpItalic);
+}
+function _dtbTpToggleShadow() {
+  _dtbTpShadow = !_dtbTpShadow;
+  document.getElementById('dtb-tp-shadow')?.classList.toggle('active', _dtbTpShadow);
+}
+
+// ─ Items list ─
+function _dtbTpRenderItems() {
+  const container = document.getElementById('dtb-tp-items');
+  if (!container) return;
+  container.innerHTML = '';
+  _dtbTextItems.forEach((item, i) => {
+    const row = document.createElement('div');
+    row.className = 'dtb-tp-item' + (i === _dtbTpSelectedIdx ? ' selected' : '');
+    row.innerHTML = `<span class="dtb-tp-item-num">${i + 1}</span>` +
+      `<span class="dtb-tp-item-text" title="${item.text.replace(/"/g,"&quot;")}">${item.text}</span>` +
+      `<button class="dtb-tp-item-del" title="Delete" onclick="_dtbTpDeleteItem(${i});event.stopPropagation()">✕</button>`;
+    row.addEventListener('click', () => _dtbTpSelectItem(i));
+    container.appendChild(row);
+  });
+}
+
+function _dtbTpSelectItem(idx) {
+  _dtbTpSelectedIdx = idx;
+  _dtbTpRenderItems();
+  const item = _dtbTextItems[idx];
+  if (item && item.latlng) map.panTo(item.latlng);
+}
+
+function _dtbTpDeleteItem(idx) {
+  const item = _dtbTextItems[idx];
+  if (item && item.marker) map.removeLayer(item.marker);
+  // also remove from _allToolLayers
+  const li = _allToolLayers.indexOf(item.marker);
+  if (li !== -1) _allToolLayers.splice(li, 1);
+  _dtbTextItems.splice(idx, 1);
+  if (_dtbTpSelectedIdx >= _dtbTextItems.length) _dtbTpSelectedIdx = _dtbTextItems.length - 1;
+  _dtbTpRenderItems();
+}
+
 function _dtbShowTextInput(latlng) {
   _dtbTextLatlng = latlng;
   const popup = document.getElementById('dtb-text-popup');
   const inp   = document.getElementById('dtb-text-input');
   if (!popup || !inp) return;
-  // Position popup above the clicked point on screen
   const cp   = map.latLngToContainerPoint(latlng);
   const rect = map.getContainer().getBoundingClientRect();
   const x    = rect.left + cp.x;
@@ -11948,6 +12309,7 @@ function _dtbShowTextInput(latlng) {
   inp.value = '';
   inp.style.color = _dtbColor;
   inp.style.fontFamily = _dtbFont;
+  inp.style.fontSize = _dtbTpFontSize + 'px';
   popup.classList.add('open');
   setTimeout(() => inp.focus(), 30);
 }
@@ -11958,17 +12320,24 @@ function _dtbSubmitText() {
   if (!inp || !_dtbTextLatlng) { _dtbCancelText(); return; }
   const text = inp.value.trim();
   if (text) {
-    const fontSize = Math.max(12, Math.round(_dtbSize * 2));
+    const fontSize = _dtbTpFontSize;
     const safe = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const fw  = _dtbTpBold   ? 'bold'   : 'normal';
+    const fs  = _dtbTpItalic ? 'italic' : 'normal';
+    const shadow = _dtbTpShadow
+      ? 'text-shadow:1px 1px 4px rgba(0,0,0,0.95),-1px -1px 4px rgba(0,0,0,0.95),0 0 8px rgba(0,0,0,0.8);'
+      : '';
     const html = `<span style="font-family:${_dtbFont};font-size:${fontSize}px;color:${_dtbColor};` +
-      `font-weight:700;white-space:nowrap;` +
-      `text-shadow:1px 1px 4px rgba(0,0,0,0.95),-1px -1px 4px rgba(0,0,0,0.95),` +
-      `0 0 8px rgba(0,0,0,0.8);pointer-events:none;display:block;">${safe}</span>`;
-    const marker = L.marker(_dtbTextLatlng, {
+      `font-weight:${fw};font-style:${fs};white-space:nowrap;${shadow}pointer-events:none;display:block;">${safe}</span>`;
+    const latlng = _dtbTextLatlng;
+    const marker = L.marker(latlng, {
       icon: L.divIcon({ className: '', html, iconAnchor: [0, fontSize] }),
       interactive: false
     }).addTo(map);
     _allToolLayers.push(marker);
+    _dtbTextItems.push({ marker, text, latlng });
+    _dtbTpSelectedIdx = _dtbTextItems.length - 1;
+    _dtbTpRenderItems();
     _dtbRedoStack.length = 0;
     document.getElementById('dtb-redo-btn')?.classList.remove('active');
   }
