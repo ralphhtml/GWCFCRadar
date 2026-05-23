@@ -31,30 +31,29 @@
       display: grid;
       grid-template-columns: 1fr auto 1fr;
       align-items: center;
-      padding: 0 32px;
-      height: 64px;
-      background: rgba(10,10,12,0.92);
-      border-bottom: 1px solid var(--border);
-      backdrop-filter: blur(8px);
+      padding: 0 24px;
+      height: 68px;
+      background: rgb(60,0,0);
+      border-bottom: 3px solid #00c8c8;
       position: sticky;
       top: 0;
       z-index: 100;
     }
 
-    .nav-left { display: flex; justify-content: flex-start; }
+    .nav-left { display: flex; justify-content: flex-end; padding-right: 16px; }
     .nav-center { display: flex; justify-content: center; }
-    .nav-right { display: flex; justify-content: flex-end; }
+    .nav-right { display: flex; justify-content: flex-start; padding-left: 16px; }
 
     .nav-logo {
-      height: 48px;
-      width: 48px;
+      height: 56px;
+      width: 56px;
       object-fit: contain;
-      filter: drop-shadow(0 0 8px rgba(204,0,0,0.7));
+      filter: drop-shadow(0 0 10px rgba(0,200,200,0.5));
     }
 
     .nav-links {
       display: flex;
-      gap: 4px;
+      gap: 2px;
       list-style: none;
     }
 
@@ -62,13 +61,13 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      color: var(--text);
+      color: rgba(255,255,255,0.8);
       text-decoration: none;
-      padding: 8px 14px;
-      border-radius: 6px;
+      padding: 8px 13px;
+      border-radius: 8px;
       font-size: 14px;
-      font-weight: 500;
-      letter-spacing: 0.5px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
       transition: background 0.2s, color 0.2s;
     }
 
@@ -80,13 +79,13 @@
     }
 
     .nav-links a:hover {
-      background: rgba(204,0,0,0.15);
-      color: var(--accent2);
+      background: rgba(0,200,200,0.12);
+      color: #00c8c8;
     }
 
     .nav-links a.active {
-      background: rgba(204,0,0,0.2);
-      color: var(--accent2);
+      background: rgba(0,200,200,0.15);
+      color: #00c8c8;
     }
 
     /* HERO */
@@ -321,7 +320,7 @@
           Home
         </a></li>
         <li><a href="index.html#radar">
-          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c0 1.93-1.57 3.5-3.5 3.5S8.5 12.93 8.5 11s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5zm-3.5-1c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1zm7.46-.22-1.96.44A5.502 5.502 0 0 0 12 5.5v-2c3.53 0 6.5 2.61 6.96 6.28z"/></svg>
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/><path d="M12 6a6 6 0 1 0 6 6A6 6 0 0 0 12 6zm0 10a4 4 0 1 1 4-4 4 4 0 0 1-4 4z"/><path d="M12 12 19.07 4.93" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           Radar
         </a></li>
       </ul>
