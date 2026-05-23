@@ -319,7 +319,7 @@
           <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
           Home
         </a></li>
-        <li><a href="index.html#radar">
+        <li><a href="index.html" id="radar-link">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/><path d="M12 6a6 6 0 1 0 6 6A6 6 0 0 0 12 6zm0 10a4 4 0 1 1 4-4 4 4 0 0 1-4 4z"/><path d="M12 12 19.07 4.93" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           Radar
         </a></li>
@@ -341,6 +341,70 @@
       </ul>
     </div>
   </nav>
+
+  <!-- PASSCODE MODAL -->
+  <div id="radar-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.75); backdrop-filter:blur(6px); align-items:center; justify-content:center;">
+    <div style="background:rgb(40,0,0); border:2px solid #00c8c8; border-radius:14px; padding:36px 32px; max-width:340px; width:90%; text-align:center; box-shadow:0 0 40px rgba(0,200,200,0.2);">
+      <div style="font-size:36px; margin-bottom:12px;">📡</div>
+      <h2 style="color:#fff; font-size:20px; margin-bottom:6px;">Radar Access</h2>
+      <p style="color:#aaa; font-size:14px; margin-bottom:24px;">Enter the passcode to access the radar.</p>
+      <input id="radar-passcode" type="password" maxlength="10"
+        placeholder="Enter passcode"
+        style="width:100%; padding:12px 16px; border-radius:8px; border:2px solid rgba(0,200,200,0.4); background:#1a0000; color:#fff; font-size:18px; text-align:center; letter-spacing:6px; outline:none; margin-bottom:12px;"
+      >
+      <div id="radar-error" style="color:#ff4444; font-size:13px; min-height:18px; margin-bottom:12px;"></div>
+      <div style="display:flex; gap:10px; justify-content:center;">
+        <button onclick="checkPasscode()"
+          style="background:#00c8c8; color:#000; border:none; padding:11px 28px; border-radius:8px; font-size:15px; font-weight:700; cursor:pointer;">
+          Enter
+        </button>
+        <button onclick="closeModal()"
+          style="background:rgba(255,255,255,0.08); color:#fff; border:none; padding:11px 28px; border-radius:8px; font-size:15px; cursor:pointer;">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // When someone clicks Radar, show the passcode box instead of going to the page
+    document.getElementById('radar-link').addEventListener('click', function(e) {
+      e.preventDefault(); // stop the link from going anywhere
+      var modal = document.getElementById('radar-modal');
+      modal.style.display = 'flex';
+      document.getElementById('radar-passcode').value = '';
+      document.getElementById('radar-error').textContent = '';
+      setTimeout(function(){ document.getElementById('radar-passcode').focus(); }, 100);
+    });
+
+    // Allow pressing Enter key to submit
+    document.getElementById('radar-passcode').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') checkPasscode();
+      if (e.key === 'Escape') closeModal();
+    });
+
+    function checkPasscode() {
+      var input = document.getElementById('radar-passcode').value;
+      if (input === '676767') {
+        // Correct! Send them to the radar page
+        window.location.href = 'index.html';
+      } else {
+        // Wrong — show error and shake the input
+        document.getElementById('radar-error').textContent = 'Wrong passcode. Try again.';
+        document.getElementById('radar-passcode').value = '';
+        document.getElementById('radar-passcode').focus();
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('radar-modal').style.display = 'none';
+    }
+
+    // Click outside the box to close
+    document.getElementById('radar-modal').addEventListener('click', function(e) {
+      if (e.target === this) closeModal();
+    });
+  </script>
 
   <!-- HERO -->
   <section class="hero">
