@@ -5768,14 +5768,24 @@ function initMap() {
       _mmRaf = null;
     });
   });
+  let _zoomTimer = null;
+  map.on('zoomstart', () => {
+    // Suspend all non-active radar tile layers during zoom to prevent tile avalanche
+    if (_radarPoolBuilt) {
+      _radarLayerPool.forEach((l, i) => { if (l && i !== currentFrame) l.options.updateWhenZooming = false; });
+    }
+  });
   map.on('zoomend', () => {
     document.getElementById('sb-zoom').textContent = map.getZoom();
     _applyRadarPolyMask();
-    // Re-evaluate active window size (dynamic by zoom) and shed stale tiles
-    if (_radarPoolBuilt) {
-      _lastWindowS = -1; _lastWindowE = -1;
-      _activateWindow(currentFrame);
-    }
+    // Debounce pool rebuild 300ms after zoom ends to batch requests
+    clearTimeout(_zoomTimer);
+    _zoomTimer = setTimeout(() => {
+      if (_radarPoolBuilt) {
+        _lastWindowS = -1; _lastWindowE = -1;
+        _activateWindow(currentFrame);
+      }
+    }, 300);
   });
   map.on('moveend', _applyRadarPolyMask);
   document.getElementById('sb-zoom').textContent = map.getZoom();
@@ -6049,13 +6059,17 @@ function _buildRadarPool() {
   _radarPoolBuilt = true;
   _buildCanadaPool();
 
-  // Preload ALL frames in background , animation becomes zero-wait after first cycle.
-  // Tiles land in the SW cache so future visits are instant.
+  // Stagger background preload: current frame first, then others 80ms apart to avoid tile avalanche.
   if (_radarPoolBuilt && radarFrames.length) {
-    for (let i = 0; i < radarFrames.length; i++) {
-      _ensureNexradLayer(i);
-      _ensureCanadaLayer(i);
+    _ensureNexradLayer(currentFrame);
+    const order = [];
+    for (let d = 1; d < radarFrames.length; d++) {
+      const prev = currentFrame - d; if (prev >= 0) order.push(prev);
+      const next = currentFrame + d; if (next < radarFrames.length) order.push(next);
     }
+    order.forEach((i, idx) => setTimeout(() => {
+      if (_radarPoolBuilt) { _ensureNexradLayer(i); _ensureCanadaLayer(i); }
+    }, (idx + 1) * 80));
   }
 }
 
@@ -6093,7 +6107,7 @@ function _ensureNexradLayer(i) {
   const l = L.tileLayer(url, {
     opacity: 0, zIndex: 10, pane: 'radarPane',
     crossOrigin: true, noWrap: true, tileSize: 512,
-    keepBuffer: 4, updateWhenIdle: false, updateWhenZooming: false,
+    keepBuffer: 2, updateWhenIdle: true, updateWhenZooming: false,
     detectRetina: false,
     attribution: 'Radar © RainViewer',
   });
