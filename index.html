@@ -5998,7 +5998,8 @@ async function _fetchL3Frames() {
     const raw = f.valid || f.utcvalid || f.ts || '';
     const d = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z');
     const key = `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}`;
-    return { time: Math.floor(d.getTime() / 1000), tileKey: key, forecast: false };
+    const iso = d.toISOString().slice(0,19) + 'Z';
+    return { time: Math.floor(d.getTime() / 1000), tileKey: key, iso, forecast: false };
   });
   try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), frames })); } catch(e) {}
   return frames;
@@ -6034,6 +6035,7 @@ async function loadNEXRAD() {
     buildTimelineLabels();
     _updateTimelineGradient(lastPastIdx, radarFrames.length);
     _buildRadarPool();
+    activeLayers.nexrad = true;
     showFrame(currentFrame);
     _preloadSatBackground();
   } catch (e) {
