@@ -1178,6 +1178,19 @@ body {
 }
 .sub-bubble .sb-icon { font-size: 13px; }
 
+/* ── TILT PILLS ── */
+.sub-bubble.with-tilts { flex-direction: column; align-items: flex-start; gap: 2px; }
+.sub-bubble.with-tilts .sb-top { display: flex; align-items: center; gap: 4px; }
+.tilt-pills { display: flex; gap: 3px; padding-left: 2px; }
+.tilt-pill {
+  font-size: 9px; padding: 1px 5px; border-radius: 10px;
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.55); cursor: pointer; user-select: none;
+  font-family: var(--display); transition: all 0.12s;
+}
+.tilt-pill:hover { background: rgba(255,255,255,0.15); color: #fff; }
+.tilt-pill.active { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+
 /* ── SATELLITE REGION SELECTOR ── */
 #sat-region-row {
   display: flex; flex-wrap: wrap; gap: 4px;
@@ -4912,51 +4925,8 @@ body.gwcfc-crosshair #map::after {
       </svg>
       <span class="tab-lbl">Regular</span>
     </div>
-    <div class="topbar-tab" data-tab="tropical" onclick="switchTab('tropical')" title="Tropical" style="font-size:22px;">🌀<span class="tab-lbl">Tropical</span></div>
   </div>
   <div id="tabs-right">
-    <div class="topbar-tab" data-tab="severe" onclick="switchTab('severe')" title="Severe">
-      <!-- Lightning bolt -->
-      <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="#e8b800" stroke="#e8b800" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
-        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-      </svg>
-      <span class="tab-lbl">Severe</span>
-    </div>
-    <div class="topbar-tab" data-tab="ice" onclick="switchTab('ice')" title="Ice">
-      <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00cfff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="12.00" y1="12.00" x2="12.00" y2="2.50"/>
-        <line x1="12.00" y1="7.72" x2="9.58" y2="6.32"/>
-        <line x1="12.00" y1="7.72" x2="14.42" y2="6.32"/>
-        <line x1="12.00" y1="4.59" x2="9.58" y2="3.19"/>
-        <line x1="12.00" y1="4.59" x2="14.42" y2="3.19"/>
-        <line x1="12.00" y1="12.00" x2="3.77" y2="7.25"/>
-        <line x1="8.30" y1="9.86" x2="5.87" y2="11.26"/>
-        <line x1="8.30" y1="9.86" x2="8.30" y2="7.06"/>
-        <line x1="5.58" y1="8.29" x2="3.16" y2="9.70"/>
-        <line x1="5.58" y1="8.29" x2="5.58" y2="5.50"/>
-        <line x1="12.00" y1="12.00" x2="3.77" y2="16.75"/>
-        <line x1="8.30" y1="14.14" x2="8.30" y2="16.94"/>
-        <line x1="8.30" y1="14.14" x2="5.87" y2="12.74"/>
-        <line x1="5.58" y1="15.71" x2="5.58" y2="18.51"/>
-        <line x1="5.58" y1="15.71" x2="3.16" y2="14.31"/>
-        <line x1="12.00" y1="12.00" x2="12.00" y2="21.50"/>
-        <line x1="12.00" y1="16.27" x2="14.42" y2="17.68"/>
-        <line x1="12.00" y1="16.27" x2="9.58" y2="17.67"/>
-        <line x1="12.00" y1="19.41" x2="14.42" y2="20.81"/>
-        <line x1="12.00" y1="19.41" x2="9.58" y2="20.81"/>
-        <line x1="12.00" y1="12.00" x2="20.23" y2="16.75"/>
-        <line x1="15.70" y1="14.14" x2="18.13" y2="12.74"/>
-        <line x1="15.70" y1="14.14" x2="15.70" y2="16.94"/>
-        <line x1="18.42" y1="15.71" x2="20.84" y2="14.31"/>
-        <line x1="18.42" y1="15.71" x2="18.42" y2="18.51"/>
-        <line x1="12.00" y1="12.00" x2="20.23" y2="7.25"/>
-        <line x1="15.70" y1="9.86" x2="15.70" y2="7.06"/>
-        <line x1="15.70" y1="9.86" x2="18.13" y2="11.26"/>
-        <line x1="18.42" y1="8.29" x2="18.42" y2="5.50"/>
-        <line x1="18.42" y1="8.29" x2="20.84" y2="9.69"/>
-      </svg>
-      <span class="tab-lbl">Ice</span>
-    </div>
     </div>
   </div>
 
@@ -5470,6 +5440,8 @@ let radarFrames = [], currentFrame = 0, playing = false, playTimer = null;
 let animSpeed = 1.5, radarOpacity = 0.85;
 let _pendingFrameTick = null, _pendingCanadaTick = null;
 let currentProduct = 'ref', currentModel = 'gfs', currentModelVar = 'precip';
+let _currentTilt = 0;  // 0=0.5° 1=1.5° 2=2.5° 3=3.5°
+let _dpProductId = null; // active dual-pol product id, null = none
 
 // ── AMBIENT WEATHER NETWORK CREDENTIALS ─────────────────────────────
 // API docs: https://ambientweather.docs.apiary.io/
@@ -9789,7 +9761,7 @@ function showGoesFrame(idx) {
 function _disableRadar() {
   activeLayers.nexrad = false;
   _radarLayerPool.forEach(l => { if (l) l.setOpacity(0); });
-  radarLayer = null; // layers already hidden by setOpacity(0) above; keep on map so re-enable works
+  radarLayer = null;
   // Clean up velocity if active
   if (currentProduct === 'vel' || _velLayerPool.length) {
     _velLayerPool.forEach(l => { try { map.removeLayer(l); } catch(e){} });
@@ -9798,15 +9770,19 @@ function _disableRadar() {
     velFrames = []; velCurrentFrame = 0;
     if (currentProduct === 'vel') currentProduct = 'ref';
   }
+  // Clean up dual-pol pool if active
+  if (_dpProductId || _dpLayerPool.length) {
+    _dpLayerPool.forEach(l => { try { map.removeLayer(l); } catch(e){} });
+    _dpLayerPool = []; _dpPoolLoaded = [];
+    dpFrames = []; dpCurrentFrame = 0;
+    _dpStation = null; _dpProductId = null;
+  }
   const el = document.getElementById('layer-nexrad');
   if (el) el.classList.remove('active');
   const sub = document.getElementById('sub-nexrad');
   if (sub) sub.classList.remove('active');
-  // Also hide Canada radar overlay
   _canadaLayerPool.forEach(l => { if (l) l.setOpacity(0); });
-  // Clear any active-station highlight on NEXRAD site labels
   if (typeof _refreshNexradSiteStyles === 'function') _refreshNexradSiteStyles();
-  // Hide station marker bubbles now that radar is off
   _syncNexradSites();
 }
 
@@ -9909,14 +9885,15 @@ const BASE_BUBBLES = [
   { id: 'wind',      icon: '💨', label: 'Wind',       action: () => toggleWindSub() },
   { id: 'temp',      icon: '🌡', label: 'Temp',       action: () => { toggleTempBarbs(); } },
   { id: 'waves',     icon: '🌊', label: 'Waves',      action: () => toggleWavesSub() },
+  { id: 'models',    icon: '🗺', label: 'Models',     action: () => toggleModelsSub() },
 ];
 
 const MAIN_BUBBLES = BASE_BUBBLES; // alias for compat
 
 const TAB_BUBBLES = {
   regular:  BASE_BUBBLES,
-  tropical: [...BASE_BUBBLES, { id: 'models', icon: '🌀', label: 'Models', action: () => openFNV3Panel() }],
-  severe:   [...BASE_BUBBLES, { id: 'models', icon: '🌩', label: 'Models', action: () => toggleSevereModelPanel() }],
+  tropical: BASE_BUBBLES,
+  severe:   BASE_BUBBLES,
   ice:      BASE_BUBBLES,
   fire:     BASE_BUBBLES
 };
@@ -11013,51 +10990,151 @@ function toggleFutureRadar() {
   }, 600);
 }
 
-const RADAR_SUB_BUBBLES = [
-  { id:'reflectivity', icon:'🌧', label:'Reflectivity', action: () => { if (activeLayers.nexrad && currentProduct === 'ref') { _clearSingleSiteRef(); closeS3Panel && closeS3Panel(); _disableRadar(); renderSubBubbles(TAB_BUBBLES[currentTab] ? currentTab : 'regular'); } else { _clearSingleSiteRef(); closeS3Panel && closeS3Panel(); _disableSatellite(); activeLayers.nexrad=true; selectProduct('ref'); } } },
-  { id:'velocity',     icon:'💨', label:'Velocity',     action: () => { if (currentProduct === 'vel') { _disableRadar(); renderSubBubbles(TAB_BUBBLES[currentTab] ? currentTab : 'regular'); } else { _disableSatellite(); activeLayers.nexrad=true; selectProduct('vel'); } } },
-  // future radar removed
-];
+function _activateRadarProduct(def) {
+  // Deactivate all product sub-bubbles visually
+  RADAR_PRODUCT_DEFS.forEach(d => {
+    const el = document.getElementById('sub-rp-' + d.id);
+    if (el) el.classList.remove('active');
+  });
+  const el = document.getElementById('sub-rp-' + def.id);
+  if (el) el.classList.add('active');
+
+  _disableSatellite();
+  activeLayers.nexrad = true;
+
+  if (def.id === 'ref') {
+    _clearSingleSiteRef();
+    if (closeS3Panel) closeS3Panel();
+    selectProduct('ref');
+  } else if (def.id === 'vel') {
+    selectProduct('vel');
+  } else {
+    selectProduct(def.id);
+  }
+}
 
 function toggleRadarSub() {
   const wrap = document.getElementById('sub-bubbles');
   wrap.innerHTML = '';
+
+  // Back button
   const back = document.createElement('div');
   back.className = 'sub-bubble';
   back.innerHTML = `<span class="sb-icon">←</span>Back`;
   back.onclick = () => {
-    if (!activeLayers.nexrad) _disableRadar();
     _syncParentBubble('radar');
     renderSubBubbles(TAB_BUBBLES[currentTab] ? currentTab : 'regular');
   };
   wrap.appendChild(back);
-  RADAR_SUB_BUBBLES.forEach(b => {
-    const isActiveProd =
-      (b.id === 'reflectivity' && activeLayers.nexrad && currentProduct === 'ref') ||
-      (b.id === 'velocity'     && currentProduct === 'vel');
-    const isFutureBubble = b.id === 'future';
+
+  RADAR_PRODUCT_DEFS.forEach(def => {
+    const isActive =
+      (def.id === 'ref' && activeLayers.nexrad && currentProduct === 'ref' && !_dpProductId) ||
+      (def.id === 'vel' && currentProduct === 'vel') ||
+      (def.id === _dpProductId);
+
+    const hasTilts = def.tilts > 1;
     const el = document.createElement('div');
-    el.className = 'sub-bubble' + (isActiveProd ? ' active' : '');
-    el.id = 'sub-' + b.id;
-    const fcCount = radarFrames.filter(f => f.forecast).length;
-    const label = (isFutureBubble && fcCount) ? `${b.label} (${fcCount})` : b.label;
-    el.innerHTML = `<span class="sb-icon">${b.icon}</span>${label}`;
-    if (isFutureBubble && !fcCount) el.style.opacity = '0.45';
-    el.onclick = () => {
-      if (!isFutureBubble) {
-        document.querySelectorAll('#sub-reflectivity,#sub-velocity').forEach(s=>s.classList.remove('active'));
-        el.classList.add('active');
+    el.className = 'sub-bubble' + (isActive ? ' active' : '') + (hasTilts ? ' with-tilts' : '');
+    el.id = 'sub-rp-' + def.id;
+
+    const topRow = document.createElement('div');
+    topRow.className = hasTilts ? 'sb-top' : '';
+    topRow.innerHTML = `<span class="sb-icon">${def.icon}</span>${def.label}`;
+    el.appendChild(topRow);
+
+    if (hasTilts) {
+      const pills = document.createElement('div');
+      pills.className = 'tilt-pills';
+      const maxTilts = def.id === 'srv' ? 2 : Math.min(def.tilts, 4);
+      const tiltLabels = ['0.5°','1.5°','2.5°','3.5°'];
+      for (let t = 0; t < maxTilts; t++) {
+        const pill = document.createElement('span');
+        pill.className = 'tilt-pill' + (isActive && _currentTilt === t ? ' active' : '');
+        pill.textContent = tiltLabels[t];
+        pill.onclick = (e) => {
+          e.stopPropagation();
+          _currentTilt = t;
+          pills.querySelectorAll('.tilt-pill').forEach(p => p.classList.remove('active'));
+          pill.classList.add('active');
+          _activateRadarProduct(def);
+        };
+        pills.appendChild(pill);
       }
-      b.action();
+      el.appendChild(pills);
+    }
+
+    el.onclick = (e) => {
+      if (e.target.classList.contains('tilt-pill')) return;
+      if (def.id === 'ref' && activeLayers.nexrad && currentProduct === 'ref' && !_dpProductId) {
+        _clearSingleSiteRef(); if (closeS3Panel) closeS3Panel(); _disableRadar();
+        renderSubBubbles(TAB_BUBBLES[currentTab] ? currentTab : 'regular');
+        return;
+      }
+      if (def.id === 'vel' && currentProduct === 'vel') {
+        _disableRadar();
+        renderSubBubbles(TAB_BUBBLES[currentTab] ? currentTab : 'regular');
+        return;
+      }
+      if (def.id === _dpProductId) {
+        _disableRadar();
+        renderSubBubbles(TAB_BUBBLES[currentTab] ? currentTab : 'regular');
+        return;
+      }
+      _activateRadarProduct(def);
     };
     wrap.appendChild(el);
   });
+
   wrap.style.display = 'flex';
 }
 
 function hideSubBubbles() {
   const wrap = document.getElementById('sub-bubbles');
   if (wrap) { wrap.innerHTML = ''; wrap.style.display = 'none'; }
+}
+
+function toggleModelsSub() {
+  const wrap = document.getElementById('sub-bubbles');
+  // If models sub is already showing, go back to main bubbles
+  if (wrap.dataset.mode === 'models') {
+    delete wrap.dataset.mode;
+    renderSubBubbles(currentTab || 'regular');
+    return;
+  }
+  wrap.dataset.mode = 'models';
+  wrap.innerHTML = '';
+
+  const back = document.createElement('div');
+  back.className = 'sub-bubble';
+  back.innerHTML = `<span class="sb-icon">←</span>Back`;
+  back.onclick = () => { delete wrap.dataset.mode; renderSubBubbles(TAB_BUBBLES[currentTab] ? currentTab : 'regular'); };
+  wrap.appendChild(back);
+
+  const modelItems = [
+    { id: 'sev-models', icon: '🌩', label: 'Severe Models',  action: () => toggleSevereModelPanel() },
+    { id: 'trop-models',icon: '🌀', label: 'Tropical Models', action: () => openFNV3Panel() },
+    { id: 'spc1',       icon: '🟡', label: 'SPC Day 1',      action: () => { activeLayers.spc1 = !activeLayers.spc1; if (activeLayers.spc1) loadSPCOutlook('spc1'); else { if (spcOutlookLayer) { map.removeLayer(spcOutlookLayer); spcOutlookLayer = null; } } } },
+    { id: 'spc2',       icon: '🟠', label: 'SPC Day 2',      action: () => { activeLayers.spc2 = !activeLayers.spc2; if (activeLayers.spc2) loadSPCOutlook('spc2'); else { if (spcOutlookLayer) { map.removeLayer(spcOutlookLayer); spcOutlookLayer = null; } } } },
+    { id: 'spc3',       icon: '🔴', label: 'SPC Day 3',      action: () => { activeLayers.spc3 = !activeLayers.spc3; if (activeLayers.spc3) loadSPCOutlook('spc3'); else { if (spcOutlookLayer) { map.removeLayer(spcOutlookLayer); spcOutlookLayer = null; } } } },
+    { id: 'nhc',        icon: '🌪', label: 'NHC Outlook',    action: () => { activeLayers.nhc = !activeLayers.nhc; if (activeLayers.nhc) loadTropical(); } },
+  ];
+
+  modelItems.forEach(item => {
+    const el = document.createElement('div');
+    const isActive = !!activeBubbles[item.id] || !!activeLayers[item.id];
+    el.className = 'sub-bubble' + (isActive ? ' active' : '');
+    el.id = 'sub-' + item.id;
+    el.innerHTML = `<span class="sb-icon">${item.icon}</span>${item.label}`;
+    el.onclick = () => {
+      item.action();
+      const nowActive = !!activeBubbles[item.id] || !!activeLayers[item.id];
+      el.classList.toggle('active', nowActive);
+    };
+    wrap.appendChild(el);
+  });
+
+  wrap.style.display = 'flex';
 }
 
 function renderSubBubbles(tab) {
@@ -13665,6 +13742,9 @@ function _rafTick(ts) {
     if (activeLayers.satellite && goesFrames.length) {
       goesCurrentFrame = (goesCurrentFrame + dir + goesFrames.length) % goesFrames.length;
       showGoesFrame(goesCurrentFrame);
+    } else if (_dpProductId && dpFrames.length) {
+      dpCurrentFrame = (dpCurrentFrame + dir + dpFrames.length) % dpFrames.length;
+      showDpFrame(dpCurrentFrame);
     } else if (currentProduct === 'vel') {
       velCurrentFrame = (velCurrentFrame + dir + velFrames.length) % velFrames.length;
       showVelFrame(velCurrentFrame);
@@ -13699,10 +13779,10 @@ function _stopRAF() {
 // ready state and we just allow play (their loaders handle the wait).
 function _animationReady() {
   if (activeLayers.satellite && goesFrames.length) return true;
+  if (_dpProductId && dpFrames.length) return true;
   if (currentProduct === 'vel') return true;
   if (currentProduct === 'ref' && _refStation) return true;
   if (!radarFrames.length) return false;
-  // Need at least 2 frames so animation has somewhere to step
   return _radarFramesReady >= Math.min(2, radarFrames.length);
 }
 
@@ -13751,6 +13831,9 @@ function stepFrame(dir) {
   if (activeLayers.satellite && goesFrames.length) {
     goesCurrentFrame = (goesCurrentFrame + dir + goesFrames.length) % goesFrames.length;
     showGoesFrame(goesCurrentFrame);
+  } else if (_dpProductId && dpFrames.length) {
+    dpCurrentFrame = (dpCurrentFrame + dir + dpFrames.length) % dpFrames.length;
+    showDpFrame(dpCurrentFrame);
   } else if (currentProduct === 'vel') {
     velCurrentFrame = (velCurrentFrame + dir + velFrames.length) % velFrames.length;
     showVelFrame(velCurrentFrame);
@@ -13764,6 +13847,7 @@ function stepFrame(dir) {
 }
 function seekFrame(idx) {
   if (activeLayers.satellite && goesFrames.length) showGoesFrame(idx);
+  else if (_dpProductId && dpFrames.length) showDpFrame(idx);
   else if (currentProduct === 'vel') showVelFrame(idx);
   else if (currentProduct === 'ref' && _refStation && _refSiteFrames.length) _showSingleSiteRefFrame(idx);
   else showFrame(idx);
@@ -13788,6 +13872,28 @@ let _refSiteLoaded = [];
 let _refSiteFrames = [];     // timing frames for single-site REF
 let _refSiteTick   = null;   // stale-interval guard for _showSingleSiteRefFrame
 let _refSiteGen    = 0;      // generation counter; incremented on each _loadSingleSiteRef call
+
+// ── Dual-pol product pool (NWS GeoServer per station) ──
+let _dpStation    = null;   // station ID currently loaded for dual-pol
+let _dpLayerPool  = [];     // WMS layer pool
+let _dpPoolLoaded = [];     // per-slot load flags
+let dpFrames      = [];     // timestamp frames for dual-pol
+let dpCurrentFrame = 0;
+
+// Radar product definitions — id, label, icon, tilt count, layer name builder
+const TILT_PREFIXES = ['n0', 'n1', 'n2', 'n3'];
+const RADAR_PRODUCT_DEFS = [
+  { id: 'ref', label: 'Reflectivity',         icon: '🌧', tilts: 4, velStyle: false },
+  { id: 'vel', label: 'Velocity',              icon: '💨', tilts: 4, velStyle: true  },
+  { id: 'cc',  label: 'Corr. Coefficient',     icon: '🔵', tilts: 4, opengeoSuffix: (p) => `${p}c` },
+  { id: 'zdr', label: 'Diff. Reflectivity',    icon: '📊', tilts: 4, opengeoSuffix: (p) => `${p}x` },
+  { id: 'kdp', label: 'Spec. Diff. Phase',     icon: '📡', tilts: 4, opengeoSuffix: (p) => `${p}k` },
+  { id: 'hca', label: 'Hydrometeor Class',     icon: '🌨', tilts: 4, opengeoSuffix: (p) => `${p}h` },
+  { id: 'srv', label: 'Storm-Rel. Velocity',   icon: '🌀', tilts: 2, opengeoSuffix: (p) => `${p}s` },
+  { id: 'hhc', label: 'Hybrid Hydrometeor',    icon: '🌦', tilts: 1, opengeoSuffix: () => 'n0m'     },
+  { id: 'daa', label: '1-hr Precip',           icon: '🌧', tilts: 0, iemComposite: true             },
+  { id: 'dta', label: 'Storm Total Precip',    icon: '🌊', tilts: 0, iemComposite: true             },
+];
 
 // ── S3 panel state ──
 let _s3CurrentStation = null;
@@ -14058,6 +14164,152 @@ function showVelFrame(idx) {
   if (_vfAt) _vfAt.textContent = `${_fmtHHMM(d)} · ${stationLabel} VEL`;
 }
 
+// ── DUAL-POL PRODUCT SYSTEM (NWS GeoServer per station) ──
+
+async function _fetchDpTimestamps(station, layerName) {
+  const url = `https://opengeo.ncep.noaa.gov/geoserver/${station}/ows?service=wms&version=1.3.0&request=GetCapabilities`;
+  const res  = await fetch(url, { signal: _abortSignal(8000) });
+  const xml  = new DOMParser().parseFromString(await res.text(), 'text/xml');
+  const target = layerName.toLowerCase();
+  let timeStr = '';
+  for (const lyr of xml.querySelectorAll('Layer')) {
+    const nm = lyr.querySelector(':scope > Name')?.textContent?.trim().toLowerCase() ?? '';
+    if (nm === target || nm.endsWith('_' + target.split('_').pop())) {
+      const dim = lyr.querySelector('Dimension[name="time"]') || lyr.querySelector('Extent[name="time"]');
+      if (dim) { timeStr = dim.textContent.trim(); break; }
+    }
+  }
+  if (!timeStr) throw new Error(`No time dimension for layer ${layerName}`);
+  const times = timeStr.split(',').map(s => s.trim()).filter(Boolean);
+  return times.slice(-20).map(iso => ({ iso, time: new Date(iso).getTime() / 1000 }));
+}
+
+function _buildDpPool(station, layerName, frames) {
+  _dpLayerPool.forEach(l => { try { map.removeLayer(l); } catch(e){} });
+  _dpLayerPool  = [];
+  _dpPoolLoaded = [];
+  const wmsUrl = `https://opengeo.ncep.noaa.gov/geoserver/${station}/ows`;
+  frames.forEach((frame, i) => {
+    const l = L.tileLayer.wms(wmsUrl, {
+      layers: layerName, format: 'image/png', transparent: true,
+      version: '1.3.0', TIME: frame.iso, opacity: 0, zIndex: 10,
+      pane: 'radarPane', crossOrigin: 'anonymous', noWrap: true,
+      keepBuffer: 2, updateWhenIdle: false, updateWhenZooming: false,
+    });
+    _dpPoolLoaded[i] = false;
+    l.on('tileload', () => { _dpPoolLoaded[i] = true; });
+    l.addTo(map);
+    _dpLayerPool[i] = l;
+  });
+}
+
+function showDpFrame(idx) {
+  if (!dpFrames.length || !_dpLayerPool.length) return;
+  idx = Math.max(0, Math.min(dpFrames.length - 1, idx));
+  const prev = dpCurrentFrame;
+  dpCurrentFrame = idx;
+  const tl = document.getElementById('timeline');
+  if (tl) tl.value = idx;
+  if (_dpPoolLoaded[idx]) {
+    if (_dpLayerPool[prev] && prev !== idx) _dpLayerPool[prev].setOpacity(0);
+    _dpLayerPool[idx].setOpacity(radarOpacity);
+  } else {
+    const target = idx;
+    let waited = 0;
+    const tick = setInterval(() => {
+      waited += 50;
+      if (_dpPoolLoaded[target] || waited >= 2000) {
+        clearInterval(tick);
+        if (_dpLayerPool[prev] && prev !== target) _dpLayerPool[prev].setOpacity(0);
+        if (_dpLayerPool[target]) _dpLayerPool[target].setOpacity(radarOpacity);
+      }
+    }, 50);
+  }
+  const d = new Date(dpFrames[idx].time * 1000);
+  const at = document.getElementById('anim-time');
+  if (at) at.textContent = `${_fmtHHMM(d)} · ${(_dpStation||'').toUpperCase()} ${(_dpProductId||'').toUpperCase()}`;
+}
+
+async function loadDualPolProduct(productId, tiltIdx) {
+  const def = RADAR_PRODUCT_DEFS.find(d => d.id === productId);
+  if (!def) return;
+
+  // IEM composite products (DAA/DTA) — handled separately
+  if (def.iemComposite) { _loadIemAccum(productId); return; }
+
+  _dpProductId = productId;
+  _currentTilt = tiltIdx;
+
+  // Hide all existing radar layers
+  _radarLayerPool.forEach(l => { if (l) l.setOpacity(0); });
+  _velLayerPool.forEach(l => { try { map.removeLayer(l); } catch(e){} });
+  _velLayerPool = []; _velPoolLoaded = [];
+  radarLayer = null;
+
+  const center  = map.getCenter();
+  const station = _nearestStation(center.lat, center.lng);
+  _dpStation = station;
+
+  const tiltPfx   = TILT_PREFIXES[Math.min(tiltIdx, (def.tilts || 1) - 1)];
+  const layerSuffix = def.opengeoSuffix ? def.opengeoSuffix(tiltPfx) : (def.velStyle ? 'sr_bvel' : 'sr_bref');
+  const layerName   = `${station}_${layerSuffix}`;
+
+  const animTimeEl = document.getElementById('anim-time');
+  if (animTimeEl) animTimeEl.textContent = `Loading ${productId.toUpperCase()}…`;
+
+  try {
+    dpFrames = await _fetchDpTimestamps(station, layerName);
+  } catch (err) {
+    console.warn('[DP] GetCapabilities failed:', err);
+    // Synthetic fallback
+    const now = new Date(); now.setUTCSeconds(0, 0);
+    now.setUTCMinutes(Math.floor(now.getUTCMinutes() / 5) * 5);
+    dpFrames = [];
+    for (let i = 19; i >= 0; i--) {
+      const t = new Date(now.getTime() - i * 5 * 60 * 1000);
+      dpFrames.push({ time: t.getTime() / 1000, iso: t.toISOString().slice(0,19) + 'Z' });
+    }
+  }
+
+  dpCurrentFrame = dpFrames.length - 1;
+  const tl = document.getElementById('timeline');
+  if (tl) { tl.max = dpFrames.length - 1; tl.value = dpCurrentFrame; }
+  buildVelLabels(); // reuse vel labels builder (same time format)
+
+  _buildDpPool(station, layerName, dpFrames);
+  showDpFrame(dpCurrentFrame);
+  _refreshNexradSiteStyles();
+  _syncNexradSites();
+}
+
+function _loadIemAccum(productId) {
+  // IEM WMS composite for DAA (1-hr) and DTA (storm total)
+  _dpProductId = productId;
+  _dpStation   = null;
+  _dpLayerPool.forEach(l => { try { map.removeLayer(l); } catch(e){} });
+  _dpLayerPool = []; _dpPoolLoaded = [];
+  _velLayerPool.forEach(l => { try { map.removeLayer(l); } catch(e){} });
+  _velLayerPool = []; _velPoolLoaded = [];
+  _radarLayerPool.forEach(l => { if (l) l.setOpacity(0); });
+  radarLayer = null;
+
+  const layerNm = productId === 'daa' ? 'nexrad-n0q-900913' : 'nexrad-n0q-900913'; // IEM DAA/DTA composite placeholder
+  const at = document.getElementById('anim-time');
+  if (at) at.textContent = `${productId.toUpperCase()} (composite)`;
+
+  const l = L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi', {
+    layers: layerNm, format: 'image/png', transparent: true,
+    version: '1.1.1', opacity: radarOpacity, zIndex: 10,
+    pane: 'radarPane', crossOrigin: 'anonymous', noWrap: true,
+  });
+  l.addTo(map);
+  _dpLayerPool = [l];
+  _dpPoolLoaded = [true];
+  dpFrames = [{ iso: new Date().toISOString(), time: Date.now() / 1000 }];
+  dpCurrentFrame = 0;
+  _syncNexradSites();
+}
+
 // ── NEXRAD SITE MARKERS ──
 // Shows a dot + label for every NEXRAD station when radar is active.
 // In VEL mode, clicking a site loads that station's velocity data.
@@ -14081,9 +14333,11 @@ function _buildNexradSiteMarkers() {
     });
     const label = L.marker([s.lat, s.lon], { icon: labelIcon, zIndexOffset: 300 });
 
-    // Click on pill , single-site only activates in REF mode
     label.on('click', () => {
-      if (currentProduct === 'ref') {
+      if (_dpProductId && _dpProductId !== 'daa' && _dpProductId !== 'dta') {
+        _dpStation = s.id;
+        loadDualPolProduct(_dpProductId, _currentTilt);
+      } else if (currentProduct === 'ref') {
         _loadSingleSiteRef(s.id);
         openS3Panel(s.id);
       } else if (currentProduct === 'vel') {
@@ -14102,11 +14356,11 @@ function _buildNexradSiteMarkers() {
 }
 
 function _refreshNexradSiteStyles() {
-  // Highlight the active station in VEL or single-site REF mode
   Object.keys(_nexradSiteMarkers).forEach(id => {
     const labelEl = document.getElementById(`nxlbl-${id}`);
     const isActive = (currentProduct === 'vel' && id === _velStation) ||
-                     (currentProduct === 'ref' && id === _refStation);
+                     (currentProduct === 'ref' && id === _refStation) ||
+                     (_dpProductId && id === _dpStation);
     if (labelEl) labelEl.classList.toggle('active-station', isActive);
   });
 }
@@ -14183,8 +14437,7 @@ function hideNexradSites() {
 // We patch this into the existing toggleLayer and selectProduct flows
 // via a small helper called after any radar-state mutation.
 function _syncNexradSites() {
-  // Show markers whenever nexrad layer is ON OR velocity is active
-  const radarOn = activeLayers.nexrad || currentProduct === 'vel' || _refStation !== null;
+  const radarOn = activeLayers.nexrad || currentProduct === 'vel' || _refStation !== null || _dpProductId !== null;
   if (radarOn) showNexradSites();
   else         hideNexradSites();
 }
@@ -17890,12 +18143,29 @@ async function sendAskQuestion() {
 
 // ── PRODUCTS ──
 function selectProduct(p) {
+  // Route dual-pol products through loadDualPolProduct
+  const dpDef = RADAR_PRODUCT_DEFS.find(d => d.id === p && d.id !== 'ref' && d.id !== 'vel');
+  if (dpDef) {
+    _disableSatellite();
+    activeLayers.nexrad = true;
+    if (p !== 'ref' && _refStation) { _clearSingleSiteRef(); }
+    loadDualPolProduct(p, _currentTilt);
+    return;
+  }
+
+  // Clear any active DP product
+  if (_dpProductId) {
+    _dpLayerPool.forEach(l => { try { map.removeLayer(l); } catch(e){} });
+    _dpLayerPool = []; _dpPoolLoaded = [];
+    dpFrames = []; dpCurrentFrame = 0;
+    _dpStation = null; _dpProductId = null;
+  }
+
   currentProduct = p;
   document.querySelectorAll('.prod-btn').forEach(b => b.classList.remove('active'));
   const prodBtn = document.getElementById(`prod-${p}`);
   if (prodBtn) prodBtn.classList.add('active');
   updateLegend(p);
-  // Always clear single-site REF pool when switching products
   if (p !== 'ref' && _refStation) {
     _clearSingleSiteRef();
     _refreshNexradSiteStyles();
