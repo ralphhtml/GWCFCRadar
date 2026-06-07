@@ -7,6 +7,7 @@
 <!-- Critical: needed before first paint -->
 <link rel="preconnect" href="https://api.maptiler.com">
 <link rel="preconnect" href="https://mesonet.agron.iastate.edu">
+<link rel="preconnect" href="https://geo.weather.gc.ca">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- Secondary: used almost always -->
 <link rel="preconnect" href="https://api.weather.gov">
@@ -6102,8 +6103,8 @@ const RAINVIEWER_TILE_BASE = 'https://tilecache.rainviewer.com/v2/radar';
 let _nexradIsL3 = true;
 
 // ── CANADA RADAR (Iowa Mesonet WMS-T composite) ──
-const CANADA_WMS = 'https://mesonet.agron.iastate.edu/cgi-bin/wms/canada/radar.cgi';
-const CANADA_LAYER = 'ca_composite_dz';
+const CANADA_WMS = 'https://geo.weather.gc.ca/geomet';
+const CANADA_LAYER = 'RADAR_1KM_RDBR';
 const _canadaLayerPool = [];
 let   _canadaPoolBuilt = false;
 const _canadaLayerLoaded = [];
@@ -6191,12 +6192,12 @@ function _ensureCanadaLayer(i) {
   const iso = frame.iso || new Date(frame.time * 1000).toISOString().slice(0,19) + 'Z';
   const l = L.tileLayer.wms(CANADA_WMS, {
     layers: CANADA_LAYER, format: 'image/png', transparent: true,
-    version: '1.1.1', TIME: iso,
+    version: '1.3.0', TIME: iso,
     opacity: 0, zIndex: 11, pane: 'radarPane',
-    crossOrigin: 'anonymous', noWrap: true, tileSize: 512,
-    keepBuffer: 4, updateWhenIdle: false, updateWhenZooming: false,
+    crossOrigin: 'anonymous', noWrap: true, tileSize: 256,
+    keepBuffer: 2, updateWhenIdle: true, updateWhenZooming: false,
     detectRetina: false,
-    attribution: 'Canada Radar © ECCC via Iowa Mesonet',
+    attribution: 'Canada Radar © Environment and Climate Change Canada',
   });
   _canadaLayerLoaded[i] = false;
   l.on('tileload', () => { _canadaLayerLoaded[i] = true; });
