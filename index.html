@@ -6442,8 +6442,8 @@ function _updateTimelineGradient(lastPastIdx, total) {
   const pct = Math.round((lastPastIdx / (total - 1)) * 100);
   tl.style.background =
     `linear-gradient(to right,
-       var(--border2) 0%, var(--border2) ${pct}%,
-       rgba(232,184,0,0.55) ${pct}%, rgba(232,184,0,0.55) 100%)`;
+       rgba(0,200,200,0.55) 0%, rgba(0,200,200,0.55) ${pct}%,
+       rgba(255,255,255,0.12) ${pct}%, rgba(255,255,255,0.12) 100%)`;
 }
 
 function buildTimelineLabels() {
@@ -6885,7 +6885,10 @@ function showFrame(idx) {
   idx = Math.max(0, Math.min(radarFrames.length - 1, idx));
   currentFrame = idx;
   if (!_elTimeline) _elTimeline = document.getElementById('timeline');
-  if (_elTimeline) _elTimeline.value = idx;
+  if (_elTimeline) {
+    _elTimeline.value = idx;
+    _updateTimelineGradient(idx, radarFrames.length);
+  }
 
   if (activeLayers.nexrad && _radarPoolBuilt) {
     _activateWindow(idx);
