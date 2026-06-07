@@ -5839,6 +5839,11 @@ let currentProduct = 'ref', currentModel = 'gfs', currentModelVar = 'precip';
 // ⚠ Anyone who views this file's source can read these keys. Rotate if leaked.
 const AMBIENT_WEATHER_API_KEY         = '807d842f188e4d76bbba35960ef9449bb775e4a0f1ff4946a723e7a485554619'; // user-level
 const AMBIENT_WEATHER_APPLICATION_KEY = ''; // TODO: paste applicationKey from dashboard.ambientweather.net → Account → API Keys
+
+// ── mPING (NSSL CROWDSOURCED PRECIPITATION REPORTS) ──────────────────────
+// Register free at: https://mping.ou.edu/registration/register/
+// General license gives last 4 hours of crowd-reported weather.
+const MPING_API_KEY = ''; // TODO: paste your mPING Token here
 let smoothEnabled = false;
 
 // ── RADAR COLOUR CUSTOMISER ──
@@ -6028,7 +6033,7 @@ let activeLayers = {
   flood: true, watch: false, meso: false, spc1: false, spc2: false,
   spc3: false, spcrpts: false, nhc: false, invest: false, sst: false,
   models: false, lightning: false, ltg30: false, forecasts: true,
-  radio: false
+  radio: false, mping: false
 };
 let currentTab = 'radar';
 let lightningFlash = [];
@@ -6036,6 +6041,7 @@ let nhcLayer = null, spcOutlookLayer = null, stormReportsLayer = null;
 let stormReportLayers = { tor: null, hail: null, wind: null };
 let _rptTorActive = true, _rptHailActive = true, _rptWindActive = true;
 let _reportsLoaded = false;
+let _mpingLayer = null, _mpingLoading = false, _mpingTimer = null;
 
 // ── AbortSignal.timeout polyfill for Samsung/older browsers ──
 function _abortSignal(ms) {
@@ -8270,6 +8276,67 @@ function toggleLayer(id) {
 }
 
 
+// ── mPING CROWDSOURCED PRECIPITATION REPORTS ─────────────────────────────
+const _MPING_COLORS = {
+  'Rain':           '#4fc3f7',
+  'Snow/Sleet':     '#b3e5fc',
+  'Hail':           '#fff176',
+  'Wind Damage':    '#a5d6a7',
+  'Fog/Visibility': '#b0bec5',
+  'Flooding':       '#5c6bc0',
+  'None/Other':     '#9e9e9e',
+};
+
+async function loadMPINGReports() {
+  if (_mpingLoading) return;
+  if (!MPING_API_KEY) {
+    showToast('mPING: no API key set — get one free at mping.ou.edu', 4000);
+    activeLayers.mping = false;
+    const pill = document.getElementById('op-mping');
+    if (pill) pill.classList.remove('active');
+    return;
+  }
+  _mpingLoading = true;
+  updateLoadStatus('Loading mPING reports…');
+  try {
+    if (_mpingLayer) { map.removeLayer(_mpingLayer); _mpingLayer = null; }
+    const resp = await fetch(
+      'https://mping.ou.edu/mping/api/v2/reports/?dur=60&format=json',
+      { headers: { 'Authorization': `Token ${MPING_API_KEY}` }, signal: _abortSignal(10000) }
+    );
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    _mpingLayer = L.layerGroup();
+    (data.results || []).forEach(r => {
+      const [lon, lat] = r.geom.coordinates;
+      const color = _MPING_COLORS[r.category] || '#9e9e9e';
+      const diff = Math.round((Date.now() - new Date(r.obtime)) / 60000);
+      const ago = diff < 60 ? `${diff}m ago` : `${Math.round(diff / 60)}h ago`;
+      const m = L.circleMarker([lat, lon], {
+        radius: 7, fillColor: color, color: '#000',
+        weight: 1, opacity: 0.9, fillOpacity: 0.85
+      });
+      m.bindPopup(
+        `<div style="font-family:monospace;font-size:12px;min-width:140px">` +
+        `<b style="color:${color}">${r.category}</b><br>` +
+        `${r.description || '—'}<br>` +
+        `<span style="color:#aaa">${ago}</span></div>`
+      );
+      m.addTo(_mpingLayer);
+    });
+    if (activeLayers.mping) _mpingLayer.addTo(map);
+    clearTimeout(_mpingTimer);
+    if (activeLayers.mping) _mpingTimer = setTimeout(() => { if (activeLayers.mping) loadMPINGReports(); }, 5 * 60 * 1000);
+    updateLoadStatus('');
+  } catch(e) {
+    console.warn('[mPING]', e);
+    showToast(`mPING load failed: ${e.message}`, 4000);
+    updateLoadStatus('');
+  } finally {
+    _mpingLoading = false;
+  }
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // ── POLYGON SPATIAL FILTER ────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════
@@ -9758,6 +9825,15 @@ function toggleOverlayPill(id) {
     if (pill) pill.classList.toggle('active', _surfaceOn);
     if (_surfaceOn) loadSurfaceAnalysis();
     else clearSurfaceAnalysis();
+  } else if (id === 'mping') {
+    activeLayers.mping = !activeLayers.mping;
+    const pill = document.getElementById('op-mping');
+    if (pill) pill.classList.toggle('active', activeLayers.mping);
+    if (activeLayers.mping) loadMPINGReports();
+    else {
+      clearTimeout(_mpingTimer);
+      if (_mpingLayer) map.removeLayer(_mpingLayer);
+    }
   }
 }
 
@@ -20462,6 +20538,10 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="ov-pill" id="op-hhunt" onclick="toggleOverlayPill('hhunt')" title="Hurricane Hunters">
       <span class="ov-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M21 16v-2l-8-5V3.5C13 2.67 12.33 2 11.5 2S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg></span>
       <span class="ov-label">Hunters</span>
+    </div>
+    <div class="ov-pill" id="op-mping" onclick="toggleOverlayPill('mping')" title="mPING Ground Truth Reports">
+      <span class="ov-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 17.58A5 5 0 0 0 18 8h-1.26A8 8 0 1 0 4 16.25"/><line x1="8" y1="16" x2="8" y2="21"/><line x1="8" y1="21" x2="12" y2="19"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="12" y1="23" x2="16" y2="21"/><line x1="16" y1="21" x2="16" y2="17"/></svg></span>
+      <span class="ov-label">mPING</span>
     </div>
     <div class="ov-pill active" id="op-fronts" onclick="toggleOverlayPill('fronts')" title="WPC Surface Fronts">
       <span class="ov-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M2 12 Q6 7 10 12 Q14 17 18 12 Q20 9 22 12" stroke="#ef4444"/><path d="M2 16 Q6 11 10 16 Q14 21 18 16 Q20 13 22 16" stroke="#3b82f6"/></svg></span>
