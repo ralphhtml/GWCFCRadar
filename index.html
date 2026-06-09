@@ -10347,15 +10347,32 @@ async function _wxfFetch(model, run, fhr, variable) {
 function _wxfDecode(bytes) {
   try {
     if (typeof fzstd === 'undefined') return null;
+    // Validate zstd magic bytes: 28 B5 2F FD
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const hLen = view.getUint32(0, false); // big-endian
     if (hLen < 2 || hLen > 4096 || 4 + hLen >= bytes.length) return null;
+    const compressed = bytes.subarray(4 + hLen);
+    // Verify zstd magic (28 B5 2F FD) before attempting decompress
+    if (compressed.length < 4 ||
+        compressed[0] !== 0x28 || compressed[1] !== 0xB5 ||
+        compressed[2] !== 0x2F || compressed[3] !== 0xFD) return null;
     const header = JSON.parse(new TextDecoder().decode(bytes.subarray(4, 4 + hLen)));
     if (!Number.isFinite(header.min_value) || !Number.isFinite(header.max_value)) return null;
-    const raw = fzstd.decompress(bytes.subarray(4 + hLen));
+    const raw = fzstd.decompress(compressed);
     if (!raw || !raw.length) return null;
-    return { header, raw };
-  } catch(e) { return null; }
+    // Auto-detect grid dimensions from known WeatherFront sizes (handoff doc §6)
+    const KNOWN = {
+      1906200: { cols:1800, rows:1059, type:'lcc',    bounds:[[21.1,-134.1],[52.6,-60.9]] }, // HRRR/NAMNESTCONUS
+      1038240: { cols:1440, rows:721,  type:'latlon',  bounds:[[-90,-180],[90,180]] },         // GFS 0.25°
+      151987:  { cols:451,  rows:337,  type:'lcc',    bounds:[[21.1,-134.1],[52.6,-60.9]] },  // RAP 13km
+    };
+    const grid = KNOWN[raw.length];
+    if (!grid) {
+      console.warn(`[WxFront] Unknown grid size ${raw.length} — skipping`);
+      return null;
+    }
+    return { header, raw, grid };
+  } catch(e) { console.warn('[WxFront] decode error:', e.message); return null; }
 }
 
 // Map variable code + physical value → RGBA (or null = transparent)
@@ -10425,25 +10442,25 @@ function _wxfRGBA(variable, val) {
 // Render a raw grid to a canvas imageOverlay.
 // GFS: 1440×721 regular lat/lon 0.25°, row0=90°N, col0=0°E (0→360 convention)
 // HRRR: 1800×1059 Lambert Conformal Conic 3km CONUS
-function _wxfRenderCanvas(variable, raw, header, model) {
-  const isGFS = model === 'GFS';
-  const GRID_COLS = isGFS ? 1440 : 1800;
-  const GRID_ROWS = isGFS ? 721  : 1059;
+function _wxfRenderCanvas(variable, raw, header, model, grid) {
+  const GRID_COLS = grid.cols;
+  const GRID_ROWS = grid.rows;
 
-  // For GFS, extract the CONUS slice (lon -135→-55, lat 12→57)
+  // For GFS (lat/lon grid), extract the CONUS slice (lon -135→-55, lat 12→57)
   // GFS lon convention: 0→360, so -135 → col 900, -55 → col 1220
   let sliceColStart, sliceColEnd, sliceRowStart, sliceRowEnd, bounds;
-  if (isGFS) {
-    sliceColStart = Math.round((-135 + 360) / 0.25);  // 900
-    sliceColEnd   = Math.round((-55  + 360) / 0.25);  // 1220
-    sliceRowStart = Math.round((90 - 57) / 0.25);     // 132
-    sliceRowEnd   = Math.round((90 - 12) / 0.25);     // 312
+  if (grid.type === 'latlon') {
+    const res = 360 / GRID_COLS; // degrees per cell (0.25 for GFS)
+    sliceColStart = Math.round((-135 + 360) / res);
+    sliceColEnd   = Math.round((-55  + 360) / res);
+    sliceRowStart = Math.round((90 - 57) / res);
+    sliceRowEnd   = Math.round((90 - 12) / res);
     bounds = [[12, -135], [57, -55]];
   } else {
-    // HRRR: render full grid, approximate CONUS LCC extent for overlay
+    // LCC grid (HRRR/NAM/RAP): render full grid using detected bounds
     sliceColStart = 0; sliceColEnd = GRID_COLS - 1;
     sliceRowStart = 0; sliceRowEnd = GRID_ROWS - 1;
-    bounds = [[21.1, -134.1], [52.6, -60.9]];
+    bounds = grid.bounds;
   }
 
   const srcCols = sliceColEnd - sliceColStart + 1;
@@ -10502,8 +10519,8 @@ async function _sevRenderWxf(body) {
   const fhr    = Math.min(fhrRaw, _WXF_MAX_FHR[wxModel] ?? 48);
 
   try {
-    const { header, raw } = await _wxfFetch(wxModel, run, fhr, wxVar);
-    const { dataUrl, bounds } = _wxfRenderCanvas(wxVar, raw, header, wxModel);
+    const { header, raw, grid } = await _wxfFetch(wxModel, run, fhr, wxVar);
+    const { dataUrl, bounds } = _wxfRenderCanvas(wxVar, raw, header, wxModel, grid);
 
     if (_wxfOverlay) { map.removeLayer(_wxfOverlay); _wxfOverlay = null; }
     if (_sevOverlayLayer) { map.removeLayer(_sevOverlayLayer); _sevOverlayLayer = null; }
