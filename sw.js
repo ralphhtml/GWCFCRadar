@@ -121,67 +121,148 @@ async function cacheFirst(req, ttl) {
   }
 }
 
-// ── Background alert check ───────────────────────────────────
+// ── Severity maps (mirrored from page JS) ────────────────────
+const _SW_NWS_SEV_RANK = { Extreme:4, Severe:3, Moderate:2, Minor:1, Unknown:0 };
+const _SW_EAS_TYPE_SEV = {
+  TOR:4, SVR:3, EWW:3, FFW:3, SMW:2, TOA:3, SVA:2, FFA:2,
+  WSW:2, BZW:3, ISW:2, HWW:2, CFW:1, MWS:1, RWT:0, RWS:0,
+};
+const _SW_EAS_TYPE_LABELS = {
+  TOR:'Tornado Warning', SVR:'Severe Thunderstorm Warning',
+  EWW:'Extreme Wind Warning', FFW:'Flash Flood Warning',
+  TOA:'Tornado Watch', SVA:'Severe Thunderstorm Watch',
+  FFA:'Flash Flood Watch', SMW:'Special Marine Warning',
+  BZW:'Blizzard Warning', WSW:'Winter Storm Warning',
+};
+
+// ── Background alert check (both NWS + EAS) ──────────────────
 async function _checkAndNotify() {
   const loc = _swLocation;
-  if (!loc) return;
-  const terms = [loc.county, loc.city, loc.state]
-    .filter(Boolean).map(s => s.toLowerCase().trim());
-  if (!terms.length) return;
-
-  let features = [];
-  try {
-    const r = await fetch(
-      'https://api.weather.gov/alerts/active?status=actual&message_type=alert',
-      { signal: AbortSignal.timeout(10000) }
-    );
-    if (!r.ok) return;
-    const data = await r.json();
-    features = data.features || [];
-  } catch { return; }
-
-  const matches = features.filter(f => {
-    const desc = (f.properties.areaDesc || '').toLowerCase();
-    return terms.some(t => desc.includes(t));
-  });
-
+  const terms = loc
+    ? [loc.county, loc.city, loc.state].filter(Boolean).map(s => s.toLowerCase().trim())
+    : [];
+  const locationSet = terms.length > 0;
   const seenCache = await caches.open(NOTIF_CACHE);
   const now = Date.now();
 
-  for (const f of matches) {
-    const id = f.properties.id || f.id || String(now);
-    if (!id) continue;
-
-    // Skip if already notified
-    const seen = await seenCache.match(new Request(id));
-    if (seen) continue;
-
-    // Record as seen (keep for 24 h)
-    seenCache.put(new Request(id), new Response('1', {
+  // Check if ID already notified; if not, mark it
+  async function _isSeen(id) {
+    const hit = await seenCache.match(new Request(id));
+    return !!hit;
+  }
+  async function _markSeen(id) {
+    await seenCache.put(new Request(id), new Response('1', {
       headers: { 'x-ts': String(now) }
     }));
+  }
 
-    const ev   = f.properties.event    || 'Weather Alert';
-    const area = (f.properties.areaDesc || '').slice(0, 100);
-    const sev  = f.properties.severity || '';
-
-    await self.registration.showNotification(`⚡ ${ev}`, {
-      body:    area,
+  async function _fire(id, title, body, sevRank) {
+    if (await _isSeen(id)) return;
+    await _markSeen(id);
+    const isUrgent = sevRank >= 3;
+    await self.registration.showNotification(title, {
+      body,
       icon:    './icons/icon-192.png',
       badge:   './icons/icon-192.png',
       tag:     id,
-      vibrate: (sev === 'Extreme' || sev === 'Severe') ? [200, 100, 200] : [100],
+      vibrate: isUrgent ? [300, 100, 300, 100, 300] : [150],
+      requireInteraction: isUrgent,
       data:    { url: self.location.origin + '/GWCFCRadar/' },
     });
   }
 
-  // Prune seen cache entries older than 24 h
-  const keys = await seenCache.keys();
-  for (const key of keys) {
-    const resp = await seenCache.match(key);
-    if (resp) {
-      const ts = +(resp.headers.get('x-ts') ?? 0);
-      if (now - ts > 24 * 3600 * 1000) seenCache.delete(key);
+  // ── NWS Weather Alerts ──
+  try {
+    const nwsUrl = locationSet
+      ? 'https://api.weather.gov/alerts/active?status=actual&message_type=alert'
+      : 'https://api.weather.gov/alerts/active?status=actual&message_type=alert&severity=Extreme,Severe';
+    const nr = await fetch(nwsUrl, { signal: AbortSignal.timeout(10000) });
+    if (nr.ok) {
+      const nwsData = await nr.json();
+      const ranked = (nwsData.features || [])
+        .map(f => ({
+          f,
+          sev: _SW_NWS_SEV_RANK[f.properties.severity] ?? 0,
+          matches: locationSet
+            ? terms.some(t => (f.properties.areaDesc || '').toLowerCase().includes(t))
+            : true,
+        }))
+        .filter(x => x.matches)
+        .sort((a, b) => b.sev - a.sev);
+
+      let nwsFired = 0;
+      for (const { f, sev } of ranked) {
+        if (nwsFired >= 5) break;
+        const id   = f.properties.id || f.id;
+        if (!id) continue;
+        const ev   = f.properties.event     || 'Weather Alert';
+        const area = (f.properties.areaDesc || '').slice(0, 90);
+        const onset = f.properties.onset ? new Date(f.properties.onset).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}) : '';
+        const ends  = (f.properties.ends || f.properties.expires)
+          ? new Date(f.properties.ends||f.properties.expires).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}) : '';
+        const emoji = sev>=4?'🚨':sev>=3?'⚡':sev>=2?'⚠️':'📢';
+        const body  = [area, onset?`Onset: ${onset}`:'', ends?`Until: ${ends}`:''].filter(Boolean).join(' · ');
+        await _fire('nws:' + id, `${emoji} ${ev}`, body, sev);
+        nwsFired++;
+      }
+    }
+  } catch(e) { /* NWS fetch failed */ }
+
+  // ── EAS Alerts ──
+  const EAS_PROXIES_SW = [
+    u => u,
+    u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+    u => `https://api.codetabs.com/v1/proxy?quest=${u}`,
+  ];
+  let easAlerts = [];
+  for (const proxy of EAS_PROXIES_SW) {
+    try {
+      const er = await fetch(proxy('https://alerts.globaleas.org/api/v1/alerts/active'), {
+        signal: AbortSignal.timeout(8000)
+      });
+      if (!er.ok) continue;
+      const raw = await er.json();
+      easAlerts = Array.isArray(raw) ? raw : (raw.alerts || raw.data || raw.results || []);
+      break;
+    } catch { continue; }
+  }
+
+  if (easAlerts.length) {
+    const ranked = easAlerts
+      .map(a => {
+        const tc  = (a.type || '').toUpperCase();
+        const sev = _SW_EAS_TYPE_SEV[tc] ?? 1;
+        const text = [a.translation||'', (a.fipsCodes||[]).join(' '), a.originator||'', a.callsign||'']
+          .join(' ').toLowerCase();
+        return { a, sev, tc, matches: locationSet ? terms.some(t => text.includes(t)) : sev >= 3 };
+      })
+      .filter(x => x.matches)
+      .sort((a, b) => b.sev - a.sev);
+
+    let easFired = 0;
+    for (const { a, sev, tc } of ranked) {
+      if (easFired >= 3) break;
+      const id    = String(a.id || a.hash || '');
+      if (!id) continue;
+      const label = _SW_EAS_TYPE_LABELS[tc] || tc;
+      const orig  = a.originator ? ` · ${a.originator.toUpperCase()}` : '';
+      const call  = a.callsign   ? ` (${a.callsign})`                 : '';
+      const trans = (a.translation || '').replace(/\s+/g,' ').trim().slice(0, 100);
+      const emoji = sev>=4?'🚨':sev>=3?'⚡':'📻';
+      await _fire('eas:' + id, `${emoji} EAS: ${label}${orig}${call}`, trans, sev);
+      easFired++;
     }
   }
+
+  // Prune seen cache entries older than 24 h
+  try {
+    const keys = await seenCache.keys();
+    for (const key of keys) {
+      const resp = await seenCache.match(key);
+      if (resp) {
+        const ts = +(resp.headers.get('x-ts') ?? 0);
+        if (now - ts > 24 * 3600 * 1000) seenCache.delete(key);
+      }
+    }
+  } catch {}
 }

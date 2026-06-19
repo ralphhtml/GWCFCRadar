@@ -21313,43 +21313,157 @@ function _startNotifPoll() {
   _notifPollInterval = setInterval(_pollAlertNotifications, 5 * 60 * 1000);
 }
 
+// ── NWS severity rank (higher = more urgent) ─────────────────
+const _NWS_SEV_RANK = { Extreme:4, Severe:3, Moderate:2, Minor:1, Unknown:0 };
+const _EAS_TYPE_SEV = {
+  TOR:4, SVR:3, EWW:3, FFW:3, SMW:2, TOA:3, SVA:2, FFA:2,
+  WSW:2, BZW:3, ISW:2, HWW:2, CFW:1, MWS:1, RWT:0, RWS:0,
+};
+
+// ── Shared notification dispatcher ───────────────────────────
+function _fireNotification(id, title, body, severity) {
+  if (_notifSeenIds.has(id)) return false;
+  _notifSeenIds.add(id);
+  const isUrgent = severity >= 3;
+  const opts = {
+    body,
+    icon:    './icons/icon-192.png',
+    badge:   './icons/icon-192.png',
+    tag:     id,
+    vibrate: isUrgent ? [300, 100, 300, 100, 300] : [150],
+    requireInteraction: isUrgent,
+    data: { url: location.href },
+  };
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.ready
+      .then(reg => reg.showNotification(title, opts))
+      .catch(() => { if (Notification.permission === 'granted') new Notification(title, opts); });
+  } else if (Notification.permission === 'granted') {
+    new Notification(title, opts);
+  }
+  return true;
+}
+
+// ── Dual-source polling: NWS Weather Alerts + EAS ────────────
 async function _pollAlertNotifications() {
   if (!_notifEnabled || Notification.permission !== 'granted') return;
   const terms = [_homeLocation.county, _homeLocation.city, _homeLocation.state]
     .filter(Boolean).map(s => s.toLowerCase().trim());
-  if (!terms.length) return;
+  // If no location set, still notify on Extreme/Severe alerts nationally
+  const locationSet = terms.length > 0;
 
+  const results = await Promise.allSettled([
+    _pollNWSAlerts(terms, locationSet),
+    _pollEASAlerts(terms, locationSet),
+  ]);
+
+  results.forEach(r => {
+    if (r.status === 'rejected') console.warn('[Notif poll]', r.reason);
+  });
+}
+
+// ── NWS Weather Alerts ───────────────────────────────────────
+async function _pollNWSAlerts(terms, locationSet) {
+  const url = locationSet
+    ? 'https://api.weather.gov/alerts/active?status=actual&message_type=alert'
+    : 'https://api.weather.gov/alerts/active?status=actual&message_type=alert&severity=Extreme,Severe';
+
+  const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  if (!r.ok) throw new Error('NWS ' + r.status);
+  const data = await r.json();
+  const features = data.features || [];
+
+  // Sort by severity descending so most urgent fires first
+  const ranked = features
+    .map(f => ({
+      f,
+      sev: _NWS_SEV_RANK[f.properties.severity] ?? 0,
+      matchesHome: locationSet
+        ? terms.some(t => (f.properties.areaDesc || '').toLowerCase().includes(t))
+        : true,
+    }))
+    .filter(x => x.matchesHome)
+    .sort((a, b) => b.sev - a.sev);
+
+  let fired = 0;
+  for (const { f, sev } of ranked) {
+    const id    = f.properties.id || f.id;
+    if (!id) continue;
+
+    const ev    = f.properties.event     || 'Weather Alert';
+    const area  = (f.properties.areaDesc || '').slice(0, 90);
+    const onset = f.properties.onset     ? new Date(f.properties.onset).toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' }) : '';
+    const ends  = f.properties.ends || f.properties.expires
+      ? new Date(f.properties.ends || f.properties.expires).toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' })
+      : '';
+
+    const emoji = sev >= 4 ? '🚨' : sev >= 3 ? '⚡' : sev >= 2 ? '⚠️' : '📢';
+    const title = `${emoji} ${ev}`;
+    const lines = [area];
+    if (onset) lines.push(`Onset: ${onset}`);
+    if (ends)  lines.push(`Until: ${ends}`);
+    const body = lines.join(' · ');
+
+    if (_fireNotification('nws:' + id, title, body, sev)) fired++;
+    if (fired >= 5) break; // max 5 NWS per poll to avoid spam
+  }
+}
+
+// ── EAS Alerts ───────────────────────────────────────────────
+async function _pollEASAlerts(terms, locationSet) {
+  let alerts = [];
   try {
-    const r = await fetch('https://api.weather.gov/alerts/active?status=actual&message_type=alert', {
-      signal: AbortSignal.timeout(8000)
-    });
-    if (!r.ok) return;
-    const data = await r.json();
-    const matches = (data.features || []).filter(f => {
-      const desc = (f.properties.areaDesc || '').toLowerCase();
-      return terms.some(t => desc.includes(t));
-    });
-    for (const f of matches) {
-      const id = f.properties.id || f.id;
-      if (!id || _notifSeenIds.has(id)) continue;
-      _notifSeenIds.add(id);
-      const ev   = f.properties.event || 'Weather Alert';
-      const area = (f.properties.areaDesc || '').slice(0, 80);
-      const sev  = f.properties.severity || '';
-      navigator.serviceWorker.ready.then(reg => {
-        reg.showNotification(`⚡ ${ev}`, {
-          body:    area,
-          icon:    './icons/icon-192.png',
-          badge:   './icons/icon-192.png',
-          tag:     id,
-          vibrate: (sev === 'Extreme' || sev === 'Severe') ? [200, 100, 200] : [100],
-          data:    { url: location.href },
-        });
-      }).catch(() => {
-        new Notification(`⚡ ${ev}`, { body: area, tag: id });
-      });
-    }
-  } catch(e) { /* silent */ }
+    alerts = await _easFetch(EAS_BASE_URL + EAS_ACTIVE_PATH);
+  } catch(e) {
+    throw new Error('EAS fetch failed: ' + e.message);
+  }
+  if (!Array.isArray(alerts) || !alerts.length) return;
+
+  const ranked = alerts
+    .map(a => {
+      const typeCode = (a.type || '').toUpperCase();
+      const sev = _EAS_TYPE_SEV[typeCode] ?? 1;
+      const text = [
+        a.translation || '',
+        (a.fipsCodes  || []).join(' '),
+        a.originator  || '',
+        a.callsign    || '',
+      ].join(' ').toLowerCase();
+
+      const matchesHome = locationSet ? terms.some(t => text.includes(t)) : sev >= 3;
+      return { a, sev, matchesHome, typeCode };
+    })
+    .filter(x => x.matchesHome)
+    .sort((a, b) => b.sev - a.sev);
+
+  let fired = 0;
+  for (const { a, sev, typeCode } of ranked) {
+    const id = String(a.id || a.hash || '');
+    if (!id) continue;
+
+    // Type → human label
+    const TYPE_LABELS = {
+      TOR:'Tornado Warning', SVR:'Severe Thunderstorm Warning',
+      EWW:'Extreme Wind Warning', FFW:'Flash Flood Warning',
+      TOA:'Tornado Watch', SVA:'Severe Thunderstorm Watch',
+      FFA:'Flash Flood Watch', SMW:'Special Marine Warning',
+      BZW:'Blizzard Warning', WSW:'Winter Storm Warning',
+      ISW:'Ice Storm Warning', HWW:'High Wind Warning',
+      RWT:'Required Weekly Test', RWS:'Required Monthly Test',
+    };
+    const label  = TYPE_LABELS[typeCode] || typeCode;
+    const orig   = a.originator ? ` · ${a.originator.toUpperCase()}` : '';
+    const call   = a.callsign   ? ` (${a.callsign})`                 : '';
+    const trans  = (a.translation || '').replace(/\s+/g,' ').trim().slice(0, 100);
+    const endStr = a.endTimeEpoch ? formatEASDate(a.endTimeEpoch) : '';
+
+    const emoji = sev >= 4 ? '🚨' : sev >= 3 ? '⚡' : '📻';
+    const title = `${emoji} EAS: ${label}${orig}${call}`;
+    const body  = [trans, endStr ? `Until ${endStr}` : ''].filter(Boolean).join(' · ');
+
+    if (_fireNotification('eas:' + id, title, body, sev)) fired++;
+    if (fired >= 3) break; // max 3 EAS per poll
+  }
 }
 
 // ── AUTH MODAL ──────────────────────────────────────────────
