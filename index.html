@@ -4772,6 +4772,76 @@ footer {
 }
 .lqm-profile-signout-btn:hover { border-color: rgba(255,60,60,0.6); color: #fff; }
 
+/* Edit profile inline panel */
+#lqm-profile-edit { display:none; margin-top:10px; }
+#lqm-profile-edit.open { display:block; }
+.lqm-edit-label {
+  font-family:'IBM Plex Mono',monospace;
+  font-size:10px;
+  color:rgba(212,232,255,0.5);
+  margin:8px 0 4px;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+.lqm-edit-input {
+  width:100%;
+  box-sizing:border-box;
+  background:rgba(0,0,0,0.35);
+  border:1px solid rgba(255,255,255,0.15);
+  border-radius:6px;
+  color:#fff;
+  font-family:'IBM Plex Mono',monospace;
+  font-size:12px;
+  padding:7px 9px;
+  outline:none;
+}
+.lqm-edit-input:focus { border-color:rgba(0,200,200,0.5); }
+.lqm-emoji-grid {
+  display:grid;
+  grid-template-columns:repeat(7,1fr);
+  gap:4px;
+  margin:6px 0;
+}
+.lqm-emoji-opt {
+  font-size:18px;
+  background:rgba(255,255,255,0.06);
+  border:1px solid transparent;
+  border-radius:6px;
+  cursor:pointer;
+  padding:3px 0;
+  text-align:center;
+  transition:background .12s,border-color .12s;
+  line-height:1.4;
+}
+.lqm-emoji-opt:hover { background:rgba(255,255,255,0.12); }
+.lqm-emoji-opt.selected { border-color:#00c8c8; background:rgba(0,200,200,0.15); }
+.lqm-edit-save-btn {
+  width:100%;
+  margin-top:10px;
+  padding:8px 0;
+  border-radius:7px;
+  border:1px solid rgba(0,200,200,0.4);
+  background:rgba(0,200,200,0.08);
+  color:#00c8c8;
+  font-family:'IBM Plex Mono',monospace;
+  font-size:11px;
+  cursor:pointer;
+  transition:background .15s;
+}
+.lqm-edit-save-btn:hover { background:rgba(0,200,200,0.18); }
+.lqm-profile-edit-toggle {
+  font-family:'IBM Plex Mono',monospace;
+  font-size:10px;
+  color:rgba(212,232,255,0.4);
+  background:none;
+  border:none;
+  cursor:pointer;
+  padding:0;
+  margin-top:2px;
+  text-decoration:underline;
+}
+.lqm-profile-edit-toggle:hover { color:rgba(212,232,255,0.8); }
+
 /* Guest state */
 .lqm-profile-guest-note {
   font-family: 'Comfortaa', sans-serif;
@@ -20510,19 +20580,33 @@ function _onSignedOut() {
   _initGuestSession();
 }
 
-function _updateProfileBadge(user) {
+function _updateProfileBadge(user, avatarEmoji) {
   const sm  = document.getElementById('lqm-profile-avatar-sm');
   const lbl = document.getElementById('lqm-profile-label');
+  // Keep cached emoji across calls (e.g. reload after prefs load)
+  if (avatarEmoji !== undefined) _selectedEmoji = avatarEmoji || null;
   if (user) {
     const name  = user.displayName || 'User';
     const init  = name.charAt(0).toUpperCase();
     const hue   = [...name].reduce((h,c)=>c.charCodeAt(0)+((h<<5)-h),0) % 360;
-    if (sm)  { sm.textContent = init; sm.style.background = `hsl(${Math.abs(hue)},60%,42%)`; sm.style.color = '#fff'; sm.style.border = '1px solid rgba(255,255,255,0.25)'; }
+    const emoji = _selectedEmoji;
+    if (sm) {
+      sm.textContent = emoji || init;
+      sm.style.fontSize = emoji ? '16px' : '';
+      sm.style.background = emoji ? 'rgba(0,0,0,0.25)' : `hsl(${Math.abs(hue)},60%,42%)`;
+      sm.style.color = '#fff';
+      sm.style.border = '1px solid rgba(255,255,255,0.25)';
+    }
     if (lbl) lbl.textContent = name.split(/[\s_]/)[0];
-    // Update large avatar in profile panel
     const lg = document.getElementById('lqm-profile-avatar-lg');
     const nm = document.getElementById('lqm-profile-name-txt');
-    if (lg) { lg.textContent = init; lg.style.background = `hsl(${Math.abs(hue)},60%,38%)`; lg.style.color='#fff'; lg.style.border='2px solid rgba(255,255,255,0.2)'; }
+    if (lg) {
+      lg.textContent = emoji || init;
+      lg.style.fontSize = emoji ? '28px' : '';
+      lg.style.background = emoji ? 'rgba(0,0,0,0.2)' : `hsl(${Math.abs(hue)},60%,38%)`;
+      lg.style.color = '#fff';
+      lg.style.border = '2px solid rgba(255,255,255,0.2)';
+    }
     if (nm) nm.textContent = name;
     document.getElementById('lqm-profile-guest').style.display = 'none';
     document.getElementById('lqm-profile-user').style.display  = '';
@@ -20550,6 +20634,74 @@ function _initGuestSession() {
     lastVisit:  firebase.firestore.FieldValue.serverTimestamp(),
     convertedToUser: false
   }, { merge: true }).catch(()=>{});
+}
+
+// ── PROFILE EDIT ────────────────────────────────────────────
+const _PROFILE_EMOJIS = [
+  '⛈','🌩','🌪','🌊','❄','🌨','🌤','⛅','🌥','🌦','🌧','🌫',
+  '🌈','☀','🌙','⭐','🔥','💧','🌬','🌀','🏔','🗺','📡','🛰',
+  '🦅','🐦','🦆','🐬','🐘','🦁','🐺','🦊','👁','⚡','🎯','🧭'
+];
+let _selectedEmoji = null;
+
+function lqmToggleProfileEdit() {
+  const panel = document.getElementById('lqm-profile-edit');
+  const isOpen = panel.classList.toggle('open');
+  if (isOpen) {
+    // Pre-fill name
+    const nameEl = document.getElementById('lqm-edit-name');
+    if (nameEl && _currentUser) nameEl.value = _currentUser.displayName || '';
+    // Build emoji grid once
+    const grid = document.getElementById('lqm-emoji-grid');
+    if (grid && !grid.hasChildNodes()) {
+      _PROFILE_EMOJIS.forEach(e => {
+        const btn = document.createElement('button');
+        btn.className = 'lqm-emoji-opt' + (e === _selectedEmoji ? ' selected' : '');
+        btn.textContent = e;
+        btn.onclick = () => selectProfileEmoji(e);
+        grid.appendChild(btn);
+      });
+    } else if (grid) {
+      // Refresh selection state
+      grid.querySelectorAll('.lqm-emoji-opt').forEach(b => {
+        b.classList.toggle('selected', b.textContent === _selectedEmoji);
+      });
+    }
+  }
+}
+
+function selectProfileEmoji(emoji) {
+  _selectedEmoji = emoji;
+  document.querySelectorAll('.lqm-emoji-opt').forEach(b => {
+    b.classList.toggle('selected', b.textContent === emoji);
+  });
+}
+
+async function saveProfileChanges() {
+  if (!_currentUser || !_fbDb) return;
+  const nameInput = document.getElementById('lqm-edit-name');
+  const newName = (nameInput ? nameInput.value.trim() : '') || _currentUser.displayName || 'User';
+  const saveBtn = document.querySelector('.lqm-edit-save-btn');
+  if (saveBtn) { saveBtn.textContent = 'Saving…'; saveBtn.disabled = true; }
+  try {
+    // Update Firebase Auth display name
+    await _currentUser.updateProfile({ displayName: newName });
+    // Save to Firestore
+    await _fbDb.collection('users').doc(_currentUser.uid).set({
+      displayName: newName,
+      avatarEmoji: _selectedEmoji || null,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    // Refresh badge
+    _updateProfileBadge(_currentUser);
+    document.getElementById('lqm-profile-edit').classList.remove('open');
+    if (typeof _lqmToast === 'function') _lqmToast('Profile updated ✓');
+  } catch(e) {
+    if (typeof _lqmToast === 'function') _lqmToast('Save failed — try again');
+    console.warn('saveProfileChanges:', e);
+  } finally {
+    if (saveBtn) { saveBtn.textContent = 'SAVE CHANGES'; saveBtn.disabled = false; }
+  }
 }
 
 // ── AUTH MODAL ──────────────────────────────────────────────
@@ -20765,6 +20917,8 @@ async function _loadUserPrefs(uid) {
     const ro = document.getElementById('lqm-profile-role-val');
     if (rv) rv.textContent = d.region || '—';
     if (ro) ro.textContent = d.role   || '—';
+    // Restore saved emoji and re-render badge
+    if (d.avatarEmoji !== undefined) _updateProfileBadge(_currentUser, d.avatarEmoji || null);
     if (d.homeRegion) map.setView([d.homeRegion.lat, d.homeRegion.lng], d.homeRegion.zoom || 7);
     if (d.savedLayers) {
       Object.entries(d.savedLayers).forEach(([id, on]) => {
@@ -21671,6 +21825,19 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="lqm-profile-avatar-lg" id="lqm-profile-avatar-lg">?</div>
     <div class="lqm-profile-name" id="lqm-profile-name-txt">—</div>
     <div class="lqm-profile-sub" id="lqm-profile-sub-txt">—</div>
+    <button class="lqm-profile-edit-toggle" onclick="lqmToggleProfileEdit()">✏ Edit name &amp; avatar</button>
+
+    <!-- Inline edit panel -->
+    <div id="lqm-profile-edit">
+      <div class="lqm-edit-label">Display Name</div>
+      <input class="lqm-edit-input" id="lqm-edit-name" type="text" maxlength="32" placeholder="e.g. StormChaser_TX"/>
+      <div class="lqm-edit-label">Avatar Emoji</div>
+      <div class="lqm-emoji-grid" id="lqm-emoji-grid">
+        <!-- populated by JS -->
+      </div>
+      <button class="lqm-edit-save-btn" onclick="saveProfileChanges()">SAVE CHANGES</button>
+    </div>
+
     <hr class="lqm-profile-divider">
     <div class="lqm-profile-row">
       <span>Home Region</span>
