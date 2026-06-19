@@ -5344,7 +5344,16 @@ body.gwcfc-crosshair #map::after {
 </style>
 <!-- Firebase SDK loaded dynamically so it never blocks window.load or init() -->
 <script>
-(function(){var libs=['firebase-app-compat.js','firebase-auth-compat.js','firebase-firestore-compat.js'];libs.forEach(function(l){var s=document.createElement('script');s.src='https://www.gstatic.com/firebasejs/9.22.2/'+l;document.head.appendChild(s);});})();
+(function(){
+  var libs=['firebase-app-compat.js','firebase-auth-compat.js','firebase-firestore-compat.js'];
+  var loaded=0;
+  libs.forEach(function(l){
+    var s=document.createElement('script');
+    s.src='https://www.gstatic.com/firebasejs/9.22.2/'+l;
+    s.onload=function(){loaded++;if(loaded===libs.length&&typeof _fbInit==='function')_fbInit();};
+    document.head.appendChild(s);
+  });
+})();
 </script>
 </head>
 <body>
@@ -20696,6 +20705,35 @@ async function authSignOut() {
   lqmCloseProfile();
 }
 
+async function authSignInWithGoogle() {
+  if (!_fbInit()) return;
+  const btn = document.getElementById('auth-google-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Opening Google…'; }
+  try {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    const cred = await _fbAuth.signInWithPopup(provider);
+    const user = cred.user;
+    // Upsert user doc so profile panel has region/role info
+    await _fbDb.collection('users').doc(user.uid).set({
+      displayName: user.displayName || user.email,
+      authMethod:  'google',
+      email:       user.email,
+      createdAt:   firebase.firestore.FieldValue.serverTimestamp(),
+      guestId:     localStorage.getItem('gwcfc_guest_id') || null,
+    }, { merge: true });
+    const gid = localStorage.getItem('gwcfc_guest_id');
+    if (gid) _fbDb.collection('guests').doc(gid).update({ convertedToUser: true, uid: user.uid }).catch(()=>{});
+    closeAuthModal();
+  } catch(err) {
+    if (err.code !== 'auth/popup-closed-by-user') _showAuthError(_fbErrMsg(err));
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg> Continue with Google';
+    }
+  }
+}
+
 // ── SAVE / LOAD USER PREFS ───────────────────────────────────
 async function authSaveHomeRegion() {
   if (!_currentUser || !_fbDb) return;
@@ -21595,6 +21633,16 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
 
     <button class="auth-submit-btn" id="auth-submit-btn" onclick="authSubmit()">SIGN IN →</button>
+
+    <div style="display:flex;align-items:center;gap:10px;margin:12px 0 4px;">
+      <div style="flex:1;height:1px;background:rgba(255,255,255,0.12);"></div>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:rgba(212,232,255,0.4);">OR</span>
+      <div style="flex:1;height:1px;background:rgba(255,255,255,0.12);"></div>
+    </div>
+    <button id="auth-google-btn" onclick="authSignInWithGoogle()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:11px 0;border-radius:8px;border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.07);color:#fff;font-family:'IBM Plex Mono',monospace;font-size:13px;cursor:pointer;transition:background .18s;">
+      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
+      Continue with Google
+    </button>
 
     <div class="auth-footer-note">
       By creating an account you agree to use this radar responsibly.<br>
