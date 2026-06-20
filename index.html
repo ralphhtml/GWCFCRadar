@@ -10000,8 +10000,6 @@ function _disableDualPol() {
   _dpStation = null;
   if (currentProduct === 'cc' || currentProduct === 'zdr') currentProduct = 'ref';
 }
-
-// Kill satellite cleanly, used when radar turns on
 function _disableSatellite() {
   activeLayers.satellite = false;
   if (_goesRefreshInterval) { clearInterval(_goesRefreshInterval); _goesRefreshInterval = null; }
@@ -14590,8 +14588,12 @@ function _buildNexradSiteMarkers() {
         _refreshNexradSiteStyles();
       } else if (currentProduct === 'cc' || currentProduct === 'zdr') {
         _dpStation = s.id;
-        _buildDpPool(s.id, _dpFrames, DP_LAYER_MAP[currentProduct]);
-        showDpFrame(_dpCurrentFrame);
+        if (_dpFrames.length) {
+          _buildDpPool(s.id, _dpFrames, DP_LAYER_MAP[currentProduct]);
+          showDpFrame(_dpCurrentFrame);
+        } else {
+          loadDualPolData(currentProduct);
+        }
         _refreshNexradSiteStyles();
       } else {
         map.setView([s.lat, s.lon], Math.max(map.getZoom(), 7));
