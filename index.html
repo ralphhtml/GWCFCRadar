@@ -18128,8 +18128,9 @@ function selectProduct(p) {
   }
 
   if (p === 'cc' || p === 'zdr') {
-    if (playing)     { clearInterval(playTimer);    playing     = false; document.getElementById('play-btn').textContent = '▶'; document.getElementById('play-btn').classList.remove('active'); }
-    if (playingBack) { clearInterval(playBackTimer); playingBack = false; document.getElementById('play-back-btn').classList.remove('active'); document.getElementById('play-back-btn').textContent = '◀'; }
+    if (playing)     { _stopRAF(); playing     = false; document.getElementById('play-btn').textContent = '▶'; document.getElementById('play-btn').classList.remove('active'); }
+    if (playingBack) { _stopRAF(); playingBack = false; document.getElementById('play-back-btn').classList.remove('active'); document.getElementById('play-back-btn').textContent = '◀'; }
+    try { _refreshPlayButtonsEnabled(); } catch(e) {}
     activeLayers.nexrad = false;
     _radarLayerPool.forEach(l => { if (l) l.setOpacity(0); });
     radarLayer = null;
@@ -18140,8 +18141,8 @@ function selectProduct(p) {
     _dpLayerPool = []; _dpPoolLoaded = [];
     loadL3Data(p);
   } else if (p === 'vel') {
-    if (playing)     { clearInterval(playTimer);    playing     = false; document.getElementById('play-btn').textContent = '▶'; document.getElementById('play-btn').classList.remove('active'); }
-    if (playingBack) { clearInterval(playBackTimer); playingBack = false; document.getElementById('play-back-btn').classList.remove('active'); document.getElementById('play-back-btn').textContent = '◀'; }
+    if (playing)     { _stopRAF(); playing     = false; document.getElementById('play-btn').textContent = '▶'; document.getElementById('play-btn').classList.remove('active'); }
+    if (playingBack) { _stopRAF(); playingBack = false; document.getElementById('play-back-btn').classList.remove('active'); document.getElementById('play-back-btn').textContent = '◀'; }
     activeLayers.nexrad = false;
     // Hide reflectivity pool layers (composite + single-site)
     _radarLayerPool.forEach(l => { if (l) l.setOpacity(0); });
@@ -18173,6 +18174,7 @@ function selectProduct(p) {
       buildTimelineLabels();
       showFrame(currentFrame);
     }
+    try { _refreshPlayButtonsEnabled(); } catch(e) {}
   } else if (p === 'ir' || p === 'vis' || p === 'wv') {
     if (velocityLayer) { map.removeLayer(velocityLayer); velocityLayer = null; }
     _velLayerPool.forEach(l => { try { map.removeLayer(l); } catch(e){} });
