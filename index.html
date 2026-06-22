@@ -9861,6 +9861,10 @@ function toggleOverlayPill(id) {
     if (pill) pill.classList.toggle('active', _surfaceOn);
     if (_surfaceOn) loadSurfaceAnalysis();
     else clearSurfaceAnalysis();
+  } else if (id === 'metar-stations') {
+    toggleStations();
+    const pill = document.getElementById('op-metar-stations');
+    if (pill) pill.classList.toggle('active', !!_metarActive);
   }
 }
 
@@ -13595,6 +13599,9 @@ let _dpLayerPool   = [], _dpPoolLoaded = [];
 // ── L2/L3 CANVAS STATE (cc, zdr via Level-2 radar) ──
 const RADAR_WORKER_URL = 'https://l2data.ralphies1005.workers.dev';
 let _l3Product  = null;
+// ── L3 CANVAS STATE (Worker: cc, zdr) ──
+const RADAR_WORKER_URL = 'https://l2data.ralphies1005.workers.dev';
+let _l3Product  = null;   // 'cc' or 'zdr'
 let _l3Station  = null;
 let _l3Overlay  = null;   // L.imageOverlay on the map
 let _l3Canvas   = null;   // offscreen HTMLCanvasElement
@@ -21406,9 +21413,7 @@ const RADAR_CATALOG = [
   { icon:'📊', label:'SPC Day 1 Outlook',type:'LAYER',  action:()=>switchTab('severe'),     kw:['day1','spc day 1','outlook','categorical'] },
   { icon:'🌨', label:'Ice Accumulation', type:'LAYER',  action:()=>switchTab('ice'),        kw:['ice accum','freezing rain','sleet'] },
   // Wind & Pressure
-  { icon:'💨', label:'Wind Barbs',         type:'LAYER',  action:()=>switchTab('regular'),    kw:['wind barb','wind speed','wind direction','barb','knot'] },
-  { icon:'💨', label:'Wind Gusts',         type:'LAYER',  action:()=>switchTab('regular'),    kw:['gust','wind gust','gust barb'] },
-  { icon:'🌡', label:'Temperature',        type:'LAYER',  action:()=>switchTab('regular'),    kw:['temp','temperature','metar','hot','cold','degree'] },
+  { icon:'🌡', label:'Stations',            type:'OVERLAY',action:()=>toggleStations(),        kw:['stations','metar','temp','temperature','wind','hot','cold','degree'] },
   // NWR
   { icon:'📻', label:'NWR Stations',       type:'OVERLAY',action:()=>toggleOverlayPill('radio'), kw:['nwr','noaa weather radio','transmitter','162','wx radio'] },
   // Alerts
@@ -22329,6 +22334,10 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="ov-pill" id="op-hhunt" onclick="toggleOverlayPill('hhunt')" title="Hurricane Hunters">
       <span class="ov-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M21 16v-2l-8-5V3.5C13 2.67 12.33 2 11.5 2S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg></span>
       <span class="ov-label">Hunters</span>
+    </div>
+    <div class="ov-pill" id="op-metar-stations" onclick="toggleOverlayPill('metar-stations')" title="METAR Stations">
+      <span class="ov-icon"><svg width="16" height="20" viewBox="-8 -10 16 20" style="display:inline-block"><g transform="rotate(0)"><path d="M 0,-11 L 3,-7 Q 0,-5 -3,-7 Z" fill="#00bcd4"/></g><circle cx="0" cy="0" r="6" fill="#ff7043"/></svg></span>
+      <span class="ov-label">METAR Stations</span>
     </div>
     <div class="ov-pill active" id="op-fronts" onclick="toggleOverlayPill('fronts')" title="WPC Surface Fronts">
       <span class="ov-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M2 12 Q6 7 10 12 Q14 17 18 12 Q20 9 22 12" stroke="#ef4444"/><path d="M2 16 Q6 11 10 16 Q14 21 18 16 Q20 13 22 16" stroke="#3b82f6"/></svg></span>
