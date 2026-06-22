@@ -46,29 +46,26 @@ async function fetchLatestL2(station) {
     var dd   = String(d.getUTCDate()).padStart(2, '0');
     var yyyymmdd = yyyy + mm + dd;
 
-    var catalogUrl = THREDDS + '/catalog/nexrad/level2/' + station + '/' + yyyymmdd + '/catalog.xml';
-
     try {
-      var catRes = await fetch(catalogUrl);
-      if (!catRes.ok) continue;
-      var xml = await catRes.text();
+      // UCAR provides a "latest" resolver catalog -- resolve it to get the actual filename
+      var latestCatUrl = THREDDS + '/catalog/nexrad/level2/' + station + '/' + yyyymmdd + '/latest.xml';
+      var latestRes = await fetch(latestCatUrl);
+      if (!latestRes.ok) continue;
+      var latestXml = await latestRes.text();
 
-      var names = [];
-      var re = /name="([^"]+\.ar2v)"/g;
-      var m;
-      while ((m = re.exec(xml)) !== null) {
-        names.push(m[1]);
-      }
-      if (names.length === 0) continue;
+      // The resolved catalog contains urlPath="NWS/NEXRAD2/KXXX/YYYYMMDD/filename.ar2v"
+      var m = /urlPath="([^"]+\.ar2v)"/.exec(latestXml);
+      if (!m) continue;
+      var urlPath = m[1];
 
-      names.sort();
-      var latest = names[names.length - 1];
+      // Extract just the filename from the full path
+      var filename = urlPath.split('/').pop();
 
-      var fileUrl = THREDDS + '/fileServer/nexrad/level2/' + station + '/' + yyyymmdd + '/' + latest;
+      var fileUrl = THREDDS + '/fileServer/nexrad/level2/' + station + '/' + yyyymmdd + '/' + filename;
       var fileRes = await fetch(fileUrl);
       if (!fileRes.ok) continue;
 
-      return { body: fileRes.body, name: latest };
+      return { body: fileRes.body, name: filename };
     } catch (err) { continue; }
   }
   return null;
