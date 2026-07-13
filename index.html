@@ -9897,9 +9897,172 @@ function toggleOverlayPill(id) {
     toggleStations();
     const pill = document.getElementById('op-metar-stations');
     if (pill) pill.classList.toggle('active', !!_metarActive);
+  } else if (id === 'spotters') {
+    _spottersActive = !_spottersActive;
+    const pill = document.getElementById('op-spotters');
+    if (pill) pill.classList.toggle('active', _spottersActive);
+    if (_spottersActive) {
+      _loadSpotterPositions();
+      _spottersTimer = setInterval(_loadSpotterPositions, 5 * 60 * 1000);
+    } else {
+      clearInterval(_spottersTimer); _spottersTimer = null;
+      if (_spottersLayer) { map.removeLayer(_spottersLayer); _spottersLayer = null; }
+    }
+  } else if (id === 'spotter-reports') {
+    _spotterReportsActive = !_spotterReportsActive;
+    const pill = document.getElementById('op-spotter-reports');
+    if (pill) pill.classList.toggle('active', _spotterReportsActive);
+    if (_spotterReportsActive) {
+      _loadSpotterReports();
+      _spotterReportsTimer = setInterval(_loadSpotterReports, 5 * 60 * 1000);
+    } else {
+      clearInterval(_spotterReportsTimer); _spotterReportsTimer = null;
+      if (_spotterReportsLayer) { map.removeLayer(_spotterReportsLayer); _spotterReportsLayer = null; }
+    }
   }
 }
 
+// ── SPOTTERNETWORK , live spotter positions + storm reports ──
+let _spottersActive = false, _spottersLayer = null, _spottersTimer = null;
+let _spotterReportsActive = false, _spotterReportsLayer = null, _spotterReportsTimer = null;
+
+const SPOTTER_POSITIONS_URL = 'http://www.spotternetwork.org/feeds/rss-positions.xml';
+const SPOTTER_REPORTS_URL   = 'http://www.spotternetwork.org/feeds/rss-reports.xml';
+
+// SpotterNetwork's RSS is plain HTTP with no CORS headers, so fetch it
+// through the same proxy chain used elsewhere in this app.
+async function _fetchSpotterFeed(url) {
+  const proxies = [
+    u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+    u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  ];
+  for (const proxy of proxies) {
+    try {
+      const r = await fetchWithTimeout(proxy(url), 8000);
+      if (!r.ok) continue;
+      const text = await r.text();
+      if (!text || !text.includes('<')) continue;
+      return text;
+    } catch (e) { /* try next proxy */ }
+  }
+  throw new Error('all proxies failed');
+}
+
+// Pull a lat/lon out of one <item>, trying every layout SpotterNetwork's
+// feed is known to use (georss:point "lat lon", separate geo:lat/geo:long,
+// or a plain <point> child).
+function _spotterItemLatLng(item) {
+  const geoPoint = item.getElementsByTagNameNS('*', 'point')[0]
+    || item.querySelector('point, georss\\:point');
+  if (geoPoint && geoPoint.textContent.trim()) {
+    const parts = geoPoint.textContent.trim().split(/[\s,]+/).map(Number);
+    if (parts.length === 2 && parts.every(n => !isNaN(n))) return [parts[0], parts[1]];
+  }
+  const latEl = item.getElementsByTagNameNS('*', 'lat')[0];
+  const lonEl = item.getElementsByTagNameNS('*', 'long')[0] || item.getElementsByTagNameNS('*', 'lon')[0];
+  if (latEl && lonEl) {
+    const lat = parseFloat(latEl.textContent), lon = parseFloat(lonEl.textContent);
+    if (!isNaN(lat) && !isNaN(lon)) return [lat, lon];
+  }
+  return null;
+}
+
+function _spotterTag(item, name) {
+  const el = item.getElementsByTagNameNS('*', name)[0];
+  return el ? el.textContent.trim() : '';
+}
+
+async function _loadSpotterPositions() {
+  if (!_spottersActive) return;
+  try {
+    const text = await _fetchSpotterFeed(SPOTTER_POSITIONS_URL);
+    const xml = new DOMParser().parseFromString(text, 'text/xml');
+    const items = xml.querySelectorAll('item');
+
+    if (!_spottersLayer) _spottersLayer = L.layerGroup().addTo(map);
+    else _spottersLayer.clearLayers();
+
+    items.forEach(item => {
+      const ll = _spotterItemLatLng(item);
+      if (!ll) return;
+      const title = _spotterTag(item, 'title') || 'Spotter';
+      const desc  = _spotterTag(item, 'description');
+      const link  = _spotterTag(item, 'link');
+
+      const icon = L.divIcon({
+        className: '',
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+        html: `<div style="width:22px;height:22px;border-radius:50%;background:rgba(0,140,255,0.85);
+          border:2px solid rgba(255,255,255,0.9);box-shadow:0 0 6px rgba(0,140,255,0.6);
+          display:flex;align-items:center;justify-content:center;font-size:11px;">🔭</div>`
+      });
+
+      L.marker(ll, { icon, zIndexOffset: 250 })
+        .bindPopup(`<div class="data-popup-inner" style="--dp-accent:#008cff">
+          <div class="dp-header">
+            <span class="dp-header-icon">🔭</span>
+            <span class="dp-header-label">${title}</span>
+          </div>
+          <div class="dp-body">
+            ${desc ? `<div class="dp-row"><span>${desc}</span></div>` : ''}
+            <div class="dp-row"><span>Coords</span><b>${ll[0].toFixed(3)}°, ${ll[1].toFixed(3)}°</b></div>
+            ${link ? `<div class="dp-row"><a href="${link}" target="_blank" rel="noopener">View on SpotterNetwork ↗</a></div>` : ''}
+          </div>
+        </div>`, { className: 'data-popup', maxWidth: 240 })
+        .addTo(_spottersLayer);
+    });
+  } catch (e) {
+    console.warn('[spotternetwork positions]', e.message);
+  }
+}
+
+async function _loadSpotterReports() {
+  if (!_spotterReportsActive) return;
+  try {
+    const text = await _fetchSpotterFeed(SPOTTER_REPORTS_URL);
+    const xml = new DOMParser().parseFromString(text, 'text/xml');
+    const items = xml.querySelectorAll('item');
+
+    if (!_spotterReportsLayer) _spotterReportsLayer = L.layerGroup().addTo(map);
+    else _spotterReportsLayer.clearLayers();
+
+    items.forEach(item => {
+      const ll = _spotterItemLatLng(item);
+      if (!ll) return;
+      const title = _spotterTag(item, 'title') || 'Spotter Report';
+      const desc  = _spotterTag(item, 'description');
+      const link  = _spotterTag(item, 'link');
+      const pubDate = _spotterTag(item, 'pubDate');
+
+      const icon = L.divIcon({
+        className: '',
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+        html: `<div style="width:22px;height:22px;border-radius:6px;background:rgba(255,140,0,0.9);
+          border:2px solid rgba(255,255,255,0.9);box-shadow:0 0 6px rgba(255,140,0,0.6);
+          display:flex;align-items:center;justify-content:center;font-size:11px;">📋</div>`
+      });
+
+      L.marker(ll, { icon, zIndexOffset: 260 })
+        .bindPopup(`<div class="data-popup-inner" style="--dp-accent:#ff8c00">
+          <div class="dp-header">
+            <span class="dp-header-icon">📋</span>
+            <span class="dp-header-label">${title}</span>
+          </div>
+          <div class="dp-body">
+            ${desc ? `<div class="dp-row"><span>${desc}</span></div>` : ''}
+            ${pubDate ? `<div class="dp-row"><span>Time</span><b>${pubDate}</b></div>` : ''}
+            <div class="dp-row"><span>Coords</span><b>${ll[0].toFixed(3)}°, ${ll[1].toFixed(3)}°</b></div>
+            ${link ? `<div class="dp-row"><a href="${link}" target="_blank" rel="noopener">View on SpotterNetwork ↗</a></div>` : ''}
+          </div>
+        </div>`, { className: 'data-popup', maxWidth: 240 })
+        .addTo(_spotterReportsLayer);
+    });
+  } catch (e) {
+    console.warn('[spotternetwork reports]', e.message);
+  }
+}
 
 // ── STORM REPORTS , direct toggle, all types at once ──
 let _reportsActive = false;
@@ -22833,6 +22996,14 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="ov-pill active" id="op-fronts" onclick="toggleOverlayPill('fronts')" title="WPC Surface Fronts">
       <span class="ov-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M2 12 Q6 7 10 12 Q14 17 18 12 Q20 9 22 12" stroke="#ef4444"/><path d="M2 16 Q6 11 10 16 Q14 21 18 16 Q20 13 22 16" stroke="#3b82f6"/></svg></span>
       <span class="ov-label">Fronts</span>
+    </div>
+    <div class="ov-pill" id="op-spotters" onclick="toggleOverlayPill('spotters')" title="SpotterNetwork Positions">
+      <span class="ov-icon">🔭</span>
+      <span class="ov-label">Spotters</span>
+    </div>
+    <div class="ov-pill" id="op-spotter-reports" onclick="toggleOverlayPill('spotter-reports')" title="SpotterNetwork Reports">
+      <span class="ov-icon">📋</span>
+      <span class="ov-label">Spotter Reports</span>
     </div>
   </div>
   <button id="overlay-toggle-btn" onclick="toggleOverlayLauncher()" title="Toggle overlays" aria-label="Toggle overlays">
