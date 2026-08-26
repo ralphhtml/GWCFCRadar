@@ -213,5 +213,44 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isSignedIn();
     }
+
+    // Where the Pi publishes its tunnel address. Anyone may read it, which is
+    // how every visitor's browser finds the Pi; the Pi signs in (anonymously,
+    // or with its own account when one is configured) to write it.
+    match /piEndpoint/{docId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // ── THE PUBLISHED OUTLOOK ─────────────────────────────────────────────
+    // The Forecasting Portal writes here: outlooks/latest is the current
+    // outlook and every issuance is also added as its own document. The site
+    // reads latest (without signing in) to draw the GWCFC Outlook and GWCFC
+    // Alerts overlays.
+    //
+    // There was NO rule for this collection, and Firestore denies whatever
+    // the rules do not mention, so the Publish button was refused at the
+    // database door with "Missing or insufficient permissions" no matter who
+    // pressed it.
+    //
+    // Writing is for forecasters: the owner, staff, or an account whose
+    // profile an administrator has marked as a forecaster. That is the same
+    // gate the portal itself describes, enforced where it cannot be bypassed.
+    function isForecasterAccount() {
+      return isOwner() || isStaff() || (realAccount()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid))
+            .data.get('forecaster', false) == true
+          || get(/databases/$(database)/documents/users/$(request.auth.uid))
+            .data.get('role', '') in ['forecaster', 'administrator', 'admin']
+        ));
+    }
+
+    match /outlooks/{docId} {
+      allow read: if true;
+      allow create, update: if isForecasterAccount();
+      allow delete: if isOwner();
+    }
   }
 }
