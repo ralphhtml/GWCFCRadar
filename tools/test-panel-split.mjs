@@ -460,11 +460,16 @@ console.log('\n7. house rules');
      /match \/piEndpoint\//.test(rules));
   ok('every collection the apps write is covered by a rule',
      ['users', 'chat', 'guests', 'cloudcam', 'discordLinks', 'asturioSync',
-      'outlooks', 'piEndpoint', 'chatBridge', 'modelCache', 'sharedAlerts']
+      'outlooks', 'piEndpoint', 'chatBridge', 'modelCache', 'sharedAlerts',
+      'omBudget']
        .every(c => rules.includes('match /' + c + '/')));
-  ok('the paste copy is byte-identical to the rules file',
-     rules === readFileSync(join(ROOT, 'firebase', 'FIRESTORE_RULES.txt'),
-                            'utf8'));
+  const pasteFile = readFileSync(join(ROOT, 'firebase', 'FIRESTORE_RULES.txt'),
+                                 'utf8');
+  ok('the paste file carries the complete rules text between its markers',
+     pasteFile.includes(rules.trimEnd()));
+  ok('the paste file keeps its how-to-publish instructions',
+     /HOW TO PUBLISH THEM/.test(pasteFile)
+       && /COPY FROM HERE/.test(pasteFile) && /TO HERE/.test(pasteFile));
   ok('the portal names the real causes when the database refuses a publish',
      /rules[\s\S]{0,120}have not been updated/.test(
        readFileSync(join(ROOT, 'forecasting-portal.html'), 'utf8')));

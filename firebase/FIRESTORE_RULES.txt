@@ -1,3 +1,42 @@
+GWCFC RADAR - FIRESTORE SECURITY RULES
+======================================
+
+WHY THIS FILE EXISTS
+--------------------
+The "Manage Members" panel in the profile menu is owner-only, but that check
+happens in the browser, and anything that happens in the browser can be
+bypassed by anyone who opens the developer console. The rules below are the
+part that actually enforces it, because they run on Google's servers where
+nobody can edit them.
+
+They are also REQUIRED for several things to work at all. Firestore denies
+anything the rules do not explicitly allow, so a collection with no rule is a
+collection nobody can touch. That is exactly what broke the Forecasting
+Portal's Publish button: the outlooks collection had no rule, so every
+publish was refused with "Missing or insufficient permissions". If a panel
+or a button reports permission denied, an out-of-date copy of these rules in
+the Firebase console is the first thing to suspect.
+
+
+HOW TO PUBLISH THEM
+-------------------
+1. Go to https://console.firebase.google.com
+2. Pick the "gwcfc-radar" project
+3. Left sidebar: Build -> Firestore Database -> Rules tab
+4. Replace what is there with everything between the two lines below
+5. Press Publish
+
+This is the COMPLETE ruleset: it is kept byte-for-byte in step with
+firebase/firestore.rules in the repo and covers every collection the apps
+use (users, chat, guests, cloudcam, sharedAlerts, analytics, discordLinks,
+asturioSync, modelCache, omBudget, piEndpoint, chatBridge, outlooks). It
+fully REPLACES whatever is in the console, nothing needs to be merged by
+hand. If you add a collection later, add a block for it in
+firebase/firestore.rules first, then re-paste here - Firestore denies
+anything not explicitly allowed.
+
+
+------------------------------- COPY FROM HERE -------------------------------
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -214,12 +253,89 @@ service cloud.firestore {
       allow write: if isSignedIn();
     }
 
-    // Where the Pi publishes its tunnel address. Anyone may read it, which is
-    // how every visitor's browser finds the Pi; the Pi signs in (anonymously,
-    // or with its own account when one is configured) to write it.
-    match /piEndpoint/{docId} {
+    // Shared weather-service allowance counter.
+    //
+    // The free weather service counts requests per internet connection per
+    // day, but the browser can only count what it spent itself. So a phone, a
+    // PC and the Pi on one connection each believe they have the whole
+    // allowance, and between them spend several times it without any of them
+    // noticing. That is what empties it and produces "Daily API request limit
+    // exceeded" on every model.
+    //
+    // Keeping the tally here makes it one shared number instead of one per
+    // device. Signed-out visitors have to be able to write it, because they
+    // spend the allowance too and a tally that ignores them is not a tally.
+    //
+    // The document id IS the time window (for example d-2026-08-13, or
+    // h-2026-08-13-14). A new window is a new document, so nothing ever needs
+    // resetting and yesterday's number cannot be edited into today's.
+    //
+    // Two rules do the protecting: the count may only ever go up, and only by
+    // a bounded step per write. So a passer-by cannot zero it to get free
+    // requests, nor slam it to the cap to lock everyone else out.
+    match /omBudget/{window} {
       allow read: if true;
-      allow write: if isSignedIn();
+
+      allow create: if request.resource.data.keys().hasOnly(['count', 'at'])
+        && request.resource.data.count is number
+        && request.resource.data.count >= 0
+        && request.resource.data.count <= 1000
+        && request.resource.data.at is number;
+
+      allow update: if request.resource.data.keys().hasOnly(['count', 'at'])
+        && request.resource.data.count is number
+        && request.resource.data.count >= resource.data.count
+        && request.resource.data.count <= resource.data.count + 1000
+        && request.resource.data.at is number;
+
+      // Never deleted. A window that can be deleted is a window that can be
+      // reset, which is the same hole as allowing the count to go down.
+      allow delete: if false;
+    }
+
+    // Where the Pi says it can be reached.
+    //
+    // The Pi is behind a tunnel that hands out a new address every restart, and
+    // the site is a static page with no way to guess it. Without this the
+    // address has to be pasted into the browser console after every reboot,
+    // which is a chore, easy to forget, and leaves the map quietly broken until
+    // somebody notices. So the Pi writes its own address here and the page
+    // reads it.
+    //
+    // Anyone may read it: it is a public address for public forecast files.
+    //
+    // Writing is another matter. This used to accept ANY signed-in client,
+    // and anonymous sign-in counts as signed in, so in practice the whole
+    // internet could overwrite the Pi's address and point every visitor's
+    // browser at a server of their choosing. Now only the Pi's own account
+    // (and the owner) may write it.
+    //
+    // SETUP, once:
+    //   1. Firebase console -> Authentication -> Users -> Add user.
+    //      Email: pi-publisher@gwcfc-radar.local  (or any address you like)
+    //      Password: something long and random.
+    //   2. On the Pi:  nano ~/.gwcfc_fb_auth.json  and put in:
+    //      {"email": "pi-publisher@gwcfc-radar.local", "password": "..."}
+    //      then:  chmod 600 ~/.gwcfc_fb_auth.json
+    //   3. If you chose a different email, change it below to match.
+    //   4. Publish these rules.
+    function isPiPublisher() {
+      return isSignedIn()
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() == 'pi-publisher@gwcfc-radar.local';
+    }
+
+    match /piEndpoint/{which} {
+      allow read: if true;
+
+      allow create, update: if (isPiPublisher() || isOwner())
+        && request.resource.data.keys().hasOnly(['url', 'at'])
+        && request.resource.data.url is string
+        && request.resource.data.url.size() < 200
+        && request.resource.data.url.matches('https://.*')
+        && request.resource.data.at is number;
+
+      allow delete: if isOwner();
     }
 
     // ── THE PUBLISHED OUTLOOK ─────────────────────────────────────────────
@@ -254,3 +370,32 @@ service cloud.firestore {
     }
   }
 }
+-------------------------------- TO HERE -------------------------------------
+
+
+WHAT THESE RULES GUARANTEE
+--------------------------
+- Only the signed-in owner email can read the full member list.
+- Only the owner can set anyone's staffRole, including their own.
+- A member cannot promote themselves, even by calling the write directly from
+  the browser console. The server refuses it.
+- Members keep full control of their own profile: name, avatar, saved layers,
+  home region, notification settings.
+- The owner badge is not stored in the database at all. The app derives it
+  from the signed-in email, so it cannot be granted by editing a document.
+- Anyone can read the published GWCFC outlook, but only the owner, staff, or
+  an account an administrator has marked as a forecaster can publish one.
+- Only the Pi's own account (or the owner) can change the address the site
+  fetches radar and model files from.
+
+
+CHANGING THE OWNER EMAIL
+------------------------
+It appears in two places and must match in both, lowercase:
+  1. This rules file, in isOwner()
+  2. index.html, the GWCFC_OWNER_EMAIL constant
+
+A note on sign-in method: the owner check reads the email from the auth token.
+Signing in with Google as ralphies1005@gmail.com, or with email/password using
+that address, both work. Signing in by phone number produces a token with no
+email, and will not be recognised as the owner.
