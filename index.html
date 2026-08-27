@@ -2871,6 +2871,30 @@ body.wx-smooth-radar .leaflet-radarPane-pane canvas {
 .spanel-card.closed .spanel-chev { transform: rotate(-90deg); }
 .spanel-card.closed .spanel-body { display: none; }
 .spanel-body { padding: 2px 9px 8px; }
+/* The Spaghetti Models panel dresses like Run Models: flat sections under
+   small uppercase labels with a thin divider between them, not outlined
+   bubbles. The fold-away behaviour is untouched; only the costume changed. */
+#spaghetti-models-panel .spanel-card {
+  border: none; border-radius: 0; background: none;
+  margin: 0; overflow: visible;
+}
+#spaghetti-models-panel .spanel-card + .spanel-card {
+  border-top: 1px solid rgba(255,255,255,0.1);
+  margin-top: 10px; padding-top: 8px;
+}
+#spaghetti-models-panel .spanel-head {
+  padding: 0 0 4px; background: none;
+  font-size: 8px; letter-spacing: 1.2px; text-transform: uppercase;
+  color: rgba(232,184,0,0.55);
+}
+#spaghetti-models-panel .spanel-head:hover {
+  background: none; color: rgba(232,184,0,0.85);
+}
+#spaghetti-models-panel .spanel-tag {
+  border: none; padding: 0; border-radius: 0; opacity: 1;
+  color: rgba(212,232,255,0.4);
+}
+#spaghetti-models-panel .spanel-body { padding: 0 0 4px; }
 /* A sub-head inside the AI Cyclones card: the DeepMind tracks and the GEFS
    centres are two sources of one answer, not two sections. */
 #cyc-ens-head {
@@ -47494,7 +47518,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'Big speed pass: the page shed 626 KB of baked-in logo data (the logos are real cached files now), and repeat visits open instantly from the on-device copy while the newest version quietly downloads for next time.';
+const APP_LATEST_UPDATE = 'The Spaghetti Models panel is restyled to match Run Models: flat sections under small uppercase labels with a thin divider, instead of outlined bubble cards. The fold-away sections still fold.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
