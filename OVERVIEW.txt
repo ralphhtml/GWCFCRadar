@@ -1,0 +1,584 @@
+================================================================================
+GWCFC RADAR - FULL FEATURE OVERVIEW
+================================================================================
+
+Live site:  https://ralphhtml.github.io/GWCFCRadar/
+Generated:  29 August 2026
+
+Everything below was read out of the source, not written from memory. Counts
+are real. Where a catalogue is built at runtime from a manifest rather than
+hardcoded, that is said explicitly.
+
+
+================================================================================
+1. WHAT IT IS
+================================================================================
+
+A browser weather application. One HTML page, 64,455 lines, no build step, no
+framework. It runs from GitHub Pages and talks to a Raspberry Pi that does the
+heavy decoding and model rendering. Free, no accounts required for the map, no
+paid tier, no advertising.
+
+Four separate front ends ship from the same repository:
+
+  index.html              The radar application
+  forecasting-portal.html The forecaster desk, for issuing outlooks and alerts
+  nwrchive.html           The NOAA Weather Radio archive
+  assistant.html          The standalone AI assistant
+
+Plus 18 Python pipelines on the Pi and a Discord bot in Node.
+
+
+================================================================================
+2. RADAR
+================================================================================
+
+Four radar sources, chosen from the Radar bubble in the left menu.
+
+--------------------------------------------------------------------------------
+2.1 NORMAL
+--------------------------------------------------------------------------------
+
+The quick national picture. IEM NEXRAD base reflectivity mosaic, plus an
+Environment Canada composite for Canadian coverage.
+
+--------------------------------------------------------------------------------
+2.2 LEVEL 2 (single site, raw)
+--------------------------------------------------------------------------------
+
+Raw NEXRAD Level 2 volume scans decoded in the browser, at full super
+resolution. A single sweep is about 1.3 million quads and 45 MB in memory.
+
+Nine products:
+
+  Reflectivity              Velocity
+  Hydrometeor Classification    Storm Total Accumulation
+  1-Hour Accumulation       Correlation Coefficient
+  Differential Reflectivity Specific Differential Phase
+  Spectrum Width
+
+Every WSR-88D site plus TDWR terminal radars. The site list is discovered from
+the bucket listing at runtime rather than hardcoded, so a new site appears
+without a code change.
+
+--------------------------------------------------------------------------------
+2.3 LEVEL 3 (single site, Pi-decoded)
+--------------------------------------------------------------------------------
+
+13 products, decoded on the Pi and served as georeferenced frames:
+
+  Reflectivity              Velocity
+  Correlation Coefficient   Differential Reflectivity
+  Specific Differential Phase   Hydrometeor Classification
+  Storm Relative Velocity   1-Hour Precipitation
+  Storm Total Precipitation Vertically Integrated Liquid
+  Echo Tops                 Composite Reflectivity
+  Spectrum Width
+
+Tilts 2, 3 and 4 are carried for reflectivity and velocity, and tilt 2 for the
+dual-pol products. Terminal (TDWR) products carry their own short and long
+range reflectivity and velocity.
+
+--------------------------------------------------------------------------------
+2.4 COMPOSITE (MRMS national mosaic)
+--------------------------------------------------------------------------------
+
+163 MRMS products decoded on the Pi, the widest part of the application. They
+are grouped seven ways in the menu:
+
+  WINTER
+    Melting Layer Top, Melting Layer Bottom, Surface Temp (model),
+    Wet Bulb Temp (model), Freezing Level
+
+  SEVERE
+    Rotation Tracks at 30m, 60m, 2h, 4h, 6h and 24h
+    Low-Level Rotation at 30m, 60m, 2h, 4h and 24h
+    Hail Swaths at 30m, 60m, 2h, 4h, 6h and 24h, plus current hail
+    Probability of Severe Hail, Severe Hail Index
+    AzShear 0-2 km and 3-6 km (live)
+    50 dBZ above 0 C and -20 C, 60 dBZ above 0 C and -20 C
+    VIL Density, Vertically Integrated Ice, Warm Rain Probability
+
+  REFLECTIVITY
+    Composite Reflectivity, Base Reflectivity (QC), Hybrid Scan Reflectivity,
+    Hybrid Scan Height, Reflectivity at Lowest Altitude
+    Reflectivity at 0 C, -5 C, -10 C, -15 C and -20 C
+    Low Level Composite, Layer Composite (low, high, highest)
+    3D reflectivity slices at 0.5, 1, 2, 3, 4, 6, 8, 10 and 12 km
+    3D differential reflectivity at 0.5, 2 and 4 km
+    3D correlation coefficient at 0.5, 2 and 4 km
+    Echo Tops at 18, 30, 50 and 60 dBZ, High Res Echo Tops
+    VIL, High Res VIL, VIL 2h and 24h maxima
+    Base and Composite Reflectivity 1h maxima
+    Height of Composite and Low-Level Composite
+
+  PRECIP
+    Precip Rate, Precip Type, Synthetic Precip Type
+    Rainfall at 1, 3, 6, 12, 24, 48 and 72 hours, and since 12Z
+    Gauge-corrected rainfall at the same intervals
+    Multi-Sensor pass 1 at 1 and 24 hours
+    Radar Rainfall 15 min
+    Gauge Influence at 1 and 24 hours
+    Recurrence interval (ARI) at 1, 3, 6, 12 hours, 30 min and max
+
+  LIGHTNING
+    Lightning Probability 30 and 60 min
+    Lightning Density at 1, 5, 15 and 30 min
+    Lightning Jump, Lightning Jump 5m Max
+
+  FLOODING
+    CREST Streamflow, Unit Streamflow and Soil Saturation
+    SAC Streamflow, Unit Streamflow and Soil Saturation
+    Hydrophobic Streamflow and Unit Streamflow
+    Rain vs Flood Guidance at 1, 3, 6 hours and max
+
+  COVERAGE
+    Radar Quality Index, Accumulation Quality at 1 and 24 hours
+
+--------------------------------------------------------------------------------
+2.5 RADAR PLAYBACK
+--------------------------------------------------------------------------------
+
+  - Up to 3 days of history for radar, satellite and MRMS
+  - Frames loaded in a lazy window so a 3-day loop still paints fast
+  - Scrubbable animation bar with play, pause, speed, and single-frame step
+    forward and back
+  - One site-centred bounding box per site and product, so frames do not wobble
+    against each other during playback
+  - Decoded picture cache, so repainting an already-seen L2 or L3 frame is
+    under 50 ms (measured in a test, not asserted)
+
+--------------------------------------------------------------------------------
+2.6 CROSS SECTION
+--------------------------------------------------------------------------------
+
+Draw a line on the map and get a vertical slice through the storm, in six
+products: Reflectivity, Velocity, Correlation Coefficient, Differential
+Reflectivity, Specific Differential Phase, Spectrum Width.
+
+
+================================================================================
+3. SATELLITE
+================================================================================
+
+27 products.
+
+  ABI SINGLE BANDS (16)
+    Blue Visible, Red Visible, Veggie, Cirrus, Snow/Ice, Cloud Top,
+    Shortwave IR, Upper Water Vapor, Mid Water Vapor, Low Water Vapor,
+    Cloud Top Temp, Fire Temp, Clean IR, IR Longwave, Dirty IR, CO2
+
+  RGB COMPOSITES (7)
+    Air Mass, True Colour, Day Cloud Phase, Night Microphysics,
+    Dust, Volcanic Ash, Fire Temperature
+
+  GLOBAL (GMGSI, 4)
+    Infrared, Visible, Water Vapor, Shortwave IR
+
+RGB composites are built on the Pi from raw ABI radiances by
+satellite_pipeline.py. Satellite has its own preloaded frame pool for
+playback rather than mutating a single layer.
+
+
+================================================================================
+4. FORECAST MODELS
+================================================================================
+
+--------------------------------------------------------------------------------
+4.1 THE MODELS (66 entries)
+--------------------------------------------------------------------------------
+
+  GLOBAL DETERMINISTIC
+    GFS, GFS 0.5 deg, GFS 1.0 deg, ECMWF, GEM Global, ICON Global,
+    GDAS Global Analysis, CFS Seasonal
+
+  AI / MACHINE LEARNING
+    ECMWF AIFS, AIGFS (GraphCast-GFS), ECMWF AIFS ENS
+
+  MESOSCALE / HIGH RESOLUTION
+    NAM, NAM Nest, NAM Fire Weather Nest, HRRR, HRRR Sub-Hourly,
+    RAP, RRFS, RRFS Sub-Hourly, RRFS FireWx,
+    HiResW ARW, HiResW ARW 2, HiResW FV3, HiResW NSSL,
+    ICON EU, ICON D2, HRDPS, RDPS
+
+  ENSEMBLES
+    GEFS mean, GEFS spread, GEFS control, GEFS member 1, GEFS Mean 0.25 deg,
+    GEFS Aerosol, ECMWF ENS mean, CMCE mean, ICON EPS mean,
+    HREF mean, HREF PMM, HREF spread
+
+  TROPICAL
+    HAFS-A, HAFS-B, HWRF, HMON
+
+  WAVE / MARINE
+    GFS Waves, GEFS Wave, ECMWF Wave
+
+  ANALYSIS / BLEND
+    NBM, RTMA (now), URMA 2.5 km Analysis
+
+  REGIONS
+    CONUS, CONUS 32 km, Tropics, Alaska, Hawaii, Puerto Rico,
+    Atlantic, East Pacific, Arctic
+
+--------------------------------------------------------------------------------
+4.2 THE PRODUCTS (97 fields)
+--------------------------------------------------------------------------------
+
+  SURFACE
+    Temperature (2m), Feels Like, High Temp, Low Temp, Dew Point (2m),
+    Relative Humidity (2m), Sea Level Pressure, Surface Pressure,
+    Skin Temperature, Soil Temperature, Soil Moisture,
+    Incoming Solar, Outgoing Infrared
+
+  WIND
+    Wind Speed (10m), Wind Gust, Wind Direction (10m),
+    Wind at 80m (hub height), 925mb, 850mb (low level jet), 700mb,
+    500mb, 300mb, 250mb (jet stream)
+
+  PRECIPITATION
+    Precipitation Total, Rain Rate, Composite Reflectivity,
+    Reflectivity at 1km and 4km, Percent Falling Frozen,
+    Sleet and Graupel Total, Snowfall Total, Snow Depth on Ground,
+    Snow Water Equivalent, Freezing Level Height
+
+  CLOUD AND VISIBILITY
+    Total, Low, Mid and High Cloud Cover, Cloud Ceiling Height,
+    Cloud Base Height, Cloud Top Height, Simulated Satellite Infrared,
+    Surface Visibility, Mixing Height
+
+  SEVERE
+    CAPE, Convective Inhibition, Lifted Index,
+    Storm Relative Helicity (0-3km), Updraft Helicity (2-5km),
+    Bulk Shear (0-6km), Lightning Flash Rate, Hail Size,
+    Vertically Integrated Liquid, Vertically Integrated Ice,
+    Echo Top Height
+
+  UPPER AIR
+    850, 700, 500 and 300mb Heights
+    925, 850, 700 and 500mb Temperatures
+    850mb Dew Point, 850, 700 and 500mb Humidity
+    500mb Vorticity, 700mb Vertical Motion
+    Precipitable Water, Deep Layer Shear (850-200mb)
+
+  MARINE
+    Sea Surface Temperature, Storm Surge, Significant Wave Height,
+    Peak Wave Period, Wind Wave Height and Period,
+    Swell Height and Period (primary, secondary, third),
+    Wave Direction, Swell Direction (primary, secondary),
+    Wind Wave Direction, Sea Ice Cover
+
+  AIR QUALITY
+    Surface Ozone, PM2.5, Surface Smoke, Column Smoke and Dust,
+    PM10, Aerosol Optical Depth, Scattering Aerosol Depth,
+    Single Scattering Albedo, Aerosol Asymmetry Factor
+
+Forecast-hour playback works across model charts, same animation bar.
+
+--------------------------------------------------------------------------------
+4.3 MODEL COMPARISON
+--------------------------------------------------------------------------------
+
+Side-by-side comparison across 8 sources: HRRR, ECMWF, DWD, HRDPS, NDFD,
+GFS ensemble, ICON ensemble, GEM ensemble. Deterministic runs compare 9
+variables, ensembles 6.
+
+
+================================================================================
+5. TROPICAL
+================================================================================
+
+--------------------------------------------------------------------------------
+5.1 SPAGHETTI MODELS
+--------------------------------------------------------------------------------
+
+Built from real ATCF a-deck data, not a redraw. Current storms by default with
+a past-storms toggle. Name tags connect to their lines with stems so a crowded
+basin stays readable. Section-card layout, and a track animation that dots the
+forecast out hour by hour with its playbar at the top of the panel.
+
+--------------------------------------------------------------------------------
+5.2 AI CYCLONES
+--------------------------------------------------------------------------------
+
+Its own panel and menu entry. Google DeepMind Weather Lab tracks, cross
+referenced against NHC names so a track carries the name a person would use.
+FNV3 large-ensemble views. GEFS ensemble centres combined into the display.
+GEFS, ECMWF ENS and AIFS-ENS all wired in, with ensemble cyclone detection
+running on the Pi.
+
+--------------------------------------------------------------------------------
+5.3 TROPICAL OVERLAYS
+--------------------------------------------------------------------------------
+
+NHC 5-day Tropical Outlook with active systems, and JTWC outlooks covering the
+western Pacific and Indian Ocean.
+
+
+================================================================================
+6. SOUNDINGS
+================================================================================
+
+A full SHARPpy-style panel, opened from the right-click menu anywhere on the
+map. Six tabs: Chart, Hodograph, Wind, Numbers, Image, Source.
+
+Backed by sounding_pipeline.py on the Pi (SounderPy fetch, SHARPpy parameters,
+rendered skew-T PNGs per site) with Open-Meteo model soundings as a fallback.
+
+
+================================================================================
+7. OVERLAYS (31)
+================================================================================
+
+  ALERTS AND WARNINGS
+    NWS Alert Polygons (warnings and watches)
+    WX Alert Panel (list of active warnings and watches)
+    EAS Alert Panel (live Emergency Alert System broadcasts)
+    Environment Canada Weather Alerts
+    NWS Forecast Offices (tap for alerts and text products)
+
+  OUTLOOKS
+    SPC Convective Outlook (Day 1-8, Categorical / Tornado / Wind / Hail)
+    SPC Fire Weather Outlook (Day 1 and 2)
+    SPC Mesoscale Discussions
+    WPC Excessive Rainfall Outlook (Days 1-3)
+    CPC Outlooks (6-10 day and 8-14 day, temperature and precipitation)
+    NHC Tropical Outlook
+    JTWC Tropical Outlook
+    GWCFC Outlook (issued from our own Forecasting Portal)
+    GWCFC Alerts (warnings, watches and statements from our own alert desk)
+
+  OBSERVATIONS AND REPORTS
+    Lightning Strikes
+    Storm Reports (SPC local storm reports for tornado, hail and wind)
+    Storm Centers (radar-detected TVS and hail signatures)
+    Tornado Tracks (NWS Damage Assessment Toolkit paths, last 60 days)
+    Wildfire Reports (active large fires, last 48 hours)
+    Ambient Weather Network personal weather stations
+    Cloud Capture (submit weather photos to the map)
+
+  WIND AND WAVE
+    Wind Particles (animated flow along real surface wind)
+    Wind Barbs (station-model barbs, speed in knots)
+    Wave Particles (animated flow along wave height and direction)
+
+  PEOPLE AND PLACES
+    SpotterNetwork spotter positions
+    SpotterNetwork reports
+    Live Storm Chasers (real-time positions with heading)
+    NOAA Weather Radio transmitter stations
+    Traffic Cameras (Kansas, Maryland, Oregon, Kentucky, Iowa, South Dakota)
+
+  ANALYSIS
+    WPC Surface Analysis (fronts, highs, lows)
+    Weather Forecasts (point forecast dots)
+
+Every overlay is drag-reorderable, and each carries an info button explaining
+what it is. 45 overlay descriptions and 106 layer descriptions are written into
+the app.
+
+
+================================================================================
+8. OTHER MAP LAYERS
+================================================================================
+
+  WAVES     Wave Height, Period, Direction, Swell Height, Sea Surface Temp
+  AIR       US AQI, PM2.5, PM10, Ozone
+  WIND      Surface Winds, Jet Stream (250mb)
+  TEMPERATURE   Air Temp, Feels Like, Dew Point
+  PRESSURE  Sea-Level, Surface
+
+Sea surface temperature has its own subsystem with four sources (Open-Meteo,
+OISST, Coral Reef Watch, AOML), a 1991-2020 climatology, records back to 1982,
+anomaly and record variants, and land masking.
+
+
+================================================================================
+9. THE AI ASSISTANT AND FORECAST ENGINE
+================================================================================
+
+The assistant can see everything on the radar and make a real forecast call
+from it, with confidence and reasoning, across nine domains:
+
+  Severe      0 to 2 hours
+  Tropical    120 hours
+  Winter      48 hours
+  Flood       24 hours
+  Fire        48 hours
+  Marine      72 hours
+  Air quality 48 hours
+  Comfort     48 hours
+  General     168 hours
+
+WHAT IT READS
+  - Storm cells found and ranked from the decoded radar mesh (up to 10)
+  - Cell motion, tracked across the loop, both from radar and from steering
+    flow, and it says when the two disagree
+  - Rotation, from both AzShear and velocity couplets
+  - Full dual-pol reading per cell
+  - MRMS severe products sampled at the cell
+  - A sounding pulled for the storm
+  - Lightning, satellite, active warnings, sun angle
+  - Ocean heat content and genesis potential for tropical work
+
+WHAT IT DOES WITH IT
+  - Extrapolates arrival times to the nearest town, with bearing and distance
+  - Marks the cells it is talking about, directly on the map
+  - Draws a structured forecast card: answer first, evidence underneath
+  - Warns you proactively if something is heading for your location, by toast,
+    notification and sound
+  - Keeps a local record of its own predictions so it can be scored
+  - Says exactly what is missing rather than guessing, and answers with the rest
+  - Always defers to NWS, and says so once rather than on every line
+
+Also available as a Discord bot (Asturio) and as a standalone page.
+
+
+================================================================================
+10. STORMSTREAM MODE
+================================================================================
+
+A broadcast overlay mode for streaming.
+
+  - Coverage-area engine that cycles through active alerts
+  - Radar auto-switches to the right site and product for each alert
+  - Per-warning-type rules: which layers and overlays come on for a tornado
+    warning versus a flash flood warning, editable in a panel
+  - HUD with gradients and gold outlines
+  - Alerts panel auto-scrolls in step
+  - Skip controls, and a privacy warning before it starts
+
+
+================================================================================
+11. TOOLS
+================================================================================
+
+  INSPECTOR       Click anywhere and read the real value under the cursor, for
+                  radar, MRMS, SST, lightning, outlooks and alerts
+  EXPORT          Download radar, satellite or model output as a PNG or as a
+                  video loop
+  CUSTOM GRAPHICS Upload PNG, JPG, GIF, SVG or PDF and place it with a drag
+                  editor
+  GPS AND NAV     Live turn-by-turn navigation with weather-coloured routes,
+                  road weather, tracking and reports, in a draggable panel
+  DRAW SHAPES     Freehand annotation on the map
+  STORM CONE      Projected cone from a storm's current motion
+  TIME MACHINE    Historical playback
+  CHAT            In-app chat bridged to Discord, with @ mention autocomplete
+                  and real pings that reach a phone
+
+
+================================================================================
+12. SETTINGS
+================================================================================
+
+19 categories, 53 toggles:
+
+  Display                 Map Borders and Boundaries
+  Radar                   Radar Colors
+  Model Colors            Satellite Colors
+  Layer Opacity           Wind Particles
+  Wave Particles          Units and Formats
+  GPS                     Alerts
+  Ocean Colours           Layer Order
+  StormStream Mode        Per-Warning Setup
+  Custom Graphics         AI Chat
+  Forecaster Desk
+
+The colour editors take variable-length gradient stops, invert, presets and a
+live preview, and work identically for radar and model fields.
+
+
+================================================================================
+13. THE PI BACKEND (18 pipelines)
+================================================================================
+
+  radar_pipeline.py      NEXRAD L3 and the 163-product MRMS catalogue
+  gfs_pipeline.py        66 models, 97 fields, regional nests
+  satellite_pipeline.py  RGB composites built from raw ABI
+  sounding_pipeline.py   SounderPy fetch, SHARPpy params, rendered skew-Ts
+  sounding_service.py    Live sounding endpoint
+  model_sounding.py      Model-derived soundings
+  sst_pipeline.py        SST and ocean heat (OISST, Coral Reef Watch, AOML)
+  cyclones_pipeline.py   AI cyclone tracks
+  enscenters_pipeline.py Ensemble cyclone centre detection
+  spaghetti_pipeline.py  ATCF a-deck spaghetti tracks
+  feeds_pipeline.py      Outlooks, discussions and text products
+  nwr_archiver.py        NOAA Weather Radio recording
+  nwr_index.py           NWR archive index
+  serve.py               HTTP server and the Discord relay
+  scan_sources.py        Source discovery
+  check_models.py        Model availability checks
+  publish_url.py         Address publishing
+  tunnel_doctor.py       Cloudflare tunnel diagnosis
+
+Retention is age-based, not count-based: 3 days of radar, satellite and MRMS
+frames. Pipelines run under a time budget and prune when disk passes a
+threshold, so a slow pass degrades instead of filling the card.
+
+
+================================================================================
+14. THE DISCORD BOT (ASTURIO)
+================================================================================
+
+Runs the same brain as the in-app assistant, through the same Cloudflare
+Worker, so no API key lives on the machine.
+
+  /ask <question>     Any weather question, grounded in live NWS alerts and
+                      SPC storm reports fetched before answering
+  /alerts             Nationwide NWS alert summary
+  /map <options>      A map picture, and the options are generated from
+                      index.html so the command cannot offer something the
+                      site does not have
+  @Asturio            Same as /ask, by mention
+
+It also publishes a roster to Firestore so the website's chat can offer real @
+mentions. Pings are constrained on the Pi: allowed_mentions carries an empty
+parse, which makes @everyone, @here and role pings impossible whatever the
+message says, plus a users allowlist of at most 8 validated ids.
+
+
+================================================================================
+15. OTHER SITES IN THE PROJECT
+================================================================================
+
+FORECASTING PORTAL (forecasting-portal.html)
+  A real forecaster desk. Issue outlooks and alerts that appear on the radar
+  as the GWCFC Outlook and GWCFC Alerts overlays, tagged distinctly from
+  simulated products. 15 alert types are defined, from Tornado Warning through
+  Hurricane Warning, each with its own hazard set.
+
+NWRCHIVE (nwrchive.html)
+  Browse and play back archived NOAA Weather Radio broadcasts. The recorder is
+  opt-in and checks free space before it starts.
+
+ASSISTANT (assistant.html)
+  The AI assistant on its own page.
+
+
+================================================================================
+16. ENGINEERING
+================================================================================
+
+  - 100 test files in tools/, mixed Node and Python
+  - Service worker: network-first app shell with a timeout fallback,
+    cache-first for CDN assets and fonts
+  - Installable as a PWA
+  - Measured performance: first map tile at 397 ms, 489 ms of long tasks
+    during boot, LCP 0.23 s and CLS 0.02 on a warm load
+  - Every user-visible layer carries an info button explaining what it is, in
+    plain English rather than jargon
+  - A dismissible update bar above the logo says what changed most recently,
+    and reappears when the message changes
+
+
+================================================================================
+17. WHAT IT DOES NOT HAVE
+================================================================================
+
+Worth knowing, and worth being straight about:
+
+  - No 3D radar view or globe projection
+  - No side-by-side synchronised radar panes
+  - No live storm chaser video streams or weather cams (positions only)
+  - No native iOS or Android app, it is a web app installable as a PWA
+
+================================================================================
