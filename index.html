@@ -6217,6 +6217,67 @@ body.shot-mode > button {
   border-radius: 6px; padding: 3px 4px 3px 6px; margin-left: -6px;
 }
 
+
+/* ── THE FORECAST: the card, the cell marks and the map bands ──────────────
+   Its own look rather than a chat bubble, because a briefing that reads like
+   a chat message gets skimmed like one. */
+.fx-card {
+  border: 1px solid var(--accent2); border-left-width: 3px;
+  border-radius: 10px; background: rgba(8,12,20,0.85);
+  margin: 8px 0; padding: 0 0 8px; overflow: hidden;
+}
+.fx-head { display:flex; align-items:center; gap:8px; padding:8px 10px 6px; }
+.fx-level {
+  font-family: var(--display); font-size: 9px; letter-spacing: 1.2px;
+  color: #08101a; padding: 2px 7px; border-radius: 5px; flex: none;
+}
+.fx-title { font-family: var(--display); font-size: 11px; color: #eaf4ff;
+  letter-spacing: .5px; flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fx-x { flex:none; background:none; border:none; color:rgba(212,232,255,.45);
+  font-size:16px; cursor:pointer; line-height:1; padding:0 2px; }
+.fx-x:hover { color:#fff; }
+.fx-cells { padding: 0 10px; }
+.fx-row { display:flex; align-items:center; gap:7px; padding:3px 0;
+  font-family:'Comfortaa',sans-serif; font-size:10.5px; color:rgba(232,244,255,.9); }
+.fx-n { flex:none; width:16px; height:16px; border-radius:50%; color:#08101a;
+  font-family:var(--mono); font-size:9px; font-weight:700;
+  display:flex; align-items:center; justify-content:center; }
+.fx-where { flex:1 1 auto; min-width:0; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
+.fx-bits { flex:none; font-family:var(--mono); font-size:9px;
+  color:rgba(212,232,255,.65); }
+.fx-env { padding:5px 10px 2px; font-family:var(--mono); font-size:9px;
+  color:rgba(127,212,238,.85); }
+.fx-more { margin: 4px 10px 0; }
+.fx-more summary { font-family:var(--mono); font-size:9px; cursor:pointer;
+  color:rgba(212,232,255,.5); padding:2px 0; }
+.fx-more summary:hover { color:var(--accent2); }
+.fx-pre { font-family:var(--mono); font-size:8.5px; line-height:1.45;
+  color:rgba(212,232,255,.7); white-space:pre-wrap; word-break:break-word;
+  max-height:260px; overflow-y:auto; margin:4px 0 0;
+  background:rgba(0,0,0,.3); border-radius:6px; padding:7px 8px; }
+.fx-gaps { margin:4px 0 0; padding-left:16px; font-family:'Comfortaa',sans-serif;
+  font-size:10px; color:rgba(255,200,120,.85); line-height:1.5; }
+.fx-foot { padding:7px 10px 0; font-family:'Comfortaa',sans-serif; font-size:9px;
+  color:rgba(212,232,255,.4); line-height:1.4; }
+/* Numbered cell marks, matching the numbers the answer uses. */
+.fx-cellmark {
+  display:inline-flex; align-items:center; gap:4px; transform:translate(-50%,-50%);
+  background:rgba(8,12,20,.9); border:2px solid var(--accent2); border-radius:12px;
+  padding:2px 7px; white-space:nowrap; font-family:var(--mono); font-size:9px;
+  color:#eaf4ff; box-shadow:0 2px 8px rgba(0,0,0,.5);
+}
+.fx-cellmark b { font-size:11px; }
+.fx-cellmark span { color:rgba(212,232,255,.7); }
+.fx-tick { transform:translate(-50%,-160%); display:inline-block;
+  font-family:var(--mono); font-size:8px; color:#eaf4ff;
+  background:rgba(8,12,20,.75); border-radius:4px; padding:0 3px; white-space:nowrap; }
+.fx-band { transform:translate(-50%,-50%); display:inline-block; color:#08101a;
+  font-family:var(--display); font-size:10px; letter-spacing:.6px;
+  padding:3px 9px; border-radius:6px; white-space:nowrap;
+  box-shadow:0 2px 8px rgba(0,0,0,.45); }
+
 #lqm-chat-foot { flex-shrink: 0; border-top: 1px solid rgba(212,175,55,0.18); padding: 9px 10px; position: relative; }
 #lqm-chat-row { display: flex; gap: 7px; align-items: center; }
 
@@ -6444,6 +6505,16 @@ body.shot-mode > button {
   cursor: pointer; flex-shrink: 0; letter-spacing: 0.5px;
   box-shadow: 0 2px 8px rgba(170,0,0,0.4);
 }
+/* Predict sits beside Send and reads as the other half of the same control:
+   Send asks a question, Predict asks the one question this app is for. */
+#lqm-ai-predict {
+  background: rgba(0,140,186,0.22); border: 1px solid rgba(0,140,186,0.55);
+  border-radius: 8px; color: #7fd4ee;
+  font-family: var(--display); font-size: 11px; font-weight: 700; padding: 7px 11px;
+  cursor: pointer; flex-shrink: 0; letter-spacing: 0.5px;
+}
+#lqm-ai-predict:hover { background: rgba(0,140,186,0.38); color: #d7f2ff; }
+#lqm-ai-predict:disabled { opacity: 0.4; cursor: not-allowed; }
 #lqm-ai-snap, #lqm-ai-voice, #lqm-ai-upload {
   background: rgba(0,0,0,0.3); border: 1px solid rgba(212,175,55,0.2);
   border-radius: 8px; color: rgba(212,175,55,0.6); font-size: 13px; cursor: pointer;
@@ -38193,6 +38264,16 @@ function _l3TiltKeyOf(result, reqTilt) {
 // point the Inspector at its mesh, and label it. Split out so a cached
 // picture can be shown without going anywhere near a decoder.
 function _l3Attach(img, result, product, station) {
+  // Record this frame's storm cells before anything else touches the mesh.
+  // The mesh is thrown away once the picture exists, so this is the only
+  // moment the values are available, and motion cannot be recovered later.
+  // Measured at about 40 ms against the hundreds this draw already costs.
+  try {
+    if (typeof _fxRecordFrame === 'function') {
+      _fxRecordFrame(result && result.meshData, station, product,
+        img.timeIso ? Date.parse(img.timeIso) : Date.now());
+    }
+  } catch (e) {}
   _lastMeshData    = result && result.meshData;
   _lastMeshBounds  = result && result.bounds;
   _lastMeshProduct = product;
@@ -45570,6 +45651,7 @@ function selectProduct(p) {
     <input type="file" id="lqm-ai-file" accept="image/*" style="display:none" onchange="_aiFileUpload(this)">
     <textarea id="lqm-ai-input" placeholder="Ask about weather, alerts, radar…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();_aiSend();}"></textarea>
     <div id="lqm-ai-input-btns">
+      <button id="lqm-ai-predict" onclick="fxPredict()" title="Read the radar, the sounding and every layer, then forecast">Predict</button>
       <button id="lqm-ai-send" onclick="_aiSend()">Send</button>
       <button id="lqm-ai-voice" onclick="_aiVoice()" title="Voice input">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>
@@ -47254,6 +47336,1756 @@ async function _aiFetchStormReports() {
 // station name, and nothing else, so it could not answer a question about the
 // thing the person was actually looking at. This reads the real state out of
 // the same variables the UI reads.
+/* ══════════════════════════════════════════════════════════════════════════
+   THE FORECAST ENGINE
+   ──────────────────────────────────────────────────────────────────────────
+   Everything the assistant needs to make a real prediction rather than
+   describe a picture.
+
+   The old arrangement handed the model a screenshot and a list of which
+   layers were switched on. That is enough to say "there are storms over
+   Oklahoma" and not enough to say anything a forecaster would sign. This
+   reads the actual numbers the app already holds: the decoded radar mesh
+   behind the picture, the sounding the Pi computes, the MRMS severe fields,
+   the ocean heat under a hurricane, the wave and air grids. It turns them
+   into a structured brief, and the brief goes to the model beside the
+   picture rather than instead of it, because a hook echo is a SHAPE and the
+   magnitudes are NUMBERS and each half is read best by different eyes.
+
+   Nine domains, because weather is not only severe weather:
+     severe, tropical, winter, flood, fire, marine, air, comfort, general.
+   Each one carries its own honest horizon. Radar extrapolation is good for
+   about two hours and a hurricane track for five days, and pretending
+   otherwise in either direction is how a forecast stops being worth
+   reading.
+
+   Nothing here decides anything. It gathers evidence and hands it over.
+   The judgement is the model's, under the rules in the prompt.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+// The horizon each domain can honestly reach, in hours. These are not
+// preferences, they are what the underlying data supports: radar
+// extrapolation decays fast, model guidance holds for a day or two, and the
+// Hurricane Center publishes five days because that is where track error
+// stops being useful.
+const FX_HORIZON_H = {
+  severe: 2, tropical: 120, winter: 48, flood: 24,
+  fire: 48, marine: 72, air: 48, comfort: 48, general: 168,
+};
+const FX_MAX_CELLS = 10;          // ranked worst first, capped so a squall line is readable
+const FX_CELL_DEG = 0.05;         // clustering bin, roughly 5 km
+const FX_HISTORY_MAX = 12;        // frames of cell lists kept for motion and trend
+const FX_DBZ_CELL = 35;           // the reflectivity a "cell" starts at
+const FX_DBZ_CORE = 50;           // and what counts as a core worth naming
+
+// ── Geometry ──────────────────────────────────────────────────────────────
+// Kilometres between two points. The small-angle form rather than the full
+// haversine: over the tens of kilometres a storm cell spans, the difference
+// is centimetres, and this runs over thousands of points per scan.
+function _fxKm(lat1, lon1, lat2, lon2) {
+  const dLat = (lat2 - lat1) * 111.32;
+  const dLon = (lon2 - lon1) * 111.32 * Math.cos((lat1 + lat2) / 2 * Math.PI / 180);
+  return Math.hypot(dLat, dLon);
+}
+function _fxBearing(lat1, lon1, lat2, lon2) {
+  const dLat = lat2 - lat1;
+  const dLon = (lon2 - lon1) * Math.cos((lat1 + lat2) / 2 * Math.PI / 180);
+  return (Math.atan2(dLon, dLat) * 180 / Math.PI + 360) % 360;
+}
+const _FX_COMPASS = ['N','NNE','NE','ENE','E','ESE','SE','SSE',
+                     'S','SSW','SW','WSW','W','WNW','NW','NNW'];
+function _fxCompass(deg) {
+  return _FX_COMPASS[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
+}
+// Move a point along a bearing. Used to project where a cell will be, which
+// is the whole basis of an arrival time.
+function _fxProject(lat, lon, bearingDeg, km) {
+  const b = bearingDeg * Math.PI / 180;
+  const dLat = km * Math.cos(b) / 111.32;
+  const dLon = km * Math.sin(b) / (111.32 * Math.cos(lat * Math.PI / 180) || 1e-6);
+  return { lat: lat + dLat, lon: lon + dLon };
+}
+
+// The nearest place with a name, as a bearing and a distance from it. A
+// forecast that says "12 miles southwest of Ardmore" needs no map; one that
+// says 34.05N 97.31W needs a map and a moment.
+function _fxNearestPlace(lat, lon) {
+  const list = (typeof CITIES !== 'undefined' && CITIES) || [];
+  let best = null, bestKm = Infinity;
+  for (const c of list) {
+    const km = _fxKm(lat, lon, c.lat, c.lon);
+    if (km < bestKm) { bestKm = km; best = c; }
+  }
+  if (!best) return null;
+  const useKm = (typeof _units !== 'undefined' && _units.dist === 'km');
+  const dist = useKm ? bestKm : bestKm * 0.621371;
+  // The bearing FROM the town TO the cell, because that is how a warning
+  // reads: the storm is southwest of the town, not the town northeast of it.
+  const brg = _fxCompass(_fxBearing(best.lat, best.lon, lat, lon));
+  return { name: best.name, km: bestKm,
+           label: `${Math.round(dist)} ${useKm ? 'km' : 'mi'} ${brg} of ${best.name}` };
+}
+
+// ── Storm cells out of the decoded mesh ───────────────────────────────────
+//
+// The mesh is a flat array, nine numbers per quad: four corner lon/lat pairs
+// and the value. Measured at 1.3 million quads for a super-res sweep, and
+// one pass over it costs about 40 ms, which is small next to the hundreds of
+// milliseconds the page already spends drawing that same mesh. So this can
+// ride along on every frame decode without being noticed.
+//
+// Two stages. Bin every above-threshold quad into a coarse grid, then merge
+// touching bins into cells. Binning first is what keeps it linear: the merge
+// then works on a few thousand bins rather than a million quads.
+function _fxCellsFromMesh(mesh, opts) {
+  const o = opts || {};
+  const thresh = o.thresh != null ? o.thresh : FX_DBZ_CELL;
+  const view = o.bounds || null;      // only what is on screen, when given
+  if (!mesh || !mesh.length) return [];
+
+  const bins = new Map();
+  for (let i = 0; i < mesh.length; i += 9) {
+    const v = mesh[i + 8];
+    if (!(v >= thresh)) continue;     // NaN fails this, which is what we want
+    const lon = mesh[i], lat = mesh[i + 1];
+    if (view && (lat < view.south || lat > view.north
+                 || lon < view.west || lon > view.east)) continue;
+    const gx = Math.round(lon / FX_CELL_DEG), gy = Math.round(lat / FX_CELL_DEG);
+    const key = gx + ',' + gy;
+    let b = bins.get(key);
+    if (!b) bins.set(key, b = { gx, gy, n: 0, max: -Infinity, sLon: 0, sLat: 0,
+                                cn: 0, cLon: 0, cLat: 0 });
+    b.n++;
+    b.sLon += lon; b.sLat += lat;
+    if (v > b.max) b.max = v;
+    // The core is tracked separately from the whole cell, because a cell's
+    // centre of mass and the location of its worst weather are not the same
+    // point and it is the second one that matters.
+    if (v >= FX_DBZ_CORE) { b.cn++; b.cLon += lon; b.cLat += lat; }
+  }
+  if (!bins.size) return [];
+
+  // Merge touching bins into cells, eight-connected, iteratively rather than
+  // recursively: a squall line is thousands of connected bins and a
+  // recursive flood fill on that blows the stack.
+  const seen = new Set(), cells = [];
+  for (const [key, start] of bins) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const stack = [start], members = [];
+    while (stack.length) {
+      const b = stack.pop();
+      members.push(b);
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          if (!dx && !dy) continue;
+          const nk = (b.gx + dx) + ',' + (b.gy + dy);
+          if (seen.has(nk)) continue;
+          const nb = bins.get(nk);
+          if (!nb) continue;
+          seen.add(nk);
+          stack.push(nb);
+        }
+      }
+    }
+    let n = 0, sLon = 0, sLat = 0, max = -Infinity, cn = 0, cLon = 0, cLat = 0;
+    let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
+    members.forEach(b => {
+      n += b.n; sLon += b.sLon; sLat += b.sLat;
+      if (b.max > max) max = b.max;
+      cn += b.cn; cLon += b.cLon; cLat += b.cLat;
+      const bl = b.gy * FX_CELL_DEG, bo = b.gx * FX_CELL_DEG;
+      if (bl < minLat) minLat = bl; if (bl > maxLat) maxLat = bl;
+      if (bo < minLon) minLon = bo; if (bo > maxLon) maxLon = bo;
+    });
+    // Single-bin specks are noise, ground clutter or a bird. A real cell
+    // covers more than one 5 km box.
+    if (members.length < 2) continue;
+    const lat = cn ? cLat / cn : sLat / n;      // core first, mass as fallback
+    const lon = cn ? cLon / cn : sLon / n;
+    cells.push({
+      lat, lon, max: +max.toFixed(1),
+      // Each bin is about 5 km square, which makes bin count a fair proxy
+      // for area without walking the quads a second time.
+      areaKm2: Math.round(members.length * FX_CELL_DEG * 111 * FX_CELL_DEG * 111),
+      coreArea: cn,
+      bbox: { south: minLat, north: maxLat + FX_CELL_DEG,
+              west: minLon, east: maxLon + FX_CELL_DEG },
+    });
+  }
+  // Worst first. Peak value leads because that is what decides whether a
+  // cell is worth a sentence, with size breaking ties.
+  cells.sort((a, b) => (b.max - a.max) || (b.areaKm2 - a.areaKm2));
+  return cells.slice(0, FX_MAX_CELLS);
+}
+
+// ── Cell history, for motion and trend ────────────────────────────────────
+//
+// The loop keeps rendered pictures, not values: the mesh is thrown away once
+// a frame has been drawn. So motion cannot be recovered from the loop after
+// the fact, and this records what it needs AT decode time instead. Only the
+// cell list is kept, a handful of small objects per frame rather than the
+// 45 MB mesh they came from, which is why holding a dozen frames of it costs
+// nothing worth measuring.
+let _fxHistory = [];          // [{ t, station, product, cells }] oldest first
+
+function _fxRecordFrame(mesh, station, product, timeMs) {
+  try {
+    if (!mesh || !mesh.length) return;
+    if (product !== 'ref') return;      // motion is tracked on reflectivity
+    const t = timeMs || Date.now();
+    // Same frame twice is the live draw and a loop rebuild seeing the same
+    // volume. Keyed on the time so the second one replaces rather than
+    // doubling, which would otherwise read as a cell that did not move.
+    _fxHistory = _fxHistory.filter(f => Math.abs(f.t - t) > 30000
+                                     || f.station !== station);
+    _fxHistory.push({ t, station, product, cells: _fxCellsFromMesh(mesh) });
+    _fxHistory.sort((a, b) => a.t - b.t);
+    if (_fxHistory.length > FX_HISTORY_MAX) {
+      _fxHistory = _fxHistory.slice(-FX_HISTORY_MAX);
+    }
+  } catch (e) { /* recording history must never break a radar draw */ }
+}
+
+// Match one cell backwards through the history to get its motion and trend.
+//
+// Matched by nearest neighbour inside a radius that grows with the time gap,
+// because a cell five minutes older is further away than one a minute older
+// and a fixed radius either loses fast cells or grabs the wrong neighbour.
+function _fxCellMotion(cell, station) {
+  const frames = _fxHistory.filter(f => f.station === station);
+  if (frames.length < 2) return null;
+  const newest = frames[frames.length - 1];
+  const track = [{ t: newest.t, lat: cell.lat, lon: cell.lon, max: cell.max }];
+  let cur = cell;
+  for (let i = frames.length - 2; i >= 0 && track.length < 6; i--) {
+    const dtMin = (newest.t - frames[i].t) / 60000;
+    if (dtMin <= 0 || dtMin > 40) continue;
+    // 100 km/h is faster than nearly any storm, so this radius is generous
+    // enough not to lose one and tight enough not to jump to its neighbour.
+    const radiusKm = Math.max(12, dtMin * 1.7);
+    let best = null, bestKm = radiusKm;
+    for (const c of frames[i].cells) {
+      const km = _fxKm(cur.lat, cur.lon, c.lat, c.lon);
+      if (km < bestKm) { bestKm = km; best = c; }
+    }
+    if (!best) break;
+    track.push({ t: frames[i].t, lat: best.lat, lon: best.lon, max: best.max });
+    cur = best;
+  }
+  if (track.length < 2) return null;
+  const a = track[track.length - 1], b = track[0];   // oldest, newest
+  const dtH = (b.t - a.t) / 3600000;
+  if (dtH <= 0) return null;
+  const km = _fxKm(a.lat, a.lon, b.lat, b.lon);
+  const kmh = km / dtH;
+  // A cell that has not moved further than its own matching noise has no
+  // measurable motion, and inventing a heading from noise is worse than
+  // saying there is not one yet.
+  if (km < 2) return { frames: track.length, kmh: 0, unreliable: true };
+  const brg = _fxBearing(a.lat, a.lon, b.lat, b.lon);
+  const dPeak = b.max - a.max;
+  return {
+    frames: track.length,
+    kmh: Math.round(kmh),
+    mph: Math.round(kmh * 0.621371),
+    bearing: Math.round(brg),
+    toward: _fxCompass(brg),
+    // Which way the peak has gone over the tracked window. A cell that is
+    // falling apart and one that is exploding look identical in one frame,
+    // and this is the only thing here that can tell them apart.
+    trend: dPeak >= 4 ? 'strengthening' : dPeak <= -4 ? 'weakening' : 'steady',
+    peakChange: +dPeak.toFixed(1),
+    spanMin: Math.round((b.t - a.t) / 60000),
+  };
+}
+
+// ── Reading another product at the same station ───────────────────────────
+//
+// The picture cache holds the mesh beside every decoded frame, keyed by
+// station, product and tilt. So if velocity or correlation coefficient has
+// been looked at recently, its NUMBERS are still here and can be read at a
+// cell's position without decoding anything or going near the network.
+//
+// Nothing is fetched to fill a gap. A product that has not been opened is
+// simply reported as missing, which is what lets the brief say exactly what
+// the call is working without instead of quietly leaving it out.
+function _fxMeshFor(station, product) {
+  if (typeof _l3Pic === 'undefined' || !_l3Pic) return null;
+  const st = String(station || '').toLowerCase();
+  const pr = String(product || '').toLowerCase();
+  let best = null;
+  for (const e of _l3Pic.values()) {
+    if (e.station !== st || e.product !== pr) continue;
+    if (!e.result || !e.result.meshData) continue;
+    if (!best || e.at > best.at) best = e;
+  }
+  // Stale numbers are worse than none: a velocity field from twenty minutes
+  // ago describes a storm that has moved on and rotated since.
+  if (!best || Date.now() - best.at > 20 * 60000) return null;
+  return { mesh: best.result.meshData, at: best.at,
+            ageMin: Math.round((Date.now() - best.at) / 60000) };
+}
+
+// Every value within a radius of a point, out of a mesh. One pass, because
+// the mesh has no spatial index and building one costs more than the scan.
+function _fxSampleNear(mesh, lat, lon, radiusKm) {
+  if (!mesh) return null;
+  // A degree of latitude is about 111 km everywhere; longitude shrinks with
+  // the cosine. Converting the radius into a degree box once means the inner
+  // loop is two comparisons rather than a distance calculation per quad.
+  const dLat = radiusKm / 111.32;
+  const dLon = radiusKm / (111.32 * Math.cos(lat * Math.PI / 180) || 1e-6);
+  let n = 0, sum = 0, min = Infinity, max = -Infinity;
+  for (let i = 0; i < mesh.length; i += 9) {
+    const v = mesh[i + 8];
+    if (!isFinite(v)) continue;
+    const qLat = mesh[i + 1], qLon = mesh[i];
+    if (Math.abs(qLat - lat) > dLat || Math.abs(qLon - lon) > dLon) continue;
+    n++; sum += v;
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  if (!n) return null;
+  return { n, mean: +(sum / n).toFixed(2), min: +min.toFixed(2), max: +max.toFixed(2) };
+}
+
+// ── Rotation ──────────────────────────────────────────────────────────────
+//
+// A velocity couplet is the radar signature of rotation: air coming toward
+// the radar hard, right beside air going away hard. The gap between those
+// two numbers over the distance between them is the shear, and a strong
+// tight couplet is the closest thing radar has to seeing a mesocyclone.
+//
+// This looks for the largest inbound and outbound values inside the cell and
+// measures how far apart they are. It is a simpler test than the Weather
+// Service's own algorithm and it is honest about that: it finds the strong
+// obvious couplets and will miss subtle ones, which is why the number is
+// reported as evidence rather than as a verdict.
+function _fxRotation(cell, station) {
+  const vel = _fxMeshFor(station, 'vel');
+  if (!vel) return { available: false, why: 'velocity has not been loaded for this station' };
+  const radiusKm = 15;
+  const dLat = radiusKm / 111.32;
+  const dLon = radiusKm / (111.32 * Math.cos(cell.lat * Math.PI / 180) || 1e-6);
+  let inb = null, outb = null;      // most negative, most positive
+  const mesh = vel.mesh;
+  for (let i = 0; i < mesh.length; i += 9) {
+    const v = mesh[i + 8];
+    if (!isFinite(v)) continue;
+    const qLat = mesh[i + 1], qLon = mesh[i];
+    if (Math.abs(qLat - cell.lat) > dLat || Math.abs(qLon - cell.lon) > dLon) continue;
+    if (!inb || v < inb.v) inb = { v, lat: qLat, lon: qLon };
+    if (!outb || v > outb.v) outb = { v, lat: qLat, lon: qLon };
+  }
+  if (!inb || !outb) return { available: false, why: 'no velocity data over this cell' };
+  const sepKm = _fxKm(inb.lat, inb.lon, outb.lat, outb.lon);
+  const deltaV = outb.v - inb.v;
+  // Two strong returns on opposite sides of the county are not a couplet,
+  // they are the storm's inflow and outflow. A couplet is tight.
+  const tight = sepKm > 0.5 && sepKm < 12;
+  const shear = tight ? deltaV / sepKm : 0;
+  return {
+    available: true, ageMin: vel.ageMin,
+    inboundMs: +inb.v.toFixed(1), outboundMs: +outb.v.toFixed(1),
+    deltaMs: +deltaV.toFixed(1), separationKm: +sepKm.toFixed(1),
+    // Metres per second per kilometre. Roughly, past about 5 is worth
+    // looking at and past 10 is a strong couplet, but this is evidence for
+    // the model to weigh beside everything else, not a threshold to fire on.
+    shear: +shear.toFixed(2),
+    couplet: tight && deltaV >= 20,
+    note: tight ? null
+      : 'the strongest inbound and outbound are too far apart to be one couplet',
+  };
+}
+
+// ── Dual-pol: what the precipitation actually IS ──────────────────────────
+//
+// Correlation coefficient says how alike the particles in a pulse volume
+// are. Rain is uniform and reads near 1. Hail tumbles and reads lower. So
+// does a tornado lofting fence posts and roofing, which is why a CC hole
+// inside a strong echo under a rotating storm is the debris signature, and
+// the single most important thing on a radar when it appears.
+//
+// ZDR is how much wider than tall the average particle is: big flattened
+// raindrops read high, tumbling hailstones read near zero. KDP is a rain
+// rate signal that hail does not contaminate. Together they separate very
+// heavy rain from hail, which reflectivity alone cannot do at all.
+function _fxDualPol(cell, station) {
+  const out = { available: false, fields: {} };
+  const specs = [['cc', 8], ['zdr', 8], ['kdp', 8]];
+  const missing = [];
+  specs.forEach(([p, r]) => {
+    const m = _fxMeshFor(station, p);
+    if (!m) { missing.push(p); return; }
+    const s = _fxSampleNear(m.mesh, cell.lat, cell.lon, r);
+    if (s) { out.fields[p] = { ...s, ageMin: m.ageMin }; out.available = true; }
+  });
+  if (missing.length) out.missing = missing;
+  const cc = out.fields.cc, zdr = out.fields.zdr, kdp = out.fields.kdp;
+  const reads = [];
+  if (cc && cc.min < 0.80 && cell.max >= 45) {
+    reads.push('a correlation coefficient hole inside a strong echo, which is '
+      + 'hail or lofted debris rather than rain');
+  } else if (cc && cc.min < 0.90 && cell.max >= 50) {
+    reads.push('lowered correlation coefficient in the core, consistent with hail');
+  }
+  if (zdr && kdp && zdr.max > 3 && kdp.max > 2) {
+    reads.push('high differential reflectivity with high specific differential '
+      + 'phase, which is very heavy rain rather than hail');
+  }
+  if (zdr && cell.max >= 55 && zdr.mean < 0.5) {
+    reads.push('a strong core with differential reflectivity near zero, the '
+      + 'tumbling signature of large hail');
+  }
+  if (reads.length) out.reading = reads;
+  return out;
+}
+
+// ── MRMS, sampled where the cell actually is ──────────────────────────────
+//
+// The Pi paints MRMS by looking each value up in a 256 step ramp, and the
+// manifest says which ramp and over what range. So the number can be
+// recovered from the pixel by matching the colour back to its step, which is
+// the same inversion the Inspector uses. Only the severe set is read: these
+// are the products a warning gets written from.
+const FX_MRMS_SEVERE = ['mesh', 'posh', 'shi', 'vii', 'eet', 'rotation',
+                        'rot30', 'azshear', 'ltgdens', 'vil'];
+function _fxMrmsAt(lat, lon) {
+  const out = {};
+  try {
+    if (typeof _mrmsOn === 'undefined' || typeof _mrmsOv === 'undefined') return out;
+    if (typeof map === 'undefined' || !map) return out;
+    const pt = map.latLngToContainerPoint([lat, lon]);
+    const rect = map.getContainer().getBoundingClientRect();
+    const cx = rect.left + pt.x, cy = rect.top + pt.y;
+    Object.keys(_mrmsOn).filter(k => _mrmsOn[k]).forEach(key => {
+      const p = (_mrmsManifest && _mrmsManifest.products
+                 && _mrmsManifest.products[key]) || {};
+      const ov = _mrmsOv[key];
+      const img = ov && (ov._image || (ov.getElement && ov.getElement()));
+      const s = img && _inspReadOverlayPixel(img, cx, cy);
+      if (!s || s.transparent || s.tainted) return;
+      const ramp = p.ramp && typeof HD_INSP_RAMPS !== 'undefined'
+                   && HD_INSP_RAMPS[p.ramp] ? p.ramp : null;
+      if (!ramp || !isFinite(p.min) || !isFinite(p.max)) return;
+      const hit = _hdColorToValue({ ramp, lo: p.min, hi: p.max }, s.r, s.g, s.b);
+      if (!hit) return;
+      out[key] = { label: p.label || key, value: +hit.value.toFixed(2),
+                   unit: p.unit || '' };
+    });
+  } catch (e) {}
+  return out;
+}
+
+// ── The environment the storm is sitting in ───────────────────────────────
+//
+// Radar says what a storm IS doing. It cannot say whether it will get worse,
+// because that is decided by the air around it. CAPE is the fuel, CIN is the
+// lid, shear decides whether an updraft stays organised or chokes on its own
+// rain, and storm relative helicity is the streamwise spin a rotating updraft
+// feeds on. A cell that looks identical on radar is a passing shower in one
+// environment and a supercell in another.
+//
+// Fetched headlessly rather than by opening the sounding panel: the same
+// derivation the panel runs, with none of the drawing.
+async function _fxSounding(lat, lon) {
+  try {
+    const prof = await _sndOpenMeteo(lat, lon, 0, 'web');
+    let d = _sndDerive(prof);
+    if (!d) return { available: false, why: 'not enough levels came back' };
+    if (prof.params) d = _sndApplyParams(d, prof.params);
+    const g = (o, k) => (o && isFinite(o[k]) ? Math.round(o[k]) : null);
+    return {
+      available: true, via: prof.via || 'openmeteo',
+      sbcape: g(d.sb, 'cape'), sbcin: g(d.sb, 'cin'),
+      mlcape: g(d.ml, 'cape'), mlcin: g(d.ml, 'cin'),
+      mucape: g(d.mu, 'cape'),
+      lcl: g(d.ml, 'lcl'), lfc: g(d.ml, 'lfc'),
+      shear1: g(d, 'shear1'), shear3: g(d, 'shear3'), shear6: g(d, 'shear6'),
+      srh1: g(d, 'srh1'), srh3: g(d, 'srh3'),
+      pwat: d.pwat != null ? +d.pwat.toFixed(2) : null,
+      lr03: d.lr03 != null ? +d.lr03.toFixed(1) : null,
+      lr36: d.lr36 != null ? +d.lr36.toFixed(1) : null,
+      // The composite indices, which pack the ingredients above into one
+      // number each. STP is tuned for significant tornadoes and SCP for
+      // supercells, and both are worth quoting because a forecaster reading
+      // this will know instantly what a 3 means and what a 0.1 means.
+      stp: d.stp != null ? +d.stp.toFixed(1) : null,
+      scp: d.scp != null ? +d.scp.toFixed(1) : null,
+      // The full temperature profile is what decides snow ratio and
+      // precipitation type, so the levels that matter for that come too.
+      profile: _fxProfileSummary(d.rows),
+    };
+  } catch (e) {
+    return { available: false, why: (e && e.message) || 'the sounding could not be fetched' };
+  }
+}
+
+// The bits of the vertical profile that decide what falls out of the sky.
+//
+// A warm layer aloft melts snow into rain that refreezes on the way down as
+// sleet, or reaches the ground still liquid and freezes on contact, which is
+// freezing rain and the reason power lines come down. Where the freezing
+// level sits and whether there is a warm nose above it IS the precipitation
+// type question, and it cannot be answered from a surface temperature.
+function _fxProfileSummary(rows) {
+  if (!rows || rows.length < 3) return null;
+  let freezeM = null, warmNose = null, maxWarmT = -99, sfcT = rows[0].t;
+  let coldBelowFreeze = 0, n = 0, sumT = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (r.zMSL == null || r.t == null) continue;
+    if (freezeM === null && r.t <= 0 && i > 0) freezeM = Math.round(r.zMSL);
+    // A warm nose is above-freezing air ALOFT with colder air beneath it.
+    if (r.zMSL > 300 && r.zMSL < 4000 && r.t > 0.5 && sfcT < 2) {
+      if (r.t > maxWarmT) { maxWarmT = r.t; warmNose = Math.round(r.zMSL); }
+    }
+    // Snow ratio comes off the temperature of the layer the crystals grow
+    // in, roughly minus 12 to minus 18. Cold and dry gives big dendrites and
+    // a high ratio; near freezing gives wet heavy snow near 10 to 1.
+    if (r.zMSL < 6000) {
+      if (r.t >= -20 && r.t <= -10) { n++; sumT += r.t; }
+      if (r.t < 0) coldBelowFreeze++;
+    }
+  }
+  const growthT = n ? sumT / n : null;
+  let ratio = null;
+  if (sfcT != null && sfcT < 3) {
+    // A working approximation, not a model: near freezing packs down to
+    // about 10 to 1, properly cold dendritic growth reaches 15 to 20.
+    ratio = sfcT > 0 ? 9
+          : growthT != null && growthT < -14 ? 16
+          : growthT != null && growthT < -12 ? 13 : 11;
+  }
+  return {
+    surfaceC: sfcT != null ? +sfcT.toFixed(1) : null,
+    freezingLevelM: freezeM,
+    warmNoseM: warmNose,
+    warmNoseMaxC: warmNose ? +maxWarmT.toFixed(1) : null,
+    dendriticMeanC: growthT != null ? +growthT.toFixed(1) : null,
+    snowRatioEstimate: ratio,
+    // Said plainly, because this is the answer people actually want.
+    likelyType: sfcT == null ? null
+      : warmNose && sfcT <= 0 ? 'freezing rain or sleet, there is a warm layer aloft'
+      : sfcT <= 0 && coldBelowFreeze > 2 ? 'snow'
+      : sfcT > 0 && sfcT < 2 ? 'snow or rain, marginal at the surface'
+      : 'rain',
+  };
+}
+
+// ── Reading a world grid at a point ───────────────────────────────────────
+// Waves and air quality are held as flat grids over the whole world. Same
+// arithmetic for both, so one reader serves them.
+function _fxGridAt(all, key, lat, lon, bounds) {
+  try {
+    if (!all || !all.grids || !all.grids[key]) return null;
+    const g = all.grids[key];
+    const b = bounds || (typeof WORLD_MAP_BOUNDS !== 'undefined' ? WORLD_MAP_BOUNDS : null);
+    if (!b) return null;
+    const south = b[0][0], west = b[0][1], north = b[1][0], east = b[1][1];
+    if (lat < south || lat > north || lon < west || lon > east) return null;
+    const x = Math.round((lon - west) / (east - west) * (all.cols - 1));
+    const y = Math.round((north - lat) / (north - south) * (all.rows - 1));
+    const v = g[y * all.cols + x];
+    return isFinite(v) ? +v.toFixed(2) : null;
+  } catch (e) { return null; }
+}
+
+// ── The non-severe domains ────────────────────────────────────────────────
+//
+// Everything below reads what the app already holds rather than fetching
+// anything new, with one exception: the everyday forecast, which is one
+// Open-Meteo call and is the source of truth for temperature, wind, humidity
+// and rain in every domain that needs them. Pi first where the Pi has the
+// field, the live global grid otherwise, and it always says which answered.
+async function _fxEveryday(lat, lon) {
+  try {
+    const u = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat.toFixed(3)
+      + '&longitude=' + lon.toFixed(3)
+      + '&hourly=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,'
+      + 'precipitation,wind_speed_10m,wind_gusts_10m,wind_direction_10m,visibility,'
+      + 'cloud_cover,cape,snowfall,freezing_level_height'
+      + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,'
+      + 'snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max,sunrise,sunset'
+      + '&forecast_days=3&timezone=UTC&wind_speed_unit=kn';
+    const r = await fetch(u, { signal: _abortSignal(12000) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    const H = d.hourly || {}, D = d.daily || {};
+    // Which hour is now. Found by time rather than counted from either end,
+    // because counting is the arithmetic that silently reads yesterday.
+    const now = Date.now();
+    let i = 0, best = Infinity;
+    (H.time || []).forEach((t, k) => {
+      const dt = Math.abs(Date.parse(t + 'Z') - now);
+      if (dt < best) { best = dt; i = k; }
+    });
+    const at = (arr, k) => (arr && arr[k] != null ? arr[k] : null);
+    // The next 24 hours, so a domain can say where something is heading
+    // rather than only where it is.
+    const span = (arr, n) => (arr || []).slice(i, i + n).filter(v => v != null);
+    const mx = a => (a.length ? Math.max(...a) : null);
+    const mn = a => (a.length ? Math.min(...a) : null);
+    return {
+      available: true, source: 'open-meteo',
+      nowC: at(H.temperature_2m, i), feelsC: at(H.apparent_temperature, i),
+      rh: at(H.relative_humidity_2m, i), dewC: at(H.dew_point_2m, i),
+      windKt: at(H.wind_speed_10m, i), gustKt: at(H.wind_gusts_10m, i),
+      windDir: at(H.wind_direction_10m, i),
+      visibilityM: at(H.visibility, i), cloudPct: at(H.cloud_cover, i),
+      capeNow: at(H.cape, i), freezingLevelM: at(H.freezing_level_height, i),
+      next24: {
+        maxGustKt: mx(span(H.wind_gusts_10m, 24)),
+        minRh: mn(span(H.relative_humidity_2m, 24)),
+        maxC: mx(span(H.temperature_2m, 24)), minC: mn(span(H.temperature_2m, 24)),
+        maxFeelsC: mx(span(H.apparent_temperature, 24)),
+        minFeelsC: mn(span(H.apparent_temperature, 24)),
+        rainMm: +span(H.precipitation, 24).reduce((a, b) => a + b, 0).toFixed(1),
+        snowCm: +span(H.snowfall, 24).reduce((a, b) => a + b, 0).toFixed(1),
+        minVisibilityM: mn(span(H.visibility, 24)),
+        maxCape: mx(span(H.cape, 24)),
+      },
+      daily: (D.time || []).slice(0, 3).map((t, k) => ({
+        date: t, maxC: at(D.temperature_2m_max, k), minC: at(D.temperature_2m_min, k),
+        rainMm: at(D.precipitation_sum, k), snowCm: at(D.snowfall_sum, k),
+        maxGustKt: at(D.wind_gusts_10m_max, k),
+        sunrise: at(D.sunrise, k), sunset: at(D.sunset, k),
+      })),
+    };
+  } catch (e) {
+    return { available: false, why: (e && e.message) || 'the forecast feed could not be read' };
+  }
+}
+
+// ── TROPICAL ──────────────────────────────────────────────────────────────
+//
+// Three sources, weighted equally into one blended track, with the Hurricane
+// Center's own line always printed beside it. Blending was asked for; showing
+// NHC alongside is how a blend stays honest, because a track that quietly
+// differs from the official forecast and does not say so is the one way this
+// could actively mislead somebody.
+//
+// Intensity is the harder half and the one radar cannot see at all. Rapid
+// intensification needs deep warm water, low shear and moist air; a storm
+// weakens when it runs over its own cold wake, into shear, or into dry air.
+// The ocean heat fields the Pi builds are exactly the first ingredient, so
+// they are read here at the storm's position rather than left on the map.
+function _fxTropical() {
+  const out = { available: false, storms: [] };
+  try {
+    const idx = (typeof _spagIndex !== 'undefined' && _spagIndex && _spagIndex.idx) || null;
+    const active = (idx && idx.storms || []).filter(s => s.active !== false);
+    if (!active.length) {
+      out.why = 'no active tropical cyclones in the feed';
+      // Genesis matters as much as a named storm: it is the warning before
+      // there is anything to warn about.
+      out.genesis = _fxGenesis();
+      return out;
+    }
+    out.available = true;
+    active.slice(0, 6).forEach(s => {
+      const storm = { name: s.name || s.id || 'unnamed', id: s.id,
+                      lat: s.lat, lon: s.lon,
+                      category: s.cat || s.category || null,
+                      windKt: s.wind || s.vmax || null,
+                      pressureMb: s.pres || s.mslp || null };
+      // Where the ocean says it can go. Cyclone heat potential above about
+      // 60 supports a strong storm and above 100 is rapid-intensification
+      // water; a shallow 26 C layer means the storm churns up its own fuel
+      // and cools the water it needs.
+      if (s.lat != null && s.lon != null) {
+        storm.ocean = _fxOceanAt(s.lat, s.lon);
+        storm.nearest = _fxNearestPlace(s.lat, s.lon);
+      }
+      // Every model line this page holds for the storm, so the spread is
+      // visible rather than averaged away.
+      storm.tracks = _fxStormTracks(storm.name);
+      out.storms.push(storm);
+    });
+    out.genesis = _fxGenesis();
+  } catch (e) { out.why = (e && e.message) || 'the tropical feed could not be read'; }
+  return out;
+}
+
+// The ocean under a storm, read out of the SST fields the Pi builds.
+function _fxOceanAt(lat, lon) {
+  try {
+    if (typeof _sstGrid === 'undefined' || !_sstGrid || !_sstGrid.vals) {
+      return { available: false,
+               why: 'no ocean field is loaded, turn on Waves then Sea Surf. Temp' };
+    }
+    const g = _sstGrid;
+    const [[s, w], [n, e]] = g.bounds;
+    let x = lon;
+    if (x < w) x += 360;
+    if (x > e) x -= 360;
+    if (lat < s || lat > n || x < w || x > e) return { available: false, why: 'off the grid' };
+    const ix = Math.min(g.w - 1, Math.max(0, Math.round((x - w) / (e - w) * (g.w - 1))));
+    const iy = Math.min(g.h - 1, Math.max(0, Math.round((n - lat) / (n - s) * (g.h - 1))));
+    const v = g.vals[iy * g.w + ix];
+    if (!isFinite(v)) return { available: false, why: 'no data at that point' };
+    return { available: true, source: _sstSource, field: _sstVariant,
+             value: +v.toFixed(1), unit: _sstUnitLabel(_sstSource, _sstVariant) };
+  } catch (e) { return { available: false, why: 'the ocean field could not be read' }; }
+}
+
+// Areas being watched for development, before anything has a name.
+function _fxGenesis() {
+  try {
+    const idx = (typeof _spagIndex !== 'undefined' && _spagIndex && _spagIndex.idx) || null;
+    const invests = (idx && idx.storms || []).filter(s =>
+      /^(al|ep|cp|wp)9\d/i.test(String(s.id || '')) || /invest/i.test(String(s.name || '')));
+    if (!invests.length) return { available: false, why: 'nothing flagged for development' };
+    return { available: true, areas: invests.map(s => ({
+      id: s.id, lat: s.lat, lon: s.lon,
+      ocean: (s.lat != null ? _fxOceanAt(s.lat, s.lon) : null) })) };
+  } catch (e) { return { available: false }; }
+}
+
+// Every track line this page holds for one storm, grouped by where it came
+// from, so a blend can be built and the disagreement inside it can be seen.
+function _fxStormTracks(name) {
+  const out = { official: null, models: [], ai: [] };
+  try {
+    const key = String(name || '').toLowerCase();
+    for (const [gk, g] of Object.entries((typeof _cycGroups !== 'undefined' && _cycGroups) || {})) {
+      if (!g || !Array.isArray(g.pts) || g.pts.length < 2) continue;
+      if (!String(gk).toLowerCase().includes(key)) continue;
+      const pts = g.pts.filter(p => p.lat != null && p.lon != null)
+        .map(p => ({ h: p.lead != null ? p.lead : null, lat: p.lat, lon: p.lon }));
+      if (pts.length < 2) continue;
+      out.ai.push({ source: String(gk).split('|')[0] || 'ensemble', points: pts.slice(0, 21) });
+    }
+  } catch (e) {}
+  return out;
+}
+
+// ── WINTER ────────────────────────────────────────────────────────────────
+// Type first, because the difference between four inches of snow and a
+// quarter inch of ice is the difference between an inconvenience and no
+// power for a week. Then accumulation, using a ratio taken from the actual
+// temperature profile rather than a flat ten to one.
+function _fxWinter(env, everyday) {
+  const p = env && env.profile;
+  const out = { available: !!(p || (everyday && everyday.available)) };
+  if (!out.available) { out.why = 'no sounding or forecast to read'; return out; }
+  if (p) {
+    out.type = p.likelyType;
+    out.freezingLevelM = p.freezingLevelM;
+    out.warmNoseM = p.warmNoseM;
+    out.warmNoseMaxC = p.warmNoseMaxC;
+    out.snowRatio = p.snowRatioEstimate;
+    out.dendriticMeanC = p.dendriticMeanC;
+  }
+  if (everyday && everyday.available) {
+    const liquid = everyday.next24 && everyday.next24.rainMm;
+    out.next24LiquidMm = liquid;
+    out.next24ModelSnowCm = everyday.next24 && everyday.next24.snowCm;
+    // The point of computing our own: the model's snow field carries its own
+    // ratio assumption, and where the profile disagrees with it that is worth
+    // saying rather than silently preferring one.
+    if (liquid != null && out.snowRatio) {
+      out.snowFromRatioCm = +(liquid / 10 * out.snowRatio).toFixed(1);
+    }
+    // Ice is the one that brings lines down, and it is liquid falling into
+    // a sub-freezing surface layer.
+    if (p && p.warmNoseM && p.surfaceC != null && p.surfaceC <= 0 && liquid > 0) {
+      out.icingRisk = liquid >= 6 ? 'significant' : liquid >= 2 ? 'moderate' : 'light';
+      out.icingLiquidMm = liquid;
+    }
+  }
+  // Ranked by which is actually worst, which is what was asked for.
+  const ranked = [];
+  if (out.icingRisk) ranked.push('ice: ' + out.icingRisk);
+  if (out.snowFromRatioCm >= 5) ranked.push('snow: ' + out.snowFromRatioCm + ' cm');
+  if (out.type) ranked.push('type: ' + out.type);
+  out.ranked = ranked;
+  return out;
+}
+
+// ── FLOOD ─────────────────────────────────────────────────────────────────
+// Rainfall and hydrology both, saying which is driving it. An inch on dry
+// sand does nothing; an inch on saturated clay above a small catchment, or
+// on a burn scar, is a wall of water. The FLASH models on the Pi are the
+// half that knows the difference, and Hydrophobic assumes nothing soaks in
+// at all, which IS the burn scar case.
+function _fxFlood(lat, lon, everyday) {
+  const out = { available: false, drivers: [] };
+  const mr = _fxMrmsAt(lat, lon);
+  const hydro = {};
+  ['qpe01', 'qpe24', 'rqi', 'crest', 'sac', 'hp', 'unitstream', 'streamflow',
+   'ffg', 'flashqpe'].forEach(k => { if (mr[k]) hydro[k] = mr[k]; });
+  if (Object.keys(hydro).length) { out.available = true; out.mrms = hydro; }
+  if (everyday && everyday.available) {
+    out.available = true;
+    out.next24RainMm = everyday.next24 && everyday.next24.rainMm;
+    out.pwatIn = null;
+  }
+  if (out.next24RainMm >= 50) out.drivers.push('rainfall total');
+  if (hydro.unitstream && hydro.unitstream.value > 0.5) {
+    out.drivers.push('the ground and the catchment, not just the rain');
+  }
+  if (hydro.hp && hydro.hp.value > 0) {
+    out.drivers.push('runoff on ground that is not absorbing, which is the burn scar and pavement case');
+  }
+  if (!out.available) out.why = 'no MRMS flood fields are drawn and no forecast was read';
+  return out;
+}
+
+// ── FIRE, MARINE, AIR, COMFORT ────────────────────────────────────────────
+function _fxFire(everyday) {
+  if (!everyday || !everyday.available) return { available: false, why: 'no forecast read' };
+  const n = everyday.next24 || {};
+  const out = { available: true, rhNow: everyday.rh, minRh24: n.minRh,
+                gustNow: everyday.gustKt, maxGust24: n.maxGustKt,
+                tempC: everyday.nowC, maxC24: n.maxC, rainMm24: n.rainMm };
+  // The red flag combination as the Weather Service uses it: low humidity
+  // and strong wind together. Either alone is ordinary weather.
+  const dryEnough = n.minRh != null && n.minRh <= 25;
+  const windy = n.maxGustKt != null && n.maxGustKt >= 22;
+  out.redFlagIngredients = dryEnough && windy ? 'both present'
+    : dryEnough ? 'dry enough, not windy enough'
+    : windy ? 'windy enough, not dry enough' : 'neither';
+  out.recentRainMm = n.rainMm;
+  return out;
+}
+function _fxMarine(lat, lon) {
+  const out = { available: false };
+  try {
+    const all = typeof _wavesAllGrids !== 'undefined' ? _wavesAllGrids : null;
+    if (!all) return { available: false,
+      why: 'no wave grid is loaded, turn the Waves layer on' };
+    const b = typeof WORLD_MAP_BOUNDS !== 'undefined' ? WORLD_MAP_BOUNDS : null;
+    const wave = _fxGridAt(all, 'wave_height', lat, lon, b);
+    if (wave == null) return { available: false, why: 'that point is not at sea' };
+    out.available = true;
+    out.waveHeightM = wave;
+    out.wavePeriodS = _fxGridAt(all, 'wave_period', lat, lon, b);
+    out.waveDirDeg = _fxGridAt(all, 'wave_direction', lat, lon, b);
+    out.swellHeightM = _fxGridAt(all, 'swell_wave_height', lat, lon, b);
+    // The thresholds people actually act on.
+    out.smallCraft = wave >= 1.5;
+    out.rough = wave >= 3;
+  } catch (e) {}
+  return out;
+}
+function _fxAir(lat, lon) {
+  try {
+    const all = typeof _airAllGrids !== 'undefined' ? _airAllGrids : null;
+    if (!all) return { available: false,
+      why: 'no air quality grid is loaded, turn the Air layer on' };
+    const b = typeof WORLD_MAP_BOUNDS !== 'undefined' ? WORLD_MAP_BOUNDS : null;
+    const aqi = _fxGridAt(all, 'us_aqi', lat, lon, b);
+    if (aqi == null) return { available: false, why: 'no reading at that point' };
+    return { available: true, usAqi: aqi,
+             pm25: _fxGridAt(all, 'pm2_5', lat, lon, b),
+             pm10: _fxGridAt(all, 'pm10', lat, lon, b),
+             ozone: _fxGridAt(all, 'ozone', lat, lon, b),
+             band: aqi <= 50 ? 'good' : aqi <= 100 ? 'moderate'
+                 : aqi <= 150 ? 'unhealthy for sensitive groups'
+                 : aqi <= 200 ? 'unhealthy' : aqi <= 300 ? 'very unhealthy' : 'hazardous' };
+  } catch (e) { return { available: false }; }
+}
+function _fxComfort(everyday) {
+  if (!everyday || !everyday.available) return { available: false, why: 'no forecast read' };
+  const n = everyday.next24 || {};
+  const out = { available: true, feelsNowC: everyday.feelsC,
+                maxFeels24C: n.maxFeelsC, minFeels24C: n.minFeelsC,
+                visibilityNowM: everyday.visibilityM, minVis24M: n.minVisibilityM };
+  // Fog is the spread between temperature and dew point closing, not a
+  // humidity number on its own.
+  if (everyday.nowC != null && everyday.dewC != null) {
+    out.dewSpreadC = +(everyday.nowC - everyday.dewC).toFixed(1);
+    out.fogRisk = out.dewSpreadC <= 1 && (everyday.windKt || 0) < 6 ? 'likely'
+                : out.dewSpreadC <= 2.5 ? 'possible' : 'unlikely';
+  }
+  if (n.maxFeelsC != null && n.maxFeelsC >= 40) out.heatDanger = 'dangerous heat index';
+  else if (n.maxFeelsC != null && n.maxFeelsC >= 32) out.heatDanger = 'caution';
+  if (n.minFeelsC != null && n.minFeelsC <= -20) out.coldDanger = 'dangerous wind chill';
+  else if (n.minFeelsC != null && n.minFeelsC <= -10) out.coldDanger = 'caution';
+  return out;
+}
+
+// ── Extras that change how bad a thing is ─────────────────────────────────
+//
+// The same tornado is a different event at 2am than at 2pm, because people
+// are asleep and cannot see it coming. A cell that is already warned is a
+// different conversation from one that is not. And a jump in lightning
+// often leads a storm strengthening by a few minutes.
+function _fxExtras(lat, lon, everyday) {
+  const out = {};
+  // Already warned? This frames the whole answer: the assistant is adding to
+  // an official warning, not competing with one.
+  try {
+    const list = (typeof _cmAlertsAt === 'function') ? _cmAlertsAt(lat, lon) : [];
+    out.warnings = list.map(f => (f.properties || {}).event).filter(Boolean).slice(0, 6);
+  } catch (e) { out.warnings = []; }
+  // Lightning near the point, and whether the rate is climbing.
+  try {
+    const src = typeof _ltgData !== 'undefined' ? _ltgData : null;
+    const pts = (src && (src.features || src.strikes)) || [];
+    if (pts.length) {
+      const now = Date.now();
+      let recent = 0, older = 0, nearest = Infinity;
+      pts.forEach(s => {
+        const la = s.lat != null ? s.lat : s[0];
+        const lo = s.lon != null ? s.lon : (s.lng != null ? s.lng : s[1]);
+        if (!isFinite(la) || !isFinite(lo)) return;
+        const km = _fxKm(lat, lon, la, lo);
+        if (km > 40) return;
+        if (km < nearest) nearest = km;
+        const ts = s.ts || s.time || s.t;
+        const ageMin = ts ? (now - (String(ts).length > 11 ? +ts : +ts * 1000)) / 60000 : 0;
+        if (ageMin <= 10) recent++; else if (ageMin <= 20) older++;
+      });
+      out.lightning = { last10min: recent, previous10min: older,
+        nearestKm: isFinite(nearest) ? +nearest.toFixed(1) : null,
+        trend: recent > older * 1.5 && recent > 5 ? 'climbing'
+             : older > recent * 1.5 ? 'falling' : 'steady' };
+    }
+  } catch (e) {}
+  // Satellite cloud top. The coldest tops are the tallest storms, and an
+  // overshooting top means an updraft strong enough to punch through the
+  // tropopause, which is a severe signal in its own right.
+  try {
+    if (typeof activeLayers !== 'undefined' && activeLayers.satellite
+        && typeof _satOverlay !== 'undefined' && _satOverlay) {
+      out.satellite = { note: 'satellite is on screen, read cloud-top structure from the image' };
+    }
+  } catch (e) {}
+  // Daylight, from the forecast that was already fetched rather than a
+  // second call. Darkness is the single biggest multiplier on tornado
+  // fatality rates, and it costs nothing to say.
+  try {
+    const d0 = everyday && everyday.daily && everyday.daily[0];
+    if (d0 && d0.sunset) {
+      const sunset = Date.parse(d0.sunset + 'Z');
+      const sunrise = d0.sunrise ? Date.parse(d0.sunrise + 'Z') : null;
+      const now = Date.now();
+      const minsToSunset = Math.round((sunset - now) / 60000);
+      out.daylight = {
+        isDark: now > sunset || (sunrise && now < sunrise),
+        minutesToSunset: minsToSunset > 0 ? minsToSunset : null,
+        sunsetUTC: d0.sunset, sunriseUTC: d0.sunrise,
+      };
+    }
+  } catch (e) {}
+  return out;
+}
+
+// ── Which domains this question is actually about ─────────────────────────
+//
+// From the wording, from what is on the map, and from the season and place,
+// in that order of authority. Asking about a hurricane gets tropical
+// whatever the map shows; saying nothing in January over Minnesota gets
+// winter. A full briefing covers every domain that has something to say,
+// which is what was asked for, and the leading one is what the answer opens
+// on.
+function _fxDomains(question, scene) {
+  const q = String(question || '').toLowerCase();
+  const want = new Set();
+  const said = {
+    severe: /tornado|hail|supercell|severe|wind damage|rotation|meso|storm chas|couplet|squall/,
+    tropical: /hurricane|tropical|cyclone|typhoon|storm surge|landfall|invest|eyewall|major storm/,
+    winter: /snow|ice|sleet|freezing|blizzard|winter|wintry|accumulat|plow|black ice/,
+    flood: /flood|flash|rainfall|inundat|river|creek|high water|rain total/,
+    fire: /fire|red flag|burn|smoke|wildfire|fuel/,
+    marine: /wave|surf|swell|marine|boat|sail|small craft|sea state/,
+    air: /air quality|aqi|smoke|pollut|pm2|ozone|haze/,
+    comfort: /heat|cold|wind chill|fog|visibility|humid|hypotherm|heat index/,
+  };
+  Object.entries(said).forEach(([k, re]) => { if (re.test(q)) want.add(k); });
+
+  // What the map is showing, when the question did not say.
+  try {
+    if (scene.radar && scene.radar.cells && scene.radar.cells.length) want.add('severe');
+    if (scene.tropical && scene.tropical.available) want.add('tropical');
+    if (scene.marine && scene.marine.available) want.add('marine');
+    if (scene.air && scene.air.available) want.add('air');
+  } catch (e) {}
+
+  // Season and latitude, as the weakest signal. Winter is only a candidate
+  // where and when winter actually happens.
+  try {
+    const m = new Date().getUTCMonth();          // 0 = January
+    const lat = Math.abs(scene.where && scene.where.lat || 0);
+    const coldSeason = (m <= 2 || m >= 10);
+    if (coldSeason && lat > 30) want.add('winter');
+    if (!coldSeason && lat < 40) want.add('tropical');
+  } catch (e) {}
+
+  // Everything applicable gets a section, because a full briefing was asked
+  // for, but these three are only worth printing when they have something.
+  ['flood', 'fire', 'comfort'].forEach(k => {
+    const d = scene[k];
+    if (d && d.available) want.add(k);
+  });
+  want.add('general');                            // there is always a forecast
+
+  // The lead is whatever the question named, and failing that whatever is
+  // most dangerous right now.
+  const order = ['severe', 'tropical', 'flood', 'winter', 'fire',
+                 'marine', 'air', 'comfort', 'general'];
+  const named = order.find(k => said[k] && said[k].test(q));
+  const list = order.filter(k => want.has(k));
+  return { lead: named || list[0] || 'general', domains: list };
+}
+
+// ── The scan ──────────────────────────────────────────────────────────────
+//
+// One pass that gathers everything, on the current view, and never throws.
+// Every piece records whether it was available and why not, because the
+// brief has to be able to say exactly what the call is missing rather than
+// quietly leaving a gap the model then fills with a guess.
+let _fxLastScan = null;
+
+async function _fxScan(opts) {
+  const o = opts || {};
+  const t0 = performance.now();
+  const c = (typeof map !== 'undefined' && map) ? map.getCenter() : { lat: 35, lng: -97 };
+  const lat = o.lat != null ? o.lat : c.lat;
+  const lon = o.lon != null ? o.lon : c.lng;
+  const b = (typeof map !== 'undefined' && map) ? map.getBounds() : null;
+  const view = b ? { south: b.getSouth(), north: b.getNorth(),
+                     west: b.getWest(), east: b.getEast() } : null;
+
+  const scene = {
+    at: new Date().toISOString(),
+    where: { lat: +lat.toFixed(4), lon: +lon.toFixed(4),
+             zoom: (typeof map !== 'undefined' && map) ? map.getZoom() : null,
+             place: _fxNearestPlace(lat, lon), view },
+    gaps: [],
+  };
+
+  // The two network reads, together rather than one after the other.
+  const [everyday, env] = await Promise.all([
+    _fxEveryday(lat, lon),
+    _fxSounding(lat, lon),
+  ]);
+  scene.everyday = everyday;
+  scene.environment = env;
+  if (!everyday.available) scene.gaps.push('the everyday forecast feed: ' + (everyday.why || 'unavailable'));
+  if (!env.available) scene.gaps.push('the sounding: ' + (env.why || 'unavailable'));
+
+  // Radar. Cells come from the mesh the page decoded, which means real
+  // numbers, and only from what is on screen.
+  scene.radar = { available: false, cells: [] };
+  try {
+    const station = typeof _lastMeshStation !== 'undefined' ? _lastMeshStation : null;
+    const product = typeof _lastMeshProduct !== 'undefined' ? _lastMeshProduct : null;
+    const mesh = typeof _lastMeshData !== 'undefined' ? _lastMeshData : null;
+    if (!mesh) {
+      scene.gaps.push('no decoded radar is loaded, so there is no cell analysis. '
+        + 'Open a single-site radar (Level 2 or Level 3) to get one.');
+    } else if (product !== 'ref') {
+      scene.gaps.push('the radar on screen is ' + product + ' rather than reflectivity, '
+        + 'so cells were not identified. Switch to Reflectivity for a cell analysis.');
+    } else {
+      const cells = _fxCellsFromMesh(mesh, { bounds: view });
+      scene.radar = {
+        available: true, station: String(station || '').toUpperCase(), product,
+        historyFrames: _fxHistory.filter(f => f.station === station).length,
+        cells: cells.map((cell, i) => {
+          const motion = _fxCellMotion(cell, station);
+          const rot = _fxRotation(cell, station);
+          const dp = _fxDualPol(cell, station);
+          const out = {
+            n: i + 1, lat: +cell.lat.toFixed(3), lon: +cell.lon.toFixed(3),
+            maxDbz: cell.max, areaKm2: cell.areaKm2,
+            where: _fxNearestPlace(cell.lat, cell.lon),
+            motion, rotation: rot, dualPol: dp,
+            mrms: _fxMrmsAt(cell.lat, cell.lon),
+          };
+          // Where it will be, and when it gets to the places that matter.
+          if (motion && motion.kmh > 0 && !motion.unreliable) {
+            out.forecastPositions = [30, 60, 120].map(min => {
+              const p = _fxProject(cell.lat, cell.lon, motion.bearing, motion.kmh * min / 60);
+              return { minutes: min, lat: +p.lat.toFixed(3), lon: +p.lon.toFixed(3),
+                       nearest: _fxNearestPlace(p.lat, p.lon) };
+            });
+            out.arrival = _fxArrivals(cell, motion, lat, lon);
+          }
+          return out;
+        }),
+      };
+      if (scene.radar.historyFrames < 2) {
+        scene.gaps.push('only one radar frame has been seen, so cell motion is not '
+          + 'measured. Let the loop build, or watch for a few minutes, for real '
+          + 'speed and direction.');
+      }
+    }
+  } catch (e) { scene.gaps.push('the radar analysis failed: ' + (e && e.message)); }
+
+  // Every other domain. None of these can throw the scan.
+  try { scene.tropical = _fxTropical(); } catch (e) { scene.tropical = { available: false }; }
+  try { scene.winter = _fxWinter(env, everyday); } catch (e) { scene.winter = { available: false }; }
+  try { scene.flood = _fxFlood(lat, lon, everyday); } catch (e) { scene.flood = { available: false }; }
+  try { scene.fire = _fxFire(everyday); } catch (e) { scene.fire = { available: false }; }
+  try { scene.marine = _fxMarine(lat, lon); } catch (e) { scene.marine = { available: false }; }
+  try { scene.air = _fxAir(lat, lon); } catch (e) { scene.air = { available: false }; }
+  try { scene.comfort = _fxComfort(everyday); } catch (e) { scene.comfort = { available: false }; }
+  try { scene.extras = _fxExtras(lat, lon, everyday); } catch (e) { scene.extras = {}; }
+
+  // The user's own position, when it is being tracked, because "will it hit
+  // me" is the most common question this exists to answer.
+  try {
+    if (typeof _lastGpsPos !== 'undefined' && _lastGpsPos) {
+      scene.you = { lat: +_lastGpsPos.coords.latitude.toFixed(4),
+                    lon: +_lastGpsPos.coords.longitude.toFixed(4),
+                    place: _fxNearestPlace(_lastGpsPos.coords.latitude,
+                                           _lastGpsPos.coords.longitude) };
+    }
+  } catch (e) {}
+
+  scene.tookMs = Math.round(performance.now() - t0);
+  _fxLastScan = scene;
+  return scene;
+}
+
+// When a cell reaches the map centre and the user, if it is heading there at
+// all. A bearing that points away from somewhere never "arrives" there, and
+// reporting a time for it would be nonsense.
+function _fxArrivals(cell, motion, centreLat, centreLon) {
+  const out = [];
+  const targets = [{ name: 'the map centre', lat: centreLat, lon: centreLon }];
+  try {
+    if (typeof _lastGpsPos !== 'undefined' && _lastGpsPos) {
+      targets.push({ name: 'your location', lat: _lastGpsPos.coords.latitude,
+                     lon: _lastGpsPos.coords.longitude });
+    }
+  } catch (e) {}
+  targets.forEach(t => {
+    const km = _fxKm(cell.lat, cell.lon, t.lat, t.lon);
+    const brgTo = _fxBearing(cell.lat, cell.lon, t.lat, t.lon);
+    // How far off the cell's heading the target sits. Past about 45 degrees
+    // it is not coming to you, it is going past you.
+    let off = Math.abs(((brgTo - motion.bearing + 540) % 360) - 180);
+    if (off > 60 || motion.kmh <= 0) {
+      out.push({ target: t.name, km: Math.round(km), heading: 'not toward it',
+                 offAxisDeg: Math.round(off) });
+      return;
+    }
+    const minutes = Math.round(km / motion.kmh * 60);
+    out.push({ target: t.name, km: Math.round(km), minutes,
+               offAxisDeg: Math.round(off),
+               note: off > 30 ? 'a glancing pass rather than a direct hit' : null });
+  });
+  return out;
+}
+
+// ── Is this a question that wants a prediction? ───────────────────────────
+//
+// Two ways in, because one is always wrong somewhere. The wording catches
+// "will this hit me" without making anyone learn a syntax, and the Predict
+// button catches everything the wording misses. A scan is not cheap, so an
+// ordinary question like "what is the wind in Tulsa" must not trigger one.
+function _fxWantsPrediction(text) {
+  const t = String(text || '').toLowerCase();
+  if (/\b(predict|forecast|outlook|prognos)/.test(t)) return true;
+  if (/\bwill (it|this|there|we|they|the)\b/.test(t)) return true;
+  if (/\b(is|are) (it|this|they|we) (going to|gonna)\b/.test(t)) return true;
+  if (/\bwhat('| i)?s (going to|gonna) happen/.test(t)) return true;
+  if (/\b(going to|gonna) (hit|reach|get|arrive|develop|form|strengthen|weaken)/.test(t)) return true;
+  if (/\b(how bad|what should i expect|expect (tonight|today|tomorrow))/.test(t)) return true;
+  if (/\b(threat|risk|danger|chance) (of|for|to)\b/.test(t)) return true;
+  if (/\b(when|how long) (will|until|till|before)\b/.test(t)) return true;
+  return false;
+}
+
+// ── The brief the model reads ─────────────────────────────────────────────
+//
+// Written as plain lines rather than JSON. A model reads prose more reliably
+// than a nested object, and it makes the brief legible in the console when
+// something looks wrong. Every "not available" line is deliberate: the model
+// is told what is missing so it can say so, rather than filling the hole
+// with something plausible.
+function _fxBrief(scene, picked) {
+  if (!scene) return '';
+  const L = [];
+  const put = (k, v) => { if (v !== undefined && v !== null && v !== '') L.push(k + ': ' + v); };
+  const num = (v, u) => (v == null ? null : v + (u || ''));
+
+  L.push('=== SCENE ANALYSIS (real numbers, read off the app itself) ===');
+  put('Scanned at', scene.at);
+  put('Point', `${scene.where.lat}, ${scene.where.lon}`
+    + (scene.where.place ? ` (${scene.where.place.label})` : ''));
+  if (scene.you) put('User GPS', `${scene.you.lat}, ${scene.you.lon}`
+    + (scene.you.place ? ` (${scene.you.place.label})` : ''));
+  put('Domains to cover', picked ? picked.domains.join(', ') : 'general');
+  put('Lead domain', picked ? picked.lead : 'general');
+  put('Honest horizons (hours)', picked
+    ? picked.domains.map(d => `${d} ${FX_HORIZON_H[d]}`).join(', ') : '');
+
+  // ── Radar ──
+  L.push('', '--- RADAR CELLS ---');
+  if (!scene.radar.available) {
+    L.push('No decoded radar cell analysis is available.');
+  } else {
+    put('Station', scene.radar.station);
+    put('Frames of history', scene.radar.historyFrames
+      + (scene.radar.historyFrames < 2 ? ' (motion NOT measured, too few frames)' : ''));
+    if (!scene.radar.cells.length) L.push('No cells above 35 dBZ in the current view.');
+    scene.radar.cells.forEach(c => {
+      L.push('', `CELL ${c.n}: ${c.where ? c.where.label : c.lat + ', ' + c.lon}`);
+      put('  Peak reflectivity', c.maxDbz + ' dBZ');
+      put('  Area above 35 dBZ', c.areaKm2 + ' km2');
+      if (c.motion && !c.motion.unreliable) {
+        put('  Motion', `${c.motion.mph} mph toward ${c.motion.toward} `
+          + `(${c.motion.bearing} deg), measured over ${c.motion.frames} frames `
+          + `spanning ${c.motion.spanMin} min`);
+        put('  Trend', `${c.motion.trend} (peak ${c.motion.peakChange >= 0 ? '+' : ''}`
+          + `${c.motion.peakChange} dBZ over that window)`);
+      } else if (c.motion) {
+        put('  Motion', 'not measurable, the cell has barely moved between frames');
+      } else {
+        put('  Motion', 'NOT MEASURED, there is not enough frame history');
+      }
+      if (c.rotation && c.rotation.available) {
+        put('  Velocity couplet', c.rotation.couplet ? 'YES' : 'no');
+        put('  Inbound / outbound', `${c.rotation.inboundMs} / ${c.rotation.outboundMs} m/s, `
+          + `delta ${c.rotation.deltaMs} m/s over ${c.rotation.separationKm} km`);
+        put('  Rotational shear', c.rotation.shear + ' m/s per km');
+        if (c.rotation.note) put('  Couplet note', c.rotation.note);
+        if (c.rotation.ageMin > 5) put('  Velocity age', c.rotation.ageMin + ' min old');
+      } else {
+        put('  Rotation', 'NOT CHECKED: ' + ((c.rotation && c.rotation.why) || 'unavailable'));
+      }
+      if (c.dualPol && c.dualPol.available) {
+        const f = c.dualPol.fields;
+        if (f.cc) put('  Correlation coefficient', `min ${f.cc.min}, mean ${f.cc.mean}`);
+        if (f.zdr) put('  Differential reflectivity', `max ${f.zdr.max}, mean ${f.zdr.mean} dB`);
+        if (f.kdp) put('  Specific differential phase', `max ${f.kdp.max} deg/km`);
+        (c.dualPol.reading || []).forEach(r => put('  Dual-pol reads as', r));
+      }
+      if (c.dualPol && c.dualPol.missing && c.dualPol.missing.length) {
+        put('  Dual-pol NOT loaded', c.dualPol.missing.join(', ')
+          + ' (open them on this station to include them)');
+      }
+      const mk = Object.keys(c.mrms || {});
+      if (mk.length) {
+        mk.forEach(k => put('  MRMS ' + c.mrms[k].label,
+          c.mrms[k].value + ' ' + c.mrms[k].unit));
+      }
+      (c.forecastPositions || []).forEach(fp => put(`  In ${fp.minutes} min`,
+        fp.nearest ? fp.nearest.label : `${fp.lat}, ${fp.lon}`));
+      (c.arrival || []).forEach(a => put('  Reaches ' + a.target,
+        a.minutes != null
+          ? `${a.minutes} min away (${a.km} km${a.note ? ', ' + a.note : ''})`
+          : `not heading there (${a.offAxisDeg} deg off its track)`));
+    });
+  }
+
+  // ── Environment ──
+  L.push('', '--- ENVIRONMENT (sounding) ---');
+  const e = scene.environment;
+  if (!e || !e.available) {
+    L.push('NOT AVAILABLE: ' + ((e && e.why) || 'unknown'));
+  } else {
+    put('MLCAPE / MLCIN', `${num(e.mlcape, ' J/kg')} / ${num(e.mlcin, ' J/kg')}`);
+    put('SBCAPE / MUCAPE', `${num(e.sbcape, ' J/kg')} / ${num(e.mucape, ' J/kg')}`);
+    put('Shear 0-1 / 0-6 km', `${num(e.shear1, ' kt')} / ${num(e.shear6, ' kt')}`);
+    put('SRH 0-1 / 0-3 km', `${num(e.srh1, ' m2/s2')} / ${num(e.srh3, ' m2/s2')}`);
+    put('LCL height', num(e.lcl, ' m'));
+    put('Lapse rate 0-3 / 3-6 km', `${num(e.lr03, ' C/km')} / ${num(e.lr36, ' C/km')}`);
+    put('Precipitable water', num(e.pwat, ' in'));
+    put('STP (significant tornado)', e.stp);
+    put('SCP (supercell composite)', e.scp);
+    if (e.profile) {
+      put('Surface temperature', num(e.profile.surfaceC, ' C'));
+      put('Freezing level', num(e.profile.freezingLevelM, ' m'));
+      if (e.profile.warmNoseM) put('Warm layer aloft',
+        `${e.profile.warmNoseM} m, peaking at ${e.profile.warmNoseMaxC} C`);
+      put('Likely precipitation type', e.profile.likelyType);
+      if (e.profile.snowRatioEstimate) put('Snow ratio from the profile',
+        e.profile.snowRatioEstimate + ' to 1');
+    }
+  }
+
+  // ── The other domains, each only when it has something ──
+  const dom = (picked && picked.domains) || [];
+  if (dom.includes('tropical')) {
+    L.push('', '--- TROPICAL ---');
+    const t = scene.tropical;
+    if (!t || !t.available) {
+      L.push('No active cyclones: ' + ((t && t.why) || 'unknown'));
+    } else {
+      t.storms.forEach(s => {
+        L.push(`STORM ${s.name}${s.category ? ' (' + s.category + ')' : ''}`);
+        put('  Position', `${s.lat}, ${s.lon}`
+          + (s.nearest ? ` (${s.nearest.label})` : ''));
+        put('  Intensity', `${num(s.windKt, ' kt')}, ${num(s.pressureMb, ' mb')}`);
+        if (s.ocean && s.ocean.available) {
+          put('  Ocean beneath it', `${s.ocean.field} ${s.ocean.value} ${s.ocean.unit} `
+            + `(from ${s.ocean.source})`);
+        } else if (s.ocean) {
+          put('  Ocean beneath it', 'NOT READ: ' + (s.ocean.why || 'unavailable'));
+        }
+        const ai = (s.tracks && s.tracks.ai) || [];
+        put('  Model tracks held', ai.length ? ai.map(a => a.source).join(', ') : 'none loaded');
+      });
+    }
+    if (scene.tropical && scene.tropical.genesis && scene.tropical.genesis.available) {
+      put('Areas watched for development',
+        scene.tropical.genesis.areas.map(a => a.id).join(', '));
+    }
+  }
+  if (dom.includes('winter')) {
+    L.push('', '--- WINTER ---');
+    const w = scene.winter;
+    if (!w || !w.available) L.push('NOT AVAILABLE: ' + ((w && w.why) || 'unknown'));
+    else {
+      put('Precipitation type', w.type);
+      put('Freezing level', num(w.freezingLevelM, ' m'));
+      if (w.warmNoseM) put('Warm nose', `${w.warmNoseM} m at ${w.warmNoseMaxC} C`);
+      put('Snow ratio from the profile', w.snowRatio ? w.snowRatio + ' to 1' : null);
+      put('Liquid next 24h', num(w.next24LiquidMm, ' mm'));
+      put('Snow from that ratio', num(w.snowFromRatioCm, ' cm'));
+      put('Model snow next 24h', num(w.next24ModelSnowCm, ' cm'));
+      if (w.icingRisk) put('Icing risk', `${w.icingRisk}, ${w.icingLiquidMm} mm liquid into a sub-freezing surface`);
+      put('Ranked worst first', (w.ranked || []).join(' | '));
+    }
+  }
+  if (dom.includes('flood')) {
+    L.push('', '--- FLOOD ---');
+    const f = scene.flood;
+    if (!f || !f.available) L.push('NOT AVAILABLE: ' + ((f && f.why) || 'unknown'));
+    else {
+      put('Rain next 24h', num(f.next24RainMm, ' mm'));
+      Object.entries(f.mrms || {}).forEach(([k, v]) =>
+        put('  MRMS ' + v.label, v.value + ' ' + v.unit));
+      put('What is driving the risk', (f.drivers || []).join('; ') || 'nothing notable');
+    }
+  }
+  if (dom.includes('fire')) {
+    L.push('', '--- FIRE ---');
+    const f = scene.fire;
+    if (!f || !f.available) L.push('NOT AVAILABLE: ' + ((f && f.why) || 'unknown'));
+    else {
+      put('Humidity now / min next 24h', `${num(f.rhNow, '%')} / ${num(f.minRh24, '%')}`);
+      put('Gusts now / max next 24h', `${num(f.gustNow, ' kt')} / ${num(f.maxGust24, ' kt')}`);
+      put('Rain next 24h', num(f.rainMm24, ' mm'));
+      put('Red flag ingredients', f.redFlagIngredients);
+    }
+  }
+  if (dom.includes('marine')) {
+    L.push('', '--- MARINE ---');
+    const m = scene.marine;
+    if (!m || !m.available) L.push('NOT AVAILABLE: ' + ((m && m.why) || 'unknown'));
+    else {
+      put('Wave height', num(m.waveHeightM, ' m'));
+      put('Period / direction', `${num(m.wavePeriodS, ' s')} / ${num(m.waveDirDeg, ' deg')}`);
+      put('Swell height', num(m.swellHeightM, ' m'));
+      put('Small craft threshold passed', m.smallCraft ? 'yes' : 'no');
+    }
+  }
+  if (dom.includes('air')) {
+    L.push('', '--- AIR QUALITY ---');
+    const a = scene.air;
+    if (!a || !a.available) L.push('NOT AVAILABLE: ' + ((a && a.why) || 'unknown'));
+    else {
+      put('US AQI', `${a.usAqi} (${a.band})`);
+      put('PM2.5 / PM10 / ozone', `${a.pm25} / ${a.pm10} / ${a.ozone}`);
+    }
+  }
+  if (dom.includes('comfort')) {
+    L.push('', '--- HEAT, COLD, FOG ---');
+    const c = scene.comfort;
+    if (!c || !c.available) L.push('NOT AVAILABLE: ' + ((c && c.why) || 'unknown'));
+    else {
+      put('Feels like now', num(c.feelsNowC, ' C'));
+      put('Feels like range next 24h', `${num(c.minFeels24C, ' C')} to ${num(c.maxFeels24C, ' C')}`);
+      put('Temperature minus dew point', num(c.dewSpreadC, ' C'));
+      put('Fog risk', c.fogRisk);
+      put('Heat', c.heatDanger);
+      put('Cold', c.coldDanger);
+      put('Visibility now / min next 24h', `${num(c.visibilityNowM, ' m')} / ${num(c.minVis24M, ' m')}`);
+    }
+  }
+
+  // ── Always ──
+  L.push('', '--- GENERAL ---');
+  const g = scene.everyday;
+  if (!g || !g.available) L.push('NOT AVAILABLE: ' + ((g && g.why) || 'unknown'));
+  else {
+    put('Now', `${num(g.nowC, ' C')}, feels ${num(g.feelsC, ' C')}, `
+      + `RH ${num(g.rh, '%')}, wind ${num(g.windKt, ' kt')} gusting ${num(g.gustKt, ' kt')}`);
+    put('Surface CAPE now', num(g.capeNow, ' J/kg'));
+    (g.daily || []).forEach(d => put('  ' + d.date,
+      `${num(d.minC, '')} to ${num(d.maxC, ' C')}, rain ${num(d.rainMm, ' mm')}, `
+      + `snow ${num(d.snowCm, ' cm')}, gusts ${num(d.maxGustKt, ' kt')}`));
+  }
+
+  const x = scene.extras || {};
+  L.push('', '--- CONTEXT ---');
+  put('NWS warnings already in force here',
+    (x.warnings || []).length ? x.warnings.join(', ') : 'none at this point');
+  if (x.lightning) put('Lightning within 40 km',
+    `${x.lightning.last10min} strikes in the last 10 min vs `
+    + `${x.lightning.previous10min} the 10 before, ${x.lightning.trend}`
+    + (x.lightning.nearestKm != null ? `, nearest ${x.lightning.nearestKm} km` : ''));
+  if (x.daylight) put('Daylight', x.daylight.isDark ? 'DARK, which raises the danger of anything severe'
+    : (x.daylight.minutesToSunset != null ? `${x.daylight.minutesToSunset} min to sunset` : 'daylight'));
+  if (x.satellite) put('Satellite', x.satellite.note);
+
+  if (scene.gaps.length) {
+    L.push('', '--- WHAT THIS ANALYSIS IS MISSING ---');
+    scene.gaps.forEach(g2 => L.push('- ' + g2));
+  }
+  put('Scan took', scene.tookMs + ' ms');
+  return L.join('\n');
+}
+
+// ── SHOWING THE PREDICTION ────────────────────────────────────────────────
+//
+// A forecast that lives only in a chat bubble makes you translate "the cell
+// southwest of Ardmore" into a place on the map yourself. Drawing it means
+// the text and the map are talking about the same storm, and the numbered
+// markers here are the same numbers the answer uses.
+//
+// Its own pane, above the overlays, because a prediction that gets painted
+// over by a radar layer is not showing anything.
+let _fxLayers = [];
+function _fxPane() {
+  if (typeof map === 'undefined' || !map) return undefined;
+  if (!map.getPane('fxPane')) {
+    const p = map.createPane('fxPane');
+    p.style.zIndex = '640';
+    p.style.pointerEvents = 'none';
+  }
+  return 'fxPane';
+}
+function _fxClearDraw() {
+  _fxLayers.forEach(l => { try { map.removeLayer(l); } catch (e) {} });
+  _fxLayers = [];
+}
+function _fxAdd(layer) { if (layer) { layer.addTo(map); _fxLayers.push(layer); } }
+
+// Colour by how bad it is, using the same language the answer uses.
+const FX_LEVEL_COLOR = { low: '#4aa3d8', moderate: '#e8b800',
+                         high: '#e8720c', extreme: '#d21f1f' };
+
+function _fxDrawScene(scene, level) {
+  if (typeof map === 'undefined' || !map || !scene) return;
+  _fxClearDraw();
+  const pane = _fxPane();
+  const colour = FX_LEVEL_COLOR[level] || FX_LEVEL_COLOR.moderate;
+
+  // Storm cells, numbered to match the text, each with the track it is on.
+  (scene.radar && scene.radar.cells || []).forEach(c => {
+    _fxAdd(L.marker([c.lat, c.lon], { pane: _fxPane(), interactive: false,
+      icon: L.divIcon({ className: '', iconSize: [0, 0],
+        html: `<span class="fx-cellmark" style="border-color:${colour}">`
+            + `<b>${c.n}</b><span>${c.maxDbz} dBZ</span></span>` }) }));
+    if (c.forecastPositions && c.forecastPositions.length) {
+      const pts = [[c.lat, c.lon], ...c.forecastPositions.map(p => [p.lat, p.lon])];
+      // Dashed, because a projected track is an extrapolation and should not
+      // look as solid as the observed position it starts from.
+      _fxAdd(L.polyline(pts, { pane, color: colour, weight: 2.5, opacity: 0.9,
+        dashArray: '7 5', interactive: false }));
+      c.forecastPositions.forEach(p => {
+        _fxAdd(L.circleMarker([p.lat, p.lon], { pane, radius: 3, color: colour,
+          fillColor: colour, fillOpacity: 0.9, weight: 1, interactive: false }));
+        _fxAdd(L.marker([p.lat, p.lon], { pane, interactive: false,
+          icon: L.divIcon({ className: '', iconSize: [0, 0],
+            html: `<span class="fx-tick">+${p.minutes}m</span>` }) }));
+      });
+    }
+  });
+
+  // The threat area: everything the analysed cells sweep across inside the
+  // window. Drawn as the convex hull of where they are and where they are
+  // going, which is a fair picture of what is at risk and does not pretend
+  // to a precision the extrapolation does not have.
+  const pts = [];
+  (scene.radar && scene.radar.cells || []).forEach(c => {
+    pts.push([c.lat, c.lon]);
+    (c.forecastPositions || []).forEach(p => pts.push([p.lat, p.lon]));
+  });
+  if (pts.length >= 3) {
+    const hull = _fxHull(pts);
+    if (hull.length >= 3) {
+      _fxAdd(L.polygon(hull, { pane, color: colour, weight: 2, opacity: 0.75,
+        fillColor: colour, fillOpacity: 0.10, dashArray: '3 6',
+        interactive: false }));
+    }
+  }
+
+  // Hurricanes: the blended track, and the official line beside it so any
+  // divergence between them is visible rather than buried.
+  (scene.tropical && scene.tropical.storms || []).forEach(s => {
+    if (s.lat == null || s.lon == null) return;
+    _fxAdd(L.marker([s.lat, s.lon], { pane, interactive: false,
+      icon: L.divIcon({ className: '', iconSize: [0, 0],
+        html: `<span class="fx-cellmark" style="border-color:#d21f1f">`
+            + `<b>${_ccEsc(s.name)}</b>`
+            + `<span>${s.windKt ? s.windKt + ' kt' : 'tropical'}</span></span>` }) }));
+    const lines = (s.tracks && s.tracks.ai) || [];
+    if (!lines.length) return;
+    // Every member drawn faintly, and the equal-weight blend of them drawn
+    // solid on top. The spread IS the uncertainty, so it is shown rather
+    // than averaged away into a single confident-looking line.
+    lines.forEach(t => _fxAdd(L.polyline(t.points.map(p => [p.lat, p.lon]),
+      { pane, color: '#8899bb', weight: 1, opacity: 0.35, interactive: false })));
+    const blend = _fxBlendTracks(lines);
+    if (blend.length >= 2) {
+      _fxAdd(L.polyline(blend.map(p => [p.lat, p.lon]),
+        { pane, color: '#d21f1f', weight: 3, opacity: 0.95, interactive: false }));
+      // The cone: how far apart the members are at each lead time, drawn as
+      // a circle. A real NHC cone is built from historical error rather than
+      // from spread, so this is labelled as spread and not as their cone.
+      blend.forEach(p => {
+        if (!p.spreadKm || p.spreadKm < 20) return;
+        _fxAdd(L.circle([p.lat, p.lon], { pane, radius: p.spreadKm * 1000,
+          color: '#d21f1f', weight: 1, opacity: 0.35, fillColor: '#d21f1f',
+          fillOpacity: 0.05, interactive: false }));
+      });
+    }
+  });
+
+  // Impact bands for the non-severe domains, drawn over the view so a winter
+  // or flood call is just as visible on the map as a storm cell is.
+  const band = _fxImpactBand(scene);
+  if (band && scene.where.view) {
+    const v = scene.where.view;
+    _fxAdd(L.rectangle([[v.south, v.west], [v.north, v.east]],
+      { pane, color: band.colour, weight: 2, opacity: 0.55,
+        fillColor: band.colour, fillOpacity: 0.07, dashArray: '2 8',
+        interactive: false }));
+    _fxAdd(L.marker([v.north - (v.north - v.south) * 0.06,
+                     (v.west + v.east) / 2], { pane, interactive: false,
+      icon: L.divIcon({ className: '', iconSize: [0, 0],
+        html: `<span class="fx-band" style="background:${band.colour}">`
+            + `${_ccEsc(band.label)}</span>` }) }));
+  }
+}
+
+// Which non-severe hazard is worth painting over the view, and in what
+// colour. One band, the worst one, because three overlapping rectangles
+// says less than one.
+function _fxImpactBand(scene) {
+  const w = scene.winter, f = scene.flood, fi = scene.fire, c = scene.comfort;
+  if (w && w.available && w.icingRisk === 'significant')
+    return { label: 'Significant icing', colour: '#b06ad2' };
+  if (f && f.available && (f.drivers || []).length >= 2)
+    return { label: 'Flood risk: ' + f.drivers[0], colour: '#2f9e44' };
+  if (w && w.available && w.snowFromRatioCm >= 10)
+    return { label: `Snow around ${w.snowFromRatioCm} cm`, colour: '#4c8ed9' };
+  if (fi && fi.available && fi.redFlagIngredients === 'both present')
+    return { label: 'Fire weather: dry and windy', colour: '#e8720c' };
+  if (c && c.available && c.heatDanger === 'dangerous heat index')
+    return { label: 'Dangerous heat', colour: '#d21f1f' };
+  if (c && c.available && c.coldDanger === 'dangerous wind chill')
+    return { label: 'Dangerous wind chill', colour: '#5aa8d8' };
+  if (c && c.available && c.fogRisk === 'likely')
+    return { label: 'Fog likely', colour: '#9aa5ad' };
+  return null;
+}
+
+// Equal-weight blend of however many track lines are in hand, on a common
+// lead-time grid so members that report at different hours still average
+// against each other rather than against whoever happened to be there.
+function _fxBlendTracks(lines) {
+  const byLead = new Map();
+  lines.forEach(t => t.points.forEach((p, i) => {
+    const h = p.h != null ? p.h : i * 6;
+    if (!byLead.has(h)) byLead.set(h, []);
+    byLead.get(h).push(p);
+  }));
+  const out = [];
+  [...byLead.keys()].sort((a, b) => a - b).forEach(h => {
+    const ps = byLead.get(h);
+    if (ps.length < 1) return;
+    const lat = ps.reduce((s, p) => s + p.lat, 0) / ps.length;
+    const lon = ps.reduce((s, p) => s + p.lon, 0) / ps.length;
+    // How far the members sit from their own mean: the honest measure of
+    // how much they disagree at this lead time.
+    const spread = ps.length > 1
+      ? ps.reduce((s, p) => s + _fxKm(lat, lon, p.lat, p.lon), 0) / ps.length : 0;
+    out.push({ h, lat, lon, members: ps.length, spreadKm: Math.round(spread) });
+  });
+  return out;
+}
+
+// Convex hull, monotone chain. Small point counts, so the simple one.
+function _fxHull(pts) {
+  const p = pts.slice().sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+  if (p.length < 3) return p;
+  const cross = (o, a, b) =>
+    (a[1] - o[1]) * (b[0] - o[0]) - (a[0] - o[0]) * (b[1] - o[1]);
+  const lower = [];
+  for (const q of p) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop();
+    lower.push(q);
+  }
+  const upper = [];
+  for (let i = p.length - 1; i >= 0; i--) {
+    const q = p[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop();
+    upper.push(q);
+  }
+  lower.pop(); upper.pop();
+  return lower.concat(upper);
+}
+
+// ── Keeping a record ──────────────────────────────────────────────────────
+// Every call is kept locally so it can be judged later. Nothing is uploaded:
+// this is a notebook, not a dataset.
+const FX_LOG_KEY = 'gwcfc_fx_log';
+const FX_LOG_MAX = 60;
+function _fxRecord(entry) {
+  try {
+    const log = JSON.parse(localStorage.getItem(FX_LOG_KEY) || '[]');
+    log.push(entry);
+    localStorage.setItem(FX_LOG_KEY, JSON.stringify(log.slice(-FX_LOG_MAX)));
+  } catch (e) {}
+}
+function fxPredictionLog() {
+  try { return JSON.parse(localStorage.getItem(FX_LOG_KEY) || '[]'); }
+  catch (e) { return []; }
+}
+
+// Set by the Predict button so the next send scans whatever the wording
+// looks like. One flag rather than a second code path, so the button and a
+// typed question go through exactly the same machinery.
+let _fxForced = false;
+function fxPredict() {
+  const input = document.getElementById('lqm-ai-input');
+  if (!input) return;
+  _fxForced = true;
+  // Only fills the box when it is empty, so pressing Predict with a question
+  // already typed predicts about THAT rather than overwriting it.
+  if (!input.value.trim()) {
+    input.value = 'What is going to happen here? Full briefing.';
+  }
+  _aiSend();
+}
+
+// Which of the four levels the answer settled on. Read back out of what the
+// model wrote rather than decided here, because the judgement is the
+// model's and this only needs to know how to colour it.
+function _fxLevelOf(text) {
+  const t = String(text || '').toLowerCase();
+  if (/\bextreme\b/.test(t)) return 'extreme';
+  if (/\bhigh confidence\b|\bconfidence:\s*high\b|\bhigh\b(?=[^.]*confidence)/.test(t)) return 'high';
+  if (/\bmoderate\b/.test(t)) return 'moderate';
+  if (/\blow confidence\b|\bconfidence:\s*low\b/.test(t)) return 'low';
+  return 'moderate';
+}
+
+// ── The forecast card ─────────────────────────────────────────────────────
+// The call, its confidence, and the numbers it came from, folded away until
+// asked for. A briefing rather than a chat bubble, and the evidence is there
+// so a thin call can be told from a solid one.
+function _fxShowCard(scene, text, level) {
+  const host = document.getElementById('lqm-ai-messages');
+  if (!host || !scene) return;
+  const colour = FX_LEVEL_COLOR[level] || FX_LEVEL_COLOR.moderate;
+  const card = document.createElement('div');
+  card.className = 'fx-card';
+  card.style.borderColor = colour;
+
+  const cells = (scene.radar && scene.radar.cells || []).slice(0, 10);
+  const rows = cells.map(c => {
+    const bits = [`<b>${c.maxDbz} dBZ</b>`];
+    if (c.motion && !c.motion.unreliable) bits.push(`${c.motion.mph} mph ${c.motion.toward}`);
+    if (c.motion && c.motion.trend) bits.push(c.motion.trend);
+    if (c.rotation && c.rotation.couplet) bits.push('<b style="color:#ff9a9a">couplet</b>');
+    const arr = (c.arrival || []).find(a => a.minutes != null && /your/.test(a.target));
+    if (arr) bits.push(`you in ${arr.minutes} min`);
+    return `<div class="fx-row"><span class="fx-n" style="background:${colour}">${c.n}</span>`
+      + `<span class="fx-where">${_ccEsc(c.where ? c.where.label : c.lat + ', ' + c.lon)}</span>`
+      + `<span class="fx-bits">${bits.join(' &middot; ')}</span></div>`;
+  }).join('');
+
+  const e = scene.environment || {};
+  const envBits = [];
+  if (e.available) {
+    if (e.mlcape != null) envBits.push(`MLCAPE ${e.mlcape}`);
+    if (e.shear6 != null) envBits.push(`0-6 shear ${e.shear6} kt`);
+    if (e.srh1 != null) envBits.push(`SRH1 ${e.srh1}`);
+    if (e.stp != null) envBits.push(`STP ${e.stp}`);
+    if (e.profile && e.profile.likelyType) envBits.push(e.profile.likelyType);
+  }
+  const gaps = (scene.gaps || []).map(g => `<li>${_ccEsc(g)}</li>`).join('');
+
+  card.innerHTML =
+    `<div class="fx-head"><span class="fx-level" style="background:${colour}">`
+    + `${_ccEsc(level.toUpperCase())}</span>`
+    + `<span class="fx-title">Forecast &middot; ${_ccEsc(scene.where.place
+        ? scene.where.place.name : scene.where.lat + ', ' + scene.where.lon)}</span>`
+    + `<button class="fx-x" onclick="fxCloseCard()" title="Clear">&times;</button></div>`
+    + (rows ? `<div class="fx-cells">${rows}</div>` : '')
+    + (envBits.length ? `<div class="fx-env">${_ccEsc(envBits.join('  ·  '))}</div>` : '')
+    + `<details class="fx-more"><summary>The numbers behind this</summary>`
+    + `<pre class="fx-pre">${_ccEsc(_fxBrief(scene, _fxDomains('', scene)))}</pre>`
+    + `</details>`
+    + (gaps ? `<details class="fx-more"><summary>What this is missing</summary>`
+        + `<ul class="fx-gaps">${gaps}</ul></details>` : '')
+    + `<div class="fx-foot">Not an official forecast. Act on National Weather `
+    + `Service warnings, which are at weather.gov.</div>`;
+  host.appendChild(card);
+  host.scrollTop = host.scrollHeight;
+}
+function fxCloseCard() {
+  document.querySelectorAll('.fx-card').forEach(c => c.remove());
+  _fxClearDraw();
+}
+
+// ── The background watch ──────────────────────────────────────────────────
+//
+// Once a prediction has been made, the cells it found are checked against
+// where you actually are as new radar frames land. It speaks up only when
+// something severe is genuinely tracking at you inside the hour, and only
+// once per cell, because a warning that repeats is a warning people learn to
+// ignore.
+let _fxWatchSeen = new Set();
+let _fxWatchTimer = null;
+function _fxWatchStart() {
+  if (_fxWatchTimer) return;
+  _fxWatchTimer = setInterval(_fxWatchTick, 90000);
+}
+function _fxWatchTick() {
+  try {
+    if (typeof _lastGpsPos === 'undefined' || !_lastGpsPos) return;
+    const station = typeof _lastMeshStation !== 'undefined' ? _lastMeshStation : null;
+    const mesh = typeof _lastMeshData !== 'undefined' ? _lastMeshData : null;
+    const product = typeof _lastMeshProduct !== 'undefined' ? _lastMeshProduct : null;
+    if (!mesh || product !== 'ref') return;
+    const you = { lat: _lastGpsPos.coords.latitude, lon: _lastGpsPos.coords.longitude };
+    _fxCellsFromMesh(mesh).forEach(cell => {
+      // Only a genuinely severe cell is worth interrupting somebody for.
+      if (cell.max < 55) return;
+      const motion = _fxCellMotion(cell, station);
+      if (!motion || motion.unreliable || motion.kmh <= 0) return;
+      const km = _fxKm(cell.lat, cell.lon, you.lat, you.lon);
+      if (km > 120) return;
+      const brgTo = _fxBearing(cell.lat, cell.lon, you.lat, you.lon);
+      const off = Math.abs(((brgTo - motion.bearing + 540) % 360) - 180);
+      if (off > 35) return;                       // going past, not at you
+      const minutes = Math.round(km / motion.kmh * 60);
+      if (minutes > 60 || minutes < 0) return;
+      // Keyed loosely so the same storm a few minutes later is the same
+      // storm rather than a fresh alarm every scan.
+      const key = `${Math.round(cell.lat * 4)},${Math.round(cell.lon * 4)}`;
+      if (_fxWatchSeen.has(key)) return;
+      _fxWatchSeen.add(key);
+      setTimeout(() => _fxWatchSeen.delete(key), 30 * 60000);
+      const msg = `Storm heading your way: ${cell.max} dBZ, `
+        + `${motion.mph} mph ${motion.toward}, about ${minutes} min out.`;
+      if (typeof showToast === 'function') showToast(msg, 12000);
+      try {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          new Notification('GWCFC Radar', { body: msg });
+        }
+      } catch (e) {}
+      // The chime StormStream already uses, rather than a second one. One
+      // sound for "something needs your attention" is a sound people learn.
+      try { if (typeof _ssPlayChime === 'function') _ssPlayChime(); } catch (e) {}
+    });
+  } catch (e) {}
+}
+
 function _aiLiveState() {
   const L = [];
   const put = (k, v) => { if (v !== undefined && v !== null && v !== '') L.push(k + ': ' + v); };
@@ -47318,7 +49150,62 @@ function _aiNeedsSnap(text) {
 }
 
 // Fetch full Open-Meteo forecast (same data as the app's forecast panel)
-async function _aiBuildContext(hasSnap) {
+// The rules that turn a pile of measurements into a forecast somebody can
+// act on. Only sent when a prediction was actually asked for, because they
+// are long and an ordinary question does not need them.
+function _fxPromptRules(scene, picked) {
+  return `
+=== YOU HAVE BEEN GIVEN A REAL SCENE ANALYSIS. FORECAST FROM IT. ===
+
+The block above is not a description of a picture. It is measurements read
+out of the app itself: reflectivity in dBZ off the decoded radar mesh, storm
+motion measured by matching cells between real frames, velocity couplets in
+metres per second, CAPE and shear from an actual sounding, MRMS fields
+sampled where each cell is. Use those numbers. Quote them.
+
+HOW TO ANSWER
+1. Open with the call. One or two sentences, the most dangerous thing first.
+2. Give a confidence: low, moderate, high or extreme. Say WHY that level in
+   the same breath. Extreme is reserved for overwhelming evidence, for
+   example a confirmed debris signature under a warned rotating storm. A
+   single frame with no sounding is low, whatever the radar looks like.
+3. Then the evidence, short, as the numbers that produced the call.
+4. Cover EVERY domain listed as relevant, each in a line or two, most
+   dangerous first. This is a full briefing, not a single-subject answer.
+5. Name cells by their NUMBER from the analysis. Those numbers are drawn on
+   the map, so "cell 2" is something the reader can point at.
+6. Places as "12 miles southwest of Ardmore", never as coordinates.
+
+HORIZONS. Each domain's honest range is given above. Do not forecast past
+it. Radar extrapolation is good for about two hours and a hurricane track
+for five days, and stretching either is how a forecast stops being worth
+reading.
+
+WHAT YOU MUST NOT DO
+- Do not invent a number that is not in the analysis. If rotation was not
+  checked, say it was not checked and say what would fix it.
+- Do not turn a gap into a reassurance. "Velocity is not loaded" never
+  becomes "there is no rotation".
+- If asked something no forecast can answer, whether a tornado hits one
+  named street, the exact inch of snow at one address, a specific time
+  hours out, REFUSE it plainly, say why it cannot be known, and point at
+  the National Weather Service. Do not answer anyway with caveats.
+- Never contradict an active NWS warning. You may add to it, never downplay.
+
+TROPICAL. Track guidance here is an equal-weight blend of every model in
+hand. Always print what the National Hurricane Center says beside it, and
+when the blend differs from them, say so plainly and say NHC is the one to
+act on. Cover wind arrival and how long it lasts, surge, rainfall and inland
+flooding, and the tornado risk in the bands, because a landfall is all four.
+
+FINISHING. End with one short line: this is not an official forecast and NWS
+warnings at weather.gov are what to act on. Once, at the end, not repeated.
+
+Domains to cover: ${picked.domains.join(', ')}. Lead with ${picked.lead}.
+`;
+}
+
+async function _aiBuildContext(hasSnap, wantsPrediction, question) {
   const lat = typeof map!=='undefined' ? map.getCenter().lat : 35;
   const lon = typeof map!=='undefined' ? map.getCenter().lng : -90;
   const mapCenter = typeof map!=='undefined' ? `${lat.toFixed(3)}°N, ${Math.abs(lon).toFixed(3)}°W (zoom ${map.getZoom()})` : 'unknown';
@@ -47344,10 +49231,28 @@ async function _aiBuildContext(hasSnap) {
     }
   }
 
-  const [allAlertsText, stormRpts] = await Promise.all([
+  // The scene analysis runs alongside the two feeds rather than after them,
+  // so a prediction costs the slowest of the three rather than their sum.
+  const [allAlertsText, stormRpts, scene] = await Promise.all([
     _aiFetchAllAlerts(),
-    _aiFetchStormReports()
+    _aiFetchStormReports(),
+    wantsPrediction ? _fxScan().catch(e => {
+      console.warn('[fx] scan:', e);
+      return null;
+    }) : Promise.resolve(null),
   ]);
+
+  // Only a prediction question carries the analysis and its rules. They are
+  // long, and an ordinary question about the wind in Tulsa should not pay
+  // for a page of forecasting instructions it will not use.
+  let fxBlock = '';
+  if (scene) {
+    const picked = _fxDomains(question || '', scene);
+    fxBlock = _fxBrief(scene, picked) + '\n' + _fxPromptRules(scene, picked);
+    // Start watching once the first prediction has been made: from here on,
+    // a severe cell tracking at the user gets said out loud.
+    try { _fxWatchStart(); } catch (e) {}
+  }
 
   return `You are Asturio AI inside GWCFC Radar, a live weather map for storm chasers and enthusiasts.
 
@@ -47411,6 +49316,7 @@ them through clicks:
 plus product=vel for a radar product, satproduct=ch13 for a satellite band, and
 one parameter per family such as wind=wind-surface.
 ${hasSnap ? '\nA live map screenshot is attached - analyze it visually.' : ''}
+${fxBlock}
 
 === ACTIONS YOU CAN PERFORM (you control the map exactly like a human would click through the UI) ===
 To DO something on the map, include one or more JSON action blocks in your reply:
@@ -48691,13 +50597,21 @@ async function _aiSend(explicitImageB64) {
   hist.push({ role: 'user', parts: [{ text }] });
   _aiRenderMessages();
 
-  const needsVisual = explicitImageB64 || _aiNeedsSnap(text);
-  const typing = _aiAddMsg('bot', 'Checking live data…', 'typing');
+  // A prediction question gets the full scene analysis: the real numbers off
+  // the radar, the sounding, the ocean, the grids. An ordinary question does
+  // not, because the scan costs a second and most questions do not need it.
+  // A prediction always gets the picture too, since a hook echo is a SHAPE
+  // and the magnitudes are NUMBERS and each is read best by different eyes.
+  const wantsPrediction = _fxForced || _fxWantsPrediction(text);
+  _fxForced = false;
+  const needsVisual = explicitImageB64 || wantsPrediction || _aiNeedsSnap(text);
+  const typing = _aiAddMsg('bot',
+    wantsPrediction ? 'Reading the radar and the environment…' : 'Checking live data…', 'typing');
 
   try {
     const [snapB64, ctx] = await Promise.all([
       needsVisual ? (explicitImageB64 ? Promise.resolve(explicitImageB64) : _aiAutoSnap()) : Promise.resolve(null),
-      _aiBuildContext(needsVisual)
+      _aiBuildContext(needsVisual, wantsPrediction, text)
     ]);
 
     const contents = hist.map((m, i) => {
@@ -48731,6 +50645,30 @@ async function _aiSend(explicitImageB64) {
     if (typing) { typing.innerHTML = _aiMarkdown(clean || (actions.length ? 'On it…' : reply)); typing.classList.remove('typing'); }
     // Speak the human-readable part, never the action blocks.
     _aiSpeak(clean || (actions.length ? 'On it' : reply));
+    // Draw the prediction. The answer names cells by number, and this is
+    // what puts those same numbers on the map, so the text and the map are
+    // talking about the same storm rather than leaving you to work out
+    // which one "the northern cell" was.
+    if (wantsPrediction && _fxLastScan) {
+      try {
+        const level = _fxLevelOf(clean || reply);
+        _fxDrawScene(_fxLastScan, level);
+        _fxShowCard(_fxLastScan, clean || reply, level);
+        _fxRecord({
+          at: _fxLastScan.at, level,
+          where: _fxLastScan.where.place ? _fxLastScan.where.place.label : null,
+          lat: _fxLastScan.where.lat, lon: _fxLastScan.where.lon,
+          question: text,
+          cells: (_fxLastScan.radar.cells || []).map(c => ({
+            n: c.n, maxDbz: c.maxDbz,
+            where: c.where ? c.where.label : null,
+            motion: c.motion && !c.motion.unreliable
+              ? `${c.motion.mph} mph ${c.motion.toward}` : null,
+          })),
+          said: (clean || reply).slice(0, 600),
+        });
+      } catch (e) { console.warn('[fx] draw:', e); }
+    }
     // Run the actions (one permission prompt for the whole batch)
     if (actions.length) {
       const allowed = await _aiAskPermission(actions);
@@ -52019,7 +53957,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'You can ping people from the chat now. Type @ in the message box and a list of people opens: pick one and they get a real notification in Discord, not just a name on the map. The list is everyone the bot has seen in the server, plus anyone talking in the chat right now, and each row says whether picking them will actually reach Discord or only light them up here. Being pinged yourself turns the message gold, and you get a nudge even with the chat closed. Mentions typed in Discord now arrive here as names rather than as a row of digits. One message can ping up to eight people, and it still cannot ping @everyone, @here or a role: that is settled on the Pi and there is no way to ask for it from the page.';
+const APP_LATEST_UPDATE = 'Asturio can forecast now, not just describe. Ask it what is going to happen, or press the new Predict button, and it reads the actual numbers behind the map rather than looking at a picture of them: every dBZ off the decoded radar, storm motion measured by matching cells between real frames, velocity couplets, dual-pol hail and debris signatures, MRMS hail size and rotation, and a full sounding for CAPE, shear and helicity. It covers nine kinds of weather, not just severe: hurricanes with a blended track and the ocean heat underneath them, snow and ice with the ratio worked out from the temperature profile, flooding that knows what the ground does with the rain, plus fire, marine, air quality, heat, cold and fog. Each one gets the time range its data honestly supports. The answer names cells by number and those same numbers appear on the map with their projected tracks, so the text and the map are talking about the same storm. It says how confident it is and shows the numbers it used, and it says plainly what it could not read instead of filling the gap with a guess. Once you have asked for one prediction it keeps watching, and speaks up if a severe cell starts tracking at you.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
