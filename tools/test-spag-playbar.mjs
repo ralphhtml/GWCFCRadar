@@ -194,6 +194,40 @@ console.log('\n4. the playbar drives the forecast-hour clock');
      /2 tracks, out to F\+120/.test(r.date), r.date);
 }
 
+console.log('\n4b. the playbar leads both panels, and the hour goes with it');
+{
+  const r = await page.evaluate(() => {
+    const order = id => [...(document.getElementById(id)?.children || [])]
+      .map(c => c.id || c.className);
+    // Emptied and re-synced, so the no-tracks state is what is read here.
+    _tanim.tracks = [];
+    _tanimSyncBar(0);
+    return {
+      spag: order('spaghetti-models-panel'),
+      cyc: order('ai-cyclones-panel'),
+      emptyLabel: document.getElementById('tanim-fcast-date').textContent,
+    };
+  });
+  // The bar used to sit fourth, under three rows of chips and a button row,
+  // which is the part of a panel that moves whenever anything above it does.
+  ok('the spaghetti playbar is the first thing under the header',
+     r.spag[1] === 'tanim-playbar-row', r.spag.slice(0, 3).join(' | '));
+  ok('with the forecast hour immediately under it, not three rows away',
+     r.spag[2] === 'tanim-fcast-header', r.spag.slice(0, 4).join(' | '));
+  ok('and the model chips below both', r.spag.indexOf('spag-groups') > 2,
+     r.spag.join(' | '));
+  // The two panels were built to share a shape on purpose. Moving one and
+  // not the other is what would make them look like different products.
+  ok('the cyclones playbar leads its panel too',
+     r.cyc[1] === 'cyc-playbar-row', r.cyc.slice(0, 3).join(' | '));
+  ok('with its valid time and hour under it',
+     r.cyc[2] === 'cyc-fcast-header', r.cyc.slice(0, 4).join(' | '));
+  // "Track animation" was a label naming the panel you are already inside,
+  // sitting in the slot where what is loaded belongs.
+  ok('and nothing loaded says nothing, rather than naming the panel',
+     r.emptyLabel === '', JSON.stringify(r.emptyLabel));
+}
+
 console.log('\n5. the play icon follows the clock, from one place');
 {
   const r = await page.evaluate(() => {
