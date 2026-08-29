@@ -216,17 +216,29 @@ ends up believing a layer is on when it never was.
 
 ## The bot's face
 
-It wears `assets/img/asturio-ai-512.png`: the site's own AI logo, the
-concentric rings, lit as an instrument with falling code behind it. The bot
-shares a brain and a name with the assistant in the app, so it shares a face
-rather than answering as the default grey circle with a letter in it.
+It wears `assets/img/asturio-ai-512.png`, which is built from
+`assets/img/asturio-logo.png`: the exact file the AI panel header displays.
+The bot shares a brain and a name with the assistant in the app, so it shares
+a face, and it is the same image rather than an interpretation of it.
+
+It used to wear a stylised mark instead, the app's rings drawn as a lit iris
+with Matrix rain behind them. That looked good and it was not the logo, so
+somebody who knows this site by its red, gold and cyan rings did not
+recognise the bot as belonging to it.
+
+The logo is framed rather than uploaded raw, because it is a ring mark with a
+transparent middle: sent as it is, Discord would show its own background
+through the centre and the picture would look different in the light theme
+than the dark one, and at the forty pixels a message list gives it, an
+outline with no edge dissolves. So it is composited onto the panel's dark
+chrome inside a gold rim, which is exactly how the site's own header frames
+it.
 
     node tools/make-asturio-avatar.mjs
 
-Rebuilds both the SVG and the PNG from `tools/make-asturio-avatar.mjs`. Run it
-if the site's logo or palette changes, then restart the bot. The generator is
-seeded, so re-running it with nothing changed produces the same bytes and shows
-no diff.
+Rebuilds the PNG. Run it if the site's logo changes, then restart the bot.
+The generator does nothing random and reads no clock, so re-running it with
+nothing changed produces the same bytes and shows no diff.
 
 The bot uploads the picture on start, but only when it differs from the one it
 last sent, which it records in `services/bot/.avatar-stamp` (ignored by git).
