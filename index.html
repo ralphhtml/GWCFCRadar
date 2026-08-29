@@ -9962,6 +9962,30 @@ body.clean-mode #clean-hint { opacity: 1; }
         <div class="models-panel-title"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-cyclone></use></svg> Spaghetti Models</div>
         <button class="models-close-btn" onclick="collapseSpaghettiModelsPanel()" title="Close panel (model overlay stays on the map)">×</button>
       </div>
+      <!-- The playbar leads, directly under the header.
+           It used to sit fourth, under three rows of model chips and a button
+           row, which put the one control people reach for most in the place
+           that moves whenever anything above it changes size. At the top it
+           is always in the same spot, and the forecast hour travels with it
+           because a scrubber and the hour it is pointing at are one control,
+           not two things that happen to be near each other. -->
+      <div id="tanim-playbar-row" class="sev-playbar-row">
+        <button id="tanim-play" class="sev-play-btn" onclick="_tanimToggle()" title="Play or pause the forecast-hour clock"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg></button>
+        <button id="tanim-speed-btn" class="sev-speed-btn" onclick="_tanimCycleSpeed()" title="How fast forecast time runs">1×</button>
+        <div id="tanim-playbar-track" class="sev-playbar-track" onpointerdown="_tanimPlaybarDown(event)">
+          <div id="tanim-playbar-fill" class="sev-playbar-fill"></div>
+          <div id="tanim-playbar-thumb" class="sev-playbar-thumb"></div>
+        </div>
+      </div>
+      <div id="tanim-fcast-header" class="sev-fcast-header">
+        <!-- This used to read "Track animation" when nothing was loaded, which
+             is a label for the panel you are already looking at. It carries
+             what IS loaded instead, and says nothing when that is nothing. -->
+        <span id="tanim-fcast-date" class="sev-fcast-date"></span>
+        <span id="tanim-hour" class="sev-fcast-flbl">F+000</span>
+      </div>
+      <div style="border-top:1px solid rgba(255,255,255,0.08);margin:5px 0 6px;"></div>
+
       <!-- One section, laid out like Run Models, for the same reason the AI
            Cyclones panel is: the guidance and the animation were never two
            subjects. The animation animates the guidance. Splitting them into
@@ -9983,22 +10007,6 @@ body.clean-mode #clean-hint { opacity: 1; }
         <button id="tanim-stop" onclick="_tanimStop()" title="Stop the clock and bring the still lines back">Reset clock</button>
       </div>
 
-      <!-- The same playbar the models and cyclones panels use, driving the
-           forecast-hour clock that was a bare range slider in a folded card. -->
-      <div id="tanim-playbar-row" class="sev-playbar-row">
-        <button id="tanim-play" class="sev-play-btn" onclick="_tanimToggle()" title="Play or pause the forecast-hour clock"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg></button>
-        <button id="tanim-speed-btn" class="sev-speed-btn" onclick="_tanimCycleSpeed()" title="How fast forecast time runs">1×</button>
-        <div id="tanim-playbar-track" class="sev-playbar-track" onpointerdown="_tanimPlaybarDown(event)">
-          <div id="tanim-playbar-fill" class="sev-playbar-fill"></div>
-          <div id="tanim-playbar-thumb" class="sev-playbar-thumb"></div>
-        </div>
-      </div>
-      <div style="border-top:1px solid rgba(255,255,255,0.08);margin:4px 0 2px;"></div>
-      <div id="tanim-fcast-header" class="sev-fcast-header">
-        <span id="tanim-fcast-date" class="sev-fcast-date">Track animation</span>
-        <span id="tanim-hour" class="sev-fcast-flbl">F+000</span>
-      </div>
-
       <div id="spag-status">Open a storm and the guidance loads from the Pi.</div>
       <div id="spag-legend" style="display:none"></div>
     </div>
@@ -10014,6 +10022,27 @@ body.clean-mode #clean-hint { opacity: 1; }
         <div class="models-panel-title"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-cyclone></use></svg> AI Cyclones</div>
         <button class="models-close-btn" onclick="collapseAiCyclonesPanel()" title="Close panel (tracks stay on the map)">&times;</button>
       </div>
+      <!-- The playbar leads here for the same reason it does in Spaghetti
+           Models: the two panels were built to share a shape, so moving one
+           and not the other would leave them looking like different
+           products. A cyclone ensemble is a thing that HAPPENS over five
+           days, and drawing all of it at once is the one view that hides
+           when, which makes this the control people reach for most. The
+           valid time and the forecast hour travel with it. -->
+      <div id="cyc-playbar-row" class="sev-playbar-row">
+        <button id="cyc-play-btn" class="sev-play-btn" onclick="_cycTogglePlay()" title="Walk the tracks forward through the forecast"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg></button>
+        <button id="cyc-speed-btn" class="sev-speed-btn" onclick="_cycCycleSpeed()" title="Playback speed">1×</button>
+        <div id="cyc-playbar-track" class="sev-playbar-track" onpointerdown="_cycPlaybarDown(event)">
+          <div id="cyc-playbar-fill" class="sev-playbar-fill"></div>
+          <div id="cyc-playbar-thumb" class="sev-playbar-thumb"></div>
+        </div>
+      </div>
+      <div id="cyc-fcast-header" class="sev-fcast-header">
+        <span id="cyc-fcast-date" class="sev-fcast-date">-</span>
+        <span id="cyc-fcast-flbl" class="sev-fcast-flbl">F+000</span>
+      </div>
+      <div style="border-top:1px solid rgba(255,255,255,0.08);margin:5px 0 6px;"></div>
+
       <!-- One panel, laid out like Run Models, because it does the same job:
            pick a model, pick a field, then walk forward through the forecast.
            It used to be a collapsible card holding two separate halves, the
@@ -10038,23 +10067,6 @@ body.clean-mode #clean-hint { opacity: 1; }
       <div id="cyc-run-row" class="sev-run-row">
         <span class="trop-run-lbl">Run:</span>
         <span id="cyc-run-lbl">-</span>
-      </div>
-
-      <!-- The forecast-hour playbar, the same control the models panel has.
-           A cyclone ensemble is a thing that HAPPENS over five days, and
-           drawing all of it at once is the one view that hides when. -->
-      <div id="cyc-playbar-row" class="sev-playbar-row">
-        <button id="cyc-play-btn" class="sev-play-btn" onclick="_cycTogglePlay()" title="Walk the tracks forward through the forecast"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg></button>
-        <button id="cyc-speed-btn" class="sev-speed-btn" onclick="_cycCycleSpeed()" title="Playback speed">1×</button>
-        <div id="cyc-playbar-track" class="sev-playbar-track" onpointerdown="_cycPlaybarDown(event)">
-          <div id="cyc-playbar-fill" class="sev-playbar-fill"></div>
-          <div id="cyc-playbar-thumb" class="sev-playbar-thumb"></div>
-        </div>
-      </div>
-      <div style="border-top:1px solid rgba(255,255,255,0.08);margin:4px 0 2px;"></div>
-      <div id="cyc-fcast-header" class="sev-fcast-header">
-        <span id="cyc-fcast-date" class="sev-fcast-date">-</span>
-        <span id="cyc-fcast-flbl" class="sev-fcast-flbl">F+000</span>
       </div>
 
       <div class="sev-section-label">Layers</div>
@@ -32744,9 +32756,13 @@ function _tanimSyncBar(h) {
   const sp = document.getElementById('tanim-speed-btn');
   if (sp) sp.textContent = (_tanim.speed / 24) + '×';
   const date = document.getElementById('tanim-fcast-date');
+  // Empty rather than "Track animation" when nothing is loaded. That was a
+  // label naming the panel you are already inside, sitting where the thing
+  // it describes should be. What IS loaded is worth saying; the fact that a
+  // track animation exists is not.
   if (date) date.textContent = _tanim.tracks && _tanim.tracks.length
     ? _tanim.tracks.length + ' tracks, out to F+' + Math.round(max)
-    : 'Track animation';
+    : '';
 }
 
 // Speed as a multiple rather than three words in a dropdown, so it reads the
@@ -53957,7 +53973,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'The Asturio Discord bot wears the radar\'s own logo now. It had been showing a stylised mark, the rings drawn as a lit iris with falling code behind them, which looked good and was not the logo, so anyone who knows this site by its red, gold and cyan rings did not recognise the bot as belonging to it. The picture is now built from the same image file the AI panel header shows, framed on the panel\'s dark chrome inside a gold rim the way the header frames it, because the logo has a transparent middle and Discord would otherwise show its own background through the centre. Restart the bot to pick it up.';
+const APP_LATEST_UPDATE = 'The playbar now leads the Spaghetti Models and AI Cyclones panels instead of sitting fourth. It used to live under three rows of model chips and a button row, which is the part of a panel that shifts whenever anything above it changes size, so the control you reach for most was never quite in the same place twice. It is the first thing under the header in both panels now, with the forecast hour directly beneath it, because a scrubber and the hour it points at are one control rather than two things that happen to be near each other. Both panels moved together on purpose: they were built to share a shape, and changing one would leave them looking like different products. The Track animation caption is gone, since it named the panel you were already looking at; that line carries how many tracks are loaded and how far out they run, and says nothing when nothing is loaded.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
