@@ -31189,7 +31189,15 @@ function _actuallyDismiss() {
     try {
       if (!document.body.classList.contains('shot-mode')
           && localStorage.getItem('gwcfc_tutorial_seen') !== '1') {
-        setTimeout(() => openTutorial(), 400);
+        // Marked as OURS, so closing it runs the welcome. A tutorial the
+        // person opened from the menu closes without touching their map.
+        setTimeout(() => { _tutAutoOpened = true; openTutorial(); }, 400);
+      } else if (!document.body.classList.contains('shot-mode')) {
+        // Been here before, so no tutorial. The welcome still applies: signed
+        // out there is nothing remembering how they like the map, and signed
+        // in without a saved preset they have not said either. _runWelcome
+        // itself is what declines when a preset exists.
+        setTimeout(() => _runWelcome(), 900);
       }
     } catch(e) {}
   }, 500);
@@ -51856,6 +51864,10 @@ updateToc();
 // ════════════════════════════════════════════════════════════
 //  TUTORIAL  open / close
 // ════════════════════════════════════════════════════════════
+// Set only when the app opens the tutorial by itself for somebody who has
+// not seen it. A tutorial opened from the menu leaves this false, which is
+// what keeps closing it from rearranging a regular's map.
+let _tutAutoOpened = false;
 function openTutorial() {
   document.getElementById('tutorial-modal-overlay').classList.add('open');
   document.getElementById('tut-close-btn').classList.add('open');
@@ -51872,7 +51884,168 @@ function closeTutorial() {
   document.getElementById('tut-close-btn').classList.remove('open');
   document.body.style.overflow = '';
   try { localStorage.setItem('gwcfc_tutorial_seen', '1'); } catch(e) {}
+  // Only when the app opened it, never when a person opened it themselves
+  // from the menu. Someone rereading a section does not want their map
+  // rearranged and a forecast panel put in front of them for the trouble.
+  if (_tutAutoOpened) {
+    _tutAutoOpened = false;
+    _runWelcome();
+  }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THE WELCOME
+   ──────────────────────────────────────────────────────────────────────────
+   Closing the tutorial used to leave a person looking at an empty map over
+   the middle of the country, with every layer off and no reason to believe
+   the site did anything. This puts the app to work for them instead: their
+   own weather, on the radar this site is actually for.
+
+   Radar first, forecast over it. They see the map fly and the composite
+   paint before a panel covers it, which is the difference between "this
+   thing works" and "this thing has opened a dialog at me".
+
+   WHEN IT RUNS
+   Signed out, every visit: there is no account to remember a preference in,
+   so every visit is somebody arriving with nothing set up.
+   Signed in, unless the account has a SAVED LAYER PRESET. Saving a preset is
+   a person saying "this is how I want the map", and overriding that would be
+   the app arguing with an instruction it was given on purpose. Signed in
+   with no preset saved is somebody who has not expressed a preference yet,
+   so they get the welcome like anyone else.
+
+   None of it is sticky. Nothing here writes a layer preference, so a person
+   who turns the composite off has turned it off; the next visit simply
+   starts them somewhere useful again.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+let _welcomeRan = false;
+
+// Where they are, in two steps, because a browser location prompt is a real
+// question and the answer may be no.
+//
+// GPS first: if they allow it, the forecast is for their street. If they
+// refuse, or the device cannot get a fix, a rough location from the
+// connection is accurate to the city, which is all a forecast needs. Falling
+// back rather than giving up means a refused prompt still leaves them with
+// something useful, and it never asks twice.
+async function _welcomeWhereAmI() {
+  // Already tracking: use what is already known rather than asking again.
+  try {
+    if (typeof _lastGpsPos !== 'undefined' && _lastGpsPos) {
+      return { lat: _lastGpsPos.coords.latitude, lon: _lastGpsPos.coords.longitude,
+               name: 'My Location', precise: true };
+    }
+  } catch (e) {}
+
+  const gps = await new Promise(res => {
+    if (!navigator.geolocation) return res(null);
+    let done = false;
+    const finish = v => { if (!done) { done = true; res(v); } };
+    // Its own timeout as well as the API's: some devices neither resolve nor
+    // reject, and a welcome that hangs forever is worse than one that falls
+    // back after a few seconds.
+    setTimeout(() => finish(null), 9000);
+    try {
+      navigator.geolocation.getCurrentPosition(
+        p => finish({ lat: p.coords.latitude, lon: p.coords.longitude,
+                      name: 'My Location', precise: true }),
+        () => finish(null),
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 });
+    } catch (e) { finish(null); }
+  });
+  if (gps) return gps;
+
+  // The fallback. Nothing is asked of the person and nothing is stored: this
+  // is the same city-level guess any website makes from a connection.
+  try {
+    const r = await fetch('https://ipapi.co/json/', { signal: _abortSignal(6000) });
+    if (r.ok) {
+      const d = await r.json();
+      if (isFinite(d.latitude) && isFinite(d.longitude)) {
+        return { lat: +d.latitude, lon: +d.longitude,
+                 name: [d.city, d.region_code || d.region].filter(Boolean).join(', ')
+                       || 'Your area', precise: false };
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+// Whether this account has said how it wants the map. A saved preset is that
+// statement; anything else is somebody who has not made one yet.
+function _welcomeHasSavedPreset() {
+  try {
+    if (!_currentUser) return false;                 // signed out: no memory
+    const d = (typeof _aiSyncProfileData !== 'undefined' && _aiSyncProfileData) || null;
+    if (!d) return false;
+    // A preset is only a preset when it actually has something in it. An
+    // empty object written by an older build is not an instruction.
+    return !!(d.savedLayers && Object.keys(d.savedLayers).length);
+  } catch (e) { return false; }
+}
+
+async function _runWelcome() {
+  if (_welcomeRan) return;
+  _welcomeRan = true;
+  // A saved preset has already been applied by now, or is about to be, and
+  // this must not fight it.
+  if (_welcomeHasSavedPreset()) return;
+  // Screenshot mode has empty storage, so it is always a first visit, and a
+  // forecast panel over every capture is not what the shots are for.
+  if (document.body.classList.contains('shot-mode')) return;
+
+  const where = await _welcomeWhereAmI();
+
+  // ── The radar, first ──
+  // Straight to the composite rather than through the menu, the same way the
+  // assistant's openComposite action does it, so there is one path to this
+  // state rather than two that can drift.
+  try {
+    if (typeof _loadMrmsComposite === 'function') {
+      _radarSource = 'normal';
+      if (typeof _prDisable === 'function') _prDisable();
+      if (typeof _clearSingleSiteRef === 'function') _clearSingleSiteRef();
+      activeLayers.nexrad = true;
+      currentProduct = 'mrms';
+      _loadMrmsComposite();
+      const sub = document.getElementById('sub-mrms');
+      if (sub) sub.classList.add('active');
+      // The menu's own sync rather than setting a class by hand. It works out
+      // whether the parent bubble is lit from the state the map is actually
+      // in, so it stays right when that state is reached some other way, and
+      // it cannot be pointed at an element id that does not exist.
+      if (typeof _syncParentBubble === 'function') _syncParentBubble('radar');
+    }
+  } catch (e) { console.warn('[welcome] composite:', e); }
+
+  // ── The map ──
+  // Zoom 8 shows a metro area and its surroundings, which is close enough to
+  // recognise home and wide enough that a storm two counties away is on
+  // screen rather than just off it.
+  try {
+    if (where && typeof map !== 'undefined' && map) {
+      map.flyTo([where.lat, where.lon], 8, { duration: 1.6 });
+    }
+  } catch (e) { console.warn('[welcome] flyTo:', e); }
+
+  // ── The forecast, over it ──
+  // After the fly, so the panel arrives on a map that is already showing
+  // their weather rather than on one still travelling.
+  if (where && typeof openForecastModal === 'function') {
+    setTimeout(() => {
+      try { openForecastModal({ name: where.name, lat: where.lat, lon: where.lon }); }
+      catch (e) { console.warn('[welcome] forecast:', e); }
+    }, 1900);
+  } else if (!where) {
+    // Said plainly rather than silently doing half of it. The radar is on,
+    // which is most of the value, and they know why the forecast is not.
+    if (typeof showToast === 'function') {
+      showToast('Radar is on. Turn on location, or search a place, for a local forecast.', 7000);
+    }
+  }
+}
+
 function _tutUpdateToc() {
   const scrollArea = document.getElementById('tut-scroll-area');
   if (!scrollArea) return;
@@ -53973,7 +54146,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'The playbar now leads the Spaghetti Models and AI Cyclones panels instead of sitting fourth. It used to live under three rows of model chips and a button row, which is the part of a panel that shifts whenever anything above it changes size, so the control you reach for most was never quite in the same place twice. It is the first thing under the header in both panels now, with the forecast hour directly beneath it, because a scrubber and the hour it points at are one control rather than two things that happen to be near each other. Both panels moved together on purpose: they were built to share a shape, and changing one would leave them looking like different products. The Track animation caption is gone, since it named the panel you were already looking at; that line carries how many tracks are loaded and how far out they run, and says nothing when nothing is loaded.';
+const APP_LATEST_UPDATE = 'Closing the tutorial now puts the app to work instead of leaving you on an empty map. It asks where you are, flies there, switches on the 1 km MRMS composite and opens your local forecast over it. Refuse the location prompt and it falls back to a rough position from your connection, which is accurate to the city and plenty for a forecast; if neither works it still turns the radar on and tells you why there is no forecast rather than quietly doing half of it. Signed out this happens every visit. Signed in it happens too, unless you have saved a layer preset, because saving one is you telling the app how you want the map and it should not argue. Reopening the tutorial from the menu later never touches your map.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
