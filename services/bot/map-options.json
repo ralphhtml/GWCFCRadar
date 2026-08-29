@@ -48,6 +48,18 @@
       "name": "NHC Tropical Outlook (5-day) + active systems"
     },
     {
+      "value": "jtwc-outlook",
+      "name": "JTWC Tropical Outlook"
+    },
+    {
+      "value": "gwcfc-outlook",
+      "name": "GWCFC Outlook"
+    },
+    {
+      "value": "gwcfc-alerts",
+      "name": "GWCFC Alerts"
+    },
+    {
       "value": "wpc-outlook",
       "name": "WPC Excessive Rainfall Outlook (Days 1-3 flood risk)"
     },
@@ -58,6 +70,10 @@
     {
       "value": "wind-particles",
       "name": "Wind Particles"
+    },
+    {
+      "value": "wind-barbs",
+      "name": "Wind Barbs"
     },
     {
       "value": "wave-particles",
@@ -74,10 +90,6 @@
     {
       "value": "forecasts",
       "name": "Weather Forecasts"
-    },
-    {
-      "value": "metar-stations",
-      "name": "METAR Stations"
     },
     {
       "value": "fronts",
@@ -232,7 +244,7 @@
       },
       {
         "value": "mrms",
-        "name": "MRMS 1km Composite"
+        "name": "MRMS Composite"
       }
     ],
     "wind": [
