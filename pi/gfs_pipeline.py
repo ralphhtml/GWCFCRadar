@@ -4441,6 +4441,20 @@ def _publish(index, names, any_ok=True):
             if man:
                 index["models"].setdefault(name, _model_head(name, m))[
                     "regions"][reg] = _index_entry(name, reg, man)
+    # Soundings are built after the model loop, so during the loop this index
+    # has no "sounding" key and would publish latest.json without one --
+    # blanking the entry that the previous run left there and making the page
+    # say "this Pi is not building soundings" for most of every hour, while
+    # the soundings sit on disk perfectly fine. Refill it from disk, for the
+    # same reason the models above are refilled.
+    if "sounding" not in index:
+        snd = _newest_manifest(os.path.join(OUT_DIR, "sounding"))
+        if snd:
+            index["sounding"] = {
+                "run": snd["run"], "cycle": snd.get("cycle", ""),
+                "path": f"sounding/{snd['run']}/manifest.json",
+                "levels": snd.get("levels", []), "hours": snd.get("hours", []),
+            }
     index["updated"] = datetime.now(timezone.utc).isoformat()
     write_json(os.path.join(OUT_DIR, "latest.json"), index)
     return bool(index["models"])
