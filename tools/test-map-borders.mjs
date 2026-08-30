@@ -218,7 +218,15 @@ console.log('\n4. county lines, thinned to what is on screen');
      r.inFlorida.join(',') === 'Brevard,Orange', r.inFlorida.join(','));
   ok('panning to Texas swaps them for the Texas one',
      r.inTexas.join(',') === 'Harris', r.inTexas.join(','));
-  ok('zoomed out past the threshold nothing is drawn', r.zoomedOut === 0, r.zoomedOut);
+  // This used to assert the opposite: below zoom 6 the county layer was
+  // refused outright. The floor was removed because it was measured and found
+  // to be buying nothing. Leaflet's smoothFactor is a tolerance in PIXELS, so
+  // zooming out simplifies each outline automatically, and all 3221 real
+  // counties come to 13,633 drawn points at zoom 3 against 31,175 at zoom 6
+  // where they were already allowed. Zoomed out you now see county lines,
+  // which is what was asked for.
+  ok('zoomed out the counties are still drawn, not refused',
+     r.zoomedOut === 4, r.zoomedOut);
   ok('zooming back in brings them back', r.backAgain === 2, r.backAgain);
   ok('turning it off clears the layer', r.afterOff === false);
 }
