@@ -1499,7 +1499,32 @@ DEFAULT_MODELS = ["hrrr", "rtma", "rap", "gfs", "nam", "namnest", "nbm",
                   "gdas", "urma", "gefs0p25", "cfs", "gefschem",
                   "namfire", "gefswavemean",
                   "gefsp02", "gefsp03", "gefsp04", "gefsp05",
-                  "gefsp06", "gefsp07"]
+                  "gefsp06", "gefsp07",
+
+                  # The thirty-four live-verified additions, switched on and
+                  # placed last on purpose. Order is what makes this safe:
+                  # the pipeline builds this list front to back against a
+                  # time budget and stops when the clock runs out, so
+                  # everything above still builds first and on time, and
+                  # these take whatever is left. Turning them on this way
+                  # cannot make the Pi late at the things it was already
+                  # doing; the worst it can do is leave some of these for
+                  # the next pass, which the next pass then picks up.
+                  #
+                  # The regional and Alaska domains first, because they add
+                  # somewhere the map could not see before. The extra
+                  # ensemble members last, because member twelve missing
+                  # for an hour costs almost nothing.
+                  "hrrrak", "hrrrakprs", "hrrrsubak", "rapak", "namak",
+                  "namhi", "nampr", "urmaak",
+                  "gfswaveatl", "gfswavepac", "gfswavewc", "gfswavegulf",
+                  "gfswavearc",
+                  "hrrrprs", "hrrrnat", "rapnat",
+                  "rap130", "rapp252", "rapp236",
+                  "namawak", "namafwaca", "namafwahi", "namawip32",
+                  "gfssat", "gfsb", "gfs0p50b", "gfsflux", "gdasflux",
+                  "gefsspr25",
+                  "gefsp08", "gefsp09", "gefsp10", "gefsp11", "gefsp12"]
 # NAM's nests, the regional analyses and the regional blends used to be nine
 # more names on that list. They are regions of "nam", "rtma" and "nbm" now, so
 # they are built by naming the parent: build_model walks a model's regions.
@@ -1514,46 +1539,6 @@ DEFAULT_MODELS = ["hrrr", "rtma", "rap", "gfs", "nam", "namnest", "nbm",
 # comes back by adding one word here. Until then they are still buildable by
 # hand with --models, which is how you would test a new address.
 OFF_BY_DEFAULT = [
-                  # The thirty-four live-verified additions. Each one
-                  # was fetched from its real address before being
-                  # written into MODELS, so these are off because the
-                  # Pi has a time budget, not because they are
-                  # doubtful. Switch on what you want.
-                  "gfsb",
-                  "gfs0p50b",
-                  "gfsflux",
-                  "gdasflux",
-                  "gfssat",
-                  "gfswaveatl",
-                  "gfswavepac",
-                  "gfswavewc",
-                  "gfswavegulf",
-                  "gfswavearc",
-                  "hrrrprs",
-                  "hrrrnat",
-                  "hrrrak",
-                  "hrrrakprs",
-                  "hrrrsubak",
-                  "rap130",
-                  "rapp252",
-                  "rapp236",
-                  "rapak",
-                  "rapnat",
-                  "namak",
-                  "namhi",
-                  "nampr",
-                  "namawak",
-                  "namafwaca",
-                  "namafwahi",
-                  "namawip32",
-                  "gefsp08",
-                  "gefsp09",
-                  "gefsp10",
-                  "gefsp11",
-                  "gefsp12",
-                  "gefsspr25",
-                  "urmaak",
-
                   "hwrf", "hmon", "hireswnssl", "etss",
                   "ecmwfens", "ecmwfaifsens", "ecmwfwave",
                   "gem", "hrdps", "rdps", "icond2", "iconeps",
