@@ -10953,6 +10953,17 @@ function initMap() {
   _satPaneEl.style.zIndex = 399;
   _satPaneEl.style.pointerEvents = 'none';
 
+  // Model charts get their own pane rather than riding in the radar one.
+  //
+  // Sharing radarPane meant the borders could not be above the models and
+  // below the radar at the same time, because as far as the layer order was
+  // concerned models and radar WERE one layer. A model field is opaque across
+  // the whole box, so borders under it are borders you cannot see, and the
+  // state lines are most of what makes a temperature chart readable.
+  const _modelPaneEl = map.createPane('modelPane');
+  _modelPaneEl.style.zIndex = 391;
+  _modelPaneEl.style.pointerEvents = 'none';
+
   map.createPane('alertsPane');
   map.getPane('alertsPane').style.zIndex = 403;
   map.getPane('alertsPane').style.pointerEvents = 'auto';
@@ -16780,7 +16791,7 @@ async function _hdShow() {
   // the picture draws the same but every pixel read throws. A recolored
   // picture is already a same-origin data: URL and needs no such asking.
   const next = L.imageOverlay(src, _hdManifest.bounds,
-    { opacity: modelOpacity, interactive: false, pane: 'radarPane',
+    { opacity: modelOpacity, interactive: false, pane: 'modelPane',
       // Model fields are continuous, so they are smoothed as they stretch
       // rather than taking the radar pane's deliberately crisp rendering.
       // See .wx-model-smooth in the stylesheet for why the two differ.
@@ -27897,6 +27908,7 @@ function _sevRenderECMWF(body) {
     tileSize: 256,
   };
   if (timeISO) opts.TIME = timeISO;
+  opts.pane = 'modelPane';   // ordered with the models, not stranded in tilePane
   const wmsLayer = L.tileLayer.wms(ECCHARTS_WMS, opts).addTo(map);
   _sevAttachTileFeedback(wmsLayer, body, 'ECMWF');
   _iemModelLayer = wmsLayer;
@@ -27951,6 +27963,7 @@ function _sevRenderDWD(body) {
   const opts = { layers: layerName, format: 'image/png', transparent: true, version: '1.1.1', opacity: 0.8, zIndex: 6, noWrap: true, tileSize: 256 };
   if (timeISO) opts.TIME = timeISO;
   if (DWD_ELEVATION[_sevVar]) opts.ELEVATION = DWD_ELEVATION[_sevVar];
+  opts.pane = 'modelPane';   // ordered with the models, not stranded in tilePane
   const wmsLayer = L.tileLayer.wms(DWD_WMS, opts).addTo(map);
   _sevAttachTileFeedback(wmsLayer, body, 'DWD ICON');
   _iemModelLayer = wmsLayer;
@@ -28052,6 +28065,7 @@ function _sevRenderGeoMet(body) {
   if (_iemModelLayer) { map.removeLayer(_iemModelLayer); _iemModelLayer = null; }
   const opts = { layers: layerName, format: 'image/png', transparent: true, version: '1.1.1', opacity: 0.8, zIndex: 6, noWrap: true, tileSize: 256 };
   if (timeISO) opts.TIME = timeISO;
+  opts.pane = 'modelPane';   // ordered with the models, not stranded in tilePane
   const wmsLayer = L.tileLayer.wms(GEOMET_WMS, opts).addTo(map);
   _sevAttachTileFeedback(wmsLayer, body, _sevSection.toUpperCase());
   _iemModelLayer = wmsLayer;
@@ -28098,6 +28112,7 @@ function _sevRenderNDFD(body) {
     version: '1.3.0', opacity: 0.8, zIndex: 6, noWrap: true, tileSize: 256,
     VTIT: vtit,
   };
+  opts.pane = 'modelPane';   // ordered with the models, not stranded in tilePane
   const wmsLayer = L.tileLayer.wms(NDFD_WMS, opts).addTo(map);
   _sevAttachTileFeedback(wmsLayer, body, 'NDFD');
   _iemModelLayer = wmsLayer;
@@ -28565,6 +28580,18 @@ function _sevMakeSlot(section, varr, run) {
   return { id: 's' + (++_sevSlotSeq), section, var: varr || SEV_DEFAULT_VAR[section] || (SEV_PRODUCTS[section]||SEV_PRODUCTS.hrrr)[0].v, run: run || '', layer: null, dividerEl: null, labelEl: null };
 }
 function _sevSlotPaneName(id) { return 'sev-cmp-' + id; }
+
+// Every comparison slot's pane, restacked from where the model pane
+// currently sits. Called when a slot is drawn and again whenever the layer
+// order changes, because a slot pinned to a number the models have moved off
+// is a slot drawing somewhere its own row is not.
+function _sevSyncSlotPaneZ() {
+  if (typeof map === 'undefined' || !map) return;
+  (_sevExtraSlots || []).forEach((slot, i) => {
+    const p = map.getPane(_sevSlotPaneName(slot.id));
+    if (p) p.style.zIndex = String(_stackSlotZ(i));
+  });
+}
 function _sevSlotLetter(i) { return String.fromCharCode(66 + i); } // B, C, D, ...
 
 function _sevRenderSlot(slot) {
@@ -28573,9 +28600,13 @@ function _sevRenderSlot(slot) {
   const paneName = _sevSlotPaneName(slot.id);
   if (!map.getPane(paneName)) {
     const p = map.createPane(paneName);
-    p.style.zIndex = 450; // above the normal overlay pane (400) so extra slots draw on top, A shows through the clip
     p.style.pointerEvents = 'none';
   }
+  // Above the model it is being compared against, so A shows through the
+  // clip, and inside the model band so it stays UNDER the borders and the
+  // alert polygons. It used to be a flat 450, which is above both: turning
+  // on a second model buried the state lines and every warning on screen.
+  _sevSyncSlotPaneZ();
   const commonOpts = { format:'image/png', transparent:true, version:'1.1.1', opacity:1, pane:paneName, tileSize:256, noWrap:true };
   const frame = Math.max(_sevMinFrameFor(slot.section, slot.var), Math.min(_sevFrame, _sevMaxFrameFor(slot.section)));
   let layer = null;
@@ -55299,7 +55330,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'County lines now draw at every zoom level. They used to be refused below zoom 6 on the assumption that three thousand shapes would be slow; measured, that was wrong, because zooming out simplifies each outline automatically, so all 3221 counties at zoom 3 cost fewer drawn points than they did at zoom 6 where they were already allowed. There is also a new Coastlines layer under Settings then Map: the shoreline, which is the one boundary here that is physical rather than political, with sharper detail fetched automatically once you zoom past 8. It has its own color and thickness like the other three, and starts off until you turn it on.';
+const APP_LATEST_UPDATE = 'Borders now draw on top of the model charts. Model fields are opaque across the whole box, so state and county lines underneath them were lines you could not see, and those lines are most of what makes a temperature chart readable. Models have their own layer now, sitting just under the borders, and you can drag it anywhere you like in the Layer Order list in Settings. Turning on a second model to compare no longer buries the borders or the warning polygons either, which it used to. Before that: county lines at every zoom, and the new Coastlines layer.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
@@ -59030,9 +59061,19 @@ function _ovLoadOrder(){
 // pick. These four now read their z from a saved list instead, in the same
 // 398 to 401 band they already used, so nothing collides with the overlays.
 const MAP_STACK_KEY = 'gwcfc_map_stack_order';
-const MAP_STACK_TOP_Z = 401;            // the top row's z; each row below is one less
+const MAP_STACK_TOP_Z = 401;            // the top row's z
+// Rows are ten apart rather than one. The gap is not decoration: the model
+// comparison slots need somewhere to sit ABOVE the model they are comparing
+// against and still BELOW the borders, and with rows one apart there was no
+// room between them. They used to solve that by sitting at 450, which put
+// them above the borders AND above the alert polygons, so turning on a
+// second model buried both.
+const MAP_STACK_STEP = 10;
 const MAP_STACK_LAYERS = [
   { id: 'borders',   pane: 'bordersPane',  label: 'Borders & Boundaries' },
+  // Models sit directly under the borders by default, because a model field
+  // is opaque across the whole box and borders are what make it readable.
+  { id: 'models',    pane: 'modelPane',    label: 'Model Charts' },
   { id: 'radar',     pane: 'radarPane',    label: 'Radar' },
   { id: 'satellite', pane: 'satPhotoPane', label: 'Satellite' },
   { id: 'ocean',     pane: 'sstPane',      label: 'Ocean & Sea Temperature' },
@@ -59049,7 +59090,16 @@ function _stackOrder(){
   const known = new Set(_stackDefault());
   const out = saved.filter(id => known.has(id));
   const seen = new Set(out);
-  _stackDefault().forEach(id => { if (!seen.has(id)) out.push(id); });
+  // A row added since the order was saved is INSERTED at its default
+  // position, not appended. Appending looks harmless and is not: every
+  // existing saved order predates the models row, and appending would have
+  // dropped model charts to the bottom of the stack, underneath the sea
+  // temperature, for everyone who had ever touched this control.
+  _stackDefault().forEach((id, want) => {
+    if (seen.has(id)) return;
+    out.splice(Math.min(want, out.length), 0, id);
+    seen.add(id);
+  });
   return out;
 }
 let _stackApplyWait = 0;
@@ -59068,8 +59118,27 @@ function _stackApply(){
     const def = MAP_STACK_LAYERS.find(l => l.id === id);
     if (!def) return;
     const pane = map.getPane(def.pane);
-    if (pane) pane.style.zIndex = String(MAP_STACK_TOP_Z - idx);
+    if (pane) pane.style.zIndex = String(MAP_STACK_TOP_Z - idx * MAP_STACK_STEP);
   });
+  // The comparison slots hang off the model pane's position, so they have to
+  // move when it does. Reordering the stack and leaving them where they were
+  // is how the second model ends up somewhere its own row is not.
+  if (typeof _sevSyncSlotPaneZ === 'function') { try { _sevSyncSlotPaneZ(); } catch (e) {} }
+}
+
+// Where a comparison slot's pane belongs: just above the model layer it is
+// being compared with, and never at or above whatever is directly above the
+// models, which is normally the borders. Reading the live pane rather than a
+// constant means this keeps working after the stack is reordered.
+function _stackSlotZ(i) {
+  let base = 391;
+  try {
+    const p = (typeof map !== 'undefined' && map) ? map.getPane('modelPane') : null;
+    if (p && p.style.zIndex) base = parseInt(p.style.zIndex, 10) || base;
+  } catch (e) {}
+  // One below the next row up, so eight slots still cannot climb out of the
+  // model's own band and over the borders.
+  return base + 1 + Math.min(i, MAP_STACK_STEP - 2);
 }
 function _stackSave(ids){
   try { localStorage.setItem(MAP_STACK_KEY, JSON.stringify(ids)); } catch(e){}

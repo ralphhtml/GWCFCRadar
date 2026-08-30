@@ -172,6 +172,52 @@ console.log('\n3c. the coastline, and its two detail levels');
      /id="lqm-set-coastborders" onchange=/.test(PAGE));
 }
 
+/*
+ * 3d. BORDERS OVER THE MODELS.
+ *
+ * A model field is opaque across its whole box, so borders underneath it are
+ * borders you cannot see, and state lines are most of what makes a
+ * temperature chart readable in the first place.
+ *
+ * THREE THINGS WERE WRONG. Model charts rode in radarPane, so as far as the
+ * layer-order control was concerned models and radar were one layer and the
+ * borders could not be above one and below the other. The four WMS model
+ * renderers named no pane at all, so they landed in Leaflet's default tile
+ * pane and could not be ordered against anything. And the comparison slots
+ * sat at a flat z of 450, which is above the borders AND above the alert
+ * polygons, so turning on a second model buried the state lines and every
+ * warning on screen.
+ *
+ * Models have their own pane now, in the reorderable stack directly under the
+ * borders, and the slots hang off wherever that pane currently is.
+ */
+console.log('\n3d. models are their own layer, under the borders');
+{
+  ok('there is a model pane', /map\.createPane\('modelPane'\)/.test(PAGE));
+  ok('the Pi model charts draw in it, not in the radar pane',
+     /opacity: modelOpacity, interactive: false, pane: 'modelPane'/.test(PAGE));
+  ok('and all four WMS models are given it too, instead of no pane at all',
+     (PAGE.match(/opts\.pane = 'modelPane';/g) || []).length === 4,
+     String((PAGE.match(/opts\.pane = 'modelPane';/g) || []).length));
+  ok('it is a row in the layer-order control, so it can be moved',
+     /\{ id: 'models',\s+pane: 'modelPane'/.test(PAGE));
+  ok('and it defaults to sitting directly under the borders',
+     /'borders'[\s\S]{0,400}id: 'models'[\s\S]{0,200}id: 'radar'/.test(PAGE));
+  ok('the flat 450 that put comparison slots over everything is gone',
+     !/zIndex = 450/.test(PAGE));
+  ok('slots are restacked from wherever the model pane actually is',
+     /function _stackSlotZ\(i\)[\s\S]{0,500}getPane\('modelPane'\)/.test(PAGE));
+  ok('and restacked again when the layer order changes',
+     /_stackApply[\s\S]{0,900}_sevSyncSlotPaneZ\(\)/.test(PAGE));
+  // Rows one apart left nowhere to put the slots between models and borders.
+  ok('stack rows are spaced to leave room between them',
+     /const MAP_STACK_STEP = 10;/.test(PAGE)
+     && /MAP_STACK_TOP_Z - idx \* MAP_STACK_STEP/.test(PAGE));
+  // Every saved order predates the models row.
+  ok('a row added since an order was saved is inserted, not appended',
+     /out\.splice\(Math\.min\(want, out\.length\), 0, id\);/.test(PAGE));
+}
+
 console.log('\n4. on a real map, in a real browser');
 let chromium;
 try { ({ chromium } = await import('playwright')); } catch { /* below */ }
@@ -356,6 +402,97 @@ if (!chromium) {
      JSON.stringify(r.coastOnLayer));
   ok('and changing it leaves the other lines alone',
      r.coastIndependent === '#ffffff', r.coastIndependent);
+}
+
+/*
+ * 4b. THE STACK, MEASURED OFF THE LIVE PANES.
+ *
+ * Everything in 3d reads the source. What actually decides which line you can
+ * see is the computed z-index of a div, so this reads those instead: with a
+ * model on and two comparison slots up, is every border still above every
+ * model surface?
+ */
+console.log('\n4b. the real stacking order, off the live map');
+if (!chromium) {
+  console.log('  playwright is not installed, skipping');
+} else {
+  const b = await chromium.launch({
+    executablePath: process.env.CHROME_PATH
+      || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+    args: ['--allow-file-access-from-files'] });
+  const p = await b.newPage();
+  // Leaflet is served locally: what is under test is the stacking, not a CDN.
+  await p.route('**/*', async (r) => {
+    const u = r.request().url();
+    if (u.startsWith('file://')) return r.continue();
+    if (/leaflet.*\.js|unpkg/.test(u)) {
+      return r.fulfill({ status: 200, contentType: 'application/javascript',
+        body: readFileSync('/tmp/node_modules/leaflet/dist/leaflet-src.js', 'utf8') });
+    }
+    if (/\.css/.test(u)) return r.fulfill({ status: 200, contentType: 'text/css', body: '' });
+    return r.fulfill({ status: 200, contentType: 'application/json',
+      body: '{"type":"FeatureCollection","features":[]}' });
+  });
+  await p.goto('file://' + join(ROOT, 'index.html'), { waitUntil: 'domcontentloaded' });
+  await p.waitForTimeout(3000);
+  const r = await p.evaluate(() => {
+    if (typeof map === 'undefined' || !map) return { err: 'no map' };
+    if (typeof _mbPanes === 'function') _mbPanes();
+    const z = (n) => {
+      const q = map.getPane(n);
+      return q ? parseInt(getComputedStyle(q).zIndex, 10) : null;
+    };
+    const out = {};
+    out.def = { borders: z('bordersPane'), models: z('modelPane'),
+                radar: z('radarPane'), sat: z('satPhotoPane'),
+                ocean: z('sstPane'), alerts: z('alertsPane') };
+    // Two comparison slots, made the way the real ones are.
+    _sevExtraSlots = [{ id: 'zt1' }, { id: 'zt2' }];
+    ['zt1', 'zt2'].forEach(id => {
+      const n = 'sev-cmp-' + id;
+      if (!map.getPane(n)) { map.createPane(n).style.pointerEvents = 'none'; }
+    });
+    _sevSyncSlotPaneZ();
+    out.slots = ['zt1', 'zt2'].map(id => z('sev-cmp-' + id));
+
+    // Reordering must carry the slots with it.
+    _stackSave(['radar', 'borders', 'models', 'satellite', 'ocean']);
+    out.reordered = { radar: z('radarPane'), borders: z('bordersPane'),
+                      models: z('modelPane') };
+    out.slotsAfter = ['zt1', 'zt2'].map(id => z('sev-cmp-' + id));
+
+    // An order saved before the models row existed. Appending it would put
+    // model charts under the sea temperature.
+    localStorage.setItem('gwcfc_map_stack_order',
+      JSON.stringify(['borders', 'radar', 'satellite', 'ocean']));
+    out.migrated = _stackOrder();
+    localStorage.removeItem('gwcfc_map_stack_order');
+    _stackApply();
+    return out;
+  });
+  await b.close();
+
+  ok('the map came up', !r.err, r.err);
+  if (!r.err) {
+    ok('borders are above the models by default',
+       r.def.borders > r.def.models, JSON.stringify(r.def));
+    ok('models are above radar, satellite and ocean',
+       r.def.models > r.def.radar && r.def.radar > r.def.sat
+       && r.def.sat > r.def.ocean, JSON.stringify(r.def));
+    ok('a comparison slot sits ABOVE the model it is compared with',
+       r.slots.every(v => v > r.def.models), JSON.stringify(r.slots));
+    ok('and still BELOW the borders, which is what 450 broke',
+       r.slots.every(v => v < r.def.borders), JSON.stringify(r.slots));
+    ok('and below the alert polygons too',
+       r.slots.every(v => v < r.def.alerts), JSON.stringify(r.slots));
+    ok('reordering moves the models, and the slots follow them',
+       r.slotsAfter.every(v => v > r.reordered.models
+                            && v < r.reordered.borders),
+       JSON.stringify(r.slotsAfter) + ' vs ' + JSON.stringify(r.reordered));
+    ok('an order saved before models existed puts them back in their place',
+       r.migrated.join(',') === 'borders,models,radar,satellite,ocean',
+       r.migrated.join(','));
+  }
 }
 
 console.log('\n5. house rules');
