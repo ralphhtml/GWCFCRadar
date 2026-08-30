@@ -35766,42 +35766,115 @@ function _inspUnit(base, kind, dp) {
   if (kind === 'temp') {
     const c = (base - 32) * 5 / 9;
     if (u.temp === 'c')    return { value: fix(c), unit: '°C' };
+    if (u.temp === 'k')    return { value: fix(c + 273.15, 1), unit: 'K' };
     if (u.temp === 'both') return { value: fix(base) + ' / ' + fix(c), unit: '°F/°C' };
     return { value: fix(base), unit: '°F' };
   }
   if (kind === 'wind') {
     if (u.wind === 'kmh')  return { value: fix(base * 1.60934), unit: 'km/h' };
     if (u.wind === 'kt')   return { value: fix(base * 0.868976), unit: 'kt' };
+    if (u.wind === 'ms')   return { value: fix(base * 0.44704, 1), unit: 'm/s' };
+    if (u.wind === 'fps')  return { value: fix(base * 1.46667, 1), unit: 'ft/s' };
+    if (u.wind === 'bft')  return { value: String(_beaufort(base)), unit: 'Bft' };
     if (u.wind === 'both') return { value: fix(base) + ' / ' + fix(base * 1.60934), unit: 'mph/kmh' };
     return { value: fix(base), unit: 'mph' };
   }
   if (kind === 'pressure') {
     const inHg = base / 33.8639;
     if (u.pressure === 'inhg') return { value: inHg.toFixed(2), unit: 'inHg' };
+    if (u.pressure === 'kpa')  return { value: (base / 10).toFixed(1), unit: 'kPa' };
+    if (u.pressure === 'mmhg') return { value: fix(base * 0.750062), unit: 'mmHg' };
+    if (u.pressure === 'atm')  return { value: (base / 1013.25).toFixed(3), unit: 'atm' };
+    if (u.pressure === 'psi')  return { value: (base * 0.0145038).toFixed(2), unit: 'psi' };
     if (u.pressure === 'both') return { value: fix(base) + ' / ' + inHg.toFixed(2), unit: 'mb/inHg' };
     return { value: fix(base), unit: 'mb' };
   }
   if (kind === 'precip') {
     const mm = base * 25.4;
     if (u.precip === 'mm')   return { value: fix(mm, 1), unit: 'mm' };
+    if (u.precip === 'cm')   return { value: (mm / 10).toFixed(2), unit: 'cm' };
     if (u.precip === 'both') return { value: base.toFixed(2) + ' / ' + fix(mm, 1), unit: 'in/mm' };
     return { value: base.toFixed(2), unit: 'in' };
   }
   if (kind === 'dist') {
     const km = base * 1.60934;
     if (u.dist === 'km')   return { value: fix(km, 1), unit: 'km' };
+    if (u.dist === 'nm')   return { value: fix(base * 0.868976, 1), unit: 'nm' };
+    if (u.dist === 'm')    return { value: fix(km * 1000, 0), unit: 'm' };
+    if (u.dist === 'ft')   return { value: fix(base * 5280, 0), unit: 'ft' };
     if (u.dist === 'both') return { value: fix(base, 1) + ' / ' + fix(km, 1), unit: 'mi/km' };
     return { value: fix(base, 1), unit: 'mi' };
   }
   // Wave height rides the distance preference, since somebody working in
   // metric wants metres of swell, not feet.
+  // Heights and swell ride the distance preference: somebody working in
+  // kilometres wants metres of wave, not feet.
   if (kind === 'height') {
-    if (u.dist === 'km' || u.dist === 'both') {
-      return { value: (base * 0.3048).toFixed(1), unit: 'm' };
-    }
-    return { value: base.toFixed(1), unit: 'ft' };
+    const metric = ['km', 'm', 'both'].indexOf(u.dist) >= 0;
+    return metric ? { value: (base * 0.3048).toFixed(1), unit: 'm' }
+                  : { value: base.toFixed(1), unit: 'ft' };
   }
   return null;
+}
+
+// The Beaufort scale, for anyone who reads wind that way. Standard
+// thresholds, in mph.
+function _beaufort(mph) {
+  const t = [1, 4, 8, 13, 19, 25, 32, 39, 47, 55, 64, 73];
+  for (let i = 0; i < t.length; i++) if (mph < t[i]) return i;
+  return 12;
+}
+
+// ── Converting a product that already declares its own unit ──────────────
+// The rows above know what KIND of quantity they hold. Most products do not:
+// a model field or an ensemble variable just carries a unit string like 'mph'
+// or 'hPa' from its own table. Rather than enumerate every product in every
+// model, this reads that string, works out what it is, and converts it.
+//
+// That is what makes the preference reach "every product": a field added to
+// the Pi pipeline tomorrow with a unit of 'm/s' is converted on arrival,
+// with nothing here to update.
+const INSP_BASE_UNITS = {
+  // unit as declared        kind        how to get to the app's base unit
+  '\u00b0f': ['temp', v => v],
+  '\u00b0c': ['temp', v => v * 9 / 5 + 32],
+  'k':        ['temp', v => (v - 273.15) * 9 / 5 + 32],
+  'mph':      ['wind', v => v],
+  'kt':       ['wind', v => v / 0.868976],
+  'kts':      ['wind', v => v / 0.868976],
+  'knots':    ['wind', v => v / 0.868976],
+  'm/s':      ['wind', v => v / 0.44704],
+  'mps':      ['wind', v => v / 0.44704],
+  'km/h':     ['wind', v => v / 1.60934],
+  'kmh':      ['wind', v => v / 1.60934],
+  'mb':       ['pressure', v => v],
+  'hpa':      ['pressure', v => v],
+  'kpa':      ['pressure', v => v * 10],
+  'inhg':     ['pressure', v => v * 33.8639],
+  'pa':       ['pressure', v => v / 100],
+  'in':       ['precip', v => v],
+  '"':        ['precip', v => v],
+  'mm':       ['precip', v => v / 25.4],
+  'cm':       ['precip', v => v / 2.54],
+  'mi':       ['dist', v => v],
+  'km':       ['dist', v => v / 1.60934],
+  'nm':       ['dist', v => v / 0.868976],
+  'ft':       ['height', v => v],
+  'feet':     ['height', v => v],
+  'm':        ['height', v => v / 0.3048],
+};
+
+// Returns a converted {value, unit}, or null when this is not a unit the
+// preferences have anything to say about. Percentages, dBZ, indices and
+// categories fall through untouched on purpose: converting them would be a
+// confident wrong number, which is worse than leaving them alone.
+function _inspConvUnit(value, unitLabel, dp) {
+  const n = typeof value === 'number' ? value : parseFloat(value);
+  if (!Number.isFinite(n)) return null;
+  const key = String(unitLabel == null ? '' : unitLabel).trim().toLowerCase();
+  const hit = INSP_BASE_UNITS[key];
+  if (!hit) return null;
+  return _inspUnit(hit[1](n), hit[0], dp);
 }
 
 // Redrawn the moment a unit changes, so the readout does not sit in the old
@@ -35978,7 +36051,14 @@ function _inspRadarRow(center, cx, cy) {
     if (value == null || value !== value) return { label: 'Radar', value: 'No data', color: 'rgba(120,120,120,0.5)' };
     const fam = typeof _meshFamily === 'function'
       ? _meshFamily(_lastMeshProduct) : _lastMeshProduct;
-    const unit = INSP_UNITS[fam] || '';
+    let unit = INSP_UNITS[fam] || '';
+    // Velocity is knots off the decoder. It is a wind speed like any other,
+    // so it follows the wind preference rather than being the one number on
+    // screen that ignores it.
+    if (fam === 'vel') {
+      const vc = _inspConvUnit(value, 'kt', 0);
+      if (vc) return { label: 'Radar', value: vc.value, unit: vc.unit, color };
+    }
     const color = _meshColorFn(_lastMeshProduct)(value) || 'rgba(120,120,120,0.5)';
     return { label: 'Radar', value: _inspFormatValue(_lastMeshProduct, value), unit, color };
   }
@@ -36177,7 +36257,11 @@ function _inspHdRow(cx, cy) {
   if (hit.idx === 255) value = '≥' + value;
   else if (hit.idx === 0) value = '≤' + value;
   else value = '≈' + value;
-  return { label, value, unit: spec.unit || '', color };
+  // The model field declares its own unit, so the preference reaches every
+  // product in every model without this having to know any of their names.
+  const cv = _inspConvUnit(value, spec.unit, 1);
+  return cv ? { label, value: cv.value, unit: cv.unit, color }
+            : { label, value, unit: spec.unit || '', color };
 }
 
 // Waves/Air read the EXACT interpolated value from the same grid the color
@@ -36277,7 +36361,10 @@ function _inspSevEnsRow(center) {
   const [r, g, b] = _colorScale(v, scale);
   const units = { temperature_2m: '°F', precipitation: 'in', wind_speed_10m: 'mph', wind_gusts_10m: 'mph', surface_pressure: 'hPa', pressure_msl: 'hPa',
                   dew_point_2m: '°F', relative_humidity_2m: '%', cloud_cover: '%' };
-  return { label, value: v.toFixed(2), unit: units[varName] || '', color: `rgb(${r},${g},${b})` };
+  const eu = units[varName] || '';
+  const ec = _inspConvUnit(v, eu, 1);
+  return { label, value: ec ? ec.value : v.toFixed(2), unit: ec ? ec.unit : eu,
+           color: `rgb(${r},${g},${b})` };
 }
 
 // ── The layers the Inspector used to walk past ─────────────────────────────
@@ -47579,6 +47666,9 @@ function selectProduct(p) {
         <option value="mph" selected>mph</option>
         <option value="kmh">km/h</option>
         <option value="kt">knots</option>
+        <option value="ms">m/s</option>
+        <option value="fps">ft/s</option>
+        <option value="bft">Beaufort</option>
         <option value="both">mph + km/h</option>
       </select>
     </div>
@@ -47587,6 +47677,7 @@ function selectProduct(p) {
       <select id="lqm-set-tempunit" class="lqm-settings-select" onchange="lqmToggleSetting('tempunit',this.value)">
         <option value="f" selected>°F</option>
         <option value="c">°C</option>
+        <option value="k">Kelvin</option>
         <option value="both">°F + °C</option>
       </select>
     </div>
@@ -47595,6 +47686,10 @@ function selectProduct(p) {
       <select id="lqm-set-pressureunit" class="lqm-settings-select" onchange="lqmToggleSetting('pressureunit',this.value)">
         <option value="mb" selected>mb / hPa</option>
         <option value="inhg">inHg</option>
+        <option value="kpa">kPa</option>
+        <option value="mmhg">mmHg</option>
+        <option value="psi">psi</option>
+        <option value="atm">atm</option>
         <option value="both">mb + inHg</option>
       </select>
     </div>
@@ -47603,6 +47698,7 @@ function selectProduct(p) {
       <select id="lqm-set-precipunit" class="lqm-settings-select" onchange="lqmToggleSetting('precipunit',this.value)">
         <option value="in" selected>inches</option>
         <option value="mm">millimeters</option>
+        <option value="cm">centimeters</option>
         <option value="both">in + mm</option>
       </select>
     </div>
@@ -47611,6 +47707,9 @@ function selectProduct(p) {
       <select id="lqm-set-distunit" class="lqm-settings-select" onchange="lqmToggleSetting('distunit',this.value)">
         <option value="mi" selected>miles</option>
         <option value="km">kilometers</option>
+        <option value="nm">nautical miles</option>
+        <option value="m">meters</option>
+        <option value="ft">feet</option>
         <option value="both">mi + km</option>
       </select>
     </div>
@@ -55591,7 +55690,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'City names show the values over them again, model charts included, and the lag is gone. The cause was in the Inspector all along: reading one pixel out of a model chart rebuilt a canvas from the whole picture every single time, so labelling a screen of cities meant ninety full redraws per pan. Measured at 4,672 ms; with the canvas kept it is 16.5 ms. The readings are also one short line under the name now instead of a stack of coloured blocks, which is what looked like bars across the map.';
+const APP_LATEST_UPDATE = 'The Inspector now respects your unit settings on every product, not just some of them. Model fields, ensemble variables and radar velocity were all still printing their own fixed units; they convert by whatever unit the product itself declares, so anything added later is converted too with nothing to update. There are also a lot more units to pick from: Kelvin, m/s, ft/s and Beaufort, kPa, mmHg, psi and atm, centimetres, and nautical miles, metres and feet. Percentages, dBZ and indices are deliberately left alone, since converting those would be a confident wrong number.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');

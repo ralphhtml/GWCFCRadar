@@ -160,6 +160,77 @@ console.log('\n5. the city labels, and the cost that sank the first attempt');
      /_mbCityRefresh === 'function'[\s\S]{0,60}_mbCityRefresh\(\)/.test(PAGE));
 }
 
+console.log('\n5b. every product, converted by the unit it declares');
+{
+  // The rows that know what KIND of thing they hold were already covered.
+  // Most products do not: a model field or an ensemble variable just carries
+  // a unit string from its own table. Reading THAT is what makes the
+  // preference reach every product, including ones added later, with nothing
+  // here to update when they are.
+  const conv = (PAGE.match(/function _inspConvUnit\(value, unitLabel, dp\) \{[\s\S]*?\n\}/) || [''])[0];
+  const unit = (PAGE.match(/function _inspUnit\(base, kind, dp\) \{[\s\S]*?\n\}/) || [''])[0];
+  const table = (PAGE.match(/const INSP_BASE_UNITS = \{[\s\S]*?\n\};/) || [''])[0];
+  const bft = (PAGE.match(/function _beaufort\(mph\) \{[\s\S]*?\n\}/) || [''])[0];
+  ok('all three pieces were found', !!conv && !!unit && !!table && !!bft);
+  const mk = (u) => new Function('_units',
+    unit + '\n' + bft + '\n' + table + '\n' + conv + '\nreturn _inspConvUnit;')(u);
+
+  const metric = mk({ temp: 'c', wind: 'ms', pressure: 'kpa', precip: 'mm', dist: 'km' });
+  const us = mk({ temp: 'f', wind: 'mph', pressure: 'mb', precip: 'in', dist: 'mi' });
+
+  // A product declaring Celsius, for somebody who asked for Fahrenheit.
+  ok('a product in C reads in F when F is chosen',
+     us(0, '\u00b0C', 0).value === '32' && us(0, '\u00b0C').unit === '\u00b0F');
+  ok('and Kelvin is understood as a temperature',
+     us(273.15, 'K', 0).value === '32', us(273.15, 'K', 0).value);
+  // A model field in m/s, for somebody who asked for m/s: unchanged.
+  ok('m/s stays m/s when m/s is what was asked for',
+     metric(10, 'm/s').value === '10.0', metric(10, 'm/s').value);
+  ok('and becomes mph when mph is',
+     us(10, 'm/s', 0).value === '22', us(10, 'm/s', 0).value);
+  ok('knots are understood too', us(100, 'kt', 0).value === '115',
+     us(100, 'kt', 0).value);
+  ok('hPa converts to kPa', metric(1000, 'hPa').value === '100.0',
+     metric(1000, 'hPa').value);
+  ok('millimetres of rain read as inches when inches are chosen',
+     us(25.4, 'mm').value === '1.00', us(25.4, 'mm').value);
+  ok('and metres of swell as feet', us(3.048, 'm').value === '10.0',
+     us(3.048, 'm').value);
+
+  // The whole point of the fall-through: converting these would be a
+  // confident wrong number, which is worse than leaving them alone.
+  for (const u of ['%', 'dBZ', 'dB', 'index', 'AQI', '', null, 'kJ/cm2']) {
+    ok('leaves ' + JSON.stringify(u) + ' alone', us(50, u) === null);
+  }
+  ok('and leaves a value that is not a number alone',
+     us('cloudy', '\u00b0C') === null && us(null, 'mph') === null);
+
+  // The new choices themselves.
+  ok('Kelvin is offered', /<option value="k">Kelvin<\/option>/.test(PAGE));
+  ok('m/s, ft/s and Beaufort are offered',
+     /value="ms">m\/s/.test(PAGE) && /value="fps">ft\/s/.test(PAGE)
+     && /value="bft">Beaufort/.test(PAGE));
+  ok('kPa, mmHg, psi and atm are offered',
+     ['kpa', 'mmhg', 'psi', 'atm'].every(v =>
+       new RegExp('value="' + v + '"').test(PAGE)));
+  ok('centimetres are offered', /value="cm">centimeters/.test(PAGE));
+  ok('nautical miles, metres and feet are offered',
+     /value="nm">nautical/.test(PAGE) && /value="m">meters/.test(PAGE)
+     && /value="ft">feet/.test(PAGE));
+  ok('Beaufort is the real scale, not a guess',
+     mk({ wind: 'bft' })(0, 'mph').value === '0'
+     && mk({ wind: 'bft' })(30, 'mph').value === '6'
+     && mk({ wind: 'bft' })(200, 'mph').value === '12');
+
+  // The rows that were still printing their own unit.
+  ok('the model row converts by its declared unit',
+     /const cv = _inspConvUnit\(value, spec\.unit, 1\);/.test(PAGE));
+  ok('the ensemble row does too',
+     /const ec = _inspConvUnit\(v, eu, 1\);/.test(PAGE));
+  ok('and radar velocity stops being the one number that ignores the setting',
+     /const vc = _inspConvUnit\(value, 'kt', 0\);/.test(PAGE));
+}
+
 console.log('\n6. house rules');
 {
   const EM = String.fromCharCode(0x2014);
