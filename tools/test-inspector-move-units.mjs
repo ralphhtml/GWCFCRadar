@@ -113,7 +113,54 @@ console.log('\n3. the rows actually call it');
      /function _sstWantF\(\)[\s\S]{0,240}toLowerCase\(\) !== 'c'/.test(PAGE));
 }
 
-console.log('\n4. house rules');
+console.log('\n5. the city labels, and the cost that sank the first attempt');
+{
+  ok('labels carry a readout', /_mbCityReadout\(c\)/.test(PAGE));
+  // One implementation, so a label and the crosshair cannot disagree.
+  ok('they ask the Inspector own row builder, not a second copy',
+     /function _inspRowsAt\(center, cx, cy, light\)/.test(PAGE)
+     && /_inspRowsAt\(\{ lat: c\.lat, lng: c\.lng \}/.test(PAGE));
+  ok('and the Inspector goes through that same builder',
+     /const rows = _inspRowsAt\(center, cx, cy, false\);/.test(PAGE));
+
+  // THE ACTUAL BUG. _inspReadOverlayPixel allocated a canvas and redrew the
+  // whole model chart on EVERY call. One a frame was wasteful; ninety a pan
+  // was 4,672 ms of redrawing, measured, against 16.5 ms once cached.
+  ok('the pixel canvas is kept rather than rebuilt per read',
+     /function _inspPixelCanvas\(img\)/.test(PAGE));
+  ok('and it is reused only while the picture is the same one',
+     /_inspPxCache\.src === src/.test(PAGE)
+     && /_inspPxCache\.w === img\.naturalWidth/.test(PAGE));
+  // Caching a tainted canvas would make every later read pay the draw to
+  // fail the same way.
+  ok('a tainted canvas is not cached', /_inspPxCache = null;\s*\n\s*return \{ tainted: true \}/.test(PAGE));
+  // Matched on one line's worth: the sentence wraps across comment lines,
+  // and a phrase spanning the wrap matches nothing however true it is.
+  ok('the measurement is written down beside it',
+     /4,672 ms for ninety reads that way, against 16\.5 ms/.test(PAGE));
+
+  // Models were the reading named first, and they are affordable now.
+  ok('model charts survive light mode',
+     /Kept in light mode: model charts are the reading people want/.test(PAGE));
+  ok('while the rest of the pixel readers are still skipped',
+     /if \(!light && typeof activeLayers !== 'undefined' && activeLayers\.satellite\)/.test(PAGE)
+     && /if \(!light && typeof _mrmsAnyOn/.test(PAGE));
+
+  // The other half of what went wrong: a stack of coloured blocks per city.
+  ok('the readings are one inline line, not a column of blocks',
+     /\.mb-city-data \{[\s\S]{0,260}white-space: nowrap;/.test(PAGE)
+     && !/\.mb-city-val/.test(PAGE));
+  ok('and they carry no per-row colour to paint bars with',
+     !/mb-city-val|_mbCityColor/.test(PAGE));
+  ok('two readings at most', /const MB_CITY_MAX_ROWS = 2;/.test(PAGE));
+  ok('rows with nothing to say are dropped rather than printed',
+     /const MB_CITY_SKIP = /.test(PAGE));
+  ok('the value is escaped like the name is', /_mbEsc\(String\(x\.value\)\)/.test(PAGE));
+  ok('changing a unit repaints the labels too',
+     /_mbCityRefresh === 'function'[\s\S]{0,60}_mbCityRefresh\(\)/.test(PAGE));
+}
+
+console.log('\n6. house rules');
 {
   const EM = String.fromCharCode(0x2014);
   const files = ['index.html', 'tools/test-inspector-move-units.mjs'];
