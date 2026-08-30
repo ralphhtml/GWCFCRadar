@@ -148,9 +148,22 @@ fi
 # installer also names units it deletes: gwcfc-obs was removed with the
 # feature, and a looser pattern picks it up, finds it correctly absent, and
 # asks for a reinstall on every single run, forever.
+#
+# A unit the installer also REMOVES is not evidence of anything. Matching only
+# the `cat >` line was not enough: NWRchive is opt in, so install.sh writes its
+# two units inside the opt-in block and `rm -f`s them otherwise. On a box that
+# has not opted in they are "defined" in the file and correctly absent here, so
+# this asked for a reinstall, the installer deleted them again, and the machine
+# reinstalled itself once a minute for ever -- roughly 18s of CPU a minute and a
+# gwcfc-publish restart every minute, while the code was already up to date and
+# nothing was being updated at all. Skipping anything the installer deletes
+# covers gwcfc-obs too, which is what the comment above was reaching for.
+OPTIONAL=$(grep -o 'rm -f .*\$UNITS/gwcfc[^"]*' "$REPO/pi/install.sh" 2>/dev/null \
+           | grep -o 'gwcfc-[a-z-]*\.\(service\|timer\)' | sort -u)
 for u in $(grep -o 'cat > "\$UNITS/gwcfc-[a-z-]*\.\(service\|timer\)"' \
              "$REPO/pi/install.sh" 2>/dev/null \
            | sed 's|.*/||; s|"$||' | sort -u); do
+  case " $(echo $OPTIONAL) " in *" $u "*) continue ;; esac
   if [ ! -f "$HOME/.config/systemd/user/$u" ]; then
     echo "  $u is defined but not installed on this box"
     touch "$WANT_INSTALL"
