@@ -85,6 +85,41 @@ console.log('\n2. the jump drives satellite, and no longer demands a radar site'
      (PAGE.match(/function _tmSyncBadge\(\)/g) || []).length === 1);
 }
 
+/*
+ * 2b. THE WAY IN, FROM SATELLITE.
+ *
+ * The machine drove satellite already, but the only button that opened it
+ * lived on the radar row. Travelling to a moment and then looking at
+ * satellite meant leaving satellite, entering radar, travelling, leaving
+ * again and coming back: five menu moves to use a feature that was already
+ * working. The button is on the satellite rows now, at every level, for the
+ * same reason the region row is repeated at every level.
+ */
+console.log('\n2b. the satellite rows open the time machine themselves');
+{
+  ok('there is one shared builder, not three copies',
+     (PAGE.match(/function _satTimeMachineBubble\(wrap\)/g) || []).length === 1);
+  // All three levels, because the moment you want is as likely to occur to
+  // you inside a product row as at the top.
+  const kinds = (PAGE.match(/function toggleSatelliteSub\(\) \{[\s\S]*?\n\}/) || [''])[0];
+  const kind = (PAGE.match(/function _satKindSub\(k\) \{[\s\S]*?\n\}/) || [''])[0];
+  const cat = (PAGE.match(/function _satCatSub\(k, c, items\) \{[\s\S]*?\n\}/) || [''])[0];
+  ok('the kind row offers it', /_satTimeMachineBubble\(wrap\)/.test(kinds));
+  ok('the category row offers it', /_satTimeMachineBubble\(wrap\)/.test(kind));
+  ok('and the product row offers it', /_satTimeMachineBubble\(wrap\)/.test(cat));
+  // Same _tmAt underneath as the radar button, so travelling from either row
+  // moves both pictures. A second piece of state would let the two rows
+  // disagree about what time it is.
+  ok('it opens the same machine the radar row opens',
+     /function _satTimeMachineBubble[\s\S]{0,600}tm\.onclick = \(\) => _tmOpen\(\);/
+       .test(PAGE));
+  ok('and lights while a past moment is held',
+     /function _satTimeMachineBubble[\s\S]{0,300}_tmAt != null \? ' active' : ''/
+       .test(PAGE));
+  ok('its id does not collide with the radar row button',
+     /'sub-sat-timemachine'/.test(PAGE) && /'sub-timemachine'/.test(PAGE));
+}
+
 console.log('\n3. the colours, computed in a real browser');
 let chromium;
 try { ({ chromium } = await import('playwright')); } catch { /* below */ }

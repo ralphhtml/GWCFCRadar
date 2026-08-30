@@ -9789,6 +9789,10 @@ body.clean-mode #clean-hint { opacity: 1; }
       <div class="lqm-icon-wrap" style="font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg></div>
       <span class="lqm-label">Settings</span>
     </div>
+    <div class="lqm-btn" id="lqm-nav-btn" onclick="_navOpen()">
+      <div class="lqm-icon-wrap" style="font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-compass></use></svg></div>
+      <span class="lqm-label">Navigation</span>
+    </div>
     <div class="lqm-btn" id="lqm-tutorial-btn" onclick="lqmOpenTutorial()">
       <div class="lqm-icon-wrap">
         <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -26921,8 +26925,30 @@ function toggleSatelliteSub() {
     wrap.appendChild(el);
   });
 
+  _satTimeMachineBubble(wrap);
   _satRegionRow(wrap);
   wrap.style.display = 'flex';
+}
+
+// The way into the archive, on the satellite row as well as the radar one.
+//
+// It was only ever on the radar row, which made travelling to a moment and
+// then looking at satellite a two-menu job: out of satellite, into radar,
+// travel, back out, back into satellite. The machine already drives both
+// layers, so the button belongs in both places. Same shared _tmAt underneath,
+// so travelling from either row moves both pictures together.
+function _satTimeMachineBubble(wrap) {
+  const tm = document.createElement('div');
+  tm.className = 'sub-bubble' + (_tmAt != null ? ' active' : '');
+  tm.id = 'sub-sat-timemachine';
+  tm.title = 'Travel to any moment, and scrub the hours up to it';
+  tm.innerHTML = '<span class="sb-icon">' + _eicon('\u{1F550}')
+               + '</span><span class="sb-label">Time Machine</span>';
+  tm.onclick = () => _tmOpen();
+  if (LAYER_DESCRIPTIONS['timemachine']) {
+    tm.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS['timemachine']));
+  }
+  wrap.appendChild(tm);
 }
 
 // Level two: which category inside that kind.
@@ -26948,6 +26974,7 @@ function _satKindSub(k) {
     wrap.appendChild(el);
   });
 
+  _satTimeMachineBubble(wrap);
   _satRegionRow(wrap);
   wrap.style.display = 'flex';
 }
@@ -26960,6 +26987,7 @@ function _satCatSub(k, c, items) {
   wrap.dataset.satCatIn = c.id;
   _radarBackBubble(wrap, () => _satKindSub(k), c.label);
   items.forEach(p => wrap.appendChild(_goesProductBubble(p)));
+  _satTimeMachineBubble(wrap);
   _satRegionRow(wrap);
   wrap.style.display = 'flex';
 }
@@ -46568,7 +46596,19 @@ function selectProduct(p) {
         <div class="lqm-toggle-knob"></div>
       </label>
     </div>
-
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Always Show Logo Menu</span>
+      <label class="lqm-toggle">
+        <input type="checkbox" id="lqm-set-menupin" checked onchange="lqmSetMenuPin(this.checked)">
+        <div class="lqm-toggle-track"></div>
+        <div class="lqm-toggle-knob"></div>
+      </label>
+    </div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:2px 0 6px;line-height:1.5;">
+      The row under the logo (Settings, Navigation, Tutorial, Credits, Feedback) stays on screen. Turn
+      this off and it hides again, appearing only when you hover or tap the logo, which is how it used
+      to behave.
+    </div>
 
   </div>
 
@@ -47259,20 +47299,6 @@ function selectProduct(p) {
       distinguishable when the map is full of ordinary warnings.
     </div>
 
-    <div class="lqm-settings-category"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-sliders></use></svg> Keyboard</div>
-    <div class="lqm-settings-row">
-      <span class="lqm-settings-lbl">Shortcut Set</span>
-      <select id="lqm-kbd-preset" class="lqm-settings-select" onchange="kbdApplyPreset(this.value)">
-      </select>
-    </div>
-    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:2px 0 6px;line-height:1.5;"
-         id="lqm-kbd-note"></div>
-    <div id="lqm-kbd-list"></div>
-    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:2px 0 8px;line-height:1.5;">
-      Click a key to rebind it, then press the combination you want. Escape cancels, Backspace clears
-      it. Shortcuts never fire while you are typing in a box, and Ctrl and Command combinations are
-      left alone because those belong to your browser.
-    </div>
     <div class="lqm-settings-row">
       <span class="lqm-settings-lbl">Open Panel on New Alert</span>
       <label class="lqm-toggle">
@@ -47304,6 +47330,30 @@ function selectProduct(p) {
     <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:6px 0 2px;line-height:1.5;">
       The Alert Desk is where you write your own warnings and watches. Everything issued there is marked
       SIMULATED wherever it appears, so it can never be mistaken for a real National Weather Service product.
+    </div>
+  </div>
+
+  <!-- ─── KEYBOARD ───
+       Its own card, not a second heading inside Alerts. The category rail is
+       built by reading ONE heading per .lqm-settings-group, and every group
+       but the chosen one is hidden. A second heading inside the Alerts card
+       therefore got no tab of its own and only appeared if you happened to
+       open Alerts and scroll: the shortcuts were in the panel but there was
+       no way to navigate to them, which is indistinguishable from missing. -->
+  <div class="lqm-settings-group" data-cat="keyboard">
+    <div class="lqm-settings-category"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-sliders></use></svg> Keyboard</div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Shortcut Set</span>
+      <select id="lqm-kbd-preset" class="lqm-settings-select" onchange="kbdApplyPreset(this.value)">
+      </select>
+    </div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:2px 0 6px;line-height:1.5;"
+         id="lqm-kbd-note"></div>
+    <div id="lqm-kbd-list"></div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:2px 0 8px;line-height:1.5;">
+      Click a key to rebind it, then press the combination you want. Escape cancels, Backspace clears
+      it. Shortcuts never fire while you are typing in a box, and Ctrl and Command combinations are
+      left alone because those belong to your browser.
     </div>
   </div>
 
@@ -47545,6 +47595,22 @@ function selectProduct(p) {
 (function() {
   let _menuOpen = false;
 
+  // ── Pinned open by default ────────────────────────────────────────────────
+  // The menu used to be invisible until you hovered or tapped the logo, which
+  // meant Settings, the tutorial, credits, feedback and now navigation were
+  // all behind a gesture nothing on screen advertised. Somebody who never
+  // guessed to touch the logo never found any of them.
+  //
+  // So it starts shown, and stays shown, until the switch in Settings turns
+  // it off. Turned off, the old hover-and-tap behaviour comes back exactly as
+  // it was: this is a default, not a removal.
+  const LQM_PIN_KEY = 'gwcfc_lqm_pin';
+  // Absent means never chosen, and the new default is on. Only the literal
+  // string '0' is off, so a stored value from any other source cannot
+  // accidentally read as a preference to hide it.
+  let _menuPinned = true;
+  try { _menuPinned = localStorage.getItem(LQM_PIN_KEY) !== '0'; } catch (e) {}
+
   function _openMenu() {
     _menuOpen = true;
     const menu = document.getElementById('logo-quick-menu');
@@ -47552,10 +47618,14 @@ function selectProduct(p) {
   }
 
   function _closeMenu() {
+    // Search still closes while pinned: it is a panel that happens to live
+    // here, not part of the row of buttons, and leaving it hanging open after
+    // a click on the map would be its own bug.
+    if (typeof lqmCloseSearch === 'function') lqmCloseSearch();
+    if (_menuPinned) return;
     _menuOpen = false;
     const menu = document.getElementById('logo-quick-menu');
     if (menu) menu.classList.remove('lqm-open');
-    if (typeof lqmCloseSearch === 'function') lqmCloseSearch();
     // Settings intentionally NOT auto-closed here - it should only close via
     // its own close button or by clicking the Settings menu item again,
     // not from an unrelated outside click or the quick-menu hover timeout.
@@ -47565,15 +47635,33 @@ function selectProduct(p) {
     if (_menuOpen) _closeMenu(); else _openMenu();
   };
 
+  // The Settings switch. Turning it off does not just stop pinning it for
+  // next time, it puts the menu away now, so the switch is visibly the thing
+  // that did it.
+  window.lqmSetMenuPin = function(on) {
+    _menuPinned = !!on;
+    try { localStorage.setItem(LQM_PIN_KEY, _menuPinned ? '1' : '0'); } catch (e) {}
+    if (_menuPinned) _openMenu();
+    else { _menuOpen = true; _closeMenu(); }
+  };
+  window.lqmMenuPinned = function() { return _menuPinned; };
+
   // Close when tapping/clicking outside the menu area
   document.addEventListener('click', function(e) {
     if (!_menuOpen) return;
     const wrap = document.getElementById('logo-wrap');
     const settings = document.getElementById('lqm-settings-overlay');
     const ai = document.getElementById('lqm-ai-overlay');
+    // The search bar lives outside logo-wrap but is opened from this menu, and
+    // closing the menu clears the search box. Left unexempted, every click
+    // into the search field counted as a click outside and wiped what was
+    // being typed. It matters more now that the menu is open all the time,
+    // because this handler now runs on every click there is.
+    const search = document.getElementById('top-search-bar');
     if (wrap && wrap.contains(e.target)) return;
     if (settings && settings.contains(e.target)) return;
     if (ai && ai.contains(e.target)) return;
+    if (search && search.contains(e.target)) return;
     _closeMenu();
   });
 
@@ -47583,6 +47671,11 @@ function selectProduct(p) {
     const menu = document.getElementById('logo-quick-menu');
     const logo = document.getElementById('logo');
     if (!wrap || !menu || !logo) return;
+    // Shown from the first paint when pinned, so the buttons are simply there
+    // rather than appearing after a gesture.
+    if (_menuPinned) _openMenu();
+    const pinBox = document.getElementById('lqm-set-menupin');
+    if (pinBox) pinBox.checked = _menuPinned;
     let hoverTimer = null;
     wrap.addEventListener('mouseenter', function() { clearTimeout(hoverTimer); _openMenu(); });
     wrap.addEventListener('mouseleave', function() { hoverTimer = setTimeout(() => { if (!menu.matches(':hover')) _closeMenu(); }, 300); });
@@ -51726,6 +51819,10 @@ function lqmOpenSettings() {
   lqmSettingsCat(want);   // a null or unknown id falls back to the first card
   // Sync toggles with current app state
   if (typeof _satcSyncUi === 'function') { try { _satcSyncUi(); } catch (e) {} }
+  // The shortcut rows are rebuilt on every open, not once at boot. A key
+  // rebound from the offer dialog, or a preset picked on another tab, has to
+  // be what the panel shows when it next appears.
+  if (typeof _kbdRenderSettings === 'function') { try { _kbdRenderSettings(); } catch (e) {} }
   if (typeof _ssRuleUiInit === 'function') { try { _ssRuleUiInit(); } catch (e) {} }
   // Both order lists are rebuilt on every open rather than once at boot. They
   // show which layers are live, and that answer is different every time.
@@ -55056,7 +55153,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'Four things. Every model now keeps five days of every run, and the Run dropdown in the model panel lets you step back through them, so you can watch a model change its mind from run to run; after five days a run is deleted. The Time Machine now drives satellite too: turn satellite on, pick a moment, and the playbar scrubs the hours leading up to it, years back on the plain bands. Seven new satellite RGB products, all built to the published CIRA and EUMETSAT recipes: Day Land Cloud, Day Land Cloud Fire, Day Convection, Day Snow and Fog, Differential Water Vapor, Simple Water Vapor, and Sulphur Dioxide. And the satellite colour controls were audited end to end: one filter reaches every satellite surface, radar is never touched by it, and going back to Normal really clears it.';
+const APP_LATEST_UPDATE = 'Menus, tidied up. Keyboard shortcuts were in Settings but there was no way to reach them: they had been written inside the Alerts card, and the category rail only makes a tab from the first heading in a card, so no Keyboard tab ever appeared. Keyboard is its own tab now, with the shortcut set picker and every binding on it. The Time Machine is a button on the satellite rows too, at every level, so you no longer have to duck into radar to travel to a moment and come back. The row of buttons under the logo stays on screen instead of hiding until you hover the logo, and Navigation has joined it as its own button; if you preferred it hidden, Settings then Display then Always Show Logo Menu puts it back the way it was.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
