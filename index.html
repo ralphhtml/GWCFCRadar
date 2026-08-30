@@ -23410,7 +23410,7 @@ function setUnitPref(key, val) {
   // The Inspector reads live off the map, so without this it would sit in the
   // old unit until something happened to move the map.
   if (typeof _inspUnitsChanged === 'function') { try { _inspUnitsChanged(); } catch(e) {} }
-  if (typeof _mbCityRefresh === 'function') { try { _mbCityRefresh(); } catch(e) {} }
+  if (typeof _mbCityFillValues === 'function') { try { _mbCityFillValues(); } catch(e) {} }
 }
 
 function fmtTemp(f) {
@@ -36251,17 +36251,21 @@ function _inspHdRow(cx, cy) {
   const hit = _hdColorToValue(scale, s.r, s.g, s.b, pal ? _customLut(pal, scale) : null);
   if (!hit) return { label, value: 'No data', color };
   const step = (scale.hi - scale.lo) / 255;
-  let value = hit.value.toFixed(step >= 1 ? 0 : 1);
+  // CONVERT FIRST, DECORATE AFTER. The model field declares its own unit, so
+  // the preference reaches every product in every model without this knowing
+  // any of their names. It has to be handed the NUMBER though: the first
+  // version of this converted after the prefix was glued on, so it was
+  // parsing "≈28.8", getting NaN, and falling back to the product's own unit
+  // every single time. The setting looked ignored because it was, and it
+  // failed silently, which is the worst way for a converter to fail.
+  const cv = _inspConvUnit(hit.value, spec.unit, step >= 1 ? 0 : 1);
+  let value = cv ? cv.value : hit.value.toFixed(step >= 1 ? 0 : 1);
   // The ends of the ramp are clamps, not readings: the color for the top of
   // the scale is also the color of everything beyond it.
-  if (hit.idx === 255) value = '≥' + value;
-  else if (hit.idx === 0) value = '≤' + value;
-  else value = '≈' + value;
-  // The model field declares its own unit, so the preference reaches every
-  // product in every model without this having to know any of their names.
-  const cv = _inspConvUnit(value, spec.unit, 1);
-  return cv ? { label, value: cv.value, unit: cv.unit, color }
-            : { label, value, unit: spec.unit || '', color };
+  if (hit.idx === 255) value = '\u2265' + value;
+  else if (hit.idx === 0) value = '\u2264' + value;
+  else value = '\u2248' + value;
+  return { label, value, unit: cv ? cv.unit : (spec.unit || ''), color };
 }
 
 // Waves/Air read the EXACT interpolated value from the same grid the color
@@ -55690,7 +55694,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'The Inspector now respects your unit settings on every product, not just some of them. Model fields, ensemble variables and radar velocity were all still printing their own fixed units; they convert by whatever unit the product itself declares, so anything added later is converted too with nothing to update. There are also a lot more units to pick from: Kelvin, m/s, ft/s and Beaufort, kPa, mmHg, psi and atm, centimetres, and nautical miles, metres and feet. Percentages, dBZ and indices are deliberately left alone, since converting those would be a confident wrong number.';
+const APP_LATEST_UPDATE = 'Three fixes to the city labels and the Inspector. Model values were still coming out in the model own unit because the conversion was being handed a string that already had the approximately sign glued to the front, so it read as not-a-number and quietly gave up; it converts the number now, then adds the sign. Every city was captioned none here, which is what the warnings row says when there is nothing worth saying, so that and its friends are skipped. And the labels no longer hold up the map: names draw first and the values fill in when the browser is idle.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
@@ -65018,10 +65022,18 @@ let _mbCityLayer = null;
 // Written INLINE, not as a stack of blocks. Each reading on its own line
 // under the name turned every city into a little coloured column, and ninety
 // of those across a map read as bars over the weather rather than as labels.
-const MB_CITY_MAX_ROWS = 2;   // a name with a paragraph under it is not a label
-const MB_CITY_SKIP = /^(no data|loading|land|off grid|land \/ no data|\(no cors\)|none|color)$/i;
+// One reading, not two. Every extra line under a name is another thing to
+// collide with the name below it, and Florida at this zoom is already a pile
+// of overlapping labels before anything is added to them.
+const MB_CITY_MAX_ROWS = 1;
 
-function _mbCityReadout(c) {
+// Values that are true but not worth printing under a city name. "none here"
+// is what the warnings and outlook rows say when there is nothing, and a map
+// captioned "none here" ninety times is noise wearing the shape of data.
+const MB_CITY_SKIP =
+  /^(no data|loading|land|off grid|land \/ no data|\(no cors\)|none|none here|color|~ color|-|0 ?°?$)/i;
+
+function _mbCityValues(c) {
   if (typeof _inspRowsAt !== 'function' || typeof map === 'undefined') return '';
   let rows;
   try {
@@ -65031,13 +65043,41 @@ function _mbCityReadout(c) {
                        r.left + pt.x, r.top + pt.y, true);
   } catch (e) { return ''; }
   if (!rows || !rows.length) return '';
-  // A name with "No data" twice under it is worse than a bare name.
   const useful = rows.filter(x => x && x.value != null
-    && !MB_CITY_SKIP.test(String(x.value)));
+    && !MB_CITY_SKIP.test(String(x.value).trim()));
   if (!useful.length) return '';
-  return '<span class="mb-city-data">' + useful.slice(0, MB_CITY_MAX_ROWS)
+  return useful.slice(0, MB_CITY_MAX_ROWS)
     .map(x => _mbEsc(String(x.value)) + (x.unit ? _mbEsc(String(x.unit)) : ''))
-    .join(' \u00b7 ') + '</span>';
+    .join(' \u00b7 ');
+}
+
+// ── The values arrive after the names, deliberately ──────────────────────
+// Reading every layer at every city was being done while building the layer,
+// which put it in front of the first paint: the names could not appear until
+// every value had been worked out. The names go up immediately now with an
+// empty slot, and the slots are filled when the browser is next idle.
+//
+// Cheap per city, but ninety times cheap is still a wait, and a wait before
+// the map draws is the one place it is felt.
+let _mbCityFillTimer = null;
+function _mbCityFillValues() {
+  if (_mbCityFillTimer) {
+    (window.cancelIdleCallback || clearTimeout)(_mbCityFillTimer);
+    _mbCityFillTimer = null;
+  }
+  const run = () => {
+    _mbCityFillTimer = null;
+    if (!_mbOn.cities || !_mbCityLayer) return;
+    document.querySelectorAll('#map .mb-city[data-lat]').forEach(el => {
+      const slot = el.querySelector('.mb-city-data');
+      if (!slot) return;
+      const v = _mbCityValues({ lat: +el.dataset.lat, lng: +el.dataset.lng });
+      if (slot.innerHTML !== v) slot.innerHTML = v;
+    });
+  };
+  _mbCityFillTimer = window.requestIdleCallback
+    ? requestIdleCallback(run, { timeout: 600 })
+    : setTimeout(run, 60);
 }
 
 function _mbCityMinPop(z) {
@@ -65087,10 +65127,11 @@ function _mbCityRefresh() {
     pane: 'mapLabelsPane', interactive: false, keyboard: false,
     icon: L.divIcon({
       className: '', iconSize: [0, 0], iconAnchor: [0, 0],
-      html: '<span class="mb-city">' + _mbEsc(c.name)
-          + _mbCityReadout(c) + '</span>',
+      html: '<span class="mb-city" data-lat="' + c.lat + '" data-lng="' + c.lng
+          + '">' + _mbEsc(c.name) + '<span class="mb-city-data"></span></span>',
     }),
   }))).addTo(map);
+  _mbCityFillValues();
 }
 
 function _mbEsc(s) {

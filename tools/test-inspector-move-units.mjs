@@ -115,7 +115,7 @@ console.log('\n3. the rows actually call it');
 
 console.log('\n5. the city labels, and the cost that sank the first attempt');
 {
-  ok('labels carry a readout', /_mbCityReadout\(c\)/.test(PAGE));
+  ok('labels carry a readout', /function _mbCityValues\(c\)/.test(PAGE));
   // One implementation, so a label and the crosshair cannot disagree.
   ok('they ask the Inspector own row builder, not a second copy',
      /function _inspRowsAt\(center, cx, cy, light\)/.test(PAGE)
@@ -152,12 +152,26 @@ console.log('\n5. the city labels, and the cost that sank the first attempt');
      && !/\.mb-city-val/.test(PAGE));
   ok('and they carry no per-row colour to paint bars with',
      !/mb-city-val|_mbCityColor/.test(PAGE));
-  ok('two readings at most', /const MB_CITY_MAX_ROWS = 2;/.test(PAGE));
   ok('rows with nothing to say are dropped rather than printed',
-     /const MB_CITY_SKIP = /.test(PAGE));
+     /const MB_CITY_SKIP =/.test(PAGE));
+  // A map captioned "none here" ninety times is noise wearing the shape of
+  // data. That is what the warnings row says when there is nothing.
+  ok('and "none here" is one of them, which it was not',
+     /none here\|color/.test(PAGE));
+  ok('one reading per city, so labels stop colliding with the name below',
+     /const MB_CITY_MAX_ROWS = 1;/.test(PAGE));
+  // The values were computed while building the layer, so no name could
+  // appear until every value had been worked out.
+  ok('the names go up first and the values are filled when idle',
+     /function _mbCityFillValues\(\)/.test(PAGE)
+     && /requestIdleCallback\(run, \{ timeout: 600 \}\)/.test(PAGE));
+  ok('the marker html carries an empty slot rather than the values',
+     /<span class="mb-city-data"><\/span>/.test(PAGE));
+  ok('and a pending fill is cancelled before another is queued',
+     /cancelIdleCallback \|\| clearTimeout/.test(PAGE));
   ok('the value is escaped like the name is', /_mbEsc\(String\(x\.value\)\)/.test(PAGE));
-  ok('changing a unit repaints the labels too',
-     /_mbCityRefresh === 'function'[\s\S]{0,60}_mbCityRefresh\(\)/.test(PAGE));
+  ok('changing a unit refills the labels without rebuilding the layer',
+     /_mbCityFillValues === 'function'[\s\S]{0,60}_mbCityFillValues\(\)/.test(PAGE));
 }
 
 console.log('\n5b. every product, converted by the unit it declares');
@@ -223,8 +237,15 @@ console.log('\n5b. every product, converted by the unit it declares');
      && mk({ wind: 'bft' })(200, 'mph').value === '12');
 
   // The rows that were still printing their own unit.
-  ok('the model row converts by its declared unit',
-     /const cv = _inspConvUnit\(value, spec\.unit, 1\);/.test(PAGE));
+  // The first version of this converted AFTER gluing on the approximately
+  // sign, so it parsed "~28.8", got NaN, and fell back to the product's own
+  // unit every time. The setting looked ignored because it was.
+  ok('the model row converts the NUMBER, before any prefix is added',
+     /const cv = _inspConvUnit\(hit\.value, spec\.unit, step >= 1 \? 0 : 1\);/.test(PAGE));
+  ok('and the prefix goes on the converted value, not before it',
+     /let value = cv \? cv\.value : hit\.value\.toFixed[\s\S]{0,400}value = '\\u2248' \+ value;/.test(PAGE));
+  ok('a converter that fails silently is called out where it happened',
+     /failed silently, which is the worst way for a converter to fail/.test(PAGE));
   ok('the ensemble row does too',
      /const ec = _inspConvUnit\(v, eu, 1\);/.test(PAGE));
   ok('and radar velocity stops being the one number that ignores the setting',
