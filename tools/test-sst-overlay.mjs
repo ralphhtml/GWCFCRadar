@@ -285,8 +285,11 @@ console.log('\n7. the layer-order control, and the band it has to stay inside');
   // band would land in the middle of the overlays and cover half of them.
   ok('no map layer reaches the overlay band at 402',
      Math.max(r.z.ocean, r.z.radar, r.z.sat) < 402, JSON.stringify(r.z));
+  // The rows are ten apart now, not one, so that the model comparison slots
+  // have somewhere to sit above the models and still below the borders.
+  // Five rows from 401 puts the ocean at the bottom of the band, at 361.
   ok('clearing the saved order puts the ocean back at the bottom',
-     r.back === 398, String(r.back));
+     r.back === 361, String(r.back));
 }
 
 console.log('\n8. a saved order survives, and a stale one is repaired');
@@ -306,12 +309,22 @@ console.log('\n8. a saved order survives, and a stale one is repaired');
   });
   ok('a name that no longer exists is dropped',
      !r.repaired.includes('a-layer-that-no-longer-exists'), r.repaired.join(','));
-  ok('the layers it never heard of are appended, so nothing goes missing',
-     r.repaired.length === 4 && r.repaired[0] === 'radar', r.repaired.join(','));
+  // Rows added since the order was saved are INSERTED at their default place,
+  // not appended. Appending was fine while the only missing row was
+  // hypothetical; the models row is real, and appending it would have put
+  // model charts below the sea temperature for everyone who had ever touched
+  // this control.
+  ok('a layer it never heard of is added back, so nothing goes missing',
+     r.repaired.length === 5 && r.repaired.includes('radar'),
+     r.repaired.join(','));
+  ok('and it lands in its default place rather than at the bottom',
+     r.repaired.join(',') === 'borders,models,radar,satellite,ocean',
+     r.repaired.join(','));
   ok('unreadable storage falls back to the default rather than throwing',
-     r.garbage.length === 4, r.garbage.join(','));
+     r.garbage.length === 5, r.garbage.join(','));
   ok('and with nothing saved the default is what you get',
-     r.clean.join(',') === 'borders,radar,satellite,ocean', r.clean.join(','));
+     r.clean.join(',') === 'borders,models,radar,satellite,ocean',
+     r.clean.join(','));
 }
 
 console.log('\n9. both order lists render, and the arrows move rows');
@@ -339,7 +352,7 @@ console.log('\n9. both order lists render, and the arrows move rows');
              ovLabel: ov[0] ? ov[0].querySelector('.lqm-order-name').textContent : '',
              ends };
   });
-  ok('the map-layer list renders all four rows', r.first.length === 4,
+  ok('the map-layer list renders all five rows', r.first.length === 5,
      r.first.join(','));
   ok('the down arrow swaps a row with the one below it',
      r.after[1] === r.first[2] && r.after[2] === r.first[1],
