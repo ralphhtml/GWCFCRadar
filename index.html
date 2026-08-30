@@ -10649,7 +10649,13 @@ let animSpeed = 1.5, radarOpacity = 0.85;
 // field is a smooth wash over the whole map and radar is scattered echoes, so
 // the level that lets you read the coastline under one is the wrong level for
 // the other, and a single shared slider meant always compromising.
-let modelOpacity = 0.72;
+//
+// 0.88, and the history matters: the Pi used to bake 78 percent opacity into
+// every chart's pixels as well, so the old 0.72 default really showed at
+// about half strength and the slider could never reach full. The pictures
+// are fully opaque now and this slider is the one and only fade, so 88 is a
+// bolder default than the number alone suggests. A saved setting still wins.
+let modelOpacity = 0.88;
 // How many minutes of the national mosaic the loop reaches back, at the
 // mosaic's own 5-minute cadence. Remembered across visits. Capped on iOS
 // where a long tile pool is a memory problem sooner.
@@ -46715,9 +46721,9 @@ function selectProduct(p) {
     <div class="lqm-settings-row">
       <span class="lqm-settings-lbl">Model Opacity</span>
       <div style="display:flex;align-items:center;gap:6px;">
-        <input type="range" id="lqm-set-modelopacity" min="10" max="100" value="72" step="5"
+        <input type="range" id="lqm-set-modelopacity" min="10" max="100" value="88" step="5"
           class="lqm-slider" oninput="lqmSetModelOpacity(this.value)">
-        <span id="lqm-modelopacity-val" style="font-family:var(--mono);font-size:9px;color:var(--accent2);min-width:34px;">72%</span>
+        <span id="lqm-modelopacity-val" style="font-family:var(--mono);font-size:9px;color:var(--accent2);min-width:34px;">88%</span>
       </div>
     </div>
     <div class="lqm-settings-row" style="align-items:flex-start;">
@@ -54927,7 +54933,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'The thirty-four new models are switched on. They build last on purpose: the pipeline works through its list front to back against a time budget and stops when the clock runs out, so everything that was already building still goes first and on time, and these take whatever is left. The worst that can happen is that some of them wait for the next pass, which then picks them up. Alaska\'s own HRRR, RAP, NAM nest and URMA come first among them, because they show somewhere the map could not see before; the extra ensemble members come last, because member twelve being an hour late costs almost nothing.';
+const APP_LATEST_UPDATE = 'Model charts are sharp and full strength now. Three things were wrong and all three are fixed. Fine models like HRRR were being thinned to half their real resolution by an old size cap; they now arrive at one pixel per model cell, the whole picture the model actually made. Coarse models were drawn at half a screen\'s width and stretched by the browser, which blurs colours across ramp boundaries; the values are now interpolated up to 2000 pixels on the Pi, where the numbers still exist, so the colours stay honest and the chart arrives sharp. And opacity was applied twice, once baked into the pixels and once by the slider, so the default view was about half strength and the slider could never reach full. The pictures are fully opaque now and the Model Opacity slider in Settings is the one and only fade, starting at 88 percent. New charts pick this up as the Pi rebuilds each model over the next hours.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
