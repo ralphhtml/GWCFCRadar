@@ -113,7 +113,39 @@ console.log('\n3. the rows actually call it');
      /function _sstWantF\(\)[\s\S]{0,240}toLowerCase\(\) !== 'c'/.test(PAGE));
 }
 
-console.log('\n4. house rules');
+console.log('\n5. the city labels read the same layers');
+{
+  // The labels used to be names and nothing else, so a map covered in data
+  // still made you move a crosshair to every town to read any of it.
+  ok('labels carry a readout', /_mbCityReadout\(c\)/.test(PAGE));
+  // The point of lifting the row builder out: one implementation, so the
+  // label and the Inspector cannot end up saying different things about the
+  // same place.
+  ok('they ask the Inspector\'s own row builder, not a second copy',
+     /function _inspRowsAt\(center, cx, cy, light\)/.test(PAGE)
+     && /_inspRowsAt\(\{ lat: c\.lat, lng: c\.lng \}/.test(PAGE));
+  ok('and the Inspector now goes through that same builder',
+     /const rows = _inspRowsAt\(center, cx, cy, false\);/.test(PAGE));
+  // Ninety labels per pan against one crosshair: the pixel-reading rows
+  // decode a canvas per call and are the only genuinely expensive ones.
+  ok('the labels ask in light mode', /r\.top \+ pt\.y, true\)/.test(PAGE));
+  ok('which skips the rows that read back rendered pixels',
+     /if \(!light && typeof activeLayers !== 'undefined' && activeLayers\.satellite\)/.test(PAGE)
+     && /if \(!light && typeof _mrmsAnyOn/.test(PAGE));
+  ok('a label is capped so a city name does not grow a paragraph',
+     /const MB_CITY_MAX_ROWS = 3;/.test(PAGE));
+  // "No data" four times under a name is worse than a bare name.
+  ok('rows with nothing to say are dropped rather than printed',
+     /no data\|loading\|land\|off grid/.test(PAGE));
+  ok('the value is escaped like the name is', /_mbEsc\(String\(x\.value\)\)/.test(PAGE));
+  // The swatch colours are chosen to read on a map, not on a dark label.
+  ok('a colour that is not a real colour falls back rather than being injected',
+     /function _mbCityColor\(c\)/.test(PAGE));
+  ok('and changing a unit repaints the labels too',
+     /_mbCityRefresh === 'function'[\s\S]{0,80}_mbCityRefresh\(\)/.test(PAGE));
+}
+
+console.log('\n6. house rules');
 {
   const EM = String.fromCharCode(0x2014);
   const files = ['index.html', 'tools/test-inspector-move-units.mjs'];
