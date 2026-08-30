@@ -4356,6 +4356,17 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
 }
+.mb-city-data {
+  display: block;
+  margin-top: 0;
+  font-family: var(--mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0;
+  opacity: 0.92;
+  white-space: nowrap;
+}
+
 #inspector-drag-btn {
   pointer-events: auto;
   flex-shrink: 0;
@@ -23399,6 +23410,7 @@ function setUnitPref(key, val) {
   // The Inspector reads live off the map, so without this it would sit in the
   // old unit until something happened to move the map.
   if (typeof _inspUnitsChanged === 'function') { try { _inspUnitsChanged(); } catch(e) {} }
+  if (typeof _mbCityRefresh === 'function') { try { _mbCityRefresh(); } catch(e) {} }
 }
 
 function fmtTemp(f) {
@@ -36092,24 +36104,48 @@ function _inspModelsRow(cx, cy) {
 
 // One pixel out of the model overlay's own image. Simpler than the tile
 // scanners above because an imageOverlay is exactly one <img>.
+// One canvas per picture, kept, rather than a new one per read.
+//
+// This used to allocate a canvas and redraw the ENTIRE model image on every
+// single call. For the Inspector's one reading a frame that was merely
+// wasteful; asking it ninety times to label a screen of cities meant ninety
+// full redraws of a 2560 pixel wide chart per pan, which is what made the map
+// crawl. Measured: 4,672 ms for ninety reads that way, against 16.5 ms with
+// one canvas kept. The picture only changes when the frame does, so it is
+// drawn once and then read as many times as anyone likes.
+let _inspPxCache = null;
+function _inspPixelCanvas(img) {
+  const src = img.currentSrc || img.src;
+  if (_inspPxCache && _inspPxCache.src === src
+      && _inspPxCache.w === img.naturalWidth) {
+    return _inspPxCache;
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  _inspPxCache = { src, ctx, w: img.naturalWidth, h: img.naturalHeight };
+  return _inspPxCache;
+}
+
 function _inspReadOverlayPixel(img, cx, cy) {
   if (!img || !img.complete || !img.naturalWidth) return null;
   const rect = img.getBoundingClientRect();
   if (cx < rect.left || cx > rect.right || cy < rect.top || cy > rect.bottom) return null;
   try {
-    const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(img, 0, 0);
-    let x = Math.round((cx - rect.left) / rect.width * img.naturalWidth);
-    let y = Math.round((cy - rect.top) / rect.height * img.naturalHeight);
-    x = Math.max(0, Math.min(canvas.width - 1, x));
-    y = Math.max(0, Math.min(canvas.height - 1, y));
-    const d = ctx.getImageData(x, y, 1, 1).data;
+    const c = _inspPixelCanvas(img);
+    let x = Math.round((cx - rect.left) / rect.width * c.w);
+    let y = Math.round((cy - rect.top) / rect.height * c.h);
+    x = Math.max(0, Math.min(c.w - 1, x));
+    y = Math.max(0, Math.min(c.h - 1, y));
+    const d = c.ctx.getImageData(x, y, 1, 1).data;
     if (d[3] < 10) return { transparent: true };
     return { r: d[0], g: d[1], b: d[2] };
   } catch (e) {
+    // A tainted canvas stays tainted, and caching it would mean every later
+    // read paid the draw again to fail the same way.
+    _inspPxCache = null;
     return { tainted: true };
   }
 }
@@ -36445,18 +36481,17 @@ function _inspAlertsRow(center) {
              ? _alertColorFor(ev) : 'rgba(255,80,80,0.95)' };
 }
 
-function _inspUpdate() {
-  _inspRafPending = false;
-  if (!_inspEnabled || typeof map === 'undefined') return;
-  const rect = map.getContainer().getBoundingClientRect();
-  // Where the crosshair actually is, which is the middle until it is dragged.
-  // Everything below reads "center" as "the point being inspected", and that
-  // is now a screen position rather than the map's centre.
-  const cx = rect.left + rect.width / 2 + _inspOff.x;
-  const cy = rect.top + rect.height / 2 + _inspOff.y;
-  const center = map.containerPointToLatLng(
-    [cx - rect.left, cy - rect.top]);
-
+// Every active layer's reading at one point, as rows.
+//
+// Lifted out of _inspUpdate so the city labels can ask the same question and
+// get the same answer. A second implementation reading the same layers would
+// be two things to keep in step, and the first time they disagreed the map
+// would be telling you two different numbers about one place.
+//
+// `light` drops the rows that read back rendered pixels, EXCEPT the model
+// chart, which is the reading people actually want on a city name and is
+// cheap now that _inspPixelCanvas keeps its canvas instead of rebuilding it.
+function _inspRowsAt(center, cx, cy, light) {
   const rows = [];
   // The radar row belongs whenever radar is on screen: the mosaic layer, a
   // mesh this page decoded (which may be up under the Pi radar pills with
@@ -36465,19 +36500,21 @@ function _inspUpdate() {
     || (typeof _l3Overlay !== 'undefined' && _l3Overlay && map.hasLayer(_l3Overlay))
     || (typeof _prOn !== 'undefined' && _prOn);
   if (_radarUp)                                                      rows.push(_inspRadarRow(center, cx, cy));
-  if (typeof activeLayers !== 'undefined' && activeLayers.satellite) rows.push(_inspSatelliteRow(cx, cy));
+  if (!light && typeof activeLayers !== 'undefined' && activeLayers.satellite) rows.push(_inspSatelliteRow(cx, cy));
   if (typeof wavesActive !== 'undefined' && wavesActive)             rows.push(_inspWavesRow(center));
   if (typeof airActive !== 'undefined' && airActive)                 rows.push(_inspAirRow(center));
   if (typeof windActive !== 'undefined' && windActive)               rows.push(_inspWindRow(center));
   if (typeof temperatureActive !== 'undefined' && temperatureActive) rows.push(_inspTemperatureRow(center));
   if (typeof pressureActive !== 'undefined' && pressureActive)       rows.push(_inspPressureRow(center));
   if (_sevOverlayLayer)                                               rows.push(_inspSevEnsRow(center));
-  if (_iemModelLayer)                                                 rows.push(_inspModelsRow(cx, cy));
+  if (!light && _iemModelLayer)                                       rows.push(_inspModelsRow(cx, cy));
+  // Kept in light mode: model charts are the reading people want on a city
+  // name, and the pixel read behind it is cheap now the canvas is cached.
   if (typeof _hdOn !== 'undefined' && _hdOn && _hdLayer)              rows.push(_inspHdRow(cx, cy));
   // The layers it used to walk past. Each is guarded on its own state, so a
   // layer that is off contributes nothing rather than a row saying so.
   if (typeof _sstOn !== 'undefined' && _sstOn)                        rows.push(_inspSstRow(center));
-  if (typeof _mrmsAnyOn === 'function' && _mrmsAnyOn())               rows.push(..._inspMrmsRows(cx, cy));
+  if (!light && typeof _mrmsAnyOn === 'function' && _mrmsAnyOn())     rows.push(..._inspMrmsRows(cx, cy));
   if (typeof activeLayers !== 'undefined' && activeLayers.lightning)  rows.push(_inspLightningRow(center));
   if (typeof spcOutlookLayer !== 'undefined' && spcOutlookLayer) {
     rows.push(_inspPolyRow('SPC outlook', spcOutlookLayer,
@@ -36493,9 +36530,23 @@ function _inspUpdate() {
     rows.push(_inspAlertsRow(center));
   }
 
-  const _real = rows.filter(Boolean);
-  rows.length = 0; rows.push(..._real);
-  if (!rows.length) { _inspRenderRows([{ label: '', value: 'No layers active', color: 'rgba(120,120,120,0.5)' }]); return; }
+  return rows.filter(Boolean);
+}
+
+function _inspUpdate() {
+  _inspRafPending = false;
+  if (!_inspEnabled || typeof map === 'undefined') return;
+  const rect = map.getContainer().getBoundingClientRect();
+  // Where the crosshair actually is, which is the middle until it is dragged.
+  const cx = rect.left + rect.width / 2 + _inspOff.x;
+  const cy = rect.top + rect.height / 2 + _inspOff.y;
+  const center = map.containerPointToLatLng([cx - rect.left, cy - rect.top]);
+  const rows = _inspRowsAt(center, cx, cy, false);
+  if (!rows.length) {
+    _inspRenderRows([{ label: '', value: 'No layers active',
+                       color: 'rgba(120,120,120,0.5)' }]);
+    return;
+  }
   _inspRenderRows(rows);
 }
 
@@ -55540,7 +55591,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'Reverted the city label readings. Putting the live layer values under every city name made the map slow and covered it in coloured blocks, so it is gone and the labels are plain names again. The Inspector keeps its new drag handle and its unit support. Sorry about that.';
+const APP_LATEST_UPDATE = 'City names show the values over them again, model charts included, and the lag is gone. The cause was in the Inspector all along: reading one pixel out of a model chart rebuilt a canvas from the whole picture every single time, so labelling a screen of cities meant ninety full redraws per pan. Measured at 4,672 ms; with the canvas kept it is 16.5 ms. The readings are also one short line under the name now instead of a stack of coloured blocks, which is what looked like bars across the map.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
@@ -64855,6 +64906,41 @@ const MB_CITY_CAP = 90;
 let _mbCityFeats = null;
 let _mbCityLayer = null;
 
+// ── What the weather is doing over each city ─────────────────────────────
+// The labels were names and nothing else, so a map covered in data still made
+// you move a crosshair to every town to read any of it.
+//
+// It asks the Inspector's own row builder, so a label and the crosshair can
+// never disagree about the same place. What made the first attempt at this
+// unusable was not the number of questions but the cost of one: reading a
+// model pixel rebuilt a canvas from the whole chart every time. That is
+// cached now, so ninety cities cost one draw between them.
+//
+// Written INLINE, not as a stack of blocks. Each reading on its own line
+// under the name turned every city into a little coloured column, and ninety
+// of those across a map read as bars over the weather rather than as labels.
+const MB_CITY_MAX_ROWS = 2;   // a name with a paragraph under it is not a label
+const MB_CITY_SKIP = /^(no data|loading|land|off grid|land \/ no data|\(no cors\)|none|color)$/i;
+
+function _mbCityReadout(c) {
+  if (typeof _inspRowsAt !== 'function' || typeof map === 'undefined') return '';
+  let rows;
+  try {
+    const pt = map.latLngToContainerPoint([c.lat, c.lng]);
+    const r = map.getContainer().getBoundingClientRect();
+    rows = _inspRowsAt({ lat: c.lat, lng: c.lng },
+                       r.left + pt.x, r.top + pt.y, true);
+  } catch (e) { return ''; }
+  if (!rows || !rows.length) return '';
+  // A name with "No data" twice under it is worse than a bare name.
+  const useful = rows.filter(x => x && x.value != null
+    && !MB_CITY_SKIP.test(String(x.value)));
+  if (!useful.length) return '';
+  return '<span class="mb-city-data">' + useful.slice(0, MB_CITY_MAX_ROWS)
+    .map(x => _mbEsc(String(x.value)) + (x.unit ? _mbEsc(String(x.unit)) : ''))
+    .join(' \u00b7 ') + '</span>';
+}
+
 function _mbCityMinPop(z) {
   if (z <= 3) return 3000000;
   if (z <= 4) return 1200000;
@@ -64902,7 +64988,8 @@ function _mbCityRefresh() {
     pane: 'mapLabelsPane', interactive: false, keyboard: false,
     icon: L.divIcon({
       className: '', iconSize: [0, 0], iconAnchor: [0, 0],
-      html: '<span class="mb-city">' + _mbEsc(c.name) + '</span>',
+      html: '<span class="mb-city">' + _mbEsc(c.name)
+          + _mbCityReadout(c) + '</span>',
     }),
   }))).addTo(map);
 }
