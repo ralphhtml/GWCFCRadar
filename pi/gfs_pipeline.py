@@ -1187,6 +1187,291 @@ MODELS = {
         "upper": True,
         "regions": {"conus": {}, "tropics": {"out": 240, "shear": True}},
     },
+
+    # ── Live-verified additions ─────────────────────────────────────────────
+    # Every entry below was checked against its real address on NOAA's AWS
+    # open-data mirror before being written here, at a forecast hour and cycle
+    # the pipeline would actually ask for, and each returned a real GRIB
+    # index. A model in this table that has never been fetched is worse than
+    # an absent one: it puts a name on the menu that quietly fails.
+    #
+    # They are off by default. The Pi already runs eighteen pipelines inside a
+    # time budget, and switching thirty-four more on at once would not make it
+    # better at everything, it would make it late at everything.
+
+    # GFS, the parts of it this app was not reading. The pgrb2 "b" file is the
+    # secondary field set: everything NOAA did not consider common enough for
+    # the main file, which is where the less usual levels and variables live.
+    "gfsb": {
+        "fetch": "range",
+        "label": "GFS Secondary Fields", "res": "0.25 deg", "cycle_h": 6, "lag_h": 5,
+        "raw": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{date}/{cyc}/atmos/gfs.t{cyc}z.pgrb2b.0p25.f{fhr:03d}.idx",
+        "step": 3, "out": 120,
+        "regions": {"conus": {}},
+    },
+    "gfs0p50b": {
+        "fetch": "range",
+        "label": "GFS 0.5 Secondary", "res": "0.5 deg", "cycle_h": 6, "lag_h": 5,
+        "raw": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{date}/{cyc}/atmos/gfs.t{cyc}z.pgrb2b.0p50.f{fhr:03d}.idx",
+        "step": 6, "out": 180,
+        "regions": {"conus": {}},
+    },
+    # The surface flux file: what the ground and sea are exchanging with the
+    # air. Not a forecast chart in the usual sense, and the right file for the
+    # heat, evaporation and radiation questions the pressure file cannot
+    # answer.
+    "gfsflux": {
+        "fetch": "range",
+        "label": "GFS Surface Fluxes", "res": "0.25 deg flux", "cycle_h": 6, "lag_h": 5,
+        "raw": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{date}/{cyc}/atmos/gfs.t{cyc}z.sfluxgrbf{fhr:03d}.grib2.idx",
+        "step": 3, "out": 120,
+        "regions": {"conus": {}},
+    },
+    "gdasflux": {
+        "fetch": "range",
+        "label": "GDAS Surface Fluxes", "res": "0.25 deg analysis", "cycle_h": 6, "lag_h": 7,
+        "raw": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gdas.{date}/{cyc}/atmos/gdas.t{cyc}z.sfluxgrbf{fhr:03d}.grib2.idx",
+        "step": 3, "out": 9,
+        "regions": {"conus": {}},
+    },
+    # GFS run through the satellite forward model: what GOES would see if the
+    # forecast were right. The one product that can be compared directly
+    # against the satellite picture already on the map, which makes it the
+    # fastest way to catch a model that has the pattern wrong.
+    "gfssat": {
+        "fetch": "range",
+        "label": "GFS Simulated Satellite", "res": "0.25 deg", "cycle_h": 6, "lag_h": 5,
+        "raw": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{date}/{cyc}/atmos/gfs.t{cyc}z.goessimpgrb2.0p25.f{fhr:03d}.idx",
+        "step": 3, "out": 120,
+        "regions": {"conus": {}},
+    },
+    # The wave model by basin. The global grid is already here; these are the
+    # regional ones, the same model at a resolution that resolves a coastline
+    # instead of stepping over it.
+    "gfswaveatl": {
+        "fetch": "range",
+        "label": "GFS Wave Atlantic", "res": "regional wave", "cycle_h": 6, "lag_h": 6,
+        "raw": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{date}/{cyc}/wave/gridded/gfswave.t{cyc}z.atlocn.0p16.f{fhr:03d}.grib2.idx",
+        "step": 6, "out": 180,
+        "regions": {"conus": {}},
+    },
+    "gfswavepac": {
+        "fetch": "range",
+        "label": "GFS Wave East Pacific", "res": "regional wave", "cycle_h": 6, "lag_h": 6,
+        "raw": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{date}/{cyc}/wave/gridded/gfswave.t{cyc}z.epacif.0p16.f{fhr:03d}.grib2.idx",
+        "step": 6, "out": 180,
+        "regions": {"conus": {}},
+    },
+    "gfswavewc": {
+        "fetch": "range",
+        "label": "GFS Wave West Coast", "res": "regional wave", "cycle_h": 6, "lag_h": 6,
+        "raw": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{date}/{cyc}/wave/gridded/gfswave.t{cyc}z.wcoast.0p16.f{fhr:03d}.grib2.idx",
+        "step": 6, "out": 180,
+        "regions": {"conus": {}},
+    },
+    "gfswavegulf": {
+        "fetch": "range",
+        "label": "GFS Wave Gulf and South", "res": "regional wave", "cycle_h": 6, "lag_h": 6,
+        "raw": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{date}/{cyc}/wave/gridded/gfswave.t{cyc}z.gsouth.0p25.f{fhr:03d}.grib2.idx",
+        "step": 6, "out": 180,
+        "regions": {"conus": {}},
+    },
+    "gfswavearc": {
+        "fetch": "range",
+        "label": "GFS Wave Arctic", "res": "regional wave", "cycle_h": 6, "lag_h": 6,
+        "raw": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{date}/{cyc}/wave/gridded/gfswave.t{cyc}z.arctic.9km.f{fhr:03d}.grib2.idx",
+        "step": 6, "out": 180,
+        "regions": {"conus": {}},
+    },
+    # HRRR beyond its surface file. The pressure and native level files are
+    # the same run with the vertical structure left in, which is what a
+    # sounding or a cross section needs and the surface file cannot give.
+    "hrrrprs": {
+        "fetch": "range",
+        "label": "HRRR Pressure Levels", "res": "3 km", "cycle_h": 1, "lag_h": 2,
+        "raw": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.{date}/conus/hrrr.t{cyc}z.wrfprsf{fhr:02d}.grib2.idx",
+        "step": 1, "out": 18,
+        "upper": True,
+        "regions": {"conus": {}},
+    },
+    "hrrrnat": {
+        "fetch": "range",
+        "label": "HRRR Native Levels", "res": "3 km", "cycle_h": 1, "lag_h": 2,
+        "raw": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.{date}/conus/hrrr.t{cyc}z.wrfnatf{fhr:02d}.grib2.idx",
+        "step": 1, "out": 18,
+        "regions": {"conus": {}},
+    },
+    # Alaska is not a crop of the CONUS run. It is a separate HRRR domain on
+    # its own grid and its own cycle, so it is a model here rather than a
+    # region of one.
+    "hrrrak": {
+        "fetch": "range",
+        "label": "HRRR Alaska", "res": "3 km", "cycle_h": 3, "lag_h": 2,
+        "raw": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.{date}/alaska/hrrr.t{cyc}z.wrfsfcf{fhr:02d}.ak.grib2.idx",
+        "step": 1, "out": 48,
+        "regions": {"conus": {}},
+    },
+    "hrrrakprs": {
+        "fetch": "range",
+        "label": "HRRR Alaska Pressure", "res": "3 km", "cycle_h": 3, "lag_h": 2,
+        "raw": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.{date}/alaska/hrrr.t{cyc}z.wrfprsf{fhr:02d}.ak.grib2.idx",
+        "step": 1, "out": 48,
+        "upper": True,
+        "regions": {"conus": {}},
+    },
+    "hrrrsubak": {
+        "fetch": "range",
+        "label": "HRRR Alaska Sub-Hourly", "res": "3 km 15 min", "cycle_h": 3, "lag_h": 2,
+        "raw": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.{date}/alaska/hrrr.t{cyc}z.wrfsubhf{fhr:02d}.ak.grib2.idx",
+        "step": 1, "out": 18,
+        "regions": {"conus": {}},
+    },
+    # RAP on its other grids. The same run published on the AWIPS grids a
+    # forecaster actually receives it on: 130 is the 13 km CONUS grid, 252 the
+    # 20 km, 236 the 40 km, and 242 the Alaska one.
+    "rap130": {
+        "fetch": "range",
+        "label": "RAP 13 km", "res": "13 km", "cycle_h": 1, "lag_h": 2,
+        "raw": "https://noaa-rap-pds.s3.amazonaws.com/rap.{date}/rap.t{cyc}z.awp130pgrbf{fhr:02d}.grib2.idx",
+        "step": 1, "out": 21,
+        "regions": {"conus": {}},
+    },
+    "rapp252": {
+        "fetch": "range",
+        "label": "RAP 20 km", "res": "20 km", "cycle_h": 1, "lag_h": 2,
+        "raw": "https://noaa-rap-pds.s3.amazonaws.com/rap.{date}/rap.t{cyc}z.awp252pgrbf{fhr:02d}.grib2.idx",
+        "step": 1, "out": 21,
+        "regions": {"conus": {}},
+    },
+    "rapp236": {
+        "fetch": "range",
+        "label": "RAP 40 km", "res": "40 km", "cycle_h": 1, "lag_h": 2,
+        "raw": "https://noaa-rap-pds.s3.amazonaws.com/rap.{date}/rap.t{cyc}z.awp236pgrbf{fhr:02d}.grib2.idx",
+        "step": 1, "out": 21,
+        "regions": {"conus": {}},
+    },
+    "rapak": {
+        "fetch": "range",
+        "label": "RAP Alaska", "res": "13 km", "cycle_h": 1, "lag_h": 2,
+        "raw": "https://noaa-rap-pds.s3.amazonaws.com/rap.{date}/rap.t{cyc}z.awp242f{fhr:02d}.grib2.idx",
+        "step": 1, "out": 21,
+        "regions": {"conus": {}},
+    },
+    "rapnat": {
+        "fetch": "range",
+        "label": "RAP Native Levels", "res": "13 km", "cycle_h": 1, "lag_h": 2,
+        "raw": "https://noaa-rap-pds.s3.amazonaws.com/rap.{date}/rap.t{cyc}z.wrfnatf{fhr:02d}.grib2.idx",
+        "step": 1, "out": 21,
+        "regions": {"conus": {}},
+    },
+    # The NAM nests outside the lower 48, and the AWIPS grids NOAA publishes
+    # the parent run on. Each is a genuinely different file rather than the
+    # same forecast cropped, which is why these are models where the CONUS
+    # crops were made regions.
+    "namak": {
+        "fetch": "range",
+        "label": "NAM Alaska Nest", "res": "3 km", "cycle_h": 6, "lag_h": 4,
+        "raw": "https://noaa-nam-pds.s3.amazonaws.com/nam.{date}/nam.t{cyc}z.alaskanest.hiresf{fhr:02d}.tm00.grib2.idx",
+        "step": 3, "out": 60,
+        "regions": {"conus": {}},
+    },
+    "namhi": {
+        "fetch": "range",
+        "label": "NAM Hawaii Nest", "res": "3 km", "cycle_h": 6, "lag_h": 4,
+        "raw": "https://noaa-nam-pds.s3.amazonaws.com/nam.{date}/nam.t{cyc}z.hawaiinest.hiresf{fhr:02d}.tm00.grib2.idx",
+        "step": 3, "out": 60,
+        "regions": {"conus": {}},
+    },
+    "nampr": {
+        "fetch": "range",
+        "label": "NAM Puerto Rico Nest", "res": "3 km", "cycle_h": 6, "lag_h": 4,
+        "raw": "https://noaa-nam-pds.s3.amazonaws.com/nam.{date}/nam.t{cyc}z.priconest.hiresf{fhr:02d}.tm00.grib2.idx",
+        "step": 3, "out": 60,
+        "regions": {"conus": {}},
+    },
+    "namawak": {
+        "fetch": "range",
+        "label": "NAM Alaska AWIPS", "res": "11 km", "cycle_h": 6, "lag_h": 4,
+        "raw": "https://noaa-nam-pds.s3.amazonaws.com/nam.{date}/nam.t{cyc}z.awak3d{fhr:02d}.tm00.grib2.idx",
+        "step": 3, "out": 60,
+        "regions": {"conus": {}},
+    },
+    "namafwaca": {
+        "fetch": "range",
+        "label": "NAM Canada", "res": "15 km", "cycle_h": 6, "lag_h": 4,
+        "raw": "https://noaa-nam-pds.s3.amazonaws.com/nam.{date}/nam.t{cyc}z.afwaca{fhr:02d}.tm00.grib2.idx",
+        "step": 3, "out": 60,
+        "regions": {"conus": {}},
+    },
+    "namafwahi": {
+        "fetch": "range",
+        "label": "NAM Hawaii AWIPS", "res": "15 km", "cycle_h": 6, "lag_h": 4,
+        "raw": "https://noaa-nam-pds.s3.amazonaws.com/nam.{date}/nam.t{cyc}z.afwahi{fhr:02d}.tm00.grib2.idx",
+        "step": 3, "out": 60,
+        "regions": {"conus": {}},
+    },
+    "namawip32": {
+        "fetch": "range",
+        "label": "NAM 32 km", "res": "32 km", "cycle_h": 6, "lag_h": 4,
+        "raw": "https://noaa-nam-pds.s3.amazonaws.com/nam.{date}/nam.t{cyc}z.awip32{fhr:02d}.tm00.grib2.idx",
+        "step": 3, "out": 60,
+        "regions": {"conus": {}},
+    },
+    # The rest of the GEFS ensemble. Members 1 to 7 were already here; these
+    # are 8 to 12, plus the spread field on the 0.25 degree grid. More members
+    # is the point of an ensemble: the spread between them is the forecast's
+    # own estimate of how much it should be believed.
+    "gefsp08": {
+        "fetch": "range",
+        "label": "GEFS member 8", "res": "0.25 deg ens", "cycle_h": 6, "lag_h": 7,
+        "raw": "https://noaa-gefs-pds.s3.amazonaws.com/gefs.{date}/{cyc}/atmos/pgrb2sp25/gep08.t{cyc}z.pgrb2s.0p25.f{fhr:03d}.idx",
+        "step": 6, "out": 168,
+        "regions": {"conus": {}},
+    },
+    "gefsp09": {
+        "fetch": "range",
+        "label": "GEFS member 9", "res": "0.25 deg ens", "cycle_h": 6, "lag_h": 7,
+        "raw": "https://noaa-gefs-pds.s3.amazonaws.com/gefs.{date}/{cyc}/atmos/pgrb2sp25/gep09.t{cyc}z.pgrb2s.0p25.f{fhr:03d}.idx",
+        "step": 6, "out": 168,
+        "regions": {"conus": {}},
+    },
+    "gefsp10": {
+        "fetch": "range",
+        "label": "GEFS member 10", "res": "0.25 deg ens", "cycle_h": 6, "lag_h": 7,
+        "raw": "https://noaa-gefs-pds.s3.amazonaws.com/gefs.{date}/{cyc}/atmos/pgrb2sp25/gep10.t{cyc}z.pgrb2s.0p25.f{fhr:03d}.idx",
+        "step": 6, "out": 168,
+        "regions": {"conus": {}},
+    },
+    "gefsp11": {
+        "fetch": "range",
+        "label": "GEFS member 11", "res": "0.25 deg ens", "cycle_h": 6, "lag_h": 7,
+        "raw": "https://noaa-gefs-pds.s3.amazonaws.com/gefs.{date}/{cyc}/atmos/pgrb2sp25/gep11.t{cyc}z.pgrb2s.0p25.f{fhr:03d}.idx",
+        "step": 6, "out": 168,
+        "regions": {"conus": {}},
+    },
+    "gefsp12": {
+        "fetch": "range",
+        "label": "GEFS member 12", "res": "0.25 deg ens", "cycle_h": 6, "lag_h": 7,
+        "raw": "https://noaa-gefs-pds.s3.amazonaws.com/gefs.{date}/{cyc}/atmos/pgrb2sp25/gep12.t{cyc}z.pgrb2s.0p25.f{fhr:03d}.idx",
+        "step": 6, "out": 168,
+        "regions": {"conus": {}},
+    },
+    "gefsspr25": {
+        "fetch": "range",
+        "label": "GEFS Spread 0.25 deg", "res": "0.25 deg ens", "cycle_h": 6, "lag_h": 7,
+        "raw": "https://noaa-gefs-pds.s3.amazonaws.com/gefs.{date}/{cyc}/atmos/pgrb2sp25/gespr.t{cyc}z.pgrb2s.0p25.f{fhr:03d}.idx",
+        "step": 6, "out": 168,
+        "regions": {"conus": {}},
+    },
+    # URMA for Alaska: the same rerun-once-the-late-observations-arrive
+    # analysis as the lower 48 one, on the Alaska grid.
+    "urmaak": {
+        "fetch": "range",
+        "label": "URMA Alaska", "res": "3 km analysis", "cycle_h": 1, "lag_h": 7,
+        "raw": "https://noaa-urma-pds.s3.amazonaws.com/akurma.{date}/akurma.t{cyc}z.2dvaranl_ndfd_3p0.grb2.idx",
+        "step": 1, "out": 1,
+        "regions": {"conus": {}},
+    },
 }
 
 # Order matters: this is also the order they are built in, and the time budget
@@ -1228,7 +1513,48 @@ DEFAULT_MODELS = ["hrrr", "rtma", "rap", "gfs", "nam", "namnest", "nbm",
 # are still correct in shape, so when an address is worked out again the model
 # comes back by adding one word here. Until then they are still buildable by
 # hand with --models, which is how you would test a new address.
-OFF_BY_DEFAULT = ["hwrf", "hmon", "hireswnssl", "etss",
+OFF_BY_DEFAULT = [
+                  # The thirty-four live-verified additions. Each one
+                  # was fetched from its real address before being
+                  # written into MODELS, so these are off because the
+                  # Pi has a time budget, not because they are
+                  # doubtful. Switch on what you want.
+                  "gfsb",
+                  "gfs0p50b",
+                  "gfsflux",
+                  "gdasflux",
+                  "gfssat",
+                  "gfswaveatl",
+                  "gfswavepac",
+                  "gfswavewc",
+                  "gfswavegulf",
+                  "gfswavearc",
+                  "hrrrprs",
+                  "hrrrnat",
+                  "hrrrak",
+                  "hrrrakprs",
+                  "hrrrsubak",
+                  "rap130",
+                  "rapp252",
+                  "rapp236",
+                  "rapak",
+                  "rapnat",
+                  "namak",
+                  "namhi",
+                  "nampr",
+                  "namawak",
+                  "namafwaca",
+                  "namafwahi",
+                  "namawip32",
+                  "gefsp08",
+                  "gefsp09",
+                  "gefsp10",
+                  "gefsp11",
+                  "gefsp12",
+                  "gefsspr25",
+                  "urmaak",
+
+                  "hwrf", "hmon", "hireswnssl", "etss",
                   "ecmwfens", "ecmwfaifsens", "ecmwfwave",
                   "gem", "hrdps", "rdps", "icond2", "iconeps",
                   # RRFS is here for a different reason from the rest, and a
