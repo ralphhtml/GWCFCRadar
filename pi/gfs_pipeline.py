@@ -4872,21 +4872,34 @@ def main(models=None):
             log(f"unknown model: {name}")
             continue
         for region in regions_of(m):
-            never = _newest_manifest(os.path.join(OUT_DIR, name, region)) is None
+            man = _newest_manifest(os.path.join(OUT_DIR, name, region))
+            never = man is None
             sp = region_spec(m, region)
             # Roughly what this will cost: how many hours, times how big a
             # grid. Only ever compared against other models, so the units do
             # not matter, only the ordering.
             cost = (len(fhours_for(sp)) * MB_PER_HOUR.get(name, 5.0)
                     * REGION_COST.get(region, 1.0))
-            jobs.append((0 if never else 1, cost, name, region, m))
+            # Among things that already exist, the OLDEST run goes first.
+            # Cost alone is a fixed order, so once a model has been built even
+            # once it sits at the same place in the list for ever: the budget
+            # runs out at the same point every pass and everything past that
+            # point is never rebuilt again. That is not theoretical -- it left
+            # ecmwf, href, hiresw*, iconeu and aigfs stuck on a five day old
+            # run while rtma and hrrr refreshed every hour. Sorting by run
+            # makes the queue self-levelling: whatever is stalest is next, and
+            # a model drops to the back the moment it is rebuilt.
+            run = "" if never else str(man.get("run", ""))
+            jobs.append((0 if never else 1, run, cost, name, region, m))
     # Never built first, and among those the cheap ones first. A cold start
     # otherwise spends twenty minutes on the single most expensive model
     # before anything at all reaches the site, which looks like nothing is
     # happening. Cheapest first puts most of the list on the map in the first
     # few minutes and lets the big ones fill in behind.
-    jobs.sort(key=lambda j: (j[0], j[1]))
-    jobs = [(p, n, r, m) for p, _c, n, r, m in jobs]
+    # never-built first (all run=="", so still cheapest-first for a cold
+    # start), then already-built oldest-run-first, cheapest breaking ties.
+    jobs.sort(key=lambda j: (j[0], j[1], j[2]))
+    jobs = [(p, n, r, m) for p, _run, _c, n, r, m in jobs]
     fresh = sum(1 for j in jobs if j[0] == 0)
     if fresh:
         log(f"{fresh} of {len(jobs)} have never been built, doing those first")
