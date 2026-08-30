@@ -25400,6 +25400,108 @@ async function _windPtLoad(forceRefresh) {
   }
 }
 
+// ── DAY / NIGHT TERMINATOR ──────────────────────────────────────────────────
+// The night side of the earth, shaded. Not decoration: it is the thing that
+// explains a satellite picture. Visible channels go black at the terminator
+// and infrared does not, so a band of "missing" imagery that is really just
+// nightfall is the single most common thing to misread on a satellite loop.
+//
+// Computed, never fetched. The sun's position is arithmetic anybody can do
+// from the clock, so an overlay that asked a server for it would be slower,
+// would break offline, and would still be the same number.
+const TERM_REFRESH_MS = 60 * 1000;   // the terminator moves a quarter degree a minute
+let _termActive = false;
+let _termLayer = null;
+let _termTimer = null;
+let _termOpacity = 0.34;
+
+// Where the sun is directly overhead, right now. Low-precision solar position:
+// good to about a hundredth of a degree, which is far below the width of the
+// line this draws, and it needs no ephemeris table.
+function _termSubsolar(date) {
+  const rad = Math.PI / 180;
+  // Days since J2000.0. The two constants convert a Unix millisecond count to
+  // a Julian day and then shift the epoch.
+  const d = (date.getTime() / 86400000) + 2440587.5 - 2451545.0;
+  const L = (280.460 + 0.9856474 * d) % 360;            // mean longitude
+  const g = ((357.528 + 0.9856003 * d) % 360) * rad;    // mean anomaly
+  // Ecliptic longitude: the mean longitude plus the equation of centre, which
+  // is what the two sine terms are.
+  const lambda = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * rad;
+  const eps = (23.439 - 0.0000004 * d) * rad;           // obliquity
+  const dec = Math.asin(Math.sin(eps) * Math.sin(lambda));
+  const ra = Math.atan2(Math.cos(eps) * Math.sin(lambda), Math.cos(lambda));
+  const gmst = (18.697374558 + 24.06570982441908 * d) % 24;
+  let lon = (ra / rad) - gmst * 15;
+  lon = ((lon + 180) % 360 + 360) % 360 - 180;
+  return { lat: dec / rad, lon };
+}
+
+// The shape of the dark half. The terminator is the circle of points where the
+// sun sits exactly on the horizon, so its latitude at each longitude falls out
+// of the hour angle and the declination.
+function _termNightRing(sub) {
+  const rad = Math.PI / 180;
+  const dec = sub.lat * rad;
+  const ring = [];
+  // Every two degrees. Finer than the eye can tell apart at any zoom the map
+  // offers, and 181 points is nothing to draw.
+  for (let lon = -180; lon <= 180; lon += 2) {
+    const H = (lon - sub.lon) * rad;
+    // At the equinox the declination is zero and this divides by zero, which
+    // is the one day of the year the terminator really does run pole to pole.
+    // Nudged rather than special-cased: a hundred-thousandth of a degree is
+    // invisible and keeps one code path.
+    const t = Math.tan(Math.abs(dec) < 1e-6 ? 1e-6 * Math.sign(dec || 1) : dec);
+    let lat = Math.atan(-Math.cos(H) / t) / rad;
+    ring.push([Math.max(-89.9, Math.min(89.9, lat)), lon]);
+  }
+  // Close the shape through whichever pole is in darkness. In northern summer
+  // the sun never sets inside the arctic circle and never rises inside the
+  // antarctic one, so the dark cap is the southern one, and the other way
+  // round in winter. Closing through the wrong pole shades the lit half.
+  const darkPole = sub.lat > 0 ? -90 : 90;
+  ring.push([darkPole, 180], [darkPole, -180]);
+  return ring;
+}
+
+function _termDraw() {
+  if (!_termActive || typeof map === 'undefined' || !map) return;
+  const ring = _termNightRing(_termSubsolar(new Date()));
+  if (_termLayer) { try { map.removeLayer(_termLayer); } catch (e) {} }
+  _termLayer = L.polygon(ring, {
+    pane: 'termPane',
+    stroke: false,
+    fillColor: '#05070f',
+    fillOpacity: _termOpacity,
+    interactive: false,   // never swallow a click meant for what is underneath
+    smoothFactor: 1,
+  }).addTo(map);
+}
+
+function _termStart() {
+  if (typeof map === 'undefined' || !map) return;
+  if (!map.getPane('termPane')) {
+    // Above the radar and satellite, so it shades the picture it is there to
+    // explain, but below the alerts pane: a warning polygon must not be dimmed
+    // because the sun went down on it.
+    const pane = map.createPane('termPane');
+    pane.style.zIndex = 402;
+    pane.style.pointerEvents = 'none';
+  }
+  _termActive = true;
+  _termDraw();
+  clearInterval(_termTimer);
+  _termTimer = setInterval(_termDraw, TERM_REFRESH_MS);
+}
+
+function _termStop() {
+  _termActive = false;
+  clearInterval(_termTimer);
+  _termTimer = null;
+  if (_termLayer) { try { map.removeLayer(_termLayer); } catch (e) {} _termLayer = null; }
+}
+
 // ── WIND BARBS (map overlay, the same field the particles animate) ──────────
 // The station-model way of writing wind down, and the oldest one: a staff
 // pointing back into the wind, with feathers on it that add up to the speed.
@@ -27037,6 +27139,10 @@ function toggleOverlayPill(id) {
     if (_windPtActive) _windPtStop(); else _windPtStart();
     const pill = document.getElementById('op-wind-particles');
     if (pill) pill.classList.toggle('active', _windPtActive);
+  } else if (id === 'terminator') {
+    if (_termActive) _termStop(); else _termStart();
+    const pill = document.getElementById('op-terminator');
+    if (pill) pill.classList.toggle('active', _termActive);
   } else if (id === 'wind-barbs') {
     if (_barbActive) _barbStop(); else _barbStart();
     const pill = document.getElementById('op-wind-barbs');
@@ -54821,7 +54927,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'Keyboard shortcuts are here. Switch radar products without the menu: Shift+W for spectrum width, Shift+S for storm relative velocity, Shift+R, Shift+V and the rest, plus play, pause and frame stepping. On your first visit the app offers three sets to choose from: a GR2Analyst-style one with Shift plus the product letter, a single-letter one that is faster to reach but means a stray keypress switches the map, or none at all. Every key is rebindable under Settings, Keyboard: click a key, press the combination you want, Backspace to clear it. Shortcuts never fire while you are typing in a box, and Ctrl and Command combinations are left alone because those belong to your browser.';
+const APP_LATEST_UPDATE = 'New Day / Night overlay: shades the half of the earth where it is currently night. It is mostly there for satellite, because visible channels go black at the terminator and infrared does not, so a band of missing imagery that is really just nightfall is the commonest thing to misread on a satellite loop. The sun\'s position is worked out from the clock rather than fetched from anywhere, so it works offline and costs nothing. It sits over the radar and satellite but under the alert polygons, because a warning should not be dimmed for having happened after dark.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
@@ -54922,7 +55028,7 @@ function _srchBuildCatalog() {
     'spc-outlook': 'storm', 'spc-reports': 'storm', 'meso-disc': 'storm',
     'nhc-outlook': 'cyclone', 'jtwc-outlook': 'cyclone', 'storm-centers': 'storm',
     'wpc-outlook': 'wave', lightning: 'storm', 'wind-particles': 'wind',
-    'wind-barbs': 'wind', 'wave-particles': 'wave', cloudcam: 'camera', radio: 'antenna',
+    'wind-barbs': 'wind', terminator: 'moon', 'wave-particles': 'wave', cloudcam: 'camera', radio: 'antenna',
     forecasts: 'cloud-sun', fronts: 'map', spotters: 'target',
     'spotter-reports': 'target', chasers: 'target', 'fire-outlook': 'fire',
     'cpc-outlook': 'temp', 'canada-alerts': 'siren', 'tornado-tracks': 'tornado',
@@ -56557,6 +56663,9 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="ov-pill" id="op-wind-particles" data-ovid="wind-particles" title="Wind Particles - animated flow showing real-time Surface Wind direction and speed">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('wind-particles')">Wind Particles</span><span class="ov-drag" title="Drag to reorder">⠿</span>
     </div>
+    <div class="ov-pill" id="op-terminator" data-ovid="terminator" title="Day / Night - shades the night side of the earth">
+      <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('terminator')">Day / Night</span><span class="ov-drag" title="Drag to reorder">⠿</span>
+    </div>
     <div class="ov-pill" id="op-wind-barbs" data-ovid="wind-barbs" title="Wind Barbs - station-model barbs reading Surface Wind speed in knots">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('wind-barbs')">Wind Barbs</span><span class="ov-drag" title="Drag to reorder">⠿</span>
     </div>
@@ -57677,6 +57786,7 @@ const OV_DESCRIPTIONS = {
   'storm-centers':    "Triangles marking storms radar has flagged as rotating (red, possible tornado) or hail-producing (green), straight from NEXRAD's automated detection.",
   'traffic-cameras':  'Live state DOT traffic camera feeds (Kansas, Maryland, Oregon, Kentucky, Iowa, South Dakota) - tap a dot for a live or recently-refreshed still image.',
   'wfo-offices':      "Dots for every NWS Weather Forecast Office. Tap one to see that office's currently active alerts and its recent text products (forecasts, discussions, statements).",
+  'terminator':       'Shades the half of the earth where it is currently night, worked out from the sun\'s position rather than fetched from anywhere. Mostly here for satellite: visible channels go black at the terminator and infrared does not, so a band of missing imagery that is really just nightfall is the commonest thing to misread on a satellite loop. It sits over the radar and satellite but under the alert polygons, because a warning should not be dimmed for having happened after dark.',
   'wind-barbs':       'Station-model wind barbs on a grid across the map, reading the same Surface Wind (10m) field the Wind Particles animate. The staff points back into the wind, and the feathers on it add up to the speed in knots: half feather 5, full feather 10, solid pennant 50, so 2 pennants plus a feather and a half is 115. A circle with a dot in it means calm. Feathers sit on the low-pressure side, which flips below the equator. Where the particles show you the flow, a barb gives you a number without a colour key.',
   'wind-particles':   'An animated flow of particles that streams across the map along the real Surface Wind (10m) direction, colored by speed. Independent of the Wind layer\'s color map, both can be on together. Tune Speed, Intensity, and Thickness under Settings → Particles → Wind Particles.',
   'wave-particles':   'An animated flow of particles that streams across the ocean along real wave height and direction, colored the same way as the Waves layer. Independent of the Waves color map, both can be on together. Tune Speed, Intensity, Thickness, Density, and Opacity under Settings → Wave Particles.',
