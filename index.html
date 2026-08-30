@@ -12804,6 +12804,37 @@ function _apToggleDesc(uid) {
   desc.style.display = isOpen ? 'none' : '';
   btn.innerHTML = isOpen ? 'View Full Message <svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(90deg)><use href=#ic-arrow></use></svg>' : 'Hide Full Message <svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(-90deg)><use href=#ic-arrow></use></svg>';
 }
+// The NWS event tracking number, which is how a warning is referred to in a
+// discussion, on the radio and in a follow-up statement. It is the number a
+// person needs when they are cross-referencing two sources about the same
+// storm, and it was the one field the popup did not show.
+//
+// It arrives in one of three shapes depending on the product and the office,
+// so all three are read rather than picking whichever happened to be there
+// the day this was written: an eventTrackingNumber parameter, a VTEC string
+// (the ETN is the four digits after the phenomenon and significance codes),
+// or a WMOidentifier. Absent is a normal outcome, not an error: watches and
+// many advisories genuinely do not carry one.
+function _alertEventNumber(p) {
+  if (!p) return '';
+  // Sanitised here rather than escaped at the point of printing, so there is
+  // one place to be right. An event number is digits and occasionally a
+  // letter; anything else arriving in that field through a feed has no
+  // business reaching innerHTML, whoever put it there.
+  const clean = (v) => String(v || '').trim().replace(/[^A-Za-z0-9-]/g, '').slice(0, 24);
+  const par = p.parameters || {};
+  const first = (v) => Array.isArray(v) ? v[0] : v;
+  const etn = first(par.eventTrackingNumber) || first(par.EventTrackingNumber);
+  if (etn) return clean(etn);
+  // P-VTEC: /O.NEW.KTLX.TO.W.0123.250830T2145Z-250830T2230Z/
+  const vtec = first(par.VTEC) || first(par.vtec) || '';
+  const m = String(vtec).match(/\/[OTEX]\.[A-Z]{3}\.\w{4}\.\w{2}\.\w\.(\d{4})\./);
+  if (m) return clean(m[1]);
+  const wmo = first(par.WMOidentifier);
+  if (wmo) return clean(wmo);
+  return '';
+}
+
 function _buildAlertPopupHTML(p, color) {
   const uid = 'ap' + Math.random().toString(36).slice(2, 8);
   const ev  = p.event || 'Unknown Alert';
@@ -12836,6 +12867,7 @@ function _buildAlertPopupHTML(p, color) {
   const tlStart  = _apFmtTimeShort(p.onset || p.sent);
   const tlEnd    = _apFmtTimeShort(p.expires);
   const sevLine = [p.severity, p.urgency].filter(Boolean).join(' · ') || '-';
+  const evNum = _alertEventNumber(p);
   const colorBg  = color + '18';
   const colorBdr = color + '50';
   const fullDesc = (p.description || '').trim();
@@ -12855,6 +12887,7 @@ function _buildAlertPopupHTML(p, color) {
         <div class="ap-meta-cell"><div class="ap-meta-lbl">EXPIRES</div><div class="ap-meta-val">${expires}</div></div>
         <div class="ap-meta-cell"><div class="ap-meta-lbl">SOURCE</div><div class="ap-meta-val">${sender}</div></div>
         <div class="ap-meta-cell"><div class="ap-meta-lbl">SEVERITY</div><div class="ap-meta-val">${sevLine}</div></div>
+        ${evNum ? `<div class="ap-meta-cell"><div class="ap-meta-lbl">EVENT NUMBER</div><div class="ap-meta-val">${evNum}</div></div>` : ''}
       </div>
       <div class="ap-section">AFFECTED AREAS</div>
       <div class="ap-counties">${countiesHtml}</div>
@@ -13008,6 +13041,68 @@ function _alertIsNew(p){
   const t = Date.parse(p.sent || p.effective || p.onset || '');
   return !!t && (Date.now() - t) >= 0 && (Date.now() - t) < 60000;
 }
+
+// ── WHICH POLYGONS PULSE, AND HOW FAST ──────────────────────────────────────
+// The pulse used to run for one minute after a warning was issued and then
+// stop. That is the wrong minute: a tornado warning is at its most urgent for
+// the half hour it is valid, not for the sixty seconds after it was written,
+// and anybody who looked away during that minute never saw it move at all.
+//
+// So the scope is a setting. 'all' pulses every warning that is currently in
+// force, 'new' keeps the old one-minute behaviour, 'off' leaves them still.
+// Watches and advisories never pulse whatever the scope: a screen where forty
+// things are moving is a screen where nothing stands out, which is the exact
+// opposite of what a flashing polygon is for.
+const ALERT_FLASH_KEY = 'gwcfc_alertflash';
+const ALERT_FLASH_MIN_MS = 400, ALERT_FLASH_MAX_MS = 3000;
+let _alertFlashCfg = { scope: 'all', period: 1000, emerFast: true };
+
+function _alertFlashLoad() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(ALERT_FLASH_KEY) || 'null');
+    if (raw && typeof raw === 'object') Object.assign(_alertFlashCfg, raw);
+  } catch (e) { /* a corrupt setting is not worth failing boot over */ }
+  // A period outside the slider's range would produce a pulse either too fast
+  // to read or so slow it looks broken, and a stored value can be anything.
+  const p = Number(_alertFlashCfg.period);
+  _alertFlashCfg.period = isFinite(p)
+    ? Math.max(ALERT_FLASH_MIN_MS, Math.min(ALERT_FLASH_MAX_MS, p)) : 1000;
+  if (!['off', 'new', 'all'].includes(_alertFlashCfg.scope)) _alertFlashCfg.scope = 'all';
+  return _alertFlashCfg;
+}
+
+function _alertFlashSave() {
+  try { localStorage.setItem(ALERT_FLASH_KEY, JSON.stringify(_alertFlashCfg)); } catch (e) {}
+}
+
+// A warning is in force, not merely a watch or an advisory. Statements are
+// out too: they carry no action, so pulsing one says "look at this" about
+// something nobody has to do anything about.
+function _alertIsWarning(p) {
+  return /\b(warning|emergency)\b/i.test(String((p && p.event) || ''));
+}
+
+// The two products that mean "leave now" pulse at double speed, so they are
+// still distinguishable when the screen is full of ordinary warnings.
+function _alertIsEmergency(p) {
+  const ev = String((p && p.event) || '');
+  const desc = String((p && p.description) || '') + ' ' + String((p && p.parameters
+    && p.parameters.NWSheadline) || '');
+  return /emergency/i.test(ev)
+      || /particularly dangerous situation|tornado emergency|flash flood emergency/i.test(desc);
+}
+
+// Should this alert pulse, and how long for. Infinity means "for as long as
+// it is on the map", which is what scope 'all' means.
+function _alertFlashUntil(p) {
+  if (_alertFlashCfg.scope === 'off') return 0;
+  if (!_alertIsWarning(p)) return 0;
+  if (_alertFlashCfg.scope === 'new') {
+    if (!_alertIsNew(p)) return 0;
+    return (Date.parse(p.sent || p.effective || p.onset || '') || Date.now()) + 60000;
+  }
+  return Infinity;
+}
 function _hex2rgb(h){ h=(h||'').replace('#',''); if(h.length===3) h=h.split('').map(c=>c+c).join(''); const n=parseInt(h||'888888',16); return [(n>>16)&255,(n>>8)&255,n&255]; }
 function _lerpColor(a,b,t){ const A=_hex2rgb(a),B=_hex2rgb(b); const m=(i)=>Math.round(A[i]+(B[i]-A[i])*t); return `rgb(${m(0)},${m(1)},${m(2)})`; }
 // Parse NWS "TIME...MOT...LOC" storm motion (direction, speed, position) from alert text.
@@ -13100,9 +13195,10 @@ function renderAlerts(features) {
       const fid = p.id || p['@id'] || f.id;
       if (fid) layerMap[fid] = layer;
       const aColor = _alertColorFor(p.event || '');
-      if (_alertIsNew(p)) {
-        const until = (Date.parse(p.sent || p.effective || p.onset || '') || Date.now()) + 60000;
-        _alertNewLayers.push({ layer, color: aColor, until });
+      const flashUntil = _alertFlashUntil(p);
+      if (flashUntil) {
+        _alertNewLayers.push({ layer, color: aColor, until: flashUntil,
+                               fast: _alertFlashCfg.emerFast && _alertIsEmergency(p) });
       }
       layer.on('click', function(ev) {
         L.DomEvent.stop(ev);
@@ -13157,8 +13253,16 @@ function renderAlerts(features) {
         return true;
       });
       if (!_alertNewLayers.length) { _alertFlashRAF = null; return; }
-      const phase = Math.sin(((now - start) % 1000) / 1000 * Math.PI * 2) * 0.5 + 0.5;
-      _alertNewLayers.forEach(({ layer, color }) => { const c = _lerpColor(color, '#ffffff', phase); try { layer.setStyle({ color:c, fillColor:c }); } catch(e){} });
+      // Each layer gets its own phase because emergencies run at half the
+      // period. One shared phase would put them in lockstep with everything
+      // else and lose the very distinction the faster pulse is there to make.
+      const base = _alertFlashCfg.period;
+      _alertNewLayers.forEach(({ layer, color, fast }) => {
+        const per = fast ? base / 2 : base;
+        const phase = Math.sin(((now - start) % per) / per * Math.PI * 2) * 0.5 + 0.5;
+        const c = _lerpColor(color, '#ffffff', phase);
+        try { layer.setStyle({ color:c, fillColor:c }); } catch(e){}
+      });
       _alertFlashRAF = setTimeout(() => requestAnimationFrame(tick), 66);
     };
     tick();
@@ -46654,12 +46758,34 @@ function selectProduct(p) {
       </label>
     </div>
     <div class="lqm-settings-row">
-      <span class="lqm-settings-lbl">Flash on Warning</span>
+      <span class="lqm-settings-lbl">Flash Warning Polygons</span>
+      <select id="lqm-set-flashscope" class="lqm-settings-select" onchange="lqmSetFlashScope(this.value)">
+        <option value="all">Every active warning</option>
+        <option value="new">Only newly issued</option>
+        <option value="off">Never</option>
+      </select>
+    </div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Flash Speed</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <input type="range" id="lqm-set-flashspeed" min="400" max="3000" value="1000" step="100"
+          class="lqm-slider" oninput="lqmSetFlashSpeed(this.value)">
+        <span id="lqm-set-flashspeed-val" style="font-family:var(--mono);font-size:9px;color:var(--accent2);min-width:28px;">1.0s</span>
+      </div>
+    </div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Emergencies Flash Faster</span>
       <label class="lqm-toggle">
-        <input type="checkbox" id="lqm-set-flash" checked onchange="lqmToggleSetting('flash',this.checked)">
+        <input type="checkbox" id="lqm-set-flashemer" checked onchange="lqmSetFlashEmer(this.checked)">
         <div class="lqm-toggle-track"></div>
         <div class="lqm-toggle-knob"></div>
       </label>
+    </div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:2px 0 6px;line-height:1.5;">
+      Watches and advisories never flash, whichever setting you pick. A screen where forty things
+      are moving is a screen where nothing stands out, which is the opposite of what a flashing
+      polygon is for. Tornado and flash flood emergencies pulse at double speed so they stay
+      distinguishable when the map is full of ordinary warnings.
     </div>
     <div class="lqm-settings-row">
       <span class="lqm-settings-lbl">Open Panel on New Alert</span>
@@ -54397,7 +54523,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'Two things. There is a new Wind Barbs overlay: the station-model notation, a staff pointing back into the wind with feathers that add up to the speed in knots, half feather 5, full feather 10, solid pennant 50, and a circle with a dot for calm. It reads the exact same wind field the Wind Particles animate, so the two can never tell you different things and running both costs one download rather than two. The rest is speed. The page used to build a list of every timezone in the world before it drew anything, and rebuild a date formatter on every clock tick; both are now built once, on demand. Measured on this machine, the first map tile lands about 59 ms sooner and the browser spends 44 ms less locked up during startup.';
+const APP_LATEST_UPDATE = 'Warning polygons now pulse for as long as the warning is in force, not just for the sixty seconds after it was issued. That was the wrong minute: a tornado warning matters most for the half hour it is valid, and anyone who looked away during that one minute never saw it move at all. Settings, Alerts now has a Flash Warning Polygons choice (every active warning, only newly issued, or never), a speed slider from 0.4 to 3 seconds, and a switch to make tornado and flash flood emergencies pulse at double speed so they stand out on a busy screen. Watches and advisories never pulse whichever you pick, because a map where forty things are moving is a map where nothing stands out. Alert popups also now show the NWS event tracking number, the number a warning is referred to by on the radio and in follow-up statements.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
@@ -55092,7 +55218,7 @@ const _origLqmToggle = lqmToggleSetting;
 // branches for all three that could never be reached. Listing what this
 // function handles, and passing on everything else, means a new setting works
 // wherever it is written rather than only in the one place someone remembered.
-const _LQM_OWN_KEYS = ['crosshair', 'contrast', 'coords', 'compass', 'scale', 'flash'];
+const _LQM_OWN_KEYS = ['crosshair', 'contrast', 'coords', 'compass', 'scale'];
 lqmToggleSetting = function(key, val) {
   if (!_LQM_OWN_KEYS.includes(key)) { _origLqmToggle(key, val); return; }
   try { localStorage.setItem('lqm_'+key, typeof val==='boolean'?(val?'1':'0'):val); } catch(e){}
@@ -55127,14 +55253,59 @@ lqmToggleSetting = function(key, val) {
     } else if (window._scaleCtrl && !val) {
       map.removeControl(window._scaleCtrl); window._scaleCtrl = null;
     }
-  } else if (key==='flash') {
-    window._gwcfc_flash = val;
   }
 };
+
+// The flash controls write straight through to the alert layer rather than
+// waiting for the next poll, because a speed slider you cannot see move is
+// indistinguishable from a broken one.
+function _alertFlashApply() {
+  _alertFlashSave();
+  const val = document.getElementById('lqm-set-flashspeed-val');
+  if (val) val.textContent = (_alertFlashCfg.period / 1000).toFixed(1) + 's';
+  // Re-running the render is what re-queues the layers under the new scope.
+  // Restyling in place would not help: which polygons are in the pulse list
+  // at all is exactly what the scope decides.
+  if (typeof renderAlerts === 'function' && Array.isArray(_lastAlertFeatures)) {
+    try { renderAlerts(_lastAlertFeatures); } catch (e) { console.warn('flash apply:', e); }
+  }
+}
+
+function lqmSetFlashScope(v) {
+  _alertFlashCfg.scope = ['off', 'new', 'all'].includes(v) ? v : 'all';
+  _alertFlashApply();
+}
+
+function lqmSetFlashSpeed(v) {
+  const n = Number(v);
+  _alertFlashCfg.period = isFinite(n)
+    ? Math.max(ALERT_FLASH_MIN_MS, Math.min(ALERT_FLASH_MAX_MS, n)) : 1000;
+  _alertFlashApply();
+}
+
+function lqmSetFlashEmer(on) {
+  _alertFlashCfg.emerFast = !!on;
+  _alertFlashApply();
+}
+
+// Put the saved values back into the controls on load, so the panel shows
+// what is actually in force rather than the markup's defaults.
+function _alertFlashSyncUi() {
+  _alertFlashLoad();
+  const sc = document.getElementById('lqm-set-flashscope');
+  if (sc) sc.value = _alertFlashCfg.scope;
+  const sp = document.getElementById('lqm-set-flashspeed');
+  if (sp) sp.value = String(_alertFlashCfg.period);
+  const em = document.getElementById('lqm-set-flashemer');
+  if (em) em.checked = !!_alertFlashCfg.emerFast;
+  const val = document.getElementById('lqm-set-flashspeed-val');
+  if (val) val.textContent = (_alertFlashCfg.period / 1000).toFixed(1) + 's';
+}
 
 // Restore settings on load
 document.addEventListener('DOMContentLoaded', () => {
   setTimeout(() => {
+    _alertFlashSyncUi();
     const op = localStorage.getItem('lqm_radaropacity');
     if (op) { const el=document.getElementById('lqm-set-opacity'); if(el){el.value=op;lqmSetRadarOpacity(op);} }
     const mo = localStorage.getItem('lqm_modelopacity');
@@ -61189,6 +61360,10 @@ function _adNewDraft(code) {
     code: P.id, haz,
     areaMode: 'draw', poly: [], zones: [], zoneType: 'county',
     areaName: '', mins: P.mins, tag: 'none',
+    // Blank means "derive it from the product". Picking a product clears
+    // these back to blank, because the derivation is right again at that
+    // point; setting one by hand is what makes it stick.
+    tplHaz: '', tplKind: '', officeCode: '',
     source: AD_SOURCES[0], extra: '',
     // The product text, when it has been written or reformatted by hand.
     // null means "generate it from the fields above", which is the default
@@ -61887,16 +62062,42 @@ function _adRenderCompose() {
 
   const drawn = d.areaMode === 'draw' && d.poly.length >= 3;
 
+  // Which template the product picked above corresponds to. Derived rather
+  // than remembered, so choosing "Tornado Warning" already has the right
+  // hazard and kind sitting next to it instead of leaving the forecaster to
+  // set the same fact twice and get it wrong under pressure. Still selects,
+  // not labels: twelve of the office's hazards (blizzard, earthquake, fire,
+  // heat and the rest) have no entry in the product list at all, so deriving
+  // and locking would put two thirds of the templates out of reach.
+  const tplHaz  = d.tplHaz  || gwcfcGuessHazard(P.event || '');
+  // P.kind is stated by the product rather than inferred from its name. A
+  // Special Weather Statement contains neither "watch" nor "emergency", so
+  // guessing calls it a WARNING, which is the one thing it certainly is not.
+  // Statements take the watch wording, the same mapping the reformatter uses.
+  const tplKind = d.tplKind
+    || (P.kind === 'watch' || P.kind === 'statement' ? 'watch' : 'warning');
+  // The tier and the draft's tag are the same fact written two ways, so the
+  // tier is read off the tag rather than stored beside it. Two copies would
+  // drift the moment anything else moved one of them.
+  const tplTier = _adTierOfTag(d.tag);
+
   host.innerHTML = `
     <div class="ad-grp">
       <div class="ad-h">Product</div>
       <div class="ad-row">
         <select onchange="_adSetProduct(this.value)">${productOpts}</select>
-        ${P.id === 'TOR' ? `<select onchange="_adSetTag(this.value)">
-          <option value="none"${d.tag === 'none' ? ' selected' : ''}>Standard wording</option>
-          <option value="pds"${d.tag === 'pds' ? ' selected' : ''}>Particularly Dangerous Situation</option>
-          <option value="emergency"${d.tag === 'emergency' ? ' selected' : ''}>Tornado Emergency</option>
-        </select>` : ''}
+        <select id="ad-tpl-haz" onchange="_adSetTplHaz(this.value)" title="Which of the office's ${Object.keys(GWCFC_TPL_HAZARDS).length} hazards this product is written from">${Object.entries(GWCFC_TPL_HAZARDS).map(([k, h]) =>
+          `<option value="${k}"${k === tplHaz ? ' selected' : ''}>${_adEsc(h.name)}</option>`).join('')}</select>
+        <select id="ad-tpl-kind" onchange="_adSetTplKind(this.value)" title="Watch, Warning or Emergency">${Object.entries(GWCFC_TPL_KINDS).map(([k, x]) =>
+          `<option value="${k}"${k === tplKind ? ' selected' : ''}>${_adEsc(x.name)}</option>`).join('')}</select>
+        <select id="ad-tpl-tier" onchange="_adSetTier(this.value)" title="How bad. This is the wording tier, and it sets the product's severity.">${Object.entries(GWCFC_TPL_TIERS).map(([k, x]) =>
+          `<option value="${k}"${k === tplTier ? ' selected' : ''}>${_adEsc(x.tier)}</option>`).join('')}</select>
+        <select id="ad-tpl-office" onchange="_adSetOffice(this.value)" title="Issuing office, written into the header and the signature"><option value="">No office</option>${GWCFC_TPL_OFFICES.map(o =>
+          `<option value="${o.code}"${o.code === d.officeCode ? ' selected' : ''}>${_adEsc(o.code)} ${_adEsc(o.city)}</option>`).join('')}</select>
+      </div>
+      <div class="ad-row">
+        <button type="button" class="ad-btn" onclick="_adLoadTemplate()">Load template</button>
+        <span class="ad-empty" id="ad-tpl-note">One of ${gwcfcTemplateList().length} GWCFC products. Loading puts the blank in the text box to fill in.</span>
       </div>
     </div>
 
@@ -61983,24 +62184,7 @@ function _adRenderCompose() {
         <span class="ad-empty" id="ad-import-note"></span>
       </div>
     </div>
-    <div class="ad-grp">
-      <div class="ad-h">Product templates</div>
-      <div class="ad-empty">All ${gwcfcTemplateList().length} GWCFC products: ${Object.keys(GWCFC_TPL_HAZARDS).length} hazards, each as a Watch, Warning or Emergency, each at Base, Severe or Extreme. Loading one puts the blank template in the text box below to fill in.</div>
-      <div class="ad-row">
-        <select id="ad-tpl-haz">${Object.entries(GWCFC_TPL_HAZARDS).map(([k, h]) =>
-          `<option value="${k}">${_adEsc(h.name)}</option>`).join('')}</select>
-        <select id="ad-tpl-kind">${Object.entries(GWCFC_TPL_KINDS).map(([k, x]) =>
-          `<option value="${k}"${k === 'warning' ? ' selected' : ''}>${_adEsc(x.name)}</option>`).join('')}</select>
-        <select id="ad-tpl-tier">${Object.entries(GWCFC_TPL_TIERS).map(([k, x]) =>
-          `<option value="${k}">${_adEsc(x.tier)}</option>`).join('')}</select>
-        <select id="ad-tpl-office"><option value="">No office</option>${GWCFC_TPL_OFFICES.map(o =>
-          `<option value="${o.code}">${_adEsc(o.code)} ${_adEsc(o.city)}</option>`).join('')}</select>
-      </div>
-      <div class="ad-row">
-        <button type="button" class="ad-btn" onclick="_adLoadTemplate()">Load this template</button>
-        <span class="ad-empty" id="ad-tpl-note"></span>
-      </div>
-    </div>`;
+    `;
 
   _adSyncDraftUi();
 }
@@ -62185,7 +62369,8 @@ function _adImportText() {
 }
 
 function _adSetProduct(code) {
-  const keepArea = { areaMode: _adDraft.areaMode, poly: _adDraft.poly, zones: _adDraft.zones, areaName: _adDraft.areaName, zoneType: _adDraft.zoneType };
+  const keepArea = { areaMode: _adDraft.areaMode, poly: _adDraft.poly, zones: _adDraft.zones, areaName: _adDraft.areaName, zoneType: _adDraft.zoneType,
+                     officeCode: _adDraft.officeCode };
   const prevHaz = _adDraft.haz;
   _adDraft = _adNewDraft(code);
   Object.assign(_adDraft, keepArea);
@@ -62196,6 +62381,35 @@ function _adSetProduct(code) {
   _adRenderCompose();
 }
 function _adSetTag(v) { _adDraft.tag = v; _adSyncDraftUi(); }
+
+// The wording tier and the draft's tag are one fact. BASE is ordinary
+// wording, SEVERE is the particularly-dangerous phrasing, EXTREME is the
+// emergency. Keeping the tag as the stored form is deliberate: it is what
+// the headline, the severity rating and the issued payload already read, in
+// seven places, so the tier maps onto it rather than becoming an eighth
+// thing that can disagree with the other seven.
+const AD_TIER_TAG = { base: 'none', severe: 'pds', extreme: 'emergency' };
+
+function _adTierOfTag(tag) {
+  const hit = Object.keys(AD_TIER_TAG).find(k => AD_TIER_TAG[k] === tag);
+  return hit || 'base';
+}
+
+function _adSetTier(v) {
+  _adSetTag(AD_TIER_TAG[v] || 'none');
+  // The headline changes with the tier ("Tornado Warning" becomes "Tornado
+  // Emergency"), and the headline is drawn by the full composer rather than
+  // by _adSyncDraftUi, so this one needs the whole form back.
+  if (typeof _adRenderCompose === 'function') _adRenderCompose();
+}
+
+// The hazard and kind start out derived from the product, but a forecaster
+// who changes them means it, so the change is remembered. Picking a
+// different product clears them again, because the derivation is right again
+// at that point.
+function _adSetTplHaz(v)  { _adDraft.tplHaz  = v; }
+function _adSetTplKind(v) { _adDraft.tplKind = v; }
+function _adSetOffice(v)  { _adDraft.officeCode = v; }
 function _adSetZoneType(v) { _adDraft.zoneType = v; }
 function _adSetLevel(k, lvl) {
   _adDraft.haz[k] = _adDraft.haz[k] || { lvl: 0, amt: '' };
