@@ -6127,6 +6127,10 @@ function _adNewDraft(code) {
     code: P.id, haz,
     areaMode: 'draw', poly: [], zones: [], zoneType: 'county',
     areaName: '', mins: P.mins, tag: 'none',
+    // Blank means "derive it from the product". Picking a product clears
+    // these back to blank, because the derivation is right again at that
+    // point; setting one by hand is what makes it stick.
+    tplHaz: '', tplKind: '', officeCode: '',
     source: AD_SOURCES[0], extra: '',
     // The product text, when it has been written or reformatted by hand.
     // null means "generate it from the fields above", which is the default
@@ -6825,16 +6829,42 @@ function _adRenderCompose() {
 
   const drawn = d.areaMode === 'draw' && d.poly.length >= 3;
 
+  // Which template the product picked above corresponds to. Derived rather
+  // than remembered, so choosing "Tornado Warning" already has the right
+  // hazard and kind sitting next to it instead of leaving the forecaster to
+  // set the same fact twice and get it wrong under pressure. Still selects,
+  // not labels: twelve of the office's hazards (blizzard, earthquake, fire,
+  // heat and the rest) have no entry in the product list at all, so deriving
+  // and locking would put two thirds of the templates out of reach.
+  const tplHaz  = d.tplHaz  || gwcfcGuessHazard(P.event || '');
+  // P.kind is stated by the product rather than inferred from its name. A
+  // Special Weather Statement contains neither "watch" nor "emergency", so
+  // guessing calls it a WARNING, which is the one thing it certainly is not.
+  // Statements take the watch wording, the same mapping the reformatter uses.
+  const tplKind = d.tplKind
+    || (P.kind === 'watch' || P.kind === 'statement' ? 'watch' : 'warning');
+  // The tier and the draft's tag are the same fact written two ways, so the
+  // tier is read off the tag rather than stored beside it. Two copies would
+  // drift the moment anything else moved one of them.
+  const tplTier = _adTierOfTag(d.tag);
+
   host.innerHTML = `
     <div class="ad-grp">
       <div class="ad-h">Product</div>
       <div class="ad-row">
         <select onchange="_adSetProduct(this.value)">${productOpts}</select>
-        ${P.id === 'TOR' ? `<select onchange="_adSetTag(this.value)">
-          <option value="none"${d.tag === 'none' ? ' selected' : ''}>Standard wording</option>
-          <option value="pds"${d.tag === 'pds' ? ' selected' : ''}>Particularly Dangerous Situation</option>
-          <option value="emergency"${d.tag === 'emergency' ? ' selected' : ''}>Tornado Emergency</option>
-        </select>` : ''}
+        <select id="ad-tpl-haz" onchange="_adSetTplHaz(this.value)" title="Which of the office's ${Object.keys(GWCFC_TPL_HAZARDS).length} hazards this product is written from">${Object.entries(GWCFC_TPL_HAZARDS).map(([k, h]) =>
+          `<option value="${k}"${k === tplHaz ? ' selected' : ''}>${_adEsc(h.name)}</option>`).join('')}</select>
+        <select id="ad-tpl-kind" onchange="_adSetTplKind(this.value)" title="Watch, Warning or Emergency">${Object.entries(GWCFC_TPL_KINDS).map(([k, x]) =>
+          `<option value="${k}"${k === tplKind ? ' selected' : ''}>${_adEsc(x.name)}</option>`).join('')}</select>
+        <select id="ad-tpl-tier" onchange="_adSetTier(this.value)" title="How bad. This is the wording tier, and it sets the product's severity.">${Object.entries(GWCFC_TPL_TIERS).map(([k, x]) =>
+          `<option value="${k}"${k === tplTier ? ' selected' : ''}>${_adEsc(x.tier)}</option>`).join('')}</select>
+        <select id="ad-tpl-office" onchange="_adSetOffice(this.value)" title="Issuing office, written into the header and the signature"><option value="">No office</option>${GWCFC_TPL_OFFICES.map(o =>
+          `<option value="${o.code}"${o.code === d.officeCode ? ' selected' : ''}>${_adEsc(o.code)} ${_adEsc(o.city)}</option>`).join('')}</select>
+      </div>
+      <div class="ad-row">
+        <button type="button" class="ad-btn" onclick="_adLoadTemplate()">Load template</button>
+        <span class="ad-empty" id="ad-tpl-note">One of ${gwcfcTemplateList().length} GWCFC products. Loading puts the blank in the text box to fill in.</span>
       </div>
     </div>
 
@@ -6921,24 +6951,7 @@ function _adRenderCompose() {
         <span class="ad-empty" id="ad-import-note"></span>
       </div>
     </div>
-    <div class="ad-grp">
-      <div class="ad-h">Product templates</div>
-      <div class="ad-empty">All ${gwcfcTemplateList().length} GWCFC products: ${Object.keys(GWCFC_TPL_HAZARDS).length} hazards, each as a Watch, Warning or Emergency, each at Base, Severe or Extreme. Loading one puts the blank template in the text box below to fill in.</div>
-      <div class="ad-row">
-        <select id="ad-tpl-haz">${Object.entries(GWCFC_TPL_HAZARDS).map(([k, h]) =>
-          `<option value="${k}">${_adEsc(h.name)}</option>`).join('')}</select>
-        <select id="ad-tpl-kind">${Object.entries(GWCFC_TPL_KINDS).map(([k, x]) =>
-          `<option value="${k}"${k === 'warning' ? ' selected' : ''}>${_adEsc(x.name)}</option>`).join('')}</select>
-        <select id="ad-tpl-tier">${Object.entries(GWCFC_TPL_TIERS).map(([k, x]) =>
-          `<option value="${k}">${_adEsc(x.tier)}</option>`).join('')}</select>
-        <select id="ad-tpl-office"><option value="">No office</option>${GWCFC_TPL_OFFICES.map(o =>
-          `<option value="${o.code}">${_adEsc(o.code)} ${_adEsc(o.city)}</option>`).join('')}</select>
-      </div>
-      <div class="ad-row">
-        <button type="button" class="ad-btn" onclick="_adLoadTemplate()">Load this template</button>
-        <span class="ad-empty" id="ad-tpl-note"></span>
-      </div>
-    </div>`;
+    `;
 
   _adSyncDraftUi();
 }
@@ -7123,7 +7136,8 @@ function _adImportText() {
 }
 
 function _adSetProduct(code) {
-  const keepArea = { areaMode: _adDraft.areaMode, poly: _adDraft.poly, zones: _adDraft.zones, areaName: _adDraft.areaName, zoneType: _adDraft.zoneType };
+  const keepArea = { areaMode: _adDraft.areaMode, poly: _adDraft.poly, zones: _adDraft.zones, areaName: _adDraft.areaName, zoneType: _adDraft.zoneType,
+                     officeCode: _adDraft.officeCode };
   const prevHaz = _adDraft.haz;
   _adDraft = _adNewDraft(code);
   Object.assign(_adDraft, keepArea);
@@ -7134,6 +7148,35 @@ function _adSetProduct(code) {
   _adRenderCompose();
 }
 function _adSetTag(v) { _adDraft.tag = v; _adSyncDraftUi(); }
+
+// The wording tier and the draft's tag are one fact. BASE is ordinary
+// wording, SEVERE is the particularly-dangerous phrasing, EXTREME is the
+// emergency. Keeping the tag as the stored form is deliberate: it is what
+// the headline, the severity rating and the issued payload already read, in
+// seven places, so the tier maps onto it rather than becoming an eighth
+// thing that can disagree with the other seven.
+const AD_TIER_TAG = { base: 'none', severe: 'pds', extreme: 'emergency' };
+
+function _adTierOfTag(tag) {
+  const hit = Object.keys(AD_TIER_TAG).find(k => AD_TIER_TAG[k] === tag);
+  return hit || 'base';
+}
+
+function _adSetTier(v) {
+  _adSetTag(AD_TIER_TAG[v] || 'none');
+  // The headline changes with the tier ("Tornado Warning" becomes "Tornado
+  // Emergency"), and the headline is drawn by the full composer rather than
+  // by _adSyncDraftUi, so this one needs the whole form back.
+  if (typeof _adRenderCompose === 'function') _adRenderCompose();
+}
+
+// The hazard and kind start out derived from the product, but a forecaster
+// who changes them means it, so the change is remembered. Picking a
+// different product clears them again, because the derivation is right again
+// at that point.
+function _adSetTplHaz(v)  { _adDraft.tplHaz  = v; }
+function _adSetTplKind(v) { _adDraft.tplKind = v; }
+function _adSetOffice(v)  { _adDraft.officeCode = v; }
 function _adSetZoneType(v) { _adDraft.zoneType = v; }
 function _adSetLevel(k, lvl) {
   _adDraft.haz[k] = _adDraft.haz[k] || { lvl: 0, amt: '' };
