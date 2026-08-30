@@ -170,7 +170,111 @@ console.log('\n7. the first-visit offer');
      /a corrupt setting must not cost the page its keyboard/.test(PAGE));
 }
 
-console.log('\n8. house rules');
+/*
+ * 8. CAN YOU ACTUALLY GET TO IT.
+ *
+ * Everything above this point passed while the shortcuts were unreachable.
+ * The markup was present and the ids were right, so string matching said yes;
+ * the panel said no. The Settings rail is built by reading ONE heading per
+ * .lqm-settings-group and then hiding every group but the chosen one, and the
+ * Keyboard heading had been written as a second heading inside the Alerts
+ * card. It got no tab, and it was only on screen if you opened Alerts and
+ * scrolled past the flashing controls.
+ *
+ * So this section stops asking whether the markup exists and asks the
+ * question the report was actually about: open Settings, click Keyboard in
+ * the rail, and see whether a shortcut row is visible on screen. Only a real
+ * browser can answer that, because the answer comes from computed layout
+ * rather than from the file.
+ */
+console.log('\n8. the shortcuts are reachable in the real panel');
+let chromium;
+try { ({ chromium } = await import('playwright')); } catch { /* below */ }
+if (!chromium) {
+  console.log('  playwright is not installed, skipping');
+} else {
+  const b = await chromium.launch({
+    executablePath: process.env.CHROME_PATH
+      || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const p = await b.newPage();
+  await p.goto('file://' + join(ROOT, 'index.html'),
+               { waitUntil: 'domcontentloaded' });
+  await p.waitForTimeout(2500);
+  const r = await p.evaluate(() => {
+    const out = {};
+    // Visible means it has a box. A hidden ancestor gives every descendant
+    // zero size, which is exactly the failure being tested for.
+    const shown = (el) => !!el && el.getClientRects().length > 0;
+
+    lqmOpenSettings();
+    // The rail is what somebody navigates by. If Keyboard is not a tab here,
+    // there is no route to the shortcuts however complete the markup is.
+    out.tabs = Array.from(
+      document.querySelectorAll('#lqm-set-rail .lqm-set-tab'))
+      .map(t => t.dataset.tab);
+    out.tabLabels = Array.from(
+      document.querySelectorAll('#lqm-set-rail .lqm-set-tab span'))
+      .map(s => s.textContent.trim());
+
+    // Take the route: click the tab the way a person would.
+    const tab = document.querySelector(
+      '#lqm-set-rail .lqm-set-tab[data-tab="keyboard"]');
+    out.hasTab = !!tab;
+    if (tab) tab.click();
+
+    out.presetShown = shown(document.getElementById('lqm-kbd-preset'));
+    out.listShown = shown(document.getElementById('lqm-kbd-list'));
+    const rows = document.querySelectorAll('#lqm-kbd-list .lqm-settings-row');
+    out.rowCount = rows.length;
+    out.rowsShown = Array.from(rows).filter(shown).length;
+    out.presetOptions = Array.from(
+      document.querySelectorAll('#lqm-kbd-preset option')).map(o => o.value);
+    // Its own card, not a lodger in somebody else's.
+    const grp = document.querySelector(
+      '#lqm-set-content .lqm-settings-group[data-cat="keyboard"]');
+    out.ownGroup = !!grp;
+    out.headingsInGroup = grp
+      ? grp.querySelectorAll('.lqm-settings-category').length : -1;
+    // And the card it used to live in is now somebody else's business only.
+    const alerts = document.querySelector(
+      '#lqm-set-content .lqm-settings-group[data-cat="alerts"]');
+    out.kbdStillInAlerts = !!(alerts && alerts.querySelector('#lqm-kbd-list'));
+
+    // No group may hide a second heading the rail will never offer a tab for,
+    // unless it opted into merging, which is the supported way to share one.
+    out.orphanHeadings = Array.from(
+      document.querySelectorAll('#lqm-set-content .lqm-settings-group'))
+      .filter(g => !g.dataset.merge
+                && g.querySelectorAll('.lqm-settings-category').length > 1)
+      .map(g => g.dataset.cat || '(unnamed)');
+    return out;
+  });
+  await b.close();
+
+  ok('Keyboard is a tab in the rail, so there is a way to reach it',
+     r.hasTab, r.tabs.join(', '));
+  ok('and the tab is named Keyboard, from the heading itself',
+     r.tabLabels.includes('Keyboard'), r.tabLabels.join(', '));
+  ok('it is its own card', r.ownGroup);
+  ok('with exactly one heading, which is what earns it a tab',
+     r.headingsInGroup === 1, String(r.headingsInGroup));
+  ok('and it is no longer buried in the Alerts card',
+     r.kbdStillInAlerts === false);
+  ok('clicking the tab puts the shortcut set picker on screen',
+     r.presetShown);
+  ok('and the list of shortcuts with it', r.listShown);
+  ok('every action has a visible row', r.rowCount > 0
+     && r.rowsShown === r.rowCount, r.rowsShown + ' of ' + r.rowCount);
+  ok('the picker is filled with the presets plus Custom',
+     ['gr2', 'simple', 'none', 'custom'].every(v => r.presetOptions.includes(v)),
+     r.presetOptions.join(', '));
+  // The general form of the bug, so the next section added this way is caught
+  // before somebody reports it instead of after.
+  ok('no card hides a second heading the rail cannot offer a tab for',
+     r.orphanHeadings.length === 0, r.orphanHeadings.join(', '));
+}
+
+console.log('\n9. house rules');
 {
   const EM = String.fromCharCode(0x2014);
   const files = ['index.html', 'tools/test-keyboard.mjs'];
