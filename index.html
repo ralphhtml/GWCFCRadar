@@ -38216,6 +38216,242 @@ function _syncAnimbarTrack(src, loopable) {
   if (typeof buildTimelineLabels === 'function') buildTimelineLabels(src);
 }
 
+// ── KEYBOARD SHORTCUTS ──────────────────────────────────────────────────────
+// Every shortcut runs the same code the matching button runs, by looking the
+// action up in RADAR_SUB_BUBBLES and calling it. That is deliberate: a
+// shortcut that reimplemented "switch to velocity" would be a second version
+// of the switch, and the two would drift the first time either changed. The
+// keyboard here is a second way to press the button, not a second button.
+//
+// Bindings are a preset the user picks once and can then edit key by key.
+// Presets exist because the people who want shortcuts already have muscle
+// memory from somewhere else, and asking them to invent a layout is asking
+// them to be worse at the thing than they already are.
+const KBD_KEY = 'gwcfc_keys';
+
+// A key is written the way it is typed: modifiers in a fixed order, then the
+// key itself upper-cased. Fixed order matters because "Shift+Alt+W" and
+// "Alt+Shift+W" are the same chord and must not become two bindings.
+function _kbdChord(e) {
+  if (!e || !e.key) return '';
+  const k = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+  if (['Shift', 'Control', 'Alt', 'Meta'].includes(k)) return '';
+  let out = '';
+  if (e.ctrlKey)  out += 'Ctrl+';
+  if (e.altKey)   out += 'Alt+';
+  if (e.shiftKey) out += 'Shift+';
+  if (e.metaKey)  out += 'Meta+';
+  return out + k;
+}
+
+// What a shortcut can do. Radar products go through the sub-bubble's own
+// action; everything else names a function that already exists.
+const KBD_ACTIONS = [
+  { id: 'ref',    label: 'Reflectivity',            sub: 'reflectivity' },
+  { id: 'vel',    label: 'Velocity',                sub: 'velocity' },
+  { id: 'srvel',  label: 'Storm Relative Velocity', sub: 'velocity', srm: true },
+  { id: 'sw',     label: 'Spectrum Width',          sub: 'sw' },
+  { id: 'cc',     label: 'Correlation Coefficient', sub: 'cc' },
+  { id: 'zdr',    label: 'Differential Reflectivity', sub: 'zdr' },
+  { id: 'kdp',    label: 'Specific Differential Phase', sub: 'kdp' },
+  { id: 'hc',     label: 'Hydrometeor Classification', sub: 'hc' },
+  { id: 'play',   label: 'Play / Pause',            fn: 'togglePlay' },
+  { id: 'rev',    label: 'Play Backwards',          fn: 'togglePlayBack' },
+  { id: 'next',   label: 'Next Frame',              step: 1 },
+  { id: 'prev',   label: 'Previous Frame',          step: -1 },
+  { id: 'alerts', label: 'Toggle Alerts Panel',     fn: 'toggleAlertsPanel' },
+  { id: 'set',    label: 'Open Settings',           fn: 'lqmOpenSettings' },
+];
+
+// The layouts people already have in their fingers. GR2Analyst is the one the
+// request named; RadarScope is the other common set. "None" is not an empty
+// preset for its own sake: somebody who wants no shortcuts at all should be
+// able to say so rather than having to unbind fourteen keys.
+const KBD_PRESETS = {
+  gr2: {
+    name: 'GR2Analyst style',
+    note: 'Shift plus the product letter, the way GR2Analyst does it.',
+    binds: { ref: 'Shift+R', vel: 'Shift+V', srvel: 'Shift+S', sw: 'Shift+W',
+             cc: 'Shift+C', zdr: 'Shift+Z', kdp: 'Shift+K', hc: 'Shift+H',
+             play: ' ', rev: 'Shift+B', next: 'ArrowRight', prev: 'ArrowLeft',
+             alerts: 'Shift+A', set: 'Shift+,' },
+  },
+  simple: {
+    name: 'Single letters',
+    note: 'One key per product, no modifier. Fastest to reach, but it means a stray keypress switches the map.',
+    binds: { ref: 'R', vel: 'V', srvel: 'S', sw: 'W', cc: 'C', zdr: 'Z',
+             kdp: 'K', hc: 'H', play: ' ', rev: 'B', next: 'ArrowRight',
+             prev: 'ArrowLeft', alerts: 'A', set: ',' },
+  },
+  none: { name: 'No shortcuts', note: 'Nothing is bound. You can still add your own below.', binds: {} },
+};
+
+let _kbdBinds = null;     // { actionId: chord }
+let _kbdPreset = null;    // which preset it came from, or 'custom'
+
+function _kbdLoad() {
+  if (_kbdBinds) return _kbdBinds;
+  try {
+    const raw = JSON.parse(localStorage.getItem(KBD_KEY) || 'null');
+    if (raw && raw.binds && typeof raw.binds === 'object') {
+      _kbdBinds = raw.binds;
+      _kbdPreset = raw.preset || 'custom';
+      return _kbdBinds;
+    }
+  } catch (e) { /* a corrupt setting must not cost the page its keyboard */ }
+  // Nothing chosen yet. Unbound rather than a guessed default: a shortcut
+  // nobody asked for that switches the radar out from under them is worse
+  // than no shortcut, and the welcome sequence asks properly.
+  _kbdBinds = {};
+  _kbdPreset = null;
+  return _kbdBinds;
+}
+
+function _kbdSave() {
+  try {
+    localStorage.setItem(KBD_KEY, JSON.stringify({ preset: _kbdPreset, binds: _kbdBinds }));
+  } catch (e) {}
+}
+
+function _kbdHasChosen() {
+  _kbdLoad();
+  return _kbdPreset !== null;
+}
+
+function kbdApplyPreset(id) {
+  const P = KBD_PRESETS[id];
+  if (!P) return;
+  _kbdBinds = Object.assign({}, P.binds);
+  _kbdPreset = id;
+  _kbdSave();
+  if (typeof _kbdRenderSettings === 'function') _kbdRenderSettings();
+}
+
+function kbdBindAction(actionId, chord) {
+  _kbdLoad();
+  if (!chord) { delete _kbdBinds[actionId]; }
+  else {
+    // One chord, one action. Leaving a duplicate would make which one runs
+    // depend on the order of a list nobody can see.
+    Object.keys(_kbdBinds).forEach(k => { if (_kbdBinds[k] === chord) delete _kbdBinds[k]; });
+    _kbdBinds[actionId] = chord;
+  }
+  _kbdPreset = 'custom';
+  _kbdSave();
+  if (typeof _kbdRenderSettings === 'function') _kbdRenderSettings();
+}
+
+// Typing must never trigger a shortcut. The chat box, the alert desk's text
+// area and every search field are all places where "S" means the letter S.
+// How a chord reads on screen. Space is the one key whose name is a space,
+// which would render as an empty button that looks broken rather than bound.
+function _kbdLabel(chord) {
+  if (!chord) return 'Not set';
+  return chord === ' ' ? 'Space'
+    : chord.replace('ArrowRight', 'Right').replace('ArrowLeft', 'Left')
+           .replace('ArrowUp', 'Up').replace('ArrowDown', 'Down');
+}
+
+let _kbdCapturing = null;   // the action id waiting for a keypress
+
+function _kbdRenderSettings() {
+  _kbdLoad();
+  const sel = document.getElementById('lqm-kbd-preset');
+  if (sel) {
+    const opts = Object.entries(KBD_PRESETS)
+      .map(([k, P]) => `<option value="${k}">${P.name}</option>`).join('')
+      + '<option value="custom">Custom</option>';
+    if (sel.innerHTML !== opts) sel.innerHTML = opts;
+    sel.value = _kbdPreset || 'none';
+  }
+  const note = document.getElementById('lqm-kbd-note');
+  if (note) {
+    const P = KBD_PRESETS[_kbdPreset];
+    note.textContent = P ? P.note
+      : _kbdPreset === 'custom' ? 'Your own set. Changing any key puts you here.'
+      : 'No set chosen yet. Pick one, or bind keys yourself below.';
+  }
+  const list = document.getElementById('lqm-kbd-list');
+  if (!list) return;
+  list.innerHTML = KBD_ACTIONS.map(a => {
+    const cap = _kbdCapturing === a.id;
+    const txt = cap ? 'Press a key...' : _kbdLabel(_kbdBinds[a.id]);
+    return `<div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">${a.label}</span>
+      <button type="button" class="lqm-settings-btn" onclick="_kbdCapture('${a.id}')"
+        style="min-width:104px;${cap ? 'outline:1px solid var(--accent2);' : ''}">${txt}</button>
+    </div>`;
+  }).join('');
+}
+
+function _kbdCapture(actionId) {
+  _kbdCapturing = _kbdCapturing === actionId ? null : actionId;
+  _kbdRenderSettings();
+}
+
+// The capture listener runs before the shortcut listener and swallows the
+// key, so binding "R" to something does not also switch to reflectivity on
+// the way past.
+document.addEventListener('keydown', (e) => {
+  if (!_kbdCapturing) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  const id = _kbdCapturing;
+  if (e.key === 'Escape') { _kbdCapturing = null; _kbdRenderSettings(); return; }
+  if (e.key === 'Backspace' || e.key === 'Delete') {
+    _kbdCapturing = null; kbdBindAction(id, ''); return;
+  }
+  const chord = _kbdChord(e);
+  if (!chord) return;      // a bare modifier, keep waiting for the real key
+  _kbdCapturing = null;
+  kbdBindAction(id, chord);
+}, true);
+
+function _kbdIsTyping(t) {
+  if (!t) return false;
+  const tag = (t.tagName || '').toLowerCase();
+  return tag === 'input' || tag === 'textarea' || tag === 'select'
+      || t.isContentEditable === true;
+}
+
+function _kbdRun(a) {
+  try {
+    if (a.sub && typeof RADAR_SUB_BUBBLES !== 'undefined') {
+      const b = RADAR_SUB_BUBBLES.find(x => x.id === a.sub);
+      if (b && typeof b.action === 'function') {
+        b.action();
+        // Storm relative velocity is velocity with the mean motion removed,
+        // which is a switch on the same product rather than a product of its
+        // own, so it is reached by turning velocity on and then flipping it.
+        if (a.srm && typeof _prSetProduct === 'function') _prSetProduct('srvelocity');
+        return true;
+      }
+      return false;
+    }
+    if (typeof a.step === 'number' && typeof stepFrame === 'function') {
+      stepFrame(a.step);
+      return true;
+    }
+    if (a.fn && typeof window[a.fn] === 'function') { window[a.fn](); return true; }
+  } catch (e) { console.warn('shortcut ' + a.id + ':', e); }
+  return false;
+}
+
+document.addEventListener('keydown', (e) => {
+  if (_kbdIsTyping(e.target)) return;
+  // Ctrl and Meta chords belong to the browser. Rebinding Ctrl+T or Cmd+W
+  // takes away something the user needs more than they need a radar product.
+  if (e.ctrlKey || e.metaKey) return;
+  const binds = _kbdLoad();
+  const chord = _kbdChord(e);
+  if (!chord) return;
+  const hit = Object.keys(binds).find(id => binds[id] === chord);
+  if (!hit) return;
+  const action = KBD_ACTIONS.find(a => a.id === hit);
+  if (!action) return;
+  if (_kbdRun(action)) e.preventDefault();
+});
+
 function togglePlay() {
   if (!_animationReady()) { _refreshPlayButtonsEnabled(); return; }
   if (playingBack) { playingBack = false; document.getElementById('play-back-btn').classList.remove('active'); document.getElementById('play-back-btn').innerHTML = '<svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(180deg)><use href=#ic-play></use></svg>'; }
@@ -46787,6 +47023,21 @@ function selectProduct(p) {
       polygon is for. Tornado and flash flood emergencies pulse at double speed so they stay
       distinguishable when the map is full of ordinary warnings.
     </div>
+
+    <div class="lqm-settings-category"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-sliders></use></svg> Keyboard</div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Shortcut Set</span>
+      <select id="lqm-kbd-preset" class="lqm-settings-select" onchange="kbdApplyPreset(this.value)">
+      </select>
+    </div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:2px 0 6px;line-height:1.5;"
+         id="lqm-kbd-note"></div>
+    <div id="lqm-kbd-list"></div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:2px 0 8px;line-height:1.5;">
+      Click a key to rebind it, then press the combination you want. Escape cancels, Backspace clears
+      it. Shortcuts never fire while you are typing in a box, and Ctrl and Command combinations are
+      left alone because those belong to your browser.
+    </div>
     <div class="lqm-settings-row">
       <span class="lqm-settings-lbl">Open Panel on New Alert</span>
       <label class="lqm-toggle">
@@ -52421,6 +52672,53 @@ async function _runWelcome() {
       showToast('Radar is on. Turn on location, or search a place, for a local forecast.', 7000);
     }
   }
+
+  // ── Keyboard shortcuts, offered once ──
+  // Last, and after a pause, because it is the least urgent thing here and
+  // asking it over a map still flying would be asking somebody to choose a
+  // keyboard layout before they have seen the weather.
+  setTimeout(() => { try { _kbdOfferSetup(); } catch (e) { console.warn('[welcome] keys:', e); } }, 4200);
+}
+
+// The one-time offer. Presets exist because the people who want shortcuts
+// already have muscle memory from somewhere else; asking them to invent a
+// layout is asking them to be worse at it than they already are. Asked once
+// and never again, whichever way it is answered, including dismissed:
+// somebody who closed it did answer, and asking a second time would be
+// arguing with them.
+function _kbdOfferSetup() {
+  if (_kbdHasChosen()) return;
+  if (document.body.classList.contains('shot-mode')) return;
+  const wrap = document.createElement('div');
+  wrap.id = 'kbd-offer';
+  wrap.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:4000;max-width:330px;'
+    + 'background:rgba(14,14,16,0.97);border:1px solid rgba(255,196,0,0.45);border-radius:10px;'
+    + 'padding:12px 14px;font-family:var(--mono);font-size:11px;color:rgba(255,240,220,0.92);'
+    + 'box-shadow:0 8px 28px rgba(0,0,0,0.6);line-height:1.55;';
+  const rows = Object.entries(KBD_PRESETS).map(([k, P]) =>
+    `<button type="button" class="lqm-settings-btn" style="display:block;width:100%;text-align:left;margin:4px 0;"
+       onclick="_kbdOfferPick('${k}')"><b>${P.name}</b><br><span style="opacity:.7">${P.note}</span></button>`).join('');
+  wrap.innerHTML = `<div style="font-weight:700;color:var(--accent2);margin-bottom:6px;">Keyboard shortcuts</div>
+    <div style="opacity:.85;margin-bottom:8px;">Switch radar products without the menu. Pick a set, or skip and set your own later in Settings.</div>
+    ${rows}
+    <button type="button" class="lqm-settings-btn" style="margin-top:6px;opacity:.75;"
+      onclick="_kbdOfferPick(null)">Not now</button>`;
+  document.body.appendChild(wrap);
+}
+
+function _kbdOfferPick(preset) {
+  const el = document.getElementById('kbd-offer');
+  if (el) el.remove();
+  if (preset) { kbdApplyPreset(preset); }
+  else {
+    // Dismissing IS an answer. Recording it as "none chosen deliberately"
+    // rather than leaving it unset is what stops the card coming back every
+    // single visit, which would be arguing with somebody who already said no.
+    _kbdBinds = {}; _kbdPreset = 'none'; _kbdSave();
+  }
+  if (typeof showToast === 'function' && preset) {
+    showToast('Shortcuts on. Change them under Settings, Keyboard.', 4500);
+  }
 }
 
 function _tutUpdateToc() {
@@ -54523,7 +54821,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'Warning polygons now pulse for as long as the warning is in force, not just for the sixty seconds after it was issued. That was the wrong minute: a tornado warning matters most for the half hour it is valid, and anyone who looked away during that one minute never saw it move at all. Settings, Alerts now has a Flash Warning Polygons choice (every active warning, only newly issued, or never), a speed slider from 0.4 to 3 seconds, and a switch to make tornado and flash flood emergencies pulse at double speed so they stand out on a busy screen. Watches and advisories never pulse whichever you pick, because a map where forty things are moving is a map where nothing stands out. Alert popups also now show the NWS event tracking number, the number a warning is referred to by on the radio and in follow-up statements.';
+const APP_LATEST_UPDATE = 'Keyboard shortcuts are here. Switch radar products without the menu: Shift+W for spectrum width, Shift+S for storm relative velocity, Shift+R, Shift+V and the rest, plus play, pause and frame stepping. On your first visit the app offers three sets to choose from: a GR2Analyst-style one with Shift plus the product letter, a single-letter one that is faster to reach but means a stray keypress switches the map, or none at all. Every key is rebindable under Settings, Keyboard: click a key, press the combination you want, Backspace to clear it. Shortcuts never fire while you are typing in a box, and Ctrl and Command combinations are left alone because those belong to your browser.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
@@ -55306,6 +55604,7 @@ function _alertFlashSyncUi() {
 document.addEventListener('DOMContentLoaded', () => {
   setTimeout(() => {
     _alertFlashSyncUi();
+    if (typeof _kbdRenderSettings === 'function') _kbdRenderSettings();
     const op = localStorage.getItem('lqm_radaropacity');
     if (op) { const el=document.getElementById('lqm-set-opacity'); if(el){el.value=op;lqmSetRadarOpacity(op);} }
     const mo = localStorage.getItem('lqm_modelopacity');
