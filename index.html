@@ -4356,17 +4356,6 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
 }
-.mb-city-data {
-  display: block;
-  margin-top: 1px;
-  font-family: var(--mono);
-  font-size: 9px;
-  line-height: 1.25;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-.mb-city-val { display: block; white-space: nowrap; }
-.mb-city-unit { opacity: 0.7; font-weight: 400; margin-left: 2px; font-size: 8px; }
 #inspector-drag-btn {
   pointer-events: auto;
   flex-shrink: 0;
@@ -23410,9 +23399,6 @@ function setUnitPref(key, val) {
   // The Inspector reads live off the map, so without this it would sit in the
   // old unit until something happened to move the map.
   if (typeof _inspUnitsChanged === 'function') { try { _inspUnitsChanged(); } catch(e) {} }
-  // The city labels carry units too, so they are stale the moment this
-  // changes and would otherwise stay stale until the next pan.
-  if (typeof _mbCityRefresh === 'function') { try { _mbCityRefresh(); } catch(e) {} }
 }
 
 function fmtTemp(f) {
@@ -36459,17 +36445,18 @@ function _inspAlertsRow(center) {
              ? _alertColorFor(ev) : 'rgba(255,80,80,0.95)' };
 }
 
-// Every active layer's reading at one point, as rows.
-//
-// Lifted out of _inspUpdate so the city labels can ask the same question and
-// get the same answer. A second implementation reading the same layers would
-// be two things to keep in step, and the first time they disagreed the map
-// would be telling you two different numbers about one place.
-//
-// `light` skips the rows that read back rendered pixels. Those are the
-// expensive ones, and the labels ask this ninety times per pan where the
-// Inspector asks once.
-function _inspRowsAt(center, cx, cy, light) {
+function _inspUpdate() {
+  _inspRafPending = false;
+  if (!_inspEnabled || typeof map === 'undefined') return;
+  const rect = map.getContainer().getBoundingClientRect();
+  // Where the crosshair actually is, which is the middle until it is dragged.
+  // Everything below reads "center" as "the point being inspected", and that
+  // is now a screen position rather than the map's centre.
+  const cx = rect.left + rect.width / 2 + _inspOff.x;
+  const cy = rect.top + rect.height / 2 + _inspOff.y;
+  const center = map.containerPointToLatLng(
+    [cx - rect.left, cy - rect.top]);
+
   const rows = [];
   // The radar row belongs whenever radar is on screen: the mosaic layer, a
   // mesh this page decoded (which may be up under the Pi radar pills with
@@ -36478,19 +36465,19 @@ function _inspRowsAt(center, cx, cy, light) {
     || (typeof _l3Overlay !== 'undefined' && _l3Overlay && map.hasLayer(_l3Overlay))
     || (typeof _prOn !== 'undefined' && _prOn);
   if (_radarUp)                                                      rows.push(_inspRadarRow(center, cx, cy));
-  if (!light && typeof activeLayers !== 'undefined' && activeLayers.satellite) rows.push(_inspSatelliteRow(cx, cy));
+  if (typeof activeLayers !== 'undefined' && activeLayers.satellite) rows.push(_inspSatelliteRow(cx, cy));
   if (typeof wavesActive !== 'undefined' && wavesActive)             rows.push(_inspWavesRow(center));
   if (typeof airActive !== 'undefined' && airActive)                 rows.push(_inspAirRow(center));
   if (typeof windActive !== 'undefined' && windActive)               rows.push(_inspWindRow(center));
   if (typeof temperatureActive !== 'undefined' && temperatureActive) rows.push(_inspTemperatureRow(center));
   if (typeof pressureActive !== 'undefined' && pressureActive)       rows.push(_inspPressureRow(center));
   if (_sevOverlayLayer)                                               rows.push(_inspSevEnsRow(center));
-  if (!light && _iemModelLayer)                                       rows.push(_inspModelsRow(cx, cy));
+  if (_iemModelLayer)                                                 rows.push(_inspModelsRow(cx, cy));
   if (typeof _hdOn !== 'undefined' && _hdOn && _hdLayer)              rows.push(_inspHdRow(cx, cy));
   // The layers it used to walk past. Each is guarded on its own state, so a
   // layer that is off contributes nothing rather than a row saying so.
   if (typeof _sstOn !== 'undefined' && _sstOn)                        rows.push(_inspSstRow(center));
-  if (!light && typeof _mrmsAnyOn === 'function' && _mrmsAnyOn())     rows.push(..._inspMrmsRows(cx, cy));
+  if (typeof _mrmsAnyOn === 'function' && _mrmsAnyOn())               rows.push(..._inspMrmsRows(cx, cy));
   if (typeof activeLayers !== 'undefined' && activeLayers.lightning)  rows.push(_inspLightningRow(center));
   if (typeof spcOutlookLayer !== 'undefined' && spcOutlookLayer) {
     rows.push(_inspPolyRow('SPC outlook', spcOutlookLayer,
@@ -36506,24 +36493,9 @@ function _inspRowsAt(center, cx, cy, light) {
     rows.push(_inspAlertsRow(center));
   }
 
-  return rows.filter(Boolean);
-}
-
-function _inspUpdate() {
-  _inspRafPending = false;
-  if (!_inspEnabled || typeof map === 'undefined') return;
-  const rect = map.getContainer().getBoundingClientRect();
-  // Where the crosshair actually is, which is the middle until it is dragged.
-  // The point being inspected is a screen position now, not the map's centre.
-  const cx = rect.left + rect.width / 2 + _inspOff.x;
-  const cy = rect.top + rect.height / 2 + _inspOff.y;
-  const center = map.containerPointToLatLng([cx - rect.left, cy - rect.top]);
-  const rows = _inspRowsAt(center, cx, cy, false);
-  if (!rows.length) {
-    _inspRenderRows([{ label: '', value: 'No layers active',
-                       color: 'rgba(120,120,120,0.5)' }]);
-    return;
-  }
+  const _real = rows.filter(Boolean);
+  rows.length = 0; rows.push(..._real);
+  if (!rows.length) { _inspRenderRows([{ label: '', value: 'No layers active', color: 'rgba(120,120,120,0.5)' }]); return; }
   _inspRenderRows(rows);
 }
 
@@ -55568,7 +55540,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'City names now carry the weather over them. Turn on City Names and every label shows the values of whatever layers you have up at that spot: radar, model charts, wind, temperature, pressure, waves, air quality, sea temperature, lightning, warnings. Up to three readings per city, in the units you picked in Settings, and rows with nothing to say are left off rather than printing No data under a name. It reads the Inspector own row builder, so a label and the crosshair can never disagree about the same place. Before that: the Inspector got a drag handle and learned to respect your unit settings.';
+const APP_LATEST_UPDATE = 'Reverted the city label readings. Putting the live layer values under every city name made the map slow and covered it in coloured blocks, so it is gone and the labels are plain names again. The Inspector keeps its new drag handle and its unit support. Sorry about that.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
@@ -64930,57 +64902,9 @@ function _mbCityRefresh() {
     pane: 'mapLabelsPane', interactive: false, keyboard: false,
     icon: L.divIcon({
       className: '', iconSize: [0, 0], iconAnchor: [0, 0],
-      html: '<span class="mb-city">' + _mbEsc(c.name)
-          + _mbCityReadout(c) + '</span>',
+      html: '<span class="mb-city">' + _mbEsc(c.name) + '</span>',
     }),
   }))).addTo(map);
-}
-
-// ── What the weather is doing over each city ─────────────────────────────
-// The labels used to be names and nothing else, so a map covered in data
-// still made you move a crosshair to every town to read any of it. Each name
-// now carries the active layers' values at that spot.
-//
-// It asks the Inspector's own row builder rather than sampling the layers
-// itself. Two implementations reading the same layers would be two things to
-// keep in step, and the first time they drifted the map would be telling you
-// two different numbers about one place.
-//
-// WHAT IT COSTS. The Inspector answers this once; the labels ask it up to
-// ninety times per pan, so they ask in `light` mode, which skips the rows
-// that read back rendered pixels. Those decode a canvas per call and are the
-// only genuinely expensive ones. Everything grid-backed is an array lookup.
-const MB_CITY_MAX_ROWS = 3;      // a name with a paragraph under it is not a label
-
-function _mbCityReadout(c) {
-  if (typeof _inspRowsAt !== 'function' || typeof map === 'undefined') return '';
-  let rows;
-  try {
-    const pt = map.latLngToContainerPoint([c.lat, c.lng]);
-    const r = map.getContainer().getBoundingClientRect();
-    rows = _inspRowsAt({ lat: c.lat, lng: c.lng },
-                       r.left + pt.x, r.top + pt.y, true);
-  } catch (e) { return ''; }
-  if (!rows || !rows.length) return '';
-  // "No data" and "loading" are true but not worth the space under a city
-  // name: a label that says nothing four times is worse than a bare name.
-  const useful = rows.filter(x => x && x.value != null
-    && !/^(no data|loading|land|off grid|land \/ no data|\(no cors\))$/i
-        .test(String(x.value)));
-  if (!useful.length) return '';
-  return '<span class="mb-city-data">' + useful.slice(0, MB_CITY_MAX_ROWS)
-    .map(x => '<span class="mb-city-val" style="color:' + _mbCityColor(x.color)
-      + '">' + _mbEsc(String(x.value))
-      + (x.unit ? '<span class="mb-city-unit">' + _mbEsc(String(x.unit)) + '</span>' : '')
-      + '</span>').join('') + '</span>';
-}
-
-// The swatch colours are picked to read on a map, not against a label's dark
-// backing, and some of them (the "no data" greys) are nearly invisible there.
-// Anything without a usable colour falls back to the label's own.
-function _mbCityColor(c) {
-  const s = String(c == null ? '' : c);
-  return /^(#[0-9a-fA-F]{3,8}|rgba?\([\d\s.,%]+\))$/.test(s) ? s : 'inherit';
 }
 
 function _mbEsc(s) {
