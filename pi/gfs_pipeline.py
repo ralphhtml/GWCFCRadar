@@ -1596,10 +1596,18 @@ REQUEST_TIMEOUT = 60
 RETRIES = 3
 
 # The longest edge any overlay image is allowed to have. See render_png: the
-# limit exists for the PlayStation 5 browser, which holds a decoded image in
-# memory and does not have much of it. Coarse models are well under this and
-# are untouched.
-MAX_EDGE_PX = 1600
+# limit exists because a browser holds a decoded image in memory, and the
+# smallest memory this app meets is the PlayStation 5 browser's.
+#
+# 2560 rather than the old 1600, and the difference is not cosmetic. HRRR and
+# the NAM nest are about 2300 cells across this box, and a 1600 cap forced
+# step 2 thinning: every second cell thrown away, half the model's real
+# resolution discarded before anyone saw it. Under 2560 they pass through
+# untouched, one pixel per cell, which is the whole of the picture the model
+# actually made. Decoded, a frame is about 12 MB against roughly 6 before;
+# the playback pool only ever holds the incoming frame and the outgoing one,
+# so the working set grows by megabytes, not by frame count.
+MAX_EDGE_PX = 2560
 
 # How small a picture is allowed to be before it gets interpolated up.
 #
@@ -1616,11 +1624,17 @@ MAX_EDGE_PX = 1600
 # forecast. Interpolating the numbers first and colouring afterwards gives the
 # colour each interpolated value actually earns.
 #
-# 1000 rather than the 1600 cap because this is generated detail, not measured
-# detail: past about four times the model's own resolution the picture is
-# larger without being truer, and every one of those pixels costs Pi time,
-# card space and download.
-SMOOTH_MIN_EDGE_PX = 1000
+# 2000 rather than the 2560 cap because this is generated detail, not measured
+# detail. But the choice is not between interpolating and not interpolating,
+# it is between WHO interpolates: a 1000 pixel picture still gets stretched to
+# double that on an ordinary screen, and the browser stretches the finished
+# COLOURS, blending across ramp boundaries and painting temperatures nothing
+# forecast. Interpolating the values here, where the numbers still exist,
+# keeps that blur off the map; at 2000 the browser's own stretch on a normal
+# display drops to roughly one-to-one and the chart arrives sharp. The extra
+# pixels cost Pi time and card space, and that is the price of the picture
+# being drawn from values instead of smeared from colours.
+SMOOTH_MIN_EDGE_PX = 2000
 
 
 # How long a standard build may spend before it stops starting new models.
@@ -4253,7 +4267,13 @@ def render_png(values, lats, spec, out_path):
     idx = np.clip(np.nan_to_num(norm) * 255.0, 0, 255).astype(np.uint8)
 
     rgb = lut_for(spec["ramp"], lo, hi)[idx]
-    alpha = np.full(idx.shape, 200, dtype=np.uint8)
+    # Fully opaque where there is data. Opacity used to be applied twice: 200
+    # of 255 baked in here, and the browser's Model Opacity slider multiplied
+    # on top, so the default view was 78 percent of 72 percent, about half
+    # opaque, and no position of the slider could ever reach full strength.
+    # One knob now. The picture carries the colours at full value and the
+    # slider in Settings is the only thing that fades them.
+    alpha = np.full(idx.shape, 255, dtype=np.uint8)
     alpha[bad] = 0
     # Values at the very bottom of the scale are usually "nothing here" for
     # precipitation and reflectivity, so they fade out instead of tinting the
