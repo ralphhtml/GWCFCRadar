@@ -12804,6 +12804,37 @@ function _apToggleDesc(uid) {
   desc.style.display = isOpen ? 'none' : '';
   btn.innerHTML = isOpen ? 'View Full Message <svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(90deg)><use href=#ic-arrow></use></svg>' : 'Hide Full Message <svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(-90deg)><use href=#ic-arrow></use></svg>';
 }
+// The NWS event tracking number, which is how a warning is referred to in a
+// discussion, on the radio and in a follow-up statement. It is the number a
+// person needs when they are cross-referencing two sources about the same
+// storm, and it was the one field the popup did not show.
+//
+// It arrives in one of three shapes depending on the product and the office,
+// so all three are read rather than picking whichever happened to be there
+// the day this was written: an eventTrackingNumber parameter, a VTEC string
+// (the ETN is the four digits after the phenomenon and significance codes),
+// or a WMOidentifier. Absent is a normal outcome, not an error: watches and
+// many advisories genuinely do not carry one.
+function _alertEventNumber(p) {
+  if (!p) return '';
+  // Sanitised here rather than escaped at the point of printing, so there is
+  // one place to be right. An event number is digits and occasionally a
+  // letter; anything else arriving in that field through a feed has no
+  // business reaching innerHTML, whoever put it there.
+  const clean = (v) => String(v || '').trim().replace(/[^A-Za-z0-9-]/g, '').slice(0, 24);
+  const par = p.parameters || {};
+  const first = (v) => Array.isArray(v) ? v[0] : v;
+  const etn = first(par.eventTrackingNumber) || first(par.EventTrackingNumber);
+  if (etn) return clean(etn);
+  // P-VTEC: /O.NEW.KTLX.TO.W.0123.250830T2145Z-250830T2230Z/
+  const vtec = first(par.VTEC) || first(par.vtec) || '';
+  const m = String(vtec).match(/\/[OTEX]\.[A-Z]{3}\.\w{4}\.\w{2}\.\w\.(\d{4})\./);
+  if (m) return clean(m[1]);
+  const wmo = first(par.WMOidentifier);
+  if (wmo) return clean(wmo);
+  return '';
+}
+
 function _buildAlertPopupHTML(p, color) {
   const uid = 'ap' + Math.random().toString(36).slice(2, 8);
   const ev  = p.event || 'Unknown Alert';
@@ -12836,6 +12867,7 @@ function _buildAlertPopupHTML(p, color) {
   const tlStart  = _apFmtTimeShort(p.onset || p.sent);
   const tlEnd    = _apFmtTimeShort(p.expires);
   const sevLine = [p.severity, p.urgency].filter(Boolean).join(' · ') || '-';
+  const evNum = _alertEventNumber(p);
   const colorBg  = color + '18';
   const colorBdr = color + '50';
   const fullDesc = (p.description || '').trim();
@@ -12855,6 +12887,7 @@ function _buildAlertPopupHTML(p, color) {
         <div class="ap-meta-cell"><div class="ap-meta-lbl">EXPIRES</div><div class="ap-meta-val">${expires}</div></div>
         <div class="ap-meta-cell"><div class="ap-meta-lbl">SOURCE</div><div class="ap-meta-val">${sender}</div></div>
         <div class="ap-meta-cell"><div class="ap-meta-lbl">SEVERITY</div><div class="ap-meta-val">${sevLine}</div></div>
+        ${evNum ? `<div class="ap-meta-cell"><div class="ap-meta-lbl">EVENT NUMBER</div><div class="ap-meta-val">${evNum}</div></div>` : ''}
       </div>
       <div class="ap-section">AFFECTED AREAS</div>
       <div class="ap-counties">${countiesHtml}</div>
@@ -13008,6 +13041,68 @@ function _alertIsNew(p){
   const t = Date.parse(p.sent || p.effective || p.onset || '');
   return !!t && (Date.now() - t) >= 0 && (Date.now() - t) < 60000;
 }
+
+// ── WHICH POLYGONS PULSE, AND HOW FAST ──────────────────────────────────────
+// The pulse used to run for one minute after a warning was issued and then
+// stop. That is the wrong minute: a tornado warning is at its most urgent for
+// the half hour it is valid, not for the sixty seconds after it was written,
+// and anybody who looked away during that minute never saw it move at all.
+//
+// So the scope is a setting. 'all' pulses every warning that is currently in
+// force, 'new' keeps the old one-minute behaviour, 'off' leaves them still.
+// Watches and advisories never pulse whatever the scope: a screen where forty
+// things are moving is a screen where nothing stands out, which is the exact
+// opposite of what a flashing polygon is for.
+const ALERT_FLASH_KEY = 'gwcfc_alertflash';
+const ALERT_FLASH_MIN_MS = 400, ALERT_FLASH_MAX_MS = 3000;
+let _alertFlashCfg = { scope: 'all', period: 1000, emerFast: true };
+
+function _alertFlashLoad() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(ALERT_FLASH_KEY) || 'null');
+    if (raw && typeof raw === 'object') Object.assign(_alertFlashCfg, raw);
+  } catch (e) { /* a corrupt setting is not worth failing boot over */ }
+  // A period outside the slider's range would produce a pulse either too fast
+  // to read or so slow it looks broken, and a stored value can be anything.
+  const p = Number(_alertFlashCfg.period);
+  _alertFlashCfg.period = isFinite(p)
+    ? Math.max(ALERT_FLASH_MIN_MS, Math.min(ALERT_FLASH_MAX_MS, p)) : 1000;
+  if (!['off', 'new', 'all'].includes(_alertFlashCfg.scope)) _alertFlashCfg.scope = 'all';
+  return _alertFlashCfg;
+}
+
+function _alertFlashSave() {
+  try { localStorage.setItem(ALERT_FLASH_KEY, JSON.stringify(_alertFlashCfg)); } catch (e) {}
+}
+
+// A warning is in force, not merely a watch or an advisory. Statements are
+// out too: they carry no action, so pulsing one says "look at this" about
+// something nobody has to do anything about.
+function _alertIsWarning(p) {
+  return /\b(warning|emergency)\b/i.test(String((p && p.event) || ''));
+}
+
+// The two products that mean "leave now" pulse at double speed, so they are
+// still distinguishable when the screen is full of ordinary warnings.
+function _alertIsEmergency(p) {
+  const ev = String((p && p.event) || '');
+  const desc = String((p && p.description) || '') + ' ' + String((p && p.parameters
+    && p.parameters.NWSheadline) || '');
+  return /emergency/i.test(ev)
+      || /particularly dangerous situation|tornado emergency|flash flood emergency/i.test(desc);
+}
+
+// Should this alert pulse, and how long for. Infinity means "for as long as
+// it is on the map", which is what scope 'all' means.
+function _alertFlashUntil(p) {
+  if (_alertFlashCfg.scope === 'off') return 0;
+  if (!_alertIsWarning(p)) return 0;
+  if (_alertFlashCfg.scope === 'new') {
+    if (!_alertIsNew(p)) return 0;
+    return (Date.parse(p.sent || p.effective || p.onset || '') || Date.now()) + 60000;
+  }
+  return Infinity;
+}
 function _hex2rgb(h){ h=(h||'').replace('#',''); if(h.length===3) h=h.split('').map(c=>c+c).join(''); const n=parseInt(h||'888888',16); return [(n>>16)&255,(n>>8)&255,n&255]; }
 function _lerpColor(a,b,t){ const A=_hex2rgb(a),B=_hex2rgb(b); const m=(i)=>Math.round(A[i]+(B[i]-A[i])*t); return `rgb(${m(0)},${m(1)},${m(2)})`; }
 // Parse NWS "TIME...MOT...LOC" storm motion (direction, speed, position) from alert text.
@@ -13100,9 +13195,10 @@ function renderAlerts(features) {
       const fid = p.id || p['@id'] || f.id;
       if (fid) layerMap[fid] = layer;
       const aColor = _alertColorFor(p.event || '');
-      if (_alertIsNew(p)) {
-        const until = (Date.parse(p.sent || p.effective || p.onset || '') || Date.now()) + 60000;
-        _alertNewLayers.push({ layer, color: aColor, until });
+      const flashUntil = _alertFlashUntil(p);
+      if (flashUntil) {
+        _alertNewLayers.push({ layer, color: aColor, until: flashUntil,
+                               fast: _alertFlashCfg.emerFast && _alertIsEmergency(p) });
       }
       layer.on('click', function(ev) {
         L.DomEvent.stop(ev);
@@ -13157,8 +13253,16 @@ function renderAlerts(features) {
         return true;
       });
       if (!_alertNewLayers.length) { _alertFlashRAF = null; return; }
-      const phase = Math.sin(((now - start) % 1000) / 1000 * Math.PI * 2) * 0.5 + 0.5;
-      _alertNewLayers.forEach(({ layer, color }) => { const c = _lerpColor(color, '#ffffff', phase); try { layer.setStyle({ color:c, fillColor:c }); } catch(e){} });
+      // Each layer gets its own phase because emergencies run at half the
+      // period. One shared phase would put them in lockstep with everything
+      // else and lose the very distinction the faster pulse is there to make.
+      const base = _alertFlashCfg.period;
+      _alertNewLayers.forEach(({ layer, color, fast }) => {
+        const per = fast ? base / 2 : base;
+        const phase = Math.sin(((now - start) % per) / per * Math.PI * 2) * 0.5 + 0.5;
+        const c = _lerpColor(color, '#ffffff', phase);
+        try { layer.setStyle({ color:c, fillColor:c }); } catch(e){}
+      });
       _alertFlashRAF = setTimeout(() => requestAnimationFrame(tick), 66);
     };
     tick();
@@ -46654,12 +46758,34 @@ function selectProduct(p) {
       </label>
     </div>
     <div class="lqm-settings-row">
-      <span class="lqm-settings-lbl">Flash on Warning</span>
+      <span class="lqm-settings-lbl">Flash Warning Polygons</span>
+      <select id="lqm-set-flashscope" class="lqm-settings-select" onchange="lqmSetFlashScope(this.value)">
+        <option value="all">Every active warning</option>
+        <option value="new">Only newly issued</option>
+        <option value="off">Never</option>
+      </select>
+    </div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Flash Speed</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <input type="range" id="lqm-set-flashspeed" min="400" max="3000" value="1000" step="100"
+          class="lqm-slider" oninput="lqmSetFlashSpeed(this.value)">
+        <span id="lqm-set-flashspeed-val" style="font-family:var(--mono);font-size:9px;color:var(--accent2);min-width:28px;">1.0s</span>
+      </div>
+    </div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Emergencies Flash Faster</span>
       <label class="lqm-toggle">
-        <input type="checkbox" id="lqm-set-flash" checked onchange="lqmToggleSetting('flash',this.checked)">
+        <input type="checkbox" id="lqm-set-flashemer" checked onchange="lqmSetFlashEmer(this.checked)">
         <div class="lqm-toggle-track"></div>
         <div class="lqm-toggle-knob"></div>
       </label>
+    </div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:2px 0 6px;line-height:1.5;">
+      Watches and advisories never flash, whichever setting you pick. A screen where forty things
+      are moving is a screen where nothing stands out, which is the opposite of what a flashing
+      polygon is for. Tornado and flash flood emergencies pulse at double speed so they stay
+      distinguishable when the map is full of ordinary warnings.
     </div>
     <div class="lqm-settings-row">
       <span class="lqm-settings-lbl">Open Panel on New Alert</span>
@@ -54397,7 +54523,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'The Alert Desk\'s Product row now carries the office\'s real product templates instead of the old wording dropdown. That dropdown offered three choices and only appeared for a Tornado Warning; the row now has hazard, kind, tier and issuing office beside the product, with a Load button, covering all 162 GWCFC products. Picking a product fills the hazard and kind in for you, and you can override either. The tier (Base, Severe, Extreme) is the wording strength, and because it now sits on every product you can finally mark a Flash Flood Warning as particularly dangerous, which the old control could not do. The separate Product templates block at the bottom is gone, so there is one place to compose a product rather than two that could disagree.';
+const APP_LATEST_UPDATE = 'Warning polygons now pulse for as long as the warning is in force, not just for the sixty seconds after it was issued. That was the wrong minute: a tornado warning matters most for the half hour it is valid, and anyone who looked away during that one minute never saw it move at all. Settings, Alerts now has a Flash Warning Polygons choice (every active warning, only newly issued, or never), a speed slider from 0.4 to 3 seconds, and a switch to make tornado and flash flood emergencies pulse at double speed so they stand out on a busy screen. Watches and advisories never pulse whichever you pick, because a map where forty things are moving is a map where nothing stands out. Alert popups also now show the NWS event tracking number, the number a warning is referred to by on the radio and in follow-up statements.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
@@ -55092,7 +55218,7 @@ const _origLqmToggle = lqmToggleSetting;
 // branches for all three that could never be reached. Listing what this
 // function handles, and passing on everything else, means a new setting works
 // wherever it is written rather than only in the one place someone remembered.
-const _LQM_OWN_KEYS = ['crosshair', 'contrast', 'coords', 'compass', 'scale', 'flash'];
+const _LQM_OWN_KEYS = ['crosshair', 'contrast', 'coords', 'compass', 'scale'];
 lqmToggleSetting = function(key, val) {
   if (!_LQM_OWN_KEYS.includes(key)) { _origLqmToggle(key, val); return; }
   try { localStorage.setItem('lqm_'+key, typeof val==='boolean'?(val?'1':'0'):val); } catch(e){}
@@ -55127,14 +55253,59 @@ lqmToggleSetting = function(key, val) {
     } else if (window._scaleCtrl && !val) {
       map.removeControl(window._scaleCtrl); window._scaleCtrl = null;
     }
-  } else if (key==='flash') {
-    window._gwcfc_flash = val;
   }
 };
+
+// The flash controls write straight through to the alert layer rather than
+// waiting for the next poll, because a speed slider you cannot see move is
+// indistinguishable from a broken one.
+function _alertFlashApply() {
+  _alertFlashSave();
+  const val = document.getElementById('lqm-set-flashspeed-val');
+  if (val) val.textContent = (_alertFlashCfg.period / 1000).toFixed(1) + 's';
+  // Re-running the render is what re-queues the layers under the new scope.
+  // Restyling in place would not help: which polygons are in the pulse list
+  // at all is exactly what the scope decides.
+  if (typeof renderAlerts === 'function' && Array.isArray(_lastAlertFeatures)) {
+    try { renderAlerts(_lastAlertFeatures); } catch (e) { console.warn('flash apply:', e); }
+  }
+}
+
+function lqmSetFlashScope(v) {
+  _alertFlashCfg.scope = ['off', 'new', 'all'].includes(v) ? v : 'all';
+  _alertFlashApply();
+}
+
+function lqmSetFlashSpeed(v) {
+  const n = Number(v);
+  _alertFlashCfg.period = isFinite(n)
+    ? Math.max(ALERT_FLASH_MIN_MS, Math.min(ALERT_FLASH_MAX_MS, n)) : 1000;
+  _alertFlashApply();
+}
+
+function lqmSetFlashEmer(on) {
+  _alertFlashCfg.emerFast = !!on;
+  _alertFlashApply();
+}
+
+// Put the saved values back into the controls on load, so the panel shows
+// what is actually in force rather than the markup's defaults.
+function _alertFlashSyncUi() {
+  _alertFlashLoad();
+  const sc = document.getElementById('lqm-set-flashscope');
+  if (sc) sc.value = _alertFlashCfg.scope;
+  const sp = document.getElementById('lqm-set-flashspeed');
+  if (sp) sp.value = String(_alertFlashCfg.period);
+  const em = document.getElementById('lqm-set-flashemer');
+  if (em) em.checked = !!_alertFlashCfg.emerFast;
+  const val = document.getElementById('lqm-set-flashspeed-val');
+  if (val) val.textContent = (_alertFlashCfg.period / 1000).toFixed(1) + 's';
+}
 
 // Restore settings on load
 document.addEventListener('DOMContentLoaded', () => {
   setTimeout(() => {
+    _alertFlashSyncUi();
     const op = localStorage.getItem('lqm_radaropacity');
     if (op) { const el=document.getElementById('lqm-set-opacity'); if(el){el.value=op;lqmSetRadarOpacity(op);} }
     const mo = localStorage.getItem('lqm_modelopacity');
