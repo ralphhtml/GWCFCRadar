@@ -1591,7 +1591,13 @@ SND_VARS = {
 SND_HOURS = list(range(0, 49, 6))
 SND_VAR_FLAGS = ["var_TMP", "var_RH", "var_UGRD", "var_VGRD"]
 
-KEEP_RUNS = 4          # about 24 hours of runs
+# Five days of every run, not the last four. A run archive is what lets a
+# forecaster do the one thing a single run cannot: watch the model change its
+# mind. Whether consecutive runs agree is itself a forecast of confidence,
+# and comparing tonight's run against this morning's is how a trend is told
+# from a wobble. After five days a run is climatology, not context.
+KEEP_DAYS = 5
+KEEP_RUNS = 4          # legacy floor: never fewer than this, whatever the disk says
 REQUEST_TIMEOUT = 60
 RETRIES = 3
 
@@ -4477,15 +4483,48 @@ def build_soundings(name="gfs"):
     return manifest
 
 
-def prune(model_dir, keep=KEEP_RUNS):
-    """Keep the newest few runs of one model and drop the rest."""
+def _run_age_h(run_id, now=None):
+    """How old a run id like 20260830_06 is, in hours. Unparseable is 0:
+    a directory this cannot read is a directory it must not delete."""
+    try:
+        t = datetime.strptime(run_id[:11], "%Y%m%d_%H").replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return 0.0
+    return ((now or datetime.now(timezone.utc)) - t).total_seconds() / 3600.0
+
+
+def prune(model_dir, keep_days=None):
+    """Drop runs older than the archive window, by age rather than by count.
+
+    Count-based pruning kept four runs of everything, which is one day of a
+    six-hourly model and four HOURS of an hourly one: the archive depth
+    depended on the model's cadence, which nobody chose. Age treats them
+    alike: five days of GFS is five days of HRRR.
+
+    Two guards, both deliberate:
+
+    The newest run never goes, however old it is. A model that stopped
+    publishing keeps its last picture rather than aging into nothing, and
+    KEEP_RUNS is the floor below which pruning never reaches.
+
+    The window shrinks with the disk, through the same stepped ladder the
+    radar frames use (see hours_for_disk). Five days of every run of ninety
+    models is a real amount of card, and on a card that is filling, old runs
+    are the right thing to spend first: the ladder drops the window to a day,
+    then hours, before the build guard starts refusing new work. The step
+    that matters is that this degrades by AGE, oldest first, uniformly, so a
+    tight disk thins history evenly rather than deleting whichever model
+    pruned last.
+    """
     if not os.path.isdir(model_dir):
         return
+    window_h = hours_for_disk(model_dir, (keep_days or KEEP_DAYS) * 24.0)
     runs = sorted(d for d in os.listdir(model_dir)
                   if os.path.isdir(os.path.join(model_dir, d)) and d[0].isdigit())
-    for old in (runs[:-keep] if len(runs) > keep else []):
-        log(f"  pruning {os.path.basename(model_dir)}/{old}")
-        shutil.rmtree(os.path.join(model_dir, old), ignore_errors=True)
+    for old in runs[:-KEEP_RUNS] if len(runs) > KEEP_RUNS else []:
+        if _run_age_h(old) > window_h:
+            log(f"  pruning {os.path.basename(model_dir)}/{old}")
+            shutil.rmtree(os.path.join(model_dir, old), ignore_errors=True)
 
 
 class Lock:
@@ -4744,6 +4783,24 @@ def _model_head(name, m):
             "regions": {}}
 
 
+def _runs_on_disk(name, region):
+    """Every archived run of one model+region, newest first.
+
+    Only runs whose manifest finished writing count: a directory without one
+    is a run that died halfway, and offering it in a picker would be offering
+    a blank map with a date on it.
+    """
+    d = os.path.join(OUT_DIR, name, region)
+    if not os.path.isdir(d):
+        return []
+    out = []
+    for run in sorted(os.listdir(d), reverse=True):
+        if run and run[0].isdigit() and os.path.exists(
+                os.path.join(d, run, "manifest.json")):
+            out.append(run)
+    return out
+
+
 def _index_entry(name, region, man):
     """One model's line in latest.json, which is all the page reads to start."""
     return {
@@ -4752,6 +4809,10 @@ def _index_entry(name, region, man):
         "path": f"{name}/{region}/{man['run']}/manifest.json",
         "fields": sorted(man.get("fields", {}).keys()),
         "bounds": man.get("bounds"),
+        # The archive, so the page can offer past runs. A manifest lives
+        # under its run and never changes, so the browser can fetch any of
+        # these by swapping the run segment of the path above.
+        "runs": _runs_on_disk(name, region),
     }
 
 

@@ -72,6 +72,10 @@
       "name": "Wind Particles"
     },
     {
+      "value": "terminator",
+      "name": "Day / Night"
+    },
+    {
       "value": "wind-barbs",
       "name": "Wind Barbs"
     },

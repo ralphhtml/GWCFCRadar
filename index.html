@@ -16709,6 +16709,7 @@ function _hdFillRegionPicker() {
 
 async function _hdSetRegion(region) {
   if (!_hdModel || region === _hdRegion) return;
+  _hdRun = null;   // "the 06z run" of one place says nothing about another
   _hdManifest = await _hdLoadManifest(_hdModel, region);
   if (!_hdManifest) return;
   if (!_hdHoursFor(_hdField).length) {
@@ -16744,7 +16745,7 @@ async function _hdShow() {
   // followed instead of one being invented around it.
   const entry = _hdRegionEntry(_hdModel, _hdRegion);
   const dir = (entry && entry.path)
-    ? entry.path.replace(/\/manifest\.json$/, '')
+    ? entry.path.replace(/[^/]+\/manifest\.json$/, _hdManifest.run)
     : `${model}/${_hdRegion}/${_hdManifest.run}`;
   const url = `${_hdBase}/models/${dir}`
             + `/${_hdField}_f${String(fhr).padStart(3, '0')}.png`;
@@ -16959,7 +16960,7 @@ function _hdFrameUrl(fhr) {
   const model = _hdManifest.model || _hdModel;
   const entry = _hdRegionEntry(_hdModel, _hdRegion);
   const dir = (entry && entry.path)
-    ? entry.path.replace(/\/manifest\.json$/, '')
+    ? entry.path.replace(/[^/]+\/manifest\.json$/, _hdManifest.run)
     : `${model}/${_hdRegion}/${_hdManifest.run}`;
   return `${_hdBase}/models/${dir}`
        + `/${_hdField}_f${String(fhr).padStart(3, '0')}.png`;
@@ -19996,20 +19997,85 @@ function _hdBuildFrameGrid() {
 // The Pi has one run: the finished one it built. The shared run list guesses a
 // cycle from the clock and a publish lag, which for these would offer runs the
 // Pi has not got, so this shows the real one instead.
+// Which archived run is on screen, or null for the latest. Reset whenever
+// the model or region changes, because "the 06z run" of one model says
+// nothing about another.
+let _hdRun = null;
+
+function _hdRunLabel(r) {
+  return `${MONS[+r.slice(4, 6) - 1]} ${+r.slice(6, 8)} - ${r.slice(9, 11)}z`;
+}
+
 function _hdPopulateRun() {
   const sel = document.getElementById('sev-run-sel');
   if (!sel) return;
-  const r = _hdManifest && _hdManifest.run;      // "20260814_12"
   sel.innerHTML = '';
-  const o = document.createElement('option');
-  if (r) {
-    o.value = r.replace('_', '');
-    o.textContent = `Latest · ${MONS[+r.slice(4, 6) - 1]} ${+r.slice(6, 8)} - ${r.slice(9, 11)}z`;
-  } else {
+  const entry = _hdRegionEntry(_hdModel, _hdRegion);
+  // The archive the Pi advertises. An index written before runs existed
+  // lists none, and then this degrades to exactly the single Latest line it
+  // always showed rather than an empty picker.
+  const runs = (entry && Array.isArray(entry.runs) && entry.runs.length)
+    ? entry.runs
+    : (_hdManifest && _hdManifest.run ? [_hdManifest.run] : []);
+  if (!runs.length) {
+    const o = document.createElement('option');
     o.value = ''; o.textContent = '-';
+    sel.appendChild(o);
+    _sevRun = '';
+    return;
   }
-  sel.appendChild(o);
-  _sevRun = o.value;
+  runs.forEach((r, i) => {
+    const o = document.createElement('option');
+    o.value = r;
+    o.textContent = (i === 0 ? 'Latest · ' : '') + _hdRunLabel(r);
+    sel.appendChild(o);
+  });
+  const showing = (_hdManifest && _hdManifest.run) || runs[0];
+  sel.value = runs.includes(showing) ? showing : runs[0];
+  _sevRun = sel.value.replace('_', '');
+  // A past run is not the forecast, it is what the forecast USED to be, and
+  // the picker itself says so at a glance rather than only in the date.
+  sel.style.color = sel.value === runs[0] ? '' : 'var(--accent2, #fc0)';
+}
+
+// Load one archived run's manifest. The manifest lives under its run and
+// never changes, so the path is derived from the latest entry's path by
+// swapping the run segment, which keeps working whatever shape the rest of
+// the path has.
+async function _hdLoadRunManifest(run) {
+  const entry = _hdRegionEntry(_hdModel, _hdRegion);
+  if (!entry || !entry.path) return null;
+  const path = entry.path.replace(/[^/]+\/manifest\.json$/, run + '/manifest.json');
+  return fetch(`${_hdBase}/models/${path}`, { cache: 'no-store' })
+    .then(r => r.ok ? r.json() : null).catch(() => null);
+}
+
+// Switch the Pi model to an archived run. Everything else, the field, the
+// region, the frame position where it still exists, stays put: this changes
+// WHEN the forecast was made and nothing else.
+async function _hdSetRun(run) {
+  if (!_hdModel || !run) return;
+  const man = await _hdLoadRunManifest(run);
+  if (!man) {
+    if (typeof showToast === 'function') {
+      showToast('That run is no longer on the Pi. It keeps five days.', 3500);
+    }
+    _hdPopulateRun();
+    return;
+  }
+  const entry = _hdRegionEntry(_hdModel, _hdRegion);
+  _hdRun = (entry && entry.run === man.run) ? null : man.run;
+  _hdManifest = man;
+  if (!_hdHoursFor(_hdField).length) {
+    const first = HD_FIELDS.find(f => _hdHoursFor(f.id).length);
+    if (first) _hdField = first.id;
+  }
+  _hdHourIdx = Math.min(_hdHourIdx, Math.max(0, _hdHoursFor(_hdField).length - 1));
+  _sevFrame = _hdHourIdx;
+  _sevUpdateProducts();
+  _hdPopulateRun();
+  _hdBuildFrameGrid();
+  _sevRender();
 }
 
 // How far the scrubber, the arrows and the playbar are allowed to go. They all
@@ -22234,29 +22300,52 @@ function _tmSite() {
 // Jump the current radar to a moment. Everything else about the picture, the
 // site, the product, the tilt, stays exactly as it is: this control changes
 // WHEN and nothing else.
+// Whether the satellite layer is on and in a mode the time machine can
+// drive. The WMS bands take any TIME their archive holds; the Pi's own RGB
+// composites keep three days of frames and no more, so travelling further
+// on one of those would be promising a picture that does not exist.
+function _tmSatActive() {
+  return !!(typeof activeLayers !== 'undefined' && activeLayers.satellite);
+}
+
 async function _tmJump(ms) {
   const site = _tmSite();
-  if (!site) {
+  const sat = _tmSatActive();
+  if (!site && !sat) {
     if (typeof showToast === 'function') {
-      showToast('Pick a radar site first, then travel to a time.', 3500);
+      showToast('Turn on radar or satellite first, then travel to a time.', 3500);
     }
     return;
   }
   const at = Math.max(TM_FLOOR, Math.min(Date.now(), +ms || 0));
   _tmAt = at;
   _tmClose();
+  const when = new Date(at).toISOString().slice(0, 16).replace('T', ' ') + 'Z';
   if (typeof showToast === 'function') {
-    showToast(`${String(site).toUpperCase()} at `
-      + new Date(at).toISOString().slice(0, 16).replace('T', ' ') + 'Z', 3000);
+    const what = [site && String(site).toUpperCase(), sat && 'satellite']
+      .filter(Boolean).join(' + ');
+    showToast(`${what} at ${when}`, 3000);
   }
-  await _l3BucketShow(site, at);
+  if (sat) {
+    if (typeof _goesIsPi === 'function' && _goesIsPi()) {
+      // Said plainly rather than silently showing the wrong day: the Pi
+      // composites keep three days, the plain bands reach years back.
+      if (Date.now() - at > 3 * 86400e3 && typeof showToast === 'function') {
+        showToast('Pi composites keep 3 days. Pick a plain band for older imagery.', 5000);
+      }
+    }
+    try { loadGoesLayer(); } catch (e) { console.warn('[tm] satellite:', e); }
+  }
+  if (site) await _l3BucketShow(site, at);
   _tmSyncBadge();
 }
 
 async function _tmLive() {
   const site = _tmSite();
+  const sat = _tmSatActive();
   _tmAt = null;
   _tmClose();
+  if (sat) { try { loadGoesLayer(); } catch (e) {} }
   if (site) await _l3BucketShow(site, null);
   _tmSyncBadge();
 }
@@ -22355,13 +22444,16 @@ function _tmOpen() {
   const d = m.querySelector('#tm-date');
   d.min = floor; d.max = today;
   if (!d.value) d.value = new Date(_tmAt || Date.now()).toISOString().slice(0, 10);
-  m.querySelector('.tm-note').innerHTML = site
-    ? `Scrubbing <b>${_ccEsc(String(site).toUpperCase())}</b>. The archive `
+  const sat = _tmSatActive();
+  m.querySelector('.tm-note').innerHTML = (site || sat)
+    ? `Scrubbing <b>${[site && _ccEsc(String(site).toUpperCase()), sat && 'SATELLITE']
+        .filter(Boolean).join(' + ')}</b>. The archive `
       + `reaches back to <b>${floor}</b>, about ${
-        Math.floor((Date.now() - TM_FLOOR) / 86400e3 / 365 * 10) / 10} years, `
-      + 'at roughly one scan every five minutes. A radar that was down that '
-      + 'day has nothing to show, and will say so.'
-    : 'Pick a radar site on the map first, then choose a moment.';
+        Math.floor((Date.now() - TM_FLOOR) / 86400e3 / 365 * 10) / 10} years. `
+      + (sat ? 'Satellite arrives as the hours leading up to your moment, so the '
+             + 'playbar scrubs the approach. ' : '')
+      + 'A source that was down that day has nothing to show, and will say so.'
+    : 'Turn on radar or satellite first, then choose a moment.';
   m.classList.add('open');
 }
 
@@ -26107,6 +26199,13 @@ const GOES_PRODUCTS = [
   { id: 'rgb-nightmicro', group: 'rgb-cloud', src: 'pi', recipe: 'nightmicro', label: 'Night Microphysics', icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-moon></use></svg>' },
   { id: 'rgb-dust',       group: 'rgb-hazard', src: 'pi', recipe: 'dust',       label: 'Dust',               icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-dot></use></svg>' },
   { id: 'rgb-ash',        group: 'rgb-hazard', src: 'pi', recipe: 'ash',        label: 'Volcanic Ash',       icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-cloud></use></svg>' },
+  { id: 'rgb-daylandcloud',  group: 'rgb-cloud', src: 'pi', recipe: 'daylandcloud',  label: 'Day Land Cloud',      icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-leaf></use></svg>', note: 'Daytime only' },
+  { id: 'rgb-daysnowfog',    group: 'rgb-cloud', src: 'pi', recipe: 'daysnowfog',    label: 'Day Snow and Fog',    icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-fog></use></svg>', note: 'Daytime only' },
+  { id: 'rgb-dayconvection', group: 'rgb-cloud', src: 'pi', recipe: 'dayconvection', label: 'Day Convection',      icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-storm></use></svg>', note: 'Daytime only' },
+  { id: 'rgb-simplewv',      group: 'rgb-cloud', src: 'pi', recipe: 'simplewv',      label: 'Simple Water Vapor',  icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-drop></use></svg>' },
+  { id: 'rgb-diffwv',        group: 'rgb-cloud', src: 'pi', recipe: 'diffwv',        label: 'Differential Water Vapor', icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-wave></use></svg>' },
+  { id: 'rgb-daylandcloudfire', group: 'rgb-hazard', src: 'pi', recipe: 'daylandcloudfire', label: 'Day Land Cloud Fire', icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-fire></use></svg>', note: 'Daytime only' },
+  { id: 'rgb-so2',           group: 'rgb-hazard', src: 'pi', recipe: 'so2',           label: 'Sulphur Dioxide',     icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-warning></use></svg>' },
   { id: 'rgb-firetemp',   group: 'rgb-hazard', src: 'pi', recipe: 'firetemp',   label: 'Fire Temperature',   icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-fire></use></svg>' },
   // ── The global mosaic, also via the Pi ───────────────────────────────────
   // NOAA's GMGSI: every geostationary satellite's picture stitched into one
@@ -26474,7 +26573,15 @@ function _satFrameCount() {
 // Pi's own three days of history and does not guess at times at all, which is
 // why the two are built differently.
 function _buildGoesFrames() {
-  const now = new Date();
+  // Anchored at the time machine's moment when one is set, at the present
+  // otherwise. The loop then ENDS at the travelled-to time, so scrubbing
+  // back from it shows the hours leading up to that moment, which is what
+  // "show me the satellite when the derecho hit" actually means. Everything
+  // downstream, the playbar, the labels, the frame pool, works on whatever
+  // list this returns and needs no other change: the WMS takes any TIME its
+  // archive holds, so a frame from last year is fetched exactly like a frame
+  // from twenty minutes ago.
+  const now = (typeof _tmAt === 'number' && _tmAt) ? new Date(_tmAt) : new Date();
   now.setUTCSeconds(0, 0);
   now.setUTCMinutes(Math.floor(now.getUTCMinutes() / SAT_FRAME_MIN) * SAT_FRAME_MIN - 20);
   const frames = [];
@@ -26971,6 +27078,13 @@ const LAYER_DESCRIPTIONS = {
   'rgb-nightmicro': 'The night-time counterpart to Day Cloud Phase. Separates low cloud and fog from higher cloud in the dark, which plain infrared cannot do, so this is the one for finding overnight fog.',
   'rgb-dust':       'Tuned to make airborne dust visible against both land and cloud, which it is nearly invisible in on any single channel. Works day and night.',
   'rgb-ash':        'The same idea as Dust but tuned for volcanic ash, which matters because ash is invisible to ordinary satellite views and dangerous to aircraft.',
+  'rgb-daylandcloud': 'The everyday daylight picture: vegetation green, bare ground tan, water dark, ice cloud cyan and water cloud white. The view to leave up when the question is simply what the country looks like right now.',
+  'rgb-daysnowfog':   'Snow, fog and ordinary cloud all look white on plain visible. This splits them: snow on the ground comes out red-orange, fog and low water cloud pale, and ice cloud dark, by combining how each reflects the snow-sensitive band with how warm it looks in shortwave.',
+  'rgb-dayconvection': 'Growing storms turn bright yellow here before they look like much on plain visible. Strong updrafts push small ice crystals to the cloud top, and this recipe is tuned to make exactly that combination loud. Watch for yellow blobs along a boundary.',
+  'rgb-simplewv':     'Water vapour with the clean infrared folded in: dry air reads dark brown, moisture bright, high cloud brightest. Works day and night, and reads more naturally than the single flat water vapour channel.',
+  'rgb-diffwv':       'The two water vapour channels differenced, which shows where upper and mid level moisture disagree: dry slots punching into a storm system, and the jet streaks that ride them. A forecaster look, not a pretty one.',
+  'rgb-daylandcloudfire': 'The Day Land Cloud scene with the fire-sensitive band in the red channel, so an active hot fire jumps out of the landscape instead of hiding in it. Smoke plumes trail pale blue-grey downwind.',
+  'rgb-so2':          'Volcanic sulphur dioxide, which one infrared band sees and its neighbours do not. Sits beside Volcanic Ash because the gas and the ash from the same eruption travel separately, at different heights and directions.',
   'rgb-firetemp':   'Shows how hot a fire is burning, not just where it is. The hottest, most actively flaming parts glow brightest, so an intensifying fire is visible before the smoke plume changes. Daytime only.',
   waves: 'A smooth color map of ocean conditions from Open-Meteo, covering the whole world’s oceans with a real coastline cutout so color never bleeds onto land. Tap again to pick a product, like Wave Height or Sea Surface Temp.',
   air: 'A smooth worldwide air quality color map from Open-Meteo. Tap again to pick a product, like US AQI, PM2.5, PM10, or Ozone.',
@@ -28142,7 +28256,16 @@ function _sevSetVar(v){
   _sevVar=v;const el=document.getElementById('sev-var-sel');if(el&&el.value!==v)el.value=v;
   _sevFrame=_sevStartFrame();_sevBuildFrameGrid();_sevRender();
 }
-function _sevSetRun(v){_sevRun=v;_sevFrame=_sevStartFrame();_sevBuildFrameGrid();_sevRender();}
+function _sevSetRun(v){
+  // A Pi model's runs are an archive with real manifests behind them, so the
+  // pick loads one. The Open-Meteo sections keep their original behaviour.
+  if (typeof _hdFromPicker !== 'undefined' && _hdFromPicker && _hdOn
+      && typeof _hdSetRun === 'function' && /\d{8}_\d{2}/.test(String(v))) {
+    _hdSetRun(v);
+    return;
+  }
+  _sevRun=v;_sevFrame=_sevStartFrame();_sevBuildFrameGrid();_sevRender();
+}
 // The sounding used to be a button inside the Run Models panel, which meant
 // two things that were both wrong. It only ever read the map's centre, so
 // getting a sounding somewhere meant dragging the map until that place was in
@@ -54933,7 +55056,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'Model charts are sharp and full strength now. Three things were wrong and all three are fixed. Fine models like HRRR were being thinned to half their real resolution by an old size cap; they now arrive at one pixel per model cell, the whole picture the model actually made. Coarse models were drawn at half a screen\'s width and stretched by the browser, which blurs colours across ramp boundaries; the values are now interpolated up to 2000 pixels on the Pi, where the numbers still exist, so the colours stay honest and the chart arrives sharp. And opacity was applied twice, once baked into the pixels and once by the slider, so the default view was about half strength and the slider could never reach full. The pictures are fully opaque now and the Model Opacity slider in Settings is the one and only fade, starting at 88 percent. New charts pick this up as the Pi rebuilds each model over the next hours.';
+const APP_LATEST_UPDATE = 'Four things. Every model now keeps five days of every run, and the Run dropdown in the model panel lets you step back through them, so you can watch a model change its mind from run to run; after five days a run is deleted. The Time Machine now drives satellite too: turn satellite on, pick a moment, and the playbar scrubs the hours leading up to it, years back on the plain bands. Seven new satellite RGB products, all built to the published CIRA and EUMETSAT recipes: Day Land Cloud, Day Land Cloud Fire, Day Convection, Day Snow and Fog, Differential Water Vapor, Simple Water Vapor, and Sulphur Dioxide. And the satellite colour controls were audited end to end: one filter reaches every satellite surface, radar is never touched by it, and going back to Normal really clears it.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
