@@ -89,6 +89,89 @@ console.log('\n3. thickness is clamped to something drawable');
   ok('and so does nothing at all', clamp(undefined) === 1 && clamp(null) === 1);
 }
 
+/*
+ * 3b. EVERY ZOOM LEVEL.
+ *
+ * County lines used to be refused below zoom 6. The stated reason was that
+ * three thousand shapes at low zoom would be slow, and that was assumed
+ * rather than measured. It is false, and the arithmetic is worth keeping
+ * because the temptation to put the floor back will return.
+ *
+ * Leaflet's smoothFactor is a Douglas-Peucker tolerance in PIXELS, so zooming
+ * out simplifies every outline automatically: the further away a county is
+ * drawn, the fewer points survive. Measured over the real file, all 3221
+ * counties come to 13,633 drawn points at zoom 3, against 31,175 at zoom 6
+ * where the layer was already allowed. The floor made the map worse at low
+ * zoom and saved nothing.
+ */
+console.log('\n3b. nothing is gated by zoom any more');
+{
+  ok('the county zoom floor is gone entirely',
+     !/MB_COUNTY_MIN_ZOOM/.test(PAGE));
+  const refresh = (PAGE.match(/function _mbCountyRefresh\(\) \{[\s\S]*?\n\}/) || [''])[0];
+  ok('and nothing in the county refresh compares a zoom to a floor',
+     !/getZoom\(\)\s*<\s*MB_/.test(refresh), refresh.slice(0, 120));
+  ok('the viewport filter is kept, which is the part that was doing the work',
+     /map\.getBounds\(\)\.pad/.test(refresh));
+  ok('why the floor was wrong is written down where it used to be',
+     /FEWER than the 31,175 at zoom 6/.test(PAGE));
+  // The other three were never gated and must not quietly acquire one.
+  const admin = (PAGE.match(/async function _mbBuildAdmin1\(kind\) \{[\s\S]*?\n\}/) || [''])[0];
+  const coast = (PAGE.match(/function _mbBuildCoast\(\) \{[\s\S]*?\n\}/) || [''])[0];
+  ok('state and province lines have no zoom floor', !/getZoom/.test(admin));
+  ok('and neither does the coastline', !/getZoom/.test(coast));
+}
+
+/*
+ * 3c. THE COASTLINE.
+ *
+ * State and county lines are political and stop at the national border. The
+ * shoreline is the one boundary here that is physical, and on the Dark
+ * basemap nothing else shows where the Gulf coast is until weather is drawn
+ * over it.
+ *
+ * TWO DETAIL LEVELS, AND WHY. The 50m file is 1.6 MB and 60,416 points; the
+ * 10m file is 10.1 MB and 410,957. Ten megabytes the instant a switch is
+ * flipped is not a reasonable thing to spend, and at a continental view it
+ * would buy nothing anyone can see. But 50m detail IS visibly wrong up close,
+ * and a bay in the wrong place matters when the question is whether a storm
+ * is coming ashore. So the coarse file loads immediately and the fine one is
+ * fetched once, in the background, only if you zoom in far enough to tell.
+ */
+console.log('\n3c. the coastline, and its two detail levels');
+{
+  ok('both files are configured', /coast: \[[\s\S]{0,300}ne_50m_coastline/.test(PAGE)
+     && /coastHi: \[[\s\S]{0,300}ne_10m_coastline/.test(PAGE));
+  ok('each with a spare host, like every other source here',
+     (PAGE.match(/ne_50m_coastline/g) || []).length === 2
+     && (PAGE.match(/ne_10m_coastline/g) || []).length === 2);
+  ok('the coarse one is what loads first',
+     /async function _mbLoadCoast\(\)[\s\S]{0,300}_mbFetch\(MB_SRC\.coast\)/.test(PAGE));
+  ok('the fine one is fetched only once a session, win or lose',
+     /_mbCoastHiTried = true;/.test(PAGE));
+  ok('only while the layer is actually on',
+     /_mbCoastMaybeUpgrade[\s\S]{0,400}if \(!_mbOn\.coast/.test(PAGE));
+  ok('and only past the zoom where the coarse one is visibly wrong',
+     /if \(map\.getZoom\(\) < MB_COAST_HI_ZOOM\) return;/.test(PAGE));
+  // A 10 MB fetch that fails must not take the shoreline off the map: the
+  // coarse one is still correct at the scale it was drawn for.
+  ok('a failed upgrade leaves the coarse coast on screen, and does not shout',
+     /catch \(err\) \{[\s\S]{0,400}console\.warn\('map borders \(fine coastline\)/.test(PAGE));
+  ok('the upgrade is also checked when the view settles, not only on the switch',
+     /_mbCountyRefresh\(\); _mbCityRefresh\(\); _mbCoastMaybeUpgrade\(\);/.test(PAGE));
+  ok('there is a switch for it in Settings',
+     /id="lqm-set-coastborders"[^>]*onchange="lqmToggleSetting\('coastborders'/.test(PAGE));
+  ok('the switch is wired to the layer', /key === 'coastborders'/.test(PAGE)
+     && /_toggleBorders\('coast', val\)/.test(PAGE));
+  ok('it is findable by searching for shore or coastal',
+     /'coastborders', \['coast', 'coastal', 'shore', 'shoreline'/.test(PAGE));
+  // It ships off, because 1.6 MB should not be spent on somebody's behalf.
+  ok('it ships off, and only an explicit yes turns it on',
+     /lqm_coastborders'\); if\(cstVal==='true'\)/.test(PAGE));
+  ok('and the markup agrees it is off',
+     /id="lqm-set-coastborders" onchange=/.test(PAGE));
+}
+
 console.log('\n4. on a real map, in a real browser');
 let chromium;
 try { ({ chromium } = await import('playwright')); } catch { /* below */ }
@@ -112,6 +195,7 @@ if (!chromium) {
     _mbLayers.state = mk();
     _mbLayers.county = mk();
     _mbLayers.province = mk();
+    _mbLayers.coast = mk();
 
     mbResetBorderStyle();
     out.startColorDark = _mbStyleFor('state').color;
@@ -199,6 +283,15 @@ if (!chromium) {
     // Storing the colour auto happened to resolve to would freeze today's
     // answer and quietly stop following the basemap from the next load on.
     out.savedAuto = JSON.parse(localStorage.getItem('gwcfc_mb_style'));
+    // Coast is a full citizen of the style system: its own colour, its own
+    // thickness, and reset returns it to the water blue it shipped with
+    // rather than to auto, which it never was.
+    out.coastReset = _mbStyleFor('coast').color;
+    out.coastKinds = MB_KINDS.slice();
+    mbSetBorderColor('coast', '#ff9500');
+    mbSetBorderWeight('coast', 3);
+    out.coastOnLayer = _mbLayers.coast.last;
+    out.coastIndependent = _mbStyleFor('state').color;
     return out;
   });
   await b.close();
@@ -253,6 +346,16 @@ if (!chromium) {
      JSON.stringify(r.afterResetWeights));
   ok('with the map told about it, not just the config',
      r.afterResetOnLayer === 1.5, String(r.afterResetOnLayer));
+  ok('coast is one of the styled line types, not a special case',
+     r.coastKinds.join(',') === 'state,province,county,coast',
+     r.coastKinds.join(','));
+  ok('reset returns coast to the water blue it shipped with, not to auto',
+     r.coastReset === '#7fd4ff', r.coastReset);
+  ok('its colour and thickness reach the layer like any other',
+     r.coastOnLayer.color === '#ff9500' && r.coastOnLayer.weight === 3,
+     JSON.stringify(r.coastOnLayer));
+  ok('and changing it leaves the other lines alone',
+     r.coastIndependent === '#ffffff', r.coastIndependent);
 }
 
 console.log('\n5. house rules');
