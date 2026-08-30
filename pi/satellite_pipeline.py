@@ -182,6 +182,104 @@ RGB_RECIPES = {
             {"terms": [(1, 1.0)], "range": (0.0, 1.0), "gamma": 0.5},
         ],
     },
+
+    # ── The wider published set ─────────────────────────────────────────────
+    # Every recipe below is a CIRA or EUMETSAT quick-guide standard, with the
+    # published ranges and gammas rather than tuned-by-eye numbers, so a
+    # forecaster who knows these products from anywhere else reads ours the
+    # same way. Reflectance bands run 0 to 1, infrared runs in Kelvin, and a
+    # difference term is the physics: C07 minus C13 is "how much warmer does
+    # this cloud look in shortwave", which is what separates fog from ground.
+
+    "daylandcloud": {
+        # Vegetation, bare ground, water and cloud told apart by daylight.
+        # The everyday "what does the country look like" picture.
+        "label": "Day Land Cloud", "sectors": ("conus", "meso1", "meso2", "fulldisk"),
+        "bands": (2, 3, 5),
+        "daytime_only": True,
+        "rgb": [
+            {"terms": [(5, 1.0)], "range": (0.0, 0.975)},
+            {"terms": [(3, 1.0)], "range": (0.0, 1.086)},
+            {"terms": [(2, 1.0)], "range": (0.0, 1.0)},
+        ],
+    },
+    "daylandcloudfire": {
+        # The same scene with band 6 in the red, which is where a hot fire
+        # jumps out of the landscape instead of hiding in it.
+        "label": "Day Land Cloud Fire", "sectors": ("conus", "meso1", "meso2"),
+        "bands": (2, 3, 6),
+        "daytime_only": True,
+        "rgb": [
+            {"terms": [(6, 1.0)], "range": (0.0, 1.0)},
+            {"terms": [(3, 1.0)], "range": (0.0, 1.0)},
+            {"terms": [(2, 1.0)], "range": (0.0, 1.0)},
+        ],
+    },
+    "dayconvection": {
+        # Growing storms turn yellow before they look like much on plain
+        # visible: strong updrafts have small ice crystals aloft, and this
+        # recipe is built to make exactly that combination loud.
+        "label": "Day Convection", "sectors": ("conus", "meso1", "meso2"),
+        "bands": (2, 5, 7, 8, 10, 13),
+        "daytime_only": True,
+        "rgb": [
+            {"terms": [(8, 1.0), (10, -1.0)], "range": (-35.0, 5.0)},
+            {"terms": [(7, 1.0), (13, -1.0)], "range": (-5.0, 60.0)},
+            {"terms": [(5, 1.0), (2, -1.0)], "range": (-0.75, 0.25)},
+        ],
+    },
+    "daysnowfog": {
+        # Snow on the ground, fog banks and water cloud, which all look
+        # white on visible, split three ways by how they reflect band 5 and
+        # how warm they look in shortwave.
+        "label": "Day Snow and Fog", "sectors": ("conus", "meso1", "meso2"),
+        "bands": (3, 5, 7, 13),
+        "daytime_only": True,
+        "rgb": [
+            {"terms": [(3, 1.0)], "range": (0.0, 1.0), "gamma": 1.7},
+            {"terms": [(5, 1.0)], "range": (0.0, 0.70), "gamma": 1.7},
+            {"terms": [(7, 1.0), (13, -1.0)], "range": (0.0, 30.0), "gamma": 1.7},
+        ],
+    },
+    "diffwv": {
+        # The two water vapour channels differenced: where the upper and
+        # mid level moisture disagree, which is where dry slots punch in and
+        # jet streaks live.
+        "label": "Differential Water Vapor", "sectors": ("conus", "fulldisk"),
+        "bands": (8, 10),
+        "rgb": [
+            {"terms": [(10, 1.0), (8, -1.0)], "range": (-3.0, 30.0),
+             "invert": True, "gamma": 0.26},
+            {"terms": [(10, 1.0)], "range": (213.15, 278.15),
+             "invert": True, "gamma": 0.4},
+            {"terms": [(8, 1.0)], "range": (208.5, 243.9),
+             "invert": True, "gamma": 0.4},
+        ],
+    },
+    "simplewv": {
+        # Water vapour with the clean IR folded in, so dry air reads dark
+        # and high cloud reads bright without the flat grey of a single
+        # channel. Works day and night alike.
+        "label": "Simple Water Vapor", "sectors": ("conus", "fulldisk"),
+        "bands": (8, 10, 13),
+        "rgb": [
+            {"terms": [(13, 1.0)], "range": (202.3, 279.0), "invert": True},
+            {"terms": [(8, 1.0)], "range": (214.7, 242.7), "invert": True},
+            {"terms": [(10, 1.0)], "range": (245.1, 261.0), "invert": True},
+        ],
+    },
+    "so2": {
+        # Volcanic sulphur dioxide, which band 9 sees and its neighbours do
+        # not. Alongside the Ash product because the gas and the ash from
+        # the same eruption travel separately.
+        "label": "Sulphur Dioxide", "sectors": ("conus", "fulldisk"),
+        "bands": (9, 10, 11, 13),
+        "rgb": [
+            {"terms": [(9, 1.0), (10, -1.0)], "range": (-4.0, 2.0)},
+            {"terms": [(13, 1.0), (11, -1.0)], "range": (-4.0, 5.0)},
+            {"terms": [(13, 1.0)], "range": (243.6, 302.4)},
+        ],
+    },
 }
 
 
