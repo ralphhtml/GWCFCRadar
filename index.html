@@ -4356,6 +4356,22 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
 }
+#inspector-drag-btn {
+  pointer-events: auto;
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.25);
+  color: rgba(255,255,255,0.75);
+  border-radius: 5px;
+  font-family: var(--mono);
+  font-size: 13px;
+  width: 20px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: grab;
+  touch-action: none;   /* or the browser pans the page instead of dragging */
+}
+#inspector-drag-btn:hover { background: rgba(255,255,255,0.18); }
+#inspector-drag-btn:active { cursor: grabbing; background: rgba(255,255,255,0.25); }
 #inspector-pin-btn:hover { background: rgba(232,184,0,0.3); }
 #inspector-pin-btn:active { transform: scale(0.92); }
 #tool-hint { display:none !important; }
@@ -23380,6 +23396,9 @@ function setUnitPref(key, val) {
   _units[key] = val;
   try { localStorage.setItem('lqm_unit_' + key, val); } catch(e) {}
   _refreshUnitDisplays();
+  // The Inspector reads live off the map, so without this it would sit in the
+  // old unit until something happened to move the map.
+  if (typeof _inspUnitsChanged === 'function') { try { _inspUnitsChanged(); } catch(e) {} }
 }
 
 function fmtTemp(f) {
@@ -23943,14 +23962,21 @@ function _sstActiveRamp(source, variant) {
 function _sstToDisplay(v, source, variant) {
   if (!isFinite(v)) return null;
   if (source === 'aoml') return v;                        // kJ/cm2 and metres
-  const wantF = (typeof _units !== 'undefined' && _units.temp === 'F');
-  if (!wantF) return v;
+  // The preference is stored lower case ('f', 'c', 'both'), and this compared
+  // against an upper case 'F'. It was therefore never true, so sea surface
+  // temperature was pinned to Celsius no matter what Settings said. Anything
+  // that is not explicitly Celsius means Fahrenheit is wanted, which is also
+  // what makes the 'both' setting show a Fahrenheit number here.
+  if (!_sstWantF()) return v;
   return (variant === 'actual') ? (v * 9 / 5 + 32) : (v * 9 / 5);
+}
+function _sstWantF() {
+  const t = (typeof _units !== 'undefined' && _units && _units.temp) || 'f';
+  return String(t).toLowerCase() !== 'c';
 }
 function _sstUnitLabel(source, variant) {
   if (source === 'aoml') return variant === 'tchp' ? 'kJ/cm²' : 'm';
-  const wantF = (typeof _units !== 'undefined' && _units.temp === 'F');
-  return wantF ? '°F' : '°C';
+  return _sstWantF() ? '°F' : '°C';
 }
 
 async function _sstFetchIndex(force) {
@@ -24190,10 +24216,13 @@ function _sstFromHex(h) {
 function _sstSettingsRender() {
   const key = _sstRampKey();
   const ramp = _sstRampRead(key);
-  const unitC = (typeof _units !== 'undefined' && _units.temp === 'F');
+  // Same never-true comparison as _sstUnitLabel had: the preference is
+  // stored lower case, so this asked whether 'f' equalled 'F' and always
+  // answered no. The name said the opposite of what it held, too.
+  const wantF = (typeof _sstWantF === 'function') ? _sstWantF() : true;
   const isTemp = (key === 'actual' || key === 'anomaly');
   const unit = key === 'tchp' ? 'kJ/cm²' : key === 'd26' ? 'm'
-             : (unitC ? '°F' : '°C');
+             : (wantF ? '°F' : '°C');
 
   // The legend, drawn from the ramp itself so it can never disagree with
   // what is on the map. That is the point of a legend.
@@ -24204,8 +24233,8 @@ function _sstSettingsRender() {
       `rgb(${s[1].join(',')}) ${(((s[0] - lo) / ((hi - lo) || 1)) * 100).toFixed(1)}%`);
     const show = (v) => {
       if (!isTemp) return v.toFixed(0);
-      const d = key === 'actual' ? (unitC ? v * 9 / 5 + 32 : v)
-                                 : (unitC ? v * 9 / 5 : v);
+      const d = key === 'actual' ? (wantF ? v * 9 / 5 + 32 : v)
+                                 : (wantF ? v * 9 / 5 : v);
       return (key === 'anomaly' && d > 0 ? '+' : '') + d.toFixed(0);
     };
     leg.innerHTML =
@@ -24224,8 +24253,8 @@ function _sstSettingsRender() {
     const row = document.createElement('div');
     row.className = 'lqm-settings-row';
     const val = isTemp
-      ? (key === 'actual' ? (unitC ? stop[0] * 9 / 5 + 32 : stop[0])
-                          : (unitC ? stop[0] * 9 / 5 : stop[0]))
+      ? (key === 'actual' ? (wantF ? stop[0] * 9 / 5 + 32 : stop[0])
+                          : (wantF ? stop[0] * 9 / 5 : stop[0]))
       : stop[0];
     row.innerHTML = `<span class="lqm-settings-lbl" style="font-family:var(--mono);`
       + `font-size:10px;">${(key === 'anomaly' && val > 0 ? '+' : '')}`
@@ -35623,6 +35652,83 @@ function _scClosePanel() {
 let _inspEnabled = false;
 let _inspEl = null, _inspLabelEl = null, _inspRafPending = false, _inspInterval = null;
 let _inspLastRows = [];
+
+// ── Where the crosshair sits ─────────────────────────────────────────────
+// It was welded to the middle of the screen, so reading a second point meant
+// panning the map, which moved the first point off screen. The offset from
+// centre is draggable now, and remembered, because somebody who works with
+// it low and left wants it there next time too.
+const INSP_POS_KEY = 'gwcfc_insp_offset';
+let _inspOff = { x: 0, y: 0 };
+try {
+  const raw = JSON.parse(localStorage.getItem(INSP_POS_KEY) || 'null');
+  if (raw && Number.isFinite(raw.x) && Number.isFinite(raw.y)) {
+    _inspOff = { x: raw.x, y: raw.y };
+  }
+} catch (e) { /* a corrupt setting must not cost the page its Inspector */ }
+
+// Kept on screen whatever the offset says. A window resized smaller between
+// visits could otherwise restore the crosshair somewhere that no longer
+// exists, leaving the tool on and apparently gone.
+function _inspClampOff() {
+  if (typeof map === 'undefined' || !map) return;
+  const r = map.getContainer().getBoundingClientRect();
+  const mx = Math.max(0, r.width / 2 - 30), my = Math.max(0, r.height / 2 - 30);
+  _inspOff.x = Math.max(-mx, Math.min(mx, _inspOff.x));
+  _inspOff.y = Math.max(-my, Math.min(my, _inspOff.y));
+}
+
+function _inspApplyOff() {
+  _inspClampOff();
+  if (_inspEl) {
+    _inspEl.style.transform =
+      `translate(calc(-50% + ${_inspOff.x}px), calc(-50% + ${_inspOff.y}px))`;
+  }
+  if (_inspLabelEl) {
+    _inspLabelEl.style.transform =
+      `translate(calc(-50% + ${_inspOff.x}px), ${_inspOff.y}px)`;
+  }
+}
+
+function _inspSaveOff() {
+  try { localStorage.setItem(INSP_POS_KEY, JSON.stringify(_inspOff)); } catch (e) {}
+}
+
+function _inspResetPos() {
+  _inspOff = { x: 0, y: 0 };
+  _inspApplyOff(); _inspSaveOff();
+  if (_inspEnabled) _inspUpdate();
+}
+
+// One handler for mouse and touch, because a tool for reading a storm off a
+// map gets used on a phone in the field at least as often as at a desk.
+function _inspDragStart(e) {
+  e.preventDefault(); e.stopPropagation();
+  const pt = (t) => (t.touches && t.touches[0]) || t;
+  const s = pt(e);
+  const ox = _inspOff.x, oy = _inspOff.y, sx = s.clientX, sy = s.clientY;
+  let moved = false;
+  const move = (ev) => {
+    const m = pt(ev);
+    _inspOff.x = ox + (m.clientX - sx);
+    _inspOff.y = oy + (m.clientY - sy);
+    moved = true;
+    _inspApplyOff();
+    _inspUpdate();          // the reading follows the crosshair as it goes
+    ev.preventDefault();
+  };
+  const end = () => {
+    document.removeEventListener('mousemove', move);
+    document.removeEventListener('mouseup', end);
+    document.removeEventListener('touchmove', move);
+    document.removeEventListener('touchend', end);
+    if (moved) _inspSaveOff();
+  };
+  document.addEventListener('mousemove', move);
+  document.addEventListener('mouseup', end);
+  document.addEventListener('touchmove', move, { passive: false });
+  document.addEventListener('touchend', end);
+}
 // Units come from the product FAMILY, so a Level 3 bucket code ('n0b') and
 // its Level 2 sibling ('ref') read the same. Velocity is in knots at both
 // levels now (the decoders normalize it), which also retires a real bug
@@ -35630,6 +35736,67 @@ let _inspLastRows = [];
 // reported winds 15% too fast.
 const INSP_UNITS = { ref: 'dBZ', vel: 'kt', cc: '', zdr: 'dB', kdp: '°/km',
                      sw: 'm/s', hc: '', et: 'kft' };
+
+// ── The Inspector honours the unit preferences ───────────────────────────
+// Every row below used to print a hard-coded unit: mph, °F, hPa, ft. Setting
+// the app to Celsius changed the forecast panels and the popups and left the
+// Inspector reading Fahrenheit, which is worse than not offering the setting,
+// because the number looks authoritative and is in a unit you did not pick.
+//
+// The rows keep their split shape (a value span and a unit span), so this
+// returns the two parts rather than one formatted string. Everything arrives
+// in the app's base units, the same ones every fmt* helper takes: °F, mph,
+// mb, inches, miles.
+function _inspUnit(base, kind, dp) {
+  if (base == null || !Number.isFinite(base)) return null;
+  const u = (typeof _units !== 'undefined' && _units) || {};
+  const fix = (n, d) => n.toFixed(d != null ? d : (dp != null ? dp : 0));
+  if (kind === 'temp') {
+    const c = (base - 32) * 5 / 9;
+    if (u.temp === 'c')    return { value: fix(c), unit: '°C' };
+    if (u.temp === 'both') return { value: fix(base) + ' / ' + fix(c), unit: '°F/°C' };
+    return { value: fix(base), unit: '°F' };
+  }
+  if (kind === 'wind') {
+    if (u.wind === 'kmh')  return { value: fix(base * 1.60934), unit: 'km/h' };
+    if (u.wind === 'kt')   return { value: fix(base * 0.868976), unit: 'kt' };
+    if (u.wind === 'both') return { value: fix(base) + ' / ' + fix(base * 1.60934), unit: 'mph/kmh' };
+    return { value: fix(base), unit: 'mph' };
+  }
+  if (kind === 'pressure') {
+    const inHg = base / 33.8639;
+    if (u.pressure === 'inhg') return { value: inHg.toFixed(2), unit: 'inHg' };
+    if (u.pressure === 'both') return { value: fix(base) + ' / ' + inHg.toFixed(2), unit: 'mb/inHg' };
+    return { value: fix(base), unit: 'mb' };
+  }
+  if (kind === 'precip') {
+    const mm = base * 25.4;
+    if (u.precip === 'mm')   return { value: fix(mm, 1), unit: 'mm' };
+    if (u.precip === 'both') return { value: base.toFixed(2) + ' / ' + fix(mm, 1), unit: 'in/mm' };
+    return { value: base.toFixed(2), unit: 'in' };
+  }
+  if (kind === 'dist') {
+    const km = base * 1.60934;
+    if (u.dist === 'km')   return { value: fix(km, 1), unit: 'km' };
+    if (u.dist === 'both') return { value: fix(base, 1) + ' / ' + fix(km, 1), unit: 'mi/km' };
+    return { value: fix(base, 1), unit: 'mi' };
+  }
+  // Wave height rides the distance preference, since somebody working in
+  // metric wants metres of swell, not feet.
+  if (kind === 'height') {
+    if (u.dist === 'km' || u.dist === 'both') {
+      return { value: (base * 0.3048).toFixed(1), unit: 'm' };
+    }
+    return { value: base.toFixed(1), unit: 'ft' };
+  }
+  return null;
+}
+
+// Redrawn the moment a unit changes, so the readout does not sit in the old
+// unit until the map happens to move.
+function _inspUnitsChanged() {
+  if (_inspEnabled) { try { _inspUpdate(); } catch (e) {} }
+}
 
 function _inspQuadContains(mesh, k, lon, lat) {
   let inside = false;
@@ -35999,8 +36166,12 @@ function _inspWavesRow(center) {
   const color = `rgb(${r},${g},${b})`;
   if (_wavesProduct === 'wave-dir') return { label, value: Math.round(((v % 360) + 360) % 360) + '°', unit: _degToCompass(v), color };
   if (_wavesProduct === 'wave-period') return { label, value: v.toFixed(2), unit: 's', color };
-  if (_wavesProduct === 'sst') return { label, value: v.toFixed(2), unit: '°F', color };
-  return { label, value: v.toFixed(2), unit: 'ft', color };
+  if (_wavesProduct === 'sst') {
+    const t = _inspUnit(v, 'temp', 1);
+    return { label, value: t.value, unit: t.unit, color };
+  }
+  const h = _inspUnit(v, 'height');
+  return { label, value: h.value, unit: h.unit, color };
 }
 
 function _inspAirRow(center) {
@@ -36020,7 +36191,13 @@ function _inspTemperatureRow(center) {
   const v = _inspGridValueAt(_temperatureGridCache, center.lat, center.lng, WORLD_MAP_BOUNDS);
   if (v == null) return { label, value: 'No data', color: 'rgba(120,120,120,0.35)' };
   const [r, g, b] = _temperatureColorFor(_temperatureProduct, v);
-  return { label, value: v.toFixed(2), unit: TEMPERATURE_UNITS[_temperatureProduct] || '°F', color: `rgb(${r},${g},${b})` };
+  // Only convert what is actually a temperature. This group also carries
+  // humidity and cloud cover in percent, and "50 percent" put through a
+  // Fahrenheit to Celsius conversion is a confident wrong number.
+  const tu = TEMPERATURE_UNITS[_temperatureProduct] || '°F';
+  const conv = tu === '°F' ? _inspUnit(v, 'temp', 1) : null;
+  return { label, value: conv ? conv.value : v.toFixed(2),
+           unit: conv ? conv.unit : tu, color: `rgb(${r},${g},${b})` };
 }
 
 function _inspPressureRow(center) {
@@ -36028,7 +36205,11 @@ function _inspPressureRow(center) {
   const v = _inspGridValueAt(_pressureGridCache, center.lat, center.lng, WORLD_MAP_BOUNDS);
   if (v == null) return { label, value: 'No data', color: 'rgba(120,120,120,0.35)' };
   const [r, g, b] = _pressureColorFor(_pressureProduct, v);
-  return { label, value: v.toFixed(2), unit: PRESSURE_UNITS[_pressureProduct] || 'hPa', color: `rgb(${r},${g},${b})` };
+  // hPa and mb are the same number, so the preference applies directly.
+  const pu = PRESSURE_UNITS[_pressureProduct] || 'hPa';
+  const conv = (pu === 'hPa' || pu === 'mb') ? _inspUnit(v, 'pressure', 1) : null;
+  return { label, value: conv ? conv.value : v.toFixed(2),
+           unit: conv ? conv.unit : pu, color: `rgb(${r},${g},${b})` };
 }
 
 function _inspWindRow(center) {
@@ -36036,13 +36217,14 @@ function _inspWindRow(center) {
   const speed = _inspGridValueAt(_windGridCache, center.lat, center.lng, WORLD_MAP_BOUNDS);
   if (speed == null) return { label, value: 'No data', color: 'rgba(120,120,120,0.35)' };
   const [r, g, b] = _windColorFor(speed);
-  let unit = 'mph';
+  const uw = _inspUnit(speed, 'wind') || { value: Math.round(speed), unit: 'mph' };
+  let unit = uw.unit;
   if (_windGridCache.dirGrid) {
     const dirCache = { grid: _windGridCache.dirGrid, cols: _windGridCache.cols, rows: _windGridCache.rows, isAngle: true };
     const dir = _inspGridValueAt(dirCache, center.lat, center.lng, WORLD_MAP_BOUNDS);
     if (dir != null) unit += ' ' + _degToCompass(dir);
   }
-  return { label, value: Math.round(speed), unit, color: `rgb(${r},${g},${b})` };
+  return { label, value: uw.value, unit, color: `rgb(${r},${g},${b})` };
 }
 
 // Run Models' Ensemble Spread view (Severity ensemble mean) has real
@@ -36266,9 +36448,14 @@ function _inspAlertsRow(center) {
 function _inspUpdate() {
   _inspRafPending = false;
   if (!_inspEnabled || typeof map === 'undefined') return;
-  const center = map.getCenter();
   const rect = map.getContainer().getBoundingClientRect();
-  const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+  // Where the crosshair actually is, which is the middle until it is dragged.
+  // Everything below reads "center" as "the point being inspected", and that
+  // is now a screen position rather than the map's centre.
+  const cx = rect.left + rect.width / 2 + _inspOff.x;
+  const cy = rect.top + rect.height / 2 + _inspOff.y;
+  const center = map.containerPointToLatLng(
+    [cx - rect.left, cy - rect.top]);
 
   const rows = [];
   // The radar row belongs whenever radar is on screen: the mosaic layer, a
@@ -36340,9 +36527,21 @@ function _inspEnable() {
   pinBtn.title = 'Save this point with the layer readings currently shown here';
   pinBtn.innerHTML = '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-pin></use></svg>';
   pinBtn.onclick = _inspSavePinAtCenter;
+  // The grab handle. On the readout rather than on the crosshair itself,
+  // because the crosshair is deliberately pointer-events:none so it never
+  // eats a click meant for the map underneath it.
+  const dragBtn = document.createElement('button');
+  dragBtn.id = 'inspector-drag-btn';
+  dragBtn.title = 'Drag to move the Inspector. Double click to put it back in the middle.';
+  dragBtn.innerHTML = '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-grip></use></svg>';
+  dragBtn.addEventListener('mousedown', _inspDragStart);
+  dragBtn.addEventListener('touchstart', _inspDragStart, { passive: false });
+  dragBtn.addEventListener('dblclick', (e) => { e.preventDefault(); _inspResetPos(); });
+  _inspLabelEl.appendChild(dragBtn);
   _inspLabelEl.appendChild(rowsEl);
   _inspLabelEl.appendChild(pinBtn);
   document.body.appendChild(_inspLabelEl);
+  _inspApplyOff();
 
   map.on('move', _inspScheduleUpdate);
   // Refresh periodically too, so the value tracks animation frames and newly
@@ -36378,9 +36577,20 @@ function _inspSavePins() {
   try { localStorage.setItem(INSP_PINS_KEY, JSON.stringify(_inspPins)); } catch(e) {}
 }
 
+// One place answers "what point is the Inspector on", so the pin cannot
+// disagree with the readout above it. It used to save the map's centre, which
+// was the same thing only while the crosshair could not be moved.
+function _inspPoint() {
+  if (typeof map === 'undefined' || !map) return null;
+  const r = map.getContainer().getBoundingClientRect();
+  return map.containerPointToLatLng(
+    [r.width / 2 + _inspOff.x, r.height / 2 + _inspOff.y]);
+}
+
 function _inspSavePinAtCenter() {
   if (typeof map === 'undefined' || !map) return;
-  const center = map.getCenter();
+  const center = _inspPoint();
+  if (!center) return;
   const rows = _inspLastRows.map(r => ({ label: r.label, value: r.value, unit: r.unit, color: r.color }));
   _inspPins.push({ lat: center.lat, lng: center.lng, ts: Date.now(), rows });
   _inspSavePins();
@@ -55330,7 +55540,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'Borders now draw on top of the model charts. Model fields are opaque across the whole box, so state and county lines underneath them were lines you could not see, and those lines are most of what makes a temperature chart readable. Models have their own layer now, sitting just under the borders, and you can drag it anywhere you like in the Layer Order list in Settings. Turning on a second model to compare no longer buries the borders or the warning polygons either, which it used to. Before that: county lines at every zoom, and the new Coastlines layer.';
+const APP_LATEST_UPDATE = 'The Inspector can be moved. It has a grip handle on the left of the readout: drag it anywhere on screen and the reading follows the crosshair, so you can park it on a storm and still pan the map. Double click the handle to put it back in the middle, and it remembers where you left it. It also respects your unit settings now, which it was ignoring: pick Celsius, knots, inHg or millimetres in Settings then Units and the Inspector reports in them straight away. That turned up a real bug along the way, where sea surface temperature was stuck in Celsius no matter what you had chosen.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
