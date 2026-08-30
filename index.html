@@ -26115,6 +26115,11 @@ function setMapType(type) {
   });
   const mtSel = document.getElementById('lqm-set-maptype');
   if (mtSel) mtSel.value = type;
+  // Auto border colour reads the basemap, so this is the moment it changes
+  // its answer. Without this the lines keep yesterday's colour until
+  // something else happens to redraw them.
+  if (typeof _mbAutoSync === 'function') { try { _mbAutoSync(); } catch (e) {} }
+  if (typeof _mbStyleSyncUi === 'function') { try { _mbStyleSyncUi(); } catch (e) {} }
 }
 
 // ── SMOOTH TOGGLE ──
@@ -46638,6 +46643,103 @@ function selectProduct(p) {
         <div class="lqm-toggle-knob"></div>
       </label>
     </div>
+    <!-- Deliberately NOT a .lqm-settings-category. The rail builds one tab per
+         card by reading the FIRST heading in it, so a second one earns no tab
+         and, in a card that is not part of a merge group, would be a section
+         nothing can navigate to. This is a label inside a card that already
+         has a tab, so it is styled as a heading without claiming to be one. -->
+    <div style="font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent2);padding:12px 0 2px;">
+      <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-palette></use></svg> Border Color and Thickness
+    </div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:2px 0 6px;line-height:1.5;">
+      Auto follows the map style: black lines on Light and Topo, white on Dark and Satellite. Pick a
+      fixed color instead and it stays that color on every basemap. Thickness is in pixels.
+    </div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">State Line Color</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <select id="lqm-mb-state-color" class="lqm-settings-select" onchange="mbPickBorderColor('state',this.value)">
+          <option value="auto">Auto</option>
+          <option value="#ffffff">White</option>
+          <option value="#111111">Black</option>
+          <option value="#ffd400">Yellow</option>
+          <option value="#00e5ff">Cyan</option>
+          <option value="#ff3b30">Red</option>
+          <option value="#39ff88">Green</option>
+          <option value="#ff5ce1">Magenta</option>
+          <option value="#ff9500">Orange</option>
+          <option value="custom">Custom</option>
+        </select>
+        <input type="color" id="lqm-mb-state-swatch" value="#ffffff" style="display:none;width:28px;height:22px;padding:0;border:1px solid rgba(255,255,255,0.2);border-radius:4px;background:none;cursor:pointer;"
+          oninput="mbSetBorderColor('state',this.value)">
+      </div>
+    </div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">State Line Thickness</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <input type="range" id="lqm-mb-state-weight" min="0.2" max="6" step="0.1" value="1.5"
+          class="lqm-slider" oninput="mbSetBorderWeight('state',this.value);document.getElementById('lqm-mb-state-weight-val').textContent=Number(this.value).toFixed(1)+'px'">
+        <span id="lqm-mb-state-weight-val" style="font-family:var(--mono);font-size:9px;color:var(--accent2);min-width:34px;">1.5px</span>
+      </div>
+    </div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">County Line Color</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <select id="lqm-mb-county-color" class="lqm-settings-select" onchange="mbPickBorderColor('county',this.value)">
+          <option value="auto">Auto</option>
+          <option value="#ffffff">White</option>
+          <option value="#111111">Black</option>
+          <option value="#ffd400">Yellow</option>
+          <option value="#00e5ff">Cyan</option>
+          <option value="#ff3b30">Red</option>
+          <option value="#39ff88">Green</option>
+          <option value="#ff5ce1">Magenta</option>
+          <option value="#ff9500">Orange</option>
+          <option value="custom">Custom</option>
+        </select>
+        <input type="color" id="lqm-mb-county-swatch" value="#ffffff" style="display:none;width:28px;height:22px;padding:0;border:1px solid rgba(255,255,255,0.2);border-radius:4px;background:none;cursor:pointer;"
+          oninput="mbSetBorderColor('county',this.value)">
+      </div>
+    </div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">County Line Thickness</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <input type="range" id="lqm-mb-county-weight" min="0.2" max="6" step="0.1" value="0.7"
+          class="lqm-slider" oninput="mbSetBorderWeight('county',this.value);document.getElementById('lqm-mb-county-weight-val').textContent=Number(this.value).toFixed(1)+'px'">
+        <span id="lqm-mb-county-weight-val" style="font-family:var(--mono);font-size:9px;color:var(--accent2);min-width:34px;">0.7px</span>
+      </div>
+    </div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Province Line Color</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <select id="lqm-mb-province-color" class="lqm-settings-select" onchange="mbPickBorderColor('province',this.value)">
+          <option value="auto">Auto</option>
+          <option value="#ffffff">White</option>
+          <option value="#111111">Black</option>
+          <option value="#ffd400">Yellow</option>
+          <option value="#00e5ff">Cyan</option>
+          <option value="#ff3b30">Red</option>
+          <option value="#39ff88">Green</option>
+          <option value="#ff5ce1">Magenta</option>
+          <option value="#ff9500">Orange</option>
+          <option value="custom">Custom</option>
+        </select>
+        <input type="color" id="lqm-mb-province-swatch" value="#cfe4ff" style="display:none;width:28px;height:22px;padding:0;border:1px solid rgba(255,255,255,0.2);border-radius:4px;background:none;cursor:pointer;"
+          oninput="mbSetBorderColor('province',this.value)">
+      </div>
+    </div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Province Line Thickness</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <input type="range" id="lqm-mb-province-weight" min="0.2" max="6" step="0.1" value="1.2"
+          class="lqm-slider" oninput="mbSetBorderWeight('province',this.value);document.getElementById('lqm-mb-province-weight-val').textContent=Number(this.value).toFixed(1)+'px'">
+        <span id="lqm-mb-province-weight-val" style="font-family:var(--mono);font-size:9px;color:var(--accent2);min-width:34px;">1.2px</span>
+      </div>
+    </div>
+    <div class="lqm-settings-row">
+      <button class="lqm-settings-btn" onclick="mbResetBorderStyle()">Reset border colors and thickness</button>
+    </div>
+
     <div class="lqm-settings-row">
       <span class="lqm-settings-lbl">City Names</span>
       <label class="lqm-toggle">
@@ -51823,6 +51925,7 @@ function lqmOpenSettings() {
   // rebound from the offer dialog, or a preset picked on another tab, has to
   // be what the panel shows when it next appears.
   if (typeof _kbdRenderSettings === 'function') { try { _kbdRenderSettings(); } catch (e) {} }
+  if (typeof _mbStyleSyncUi === 'function') { try { _mbStyleSyncUi(); } catch (e) {} }
   if (typeof _ssRuleUiInit === 'function') { try { _ssRuleUiInit(); } catch (e) {} }
   // Both order lists are rebuilt on every open rather than once at boot. They
   // show which layers are live, and that answer is different every time.
@@ -55153,7 +55256,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'Menus, tidied up. Keyboard shortcuts were in Settings but there was no way to reach them: they had been written inside the Alerts card, and the category rail only makes a tab from the first heading in a card, so no Keyboard tab ever appeared. Keyboard is its own tab now, with the shortcut set picker and every binding on it. The Time Machine is a button on the satellite rows too, at every level, so you no longer have to duck into radar to travel to a moment and come back. The row of buttons under the logo stays on screen instead of hiding until you hover the logo, and Navigation has joined it as its own button; if you preferred it hidden, Settings then Display then Always Show Logo Menu puts it back the way it was.';
+const APP_LATEST_UPDATE = 'You can now set the color and thickness of the state, county and province lines yourself, each one separately, under Settings then Map then Border Color and Thickness. Colors include black, white, and six brights, or pick any color you like with the swatch, and thickness goes from hairline to 6px. The default is a new Auto setting that reads the map style and flips: black lines on Light and Topo, white on Dark and Satellite, so the borders stay visible whichever basemap you are on. There is a Reset button if you want the original look back. Before that: Menus, tidied up. Keyboard shortcuts were in Settings but there was no way to reach them: they had been written inside the Alerts card, and the category rail only makes a tab from the first heading in a card, so no Keyboard tab ever appeared. Keyboard is its own tab now, with the shortcut set picker and every binding on it. The Time Machine is a button on the satellite rows too, at every level, so you no longer have to duck into radar to travel to a moment and come back. The row of buttons under the logo stays on screen instead of hiding until you hover the logo, and Navigation has joined it as its own button; if you preferred it hidden, Settings then Display then Always Show Logo Menu puts it back the way it was.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
@@ -55937,6 +56040,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setTimeout(() => {
     _alertFlashSyncUi();
     if (typeof _kbdRenderSettings === 'function') _kbdRenderSettings();
+    if (typeof _mbStyleSyncUi === 'function') _mbStyleSyncUi();
     const op = localStorage.getItem('lqm_radaropacity');
     if (op) { const el=document.getElementById('lqm-set-opacity'); if(el){el.value=op;lqmSetRadarOpacity(op);} }
     const mo = localStorage.getItem('lqm_modelopacity');
@@ -64065,11 +64169,175 @@ function _mbCanvas() {
   return _mbCanvasR;
 }
 
-const MB_STYLE = {
-  state:    { color: '#ffffff', weight: 1.5, opacity: 0.85, fill: false },
-  province: { color: '#cfe4ff', weight: 1.2, opacity: 0.7,  fill: false },
-  county:   { color: '#ffffff', weight: 0.7, opacity: 0.42, fill: false },
+// ── Border colour and thickness ──────────────────────────────────────────
+// The shipped look, and what Reset returns to. Opacity stays per kind and is
+// not offered as a control: it is what keeps county lines from competing with
+// the weather, and thickness is the honest way to make a line easier to see.
+const MB_BASE = {
+  state:    { color: '#ffffff', weight: 1.5, opacity: 0.85 },
+  province: { color: '#cfe4ff', weight: 1.2, opacity: 0.7  },
+  county:   { color: '#ffffff', weight: 0.7, opacity: 0.42 },
 };
+
+// AUTO. White lines vanish on the Light and Topo basemaps and black lines
+// vanish on Dark, so a single fixed colour is wrong half the time. Auto reads
+// the basemap and flips, which is why it is the default: somebody who never
+// opens this section still gets borders they can see on every map style.
+// Satellite counts as dark, because imagery is mostly land and sea at night
+// brightness and white reads over it far better than black.
+const MB_AUTO_DARK_MAP = '#ffffff';   // for dark and satellite basemaps
+const MB_AUTO_LIGHT_MAP = '#111111';  // for light and topo basemaps
+function _mbAutoColor() {
+  const t = (typeof currentMapType !== 'undefined' && currentMapType) || 'dark';
+  return (t === 'light' || t === 'topo') ? MB_AUTO_LIGHT_MAP : MB_AUTO_DARK_MAP;
+}
+
+const MB_STYLE_KEY = 'gwcfc_mb_style';
+const MB_WEIGHT_MIN = 0.2, MB_WEIGHT_MAX = 6;
+
+// 'auto' is a word, not a colour, so it survives a change to what auto means.
+// Storing the resolved colour instead would freeze today's answer into every
+// saved setting and silently stop following the basemap.
+const _mbCfg = {
+  state:    { color: 'auto', weight: MB_BASE.state.weight },
+  province: { color: 'auto', weight: MB_BASE.province.weight },
+  county:   { color: 'auto', weight: MB_BASE.county.weight },
+};
+
+function _mbClampWeight(v) {
+  const n = parseFloat(v);
+  if (!isFinite(n)) return 1;
+  return Math.max(MB_WEIGHT_MIN, Math.min(MB_WEIGHT_MAX, n));
+}
+
+// Only 'auto' or a plain #rrggbb is allowed through. This value is written
+// into a canvas stroke style, and taking whatever a corrupt or hand-edited
+// setting happens to hold is how a colour field becomes an injection point.
+function _mbCleanColor(c) {
+  const s = String(c == null ? '' : c).trim().toLowerCase();
+  if (s === 'auto') return 'auto';
+  return /^#[0-9a-f]{6}$/.test(s) ? s : 'auto';
+}
+
+function _mbStyleLoad() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(MB_STYLE_KEY) || 'null');
+    if (raw && typeof raw === 'object') {
+      ['state', 'province', 'county'].forEach(k => {
+        if (!raw[k]) return;
+        _mbCfg[k].color = _mbCleanColor(raw[k].color);
+        _mbCfg[k].weight = _mbClampWeight(raw[k].weight != null
+          ? raw[k].weight : MB_BASE[k].weight);
+      });
+    }
+  } catch (e) { /* a corrupt setting must not cost the page its borders */ }
+}
+_mbStyleLoad();
+
+function _mbStyleSave() {
+  try { localStorage.setItem(MB_STYLE_KEY, JSON.stringify(_mbCfg)); } catch (e) {}
+}
+
+function _mbStyleFor(kind) {
+  const cfg = _mbCfg[kind] || {};
+  const base = MB_BASE[kind] || MB_BASE.state;
+  const c = _mbCleanColor(cfg.color);
+  return {
+    color: c === 'auto' ? _mbAutoColor() : c,
+    weight: _mbClampWeight(cfg.weight != null ? cfg.weight : base.weight),
+    opacity: base.opacity,
+    fill: false,
+  };
+}
+
+// Restyling in place rather than rebuilding. The county layer holds a few
+// hundred shapes and the admin file is a megabyte: throwing them away to
+// change a colour would turn dragging the thickness slider into a download.
+function _mbRestyle() {
+  ['state', 'province', 'county'].forEach(k => {
+    const layer = _mbLayers[k];
+    if (!layer) return;
+    try { layer.setStyle(_mbStyleFor(k)); } catch (e) {}
+  });
+}
+
+// Called when the basemap changes, because that is the input Auto reads. A
+// fixed colour ignores this, which is the point of having chosen one.
+function _mbAutoSync() {
+  if (['state', 'province', 'county'].some(k => _mbCleanColor(_mbCfg[k].color) === 'auto')) {
+    _mbRestyle();
+  }
+}
+
+function mbSetBorderColor(kind, value) {
+  if (!_mbCfg[kind]) return;
+  _mbCfg[kind].color = _mbCleanColor(value);
+  _mbStyleSave();
+  _mbRestyle();
+}
+
+function mbSetBorderWeight(kind, value) {
+  if (!_mbCfg[kind]) return;
+  _mbCfg[kind].weight = _mbClampWeight(value);
+  _mbStyleSave();
+  _mbRestyle();
+}
+
+function mbResetBorderStyle() {
+  ['state', 'province', 'county'].forEach(k => {
+    _mbCfg[k].color = 'auto';
+    _mbCfg[k].weight = MB_BASE[k].weight;
+  });
+  _mbStyleSave();
+  _mbRestyle();
+  if (typeof _mbStyleSyncUi === 'function') _mbStyleSyncUi();
+}
+
+// The controls show what is actually in force, not the markup's defaults.
+// A swatch showing white while the lines are drawn black is worse than no
+// swatch at all, because it is an answer and it is wrong.
+function _mbStyleSyncUi() {
+  ['state', 'province', 'county'].forEach(k => {
+    const cfg = _mbCfg[k];
+    const sel = document.getElementById('lqm-mb-' + k + '-color');
+    const pick = document.getElementById('lqm-mb-' + k + '-swatch');
+    const wt = document.getElementById('lqm-mb-' + k + '-weight');
+    const wv = document.getElementById('lqm-mb-' + k + '-weight-val');
+    const c = _mbCleanColor(cfg.color);
+    if (sel) {
+      // A colour that is not one of the named options is Custom, and the
+      // swatch is what says which colour it actually is.
+      const named = Array.from(sel.options).some(o => o.value === c);
+      sel.value = named ? c : 'custom';
+    }
+    if (pick) {
+      pick.value = c === 'auto' ? _mbAutoColor() : c;
+      // The swatch is only meaningful once a fixed colour has been chosen:
+      // shown next to Auto it invites a click that does nothing.
+      pick.style.display = c === 'auto' ? 'none' : '';
+    }
+    if (wt) wt.value = String(cfg.weight);
+    if (wv) wv.textContent = Number(cfg.weight).toFixed(1) + 'px';
+  });
+}
+
+// The colour dropdown and the swatch are two ways to say the same thing, so
+// picking Custom hands off to the swatch rather than setting a colour of its
+// own, which would overwrite the custom colour the moment you selected it.
+function mbPickBorderColor(kind, value) {
+  if (value === 'custom') {
+    const pick = document.getElementById('lqm-mb-' + kind + '-swatch');
+    if (pick) {
+      pick.style.display = '';
+      mbSetBorderColor(kind, pick.value);
+      try { pick.click(); } catch (e) {}
+    }
+    _mbStyleSyncUi();
+    return;
+  }
+  mbSetBorderColor(kind, value);
+  _mbStyleSyncUi();
+}
 
 const _mbLayers = { state: null, province: null, county: null };
 const _mbOn = { state: false, province: false, county: false, cities: false };
@@ -64090,7 +64358,7 @@ async function _mbBuildAdmin1(kind) {
   });
   return L.geoJSON({ type: 'FeatureCollection', features: feats }, {
     pane: 'bordersPane', renderer: _mbCanvas(), interactive: false,
-    smoothFactor: 1.6, style: () => MB_STYLE[kind],
+    smoothFactor: 1.6, style: () => _mbStyleFor(kind),
   });
 }
 
@@ -64144,7 +64412,7 @@ function _mbCountyRefresh() {
   if (!feats.length) return;
   _mbLayers.county = L.geoJSON({ type: 'FeatureCollection', features: feats }, {
     pane: 'bordersPane', renderer: _mbCanvas(), interactive: false,
-    smoothFactor: 1.8, style: () => MB_STYLE.county,
+    smoothFactor: 1.8, style: () => _mbStyleFor('county'),
   }).addTo(map);
 }
 
