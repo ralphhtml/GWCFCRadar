@@ -3877,6 +3877,32 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
 #snd-panel.big #snd-hodo { height: min(52vh, 480px); }
 #snd-wind { height: 236px; }
 #snd-panel.big #snd-wind { height: min(52vh, 480px); }
+#snd-thetae, #snd-srwind, #snd-advect { height: 236px; }
+#snd-panel.big #snd-thetae,
+#snd-panel.big #snd-srwind,
+#snd-panel.big #snd-advect { height: min(52vh, 480px); }
+/* The hazard call, drawn the way SHARPpy draws it: the category huge, the
+   reasons under it. The colours are SHARPpy's own so anyone who has read
+   one of its pages reads this one on sight. */
+.snd-haz {
+  text-align: center; padding: 18px 12px 8px;
+  font-family: var(--display);
+}
+.snd-haz-type { font-size: 30px; font-weight: 700; letter-spacing: 3px; }
+.snd-haz-type.pdstor { color: #ff00ff; }
+.snd-haz-type.tor    { color: #fd0000; }
+.snd-haz-type.mrgtor { color: #c33; }
+.snd-haz-type.svr    { color: #e8b800; }
+.snd-haz-type.mrgsvr { color: #b09a3e; }
+.snd-haz-type.flood  { color: #02cd02; }
+.snd-haz-type.none   { color: rgba(212,232,255,0.55); }
+.snd-haz-sub { font-size: 10.5px; color: rgba(212,232,255,0.6); margin-top: 6px; }
+.snd-haz-why {
+  margin: 14px auto 6px; max-width: 420px; text-align: left;
+  font-family: var(--mono); font-size: 10.5px; line-height: 1.7;
+  color: rgba(212,232,255,0.8);
+}
+.snd-haz-why b { color: #ffe9a8; }
 /* The numbers a hodograph is read FOR, under the picture that shows them. */
 .snd-hodo-read {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3994,7 +4020,9 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
    equal segments, above the panes: the shape that says "these are the views,
    and this is the one you are looking at". */
 .snd-tabs {
-  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+  /* Two rows of four at card width. One row of eight at 380px would give
+     each tab 45px, which fits about four letters of Hodograph. */
+  display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-flow: row;
   gap: 2px; margin: 8px 10px 0; padding: 2px;
   background: rgba(253,0,0,0.06); border-radius: 9px;
   border: 1px solid rgba(253,0,0,0.18);
@@ -4009,7 +4037,10 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
 }
 /* Stretched across 1140px the four segments read as four buttons that happen
    to touch, so the track stops growing once it is comfortably wide. */
-#snd-panel.big .snd-tabs { max-width: 520px; margin: 10px 12px 0; }
+#snd-panel.big .snd-tabs {
+  max-width: 780px; margin: 10px 12px 0;
+  grid-template-columns: repeat(8, 1fr);
+}
 .snd-tab:hover { color: var(--text); background: rgba(253,0,0,0.12); }
 .snd-tab.on {
   background: rgba(253,0,0,0.26);
@@ -17663,6 +17694,15 @@ const SND_TABS = [
   { id: 'hodo',    label: 'Hodograph' },
   { id: 'wind',    label: 'Wind' },
   { id: 'numbers', label: 'Numbers' },
+  // The four views borrowed from the full SHARPpy layout, each one a panel
+  // that display keeps beside the skew-T and this panel keeps behind a tab:
+  // theta-e against pressure (where the dry air aloft is), storm-relative
+  // wind against height (what the storm itself feels), inferred temperature
+  // advection from the wind's turning, and the possible-hazard-type call.
+  { id: 'thermo',  label: 'Theta-E' },
+  { id: 'srwind',  label: 'SR Wind' },
+  { id: 'advect',  label: 'Advection' },
+  { id: 'hazard',  label: 'Hazard' },
   { id: 'image',   label: 'Image',  hidden: true },
   { id: 'source',  label: 'Source', hidden: true },
 ];
@@ -19502,6 +19542,33 @@ async function openSounding(lat, lon, opts) {
       <div class="snd-pane" data-pane="numbers" hidden>
         <div class="snd-tables"></div>
       </div>
+      <div class="snd-pane" data-pane="thermo" hidden>
+        <div class="snd-grid">
+          <div class="snd-card">
+            <div class="snd-card-title">Theta-E with pressure (K)</div>
+            <canvas id="snd-thetae"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="snd-pane" data-pane="srwind" hidden>
+        <div class="snd-grid">
+          <div class="snd-card">
+            <div class="snd-card-title">Storm-relative wind with height (kt)</div>
+            <canvas id="snd-srwind"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="snd-pane" data-pane="advect" hidden>
+        <div class="snd-grid">
+          <div class="snd-card">
+            <div class="snd-card-title">Inferred temperature advection (C/hr)</div>
+            <canvas id="snd-advect"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="snd-pane" data-pane="hazard" hidden>
+        <div class="snd-hazard"></div>
+      </div>
       <div class="snd-pane" data-pane="image" hidden>
         <div class="snd-pimg"></div>
       </div>
@@ -19704,6 +19771,13 @@ function _sndPaint(el, d, prof) {
     if (read) read.innerHTML = _sndHodoRead(d);
   }
   if (up('wind')) _sndDrawWind(el.querySelector('#snd-wind'), d);
+  if (up('thermo')) _sndDrawThetaE(el.querySelector('#snd-thetae'), d);
+  if (up('srwind')) _sndDrawSRWind(el.querySelector('#snd-srwind'), d);
+  if (up('advect')) _sndDrawAdvect(el.querySelector('#snd-advect'), d, prof);
+  if (up('hazard')) {
+    const h = el.querySelector('.snd-hazard');
+    if (h) h.innerHTML = _sndHazardHTML(d);
+  }
 }
 
 // The three numbers a hodograph is read for, under the picture that shows
@@ -19826,6 +19900,370 @@ function _sndDrawWind(canvas, d) {
   g.fillStyle = 'rgba(255,255,255,0.4)';
   g.textAlign = 'center'; g.textBaseline = 'top';
   g.fillText('knots', padL + W / 2, padT + H + 13);
+}
+
+// ── The SHARPpy side panels, as tabs ──────────────────────────────────────
+// Four more readings of the same profile, each one a panel the full SHARPpy
+// display keeps beside the skew-T. Same rule as every other view: no fetch,
+// no request, just the rows already in hand read a different way.
+
+// Equivalent potential temperature, Bolton (1980), the formulation every
+// sounding package uses. In Kelvin, from pressure in mb and temperatures
+// in C. It is the one temperature that survives both dry and moist ascent,
+// which is why its PROFILE is worth a panel: a dip in mid-levels is dry air
+// that a downdraft can feed on, and a low-level maximum is the fuel.
+function _sndThetaEK(p, tC, tdC) {
+  if (![p, tC, tdC].every(x => x != null && isFinite(x))) return null;
+  const Tk = tC + 273.15;
+  const e = _sndEs(Math.min(tdC, tC));                 // vapour pressure, mb
+  if (!(e > 0)) return null;
+  const w = 0.622 * e / Math.max(p - e, 1);            // mixing ratio, kg/kg
+  const TL = 2840 / (3.5 * Math.log(Tk) - Math.log(e) - 4.805) + 55;
+  const thL = Tk * Math.pow(1000 / p, 0.2854 * (1 - 0.28 * w));
+  return thL * Math.exp((3.376 / TL - 0.00254) * w * 1000 * (1 + 0.81 * w));
+}
+
+function _sndDrawThetaE(canvas, d) {
+  if (!canvas || !d || !d.rows) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const CW = canvas.clientWidth, CH = canvas.clientHeight;
+  if (!CW || !CH) return;
+  canvas.width = CW * dpr; canvas.height = CH * dpr;
+  const g = canvas.getContext('2d');
+  if (!g) return;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, CW, CH);
+
+  // Surface to 400 mb, which is the span the full display shows: above that
+  // there is so little moisture that theta-e is just theta wearing a hat.
+  const pts = d.rows
+    .map(r => ({ p: r.p, th: _sndThetaEK(r.p, r.t, r.td != null ? r.td : r.t) }))
+    .filter(r => r.th != null && r.p >= 400)
+    .sort((a, b) => b.p - a.p);
+  const padL = 34, padR = 12, padT = 8, padB = 22;
+  const W = CW - padL - padR, H = CH - padT - padB;
+  if (W < 40 || H < 40 || pts.length < 3) {
+    g.fillStyle = 'rgba(255,255,255,0.45)';
+    g.font = '11px ui-monospace, monospace';
+    g.textAlign = 'center';
+    g.fillText('Not enough moisture data in this profile.', CW / 2, CH / 2);
+    return;
+  }
+  const pBot = pts[0].p, pTop = 400;
+  let thMin = Infinity, thMax = -Infinity;
+  pts.forEach(r => { thMin = Math.min(thMin, r.th); thMax = Math.max(thMax, r.th); });
+  const lo = Math.floor((thMin - 4) / 10) * 10, hi = Math.ceil((thMax + 4) / 10) * 10;
+  const X = th => padL + (th - lo) / (hi - lo) * W;
+  const Y = p => padT + (Math.log(p / pTop) / Math.log(pBot / pTop)) * H;
+
+  g.font = '9px ui-monospace, monospace';
+  g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (let p = 1000; p >= 400; p -= 100) {
+    if (p > pBot) continue;
+    const y = Y(p);
+    g.strokeStyle = 'rgba(255,255,255,0.10)';
+    g.beginPath(); g.moveTo(padL, y); g.lineTo(padL + W, y); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,0.45)';
+    g.fillText(String(p), padL - 4, y);
+  }
+  g.textAlign = 'center'; g.textBaseline = 'top';
+  for (let th = lo; th <= hi; th += 10) {
+    const x = X(th);
+    g.strokeStyle = 'rgba(255,255,255,0.07)';
+    g.beginPath(); g.moveTo(x, padT); g.lineTo(x, padT + H); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,0.45)';
+    g.fillText(String(th), x, padT + H + 4);
+  }
+
+  g.strokeStyle = '#fd0000'; g.lineWidth = 2.4;
+  g.beginPath();
+  pts.forEach((r, i) => {
+    const x = X(r.th), y = Y(r.p);
+    if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+  });
+  g.stroke();
+
+  // The dip is the story: the driest air aloft, marked so nobody has to
+  // hunt the curve for its own minimum.
+  let min = pts[0];
+  pts.forEach(r => { if (r.th < min.th) min = r; });
+  if (min !== pts[0]) {
+    g.fillStyle = '#019ff4';
+    g.beginPath(); g.arc(X(min.th), Y(min.p), 3.5, 0, Math.PI * 2); g.fill();
+    g.textAlign = 'left'; g.textBaseline = 'middle';
+    g.fillText(`driest ${Math.round(min.th)} K at ${Math.round(min.p)} mb`,
+               Math.min(X(min.th) + 8, padL + W - 120), Y(min.p));
+  }
+  g.strokeStyle = 'rgba(255,255,255,0.22)';
+  g.strokeRect(padL, padT, W, H);
+}
+
+// Storm-relative wind: what the wind looks like from the storm's own seat,
+// which is the frame that decides how it is built. The classification bands
+// are Rasmussen and Straka's (1998), read at anvil level (9-11 km): under
+// 40 kt the rain wraps in (HP), 40-60 is the classic supercell, over 60 the
+// precipitation is carried far downwind (LP).
+function _sndDrawSRWind(canvas, d) {
+  if (!canvas || !d || !d.rows) return;
+  const mo = d.motion && d.motion.right;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const CW = canvas.clientWidth, CH = canvas.clientHeight;
+  if (!CW || !CH) return;
+  canvas.width = CW * dpr; canvas.height = CH * dpr;
+  const g = canvas.getContext('2d');
+  if (!g) return;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, CW, CH);
+  const padL = 34, padR = 12, padT = 8, padB = 22;
+  const W = CW - padL - padR, H = CH - padT - padB;
+  const rows = d.rows.filter(r => r.u != null && r.v != null
+    && isFinite(r.z) && r.z <= 12000);
+  if (!mo || W < 40 || H < 40 || rows.length < 2) {
+    g.fillStyle = 'rgba(255,255,255,0.45)';
+    g.font = '11px ui-monospace, monospace';
+    g.textAlign = 'center';
+    g.fillText('Needs winds and a storm motion.', CW / 2, CH / 2);
+    return;
+  }
+  const pts = rows.map(r => ({
+    zkm: r.z / 1000, kt: Math.hypot(r.u - mo.u, r.v - mo.v),
+  })).sort((a, b) => a.zkm - b.zkm);
+  let vmax = 70;
+  pts.forEach(p => { vmax = Math.max(vmax, p.kt); });
+  vmax = Math.ceil(vmax / 10) * 10;
+  const zTop = 12;
+  const X = kt => padL + (kt / vmax) * W;
+  const Y = zkm => padT + H - (zkm / zTop) * H;
+
+  g.font = '9px ui-monospace, monospace';
+  g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (let z = 0; z <= zTop; z += 2) {
+    const y = Y(z);
+    g.strokeStyle = 'rgba(255,255,255,0.10)';
+    g.beginPath(); g.moveTo(padL, y); g.lineTo(padL + W, y); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,0.45)';
+    g.fillText(z + ' km', padL - 4, y);
+  }
+  g.textAlign = 'center'; g.textBaseline = 'top';
+  for (let v = 0; v <= vmax; v += 20) {
+    const x = X(v);
+    g.strokeStyle = 'rgba(255,255,255,0.07)';
+    g.beginPath(); g.moveTo(x, padT); g.lineTo(x, padT + H); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,0.45)';
+    g.fillText(String(v), x, padT + H + 4);
+  }
+
+  // The 40 and 60 kt classification lines, over the anvil layer they are
+  // read at, labeled where they mean something rather than as a legend.
+  const yTopBand = Y(11), yBotBand = Y(9);
+  g.fillStyle = 'rgba(255,0,255,0.06)';
+  g.fillRect(padL, yTopBand, W, yBotBand - yTopBand);
+  [[40, 'HP | Classic'], [60, 'Classic | LP']].forEach(([kt, lbl]) => {
+    if (kt > vmax) return;
+    const x = X(kt);
+    g.strokeStyle = 'rgba(255,0,255,0.4)';
+    g.setLineDash([4, 4]);
+    g.beginPath(); g.moveTo(x, padT); g.lineTo(x, padT + H); g.stroke();
+    g.setLineDash([]);
+    g.fillStyle = 'rgba(255,120,255,0.75)';
+    g.textAlign = 'center'; g.textBaseline = 'bottom';
+    g.fillText(lbl, x, yTopBand - 2);
+  });
+
+  g.strokeStyle = '#fd0000'; g.lineWidth = 2.4;
+  g.beginPath();
+  pts.forEach((p, i) => {
+    const x = X(p.kt), y = Y(p.zkm);
+    if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+  });
+  g.stroke();
+
+  // The anvil-level number itself, said in words.
+  let anvil = 0, n = 0;
+  pts.forEach(p => { if (p.zkm >= 9 && p.zkm <= 11) { anvil += p.kt; n++; } });
+  if (n) {
+    anvil /= n;
+    const call = anvil < 40 ? 'HP supercell'
+               : anvil <= 60 ? 'Classic supercell' : 'LP supercell';
+    g.fillStyle = 'rgba(255,255,255,0.7)';
+    g.textAlign = 'left'; g.textBaseline = 'top';
+    g.fillText(`9-11 km SR wind ${Math.round(anvil)} kt: ${call}`, padL + 6, padT + 4);
+  }
+  g.strokeStyle = 'rgba(255,255,255,0.22)';
+  g.strokeRect(padL, padT, W, H);
+}
+
+// Temperature advection inferred from the wind alone, by the thermal wind
+// relation: wind veering with height means warm air is being carried in,
+// backing means cold. The full display keeps this as a strip of bars beside
+// the wind column; here it is a pane of the same bars.
+//
+// For each layer between reported levels, in C per hour:
+//   adv = (f / (R ln(p_bot / p_top))) * (v_mean du - u_mean dv)
+// with winds in m/s and f from the sounding's own latitude. Positive is
+// warm advection. Sanity-checked on the textbook case: a southerly under a
+// westerly (veering) comes out positive.
+function _sndTempAdvLayers(rows, latDeg) {
+  const f = 2 * 7.292e-5 * Math.sin((latDeg == null ? 35 : latDeg) * Math.PI / 180);
+  const R = 287.04, KT = 0.514444;
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    const a = rows[i - 1], b = rows[i];
+    if ([a.u, a.v, b.u, b.v].some(x => x == null) || !(a.p > b.p)) continue;
+    const um = (a.u + b.u) / 2 * KT, vm = (a.v + b.v) / 2 * KT;
+    const du = (b.u - a.u) * KT, dv = (b.v - a.v) * KT;
+    const adv = (f / (R * Math.log(a.p / b.p))) * (vm * du - um * dv) * 3600;
+    if (isFinite(adv)) out.push({ pBot: a.p, pTop: b.p, adv });
+  }
+  return out;
+}
+
+function _sndDrawAdvect(canvas, d, prof) {
+  if (!canvas || !d || !d.rows) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const CW = canvas.clientWidth, CH = canvas.clientHeight;
+  if (!CW || !CH) return;
+  canvas.width = CW * dpr; canvas.height = CH * dpr;
+  const g = canvas.getContext('2d');
+  if (!g) return;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, CW, CH);
+  const layers = _sndTempAdvLayers(d.rows, prof && prof.lat)
+    .filter(l => l.pBot >= 300);
+  const padL = 34, padR = 12, padT = 8, padB = 22;
+  const W = CW - padL - padR, H = CH - padT - padB;
+  if (W < 40 || H < 40 || !layers.length) {
+    g.fillStyle = 'rgba(255,255,255,0.45)';
+    g.font = '11px ui-monospace, monospace';
+    g.textAlign = 'center';
+    g.fillText('Needs winds at more than one level.', CW / 2, CH / 2);
+    return;
+  }
+  const pBot = layers[0].pBot, pTop = Math.min(300, layers[layers.length - 1].pTop);
+  let amax = 1;
+  layers.forEach(l => { amax = Math.max(amax, Math.abs(l.adv)); });
+  amax = Math.ceil(amax * 2) / 2;
+  const X = a => padL + W / 2 + (a / amax) * (W / 2);
+  const Y = p => padT + (Math.log(p / pTop) / Math.log(pBot / pTop)) * H;
+
+  g.font = '9px ui-monospace, monospace';
+  g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (let p = 1000; p >= 300; p -= 100) {
+    if (p > pBot) continue;
+    const y = Y(p);
+    g.strokeStyle = 'rgba(255,255,255,0.10)';
+    g.beginPath(); g.moveTo(padL, y); g.lineTo(padL + W, y); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,0.45)';
+    g.fillText(String(p), padL - 4, y);
+  }
+  // The zero line: everything right of it is warm advection, left is cold.
+  g.strokeStyle = 'rgba(255,255,255,0.35)';
+  g.beginPath(); g.moveTo(X(0), padT); g.lineTo(X(0), padT + H); g.stroke();
+
+  layers.forEach(l => {
+    const y0 = Y(l.pBot), y1 = Y(l.pTop);
+    const x0 = X(0), x1 = X(l.adv);
+    g.fillStyle = l.adv >= 0 ? 'rgba(253,0,0,0.45)' : 'rgba(1,159,244,0.45)';
+    g.strokeStyle = l.adv >= 0 ? '#fd0000' : '#019ff4';
+    const y = Math.min(y0, y1) + 1, h = Math.abs(y0 - y1) - 2;
+    g.fillRect(Math.min(x0, x1), y, Math.abs(x1 - x0), Math.max(h, 1));
+    g.strokeRect(Math.min(x0, x1), y, Math.abs(x1 - x0), Math.max(h, 1));
+    if (Math.abs(l.adv) > amax * 0.15 && h > 9) {
+      g.fillStyle = 'rgba(255,255,255,0.75)';
+      g.textAlign = l.adv >= 0 ? 'left' : 'right';
+      g.textBaseline = 'middle';
+      g.fillText((l.adv > 0 ? '+' : '') + l.adv.toFixed(1),
+                 x1 + (l.adv >= 0 ? 3 : -3), (y0 + y1) / 2);
+    }
+  });
+  g.fillStyle = 'rgba(255,255,255,0.4)';
+  g.textAlign = 'center'; g.textBaseline = 'top';
+  g.fillText('cold', padL + W / 4, padT + H + 4);
+  g.fillText('warm', padL + 3 * W / 4, padT + H + 4);
+  g.strokeStyle = 'rgba(255,255,255,0.22)';
+  g.strokeRect(padL, padT, W, H);
+}
+
+// The possible-hazard call, the way the full SHARPpy page makes one, but
+// SIMPLIFIED and said so on the pane: the real tree reads effective-layer
+// parameters this panel only has when the Pi's SHARPpy sent them, so this
+// one is built on the numbers every source can produce, with the effective
+// ones sharpening it when they exist. Each rung lists WHY it fired, because
+// a verdict with no reasons is an oracle, not a forecast tool.
+function _sndHazard(d) {
+  if (!d) return null;
+  const ml = d.ml || d.sb || {};
+  const cape = ml.cape || 0;
+  const stp = [d.stp, d.stpFixed].filter(x => x != null && isFinite(x));
+  const stpMax = stp.length ? Math.max(...stp) : 0;
+  const scp = (d.scp != null && isFinite(d.scp)) ? d.scp : 0;
+  const ship = (d.ship != null && isFinite(d.ship)) ? d.ship : null;
+  const dcape = (d.dcape != null && isFinite(d.dcape)) ? d.dcape : null;
+  const srh1 = d.srh1 || 0, shear6 = d.shear6 || 0;
+  const pwat = d.pwat || 0;
+  const why = [];
+  const w = (label, v) => why.push({ label, v });
+
+  if (stpMax >= 3 && srh1 >= 200 && shear6 >= 40 && cape >= 500) {
+    w('STP', stpMax.toFixed(1)); w('0-1 km SRH', Math.round(srh1) + ' m2/s2');
+    w('0-6 km shear', Math.round(shear6) + ' kt'); w('MLCAPE', Math.round(cape) + ' J/kg');
+    return { type: 'PDS TOR', cls: 'pdstor', why };
+  }
+  if (stpMax >= 1 && cape >= 500 && shear6 >= 35) {
+    w('STP', stpMax.toFixed(1)); w('MLCAPE', Math.round(cape) + ' J/kg');
+    w('0-6 km shear', Math.round(shear6) + ' kt');
+    return { type: 'TOR', cls: 'tor', why };
+  }
+  if (stpMax >= 0.5 && cape >= 250 && shear6 >= 30) {
+    w('STP', stpMax.toFixed(1)); w('0-6 km shear', Math.round(shear6) + ' kt');
+    return { type: 'MRGL TOR', cls: 'mrgtor', why };
+  }
+  if (scp >= 2 || (ship != null && ship >= 1)
+      || (cape >= 1000 && shear6 >= 35)
+      || (dcape != null && dcape >= 1000 && cape >= 750)) {
+    if (scp >= 2) w('SCP', scp.toFixed(1));
+    if (ship != null && ship >= 1) w('SHIP', ship.toFixed(1));
+    if (cape >= 1000) w('MLCAPE', Math.round(cape) + ' J/kg');
+    if (shear6 >= 35) w('0-6 km shear', Math.round(shear6) + ' kt');
+    if (dcape != null && dcape >= 1000) w('DCAPE', Math.round(dcape) + ' J/kg');
+    return { type: 'SVR', cls: 'svr', why };
+  }
+  if ((cape >= 500 && shear6 >= 25) || scp >= 0.5) {
+    w('MLCAPE', Math.round(cape) + ' J/kg'); w('0-6 km shear', Math.round(shear6) + ' kt');
+    if (scp >= 0.5) w('SCP', scp.toFixed(1));
+    return { type: 'MRGL SVR', cls: 'mrgsvr', why };
+  }
+  if (pwat >= 45 && cape >= 500) {
+    w('PWAT', Math.round(pwat) + ' mm'); w('CAPE', Math.round(cape) + ' J/kg');
+    return { type: 'FLASH FLOOD', cls: 'flood', why };
+  }
+  w('MLCAPE', Math.round(cape) + ' J/kg');
+  w('0-6 km shear', Math.round(shear6) + ' kt');
+  w('STP', stpMax.toFixed(1));
+  return { type: 'NONE', cls: 'none', why };
+}
+
+function _sndHazardHTML(d) {
+  const h = _sndHazard(d);
+  if (!h) return '<div class="snd-haz"><div class="snd-haz-type none">NO DATA</div></div>';
+  const esc = s => (typeof _ssEsc === 'function' ? _ssEsc(String(s)) : String(s));
+  const sub = {
+    pdstor: 'Particularly dangerous tornado environment',
+    tor: 'Tornado environment', mrgtor: 'Marginal tornado environment',
+    svr: 'Severe thunderstorm environment', mrgsvr: 'Marginal severe environment',
+    flood: 'Heavy rain environment', none: 'No organized severe threat in this profile',
+  }[h.cls] || '';
+  return `<div class="snd-haz">
+    <div class="snd-haz-type ${h.cls}">${esc(h.type)}</div>
+    <div class="snd-haz-sub">${esc(sub)}</div>
+    <div class="snd-haz-why">
+      ${h.why.map(x => `<div><b>${esc(x.label)}</b>: ${esc(x.v)}</div>`).join('')}
+      <div style="margin-top:8px;opacity:0.65;">Simplified from SHARPpy's
+      decision tree, using the parameters this profile carries. The full tree
+      also weighs effective-layer values, which sharpen this call when the
+      Pi's SHARPpy run supplies them.</div>
+    </div>
+  </div>`;
 }
 
 // The four numbers worth having at card size. Which four is not a guess: CAPE
@@ -58283,7 +58721,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'Fixed the phone layout the new mode switch broke: the six buttons under the logo now shrink to fit your screen and wrap to a second row instead of running off both edges, and the layer bubbles start below the menu instead of underneath it. The mode button also now names where it takes you, so in Lite-ning it reads Wx-pert, the way back.';
+const APP_LATEST_UPDATE = 'The sounding panel grew four new tabs, borrowed from the full SHARPpy layout. Theta-E shows where the dry air sits in the column (the dip a downdraft feeds on, marked for you). SR Wind shows the wind the way the storm itself feels it, with the HP / Classic / LP supercell bands drawn in and called out in words. Advection reads warm and cold air transport straight out of how the wind turns with height. And Hazard gives the bottom-line call, PDS TOR down to NONE, with the exact numbers that drove it listed underneath. All four work from every source, including plain Open-Meteo with no Pi at all.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
