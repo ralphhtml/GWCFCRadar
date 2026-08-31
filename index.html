@@ -7021,11 +7021,18 @@ p:last-child { margin-bottom: 0; }
   gap: 6px;
   margin: 16px 0;
 }
-.layer-row-demo {
+/* The tutorial's bubble column, built by _tutRenderBubbleDemo from the app's
+   own BASE_BUBBLES. Styled to match a real bubble rather than to look like
+   one: same parts in the same order, so the picture and the thing it is a
+   picture of stay in step.
+   The .lr-badge rules that used to live here are gone with the badges they
+   painted. No bubble in this app has ever had one. */
+.tut-bubble-demo { display: flex; flex-direction: column; gap: 6px; }
+.tut-bubble-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
+  gap: 8px;
+  padding: 7px 12px;
   border-radius: 20px;
   background: rgb(90,0,0);
   border: 1px solid rgba(255,255,255,0.12);
@@ -7033,28 +7040,21 @@ p:last-child { margin-bottom: 0; }
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.5px;
-  color: rgba(255,255,255,0.75);
-  max-width: 220px;
+  color: rgba(255,255,255,0.8);
+  max-width: 260px;
 }
-.layer-row-demo.active {
-  background: rgb(133,0,0);
-  border-color: var(--accent2);
-  box-shadow: 0 0 10px rgba(0,140,186,0.25);
-  color: #fff;
+.tut-bubble-row .sb-icon { display: flex; align-items: center; opacity: 0.9; }
+.tut-bubble-row .sb-label { flex: 1; }
+/* Both of these sit at the end of a real bubble, and both were missing from
+   the hand-drawn version, so it looked like a row you could neither ask
+   about nor reorder. */
+.tut-bubble-info { display: flex; align-items: center; opacity: 0.45; }
+.tut-bubble-drag { opacity: 0.3; letter-spacing: 0; }
+.tut-bubble-empty {
+  font-size: 12px;
+  color: rgba(212,232,255,0.55);
+  padding: 10px 2px;
 }
-.lr-icon { font-size: 14px; }
-.lr-badge {
-  font-family: var(--mono);
-  font-size: 8px;
-  padding: 1px 5px;
-  border-radius: 10px;
-  background: rgba(26,255,143,0.15);
-  color: var(--success);
-  border: 1px solid rgba(26,255,143,0.3);
-  margin-left: auto;
-}
-.lr-badge.warn { background: rgba(255,107,43,0.15); color: #ff8855; border-color: rgba(255,107,43,0.3); }
-.lr-badge.info { background: rgba(0,140,186,0.15); color: var(--accent2); border-color: rgba(0,140,186,0.3); }
 
 /* ── OVERLAY PILLS ── */
 .overlay-demo {
@@ -54342,42 +54342,21 @@ function lqmSetTZ(tz) {
 
   <p>Each bubble opens its own menu in place of the list, with a <strong>Back</strong> row at the top to return. Every row has a <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-info></use></svg> info button explaining what it is, and a <strong>⠿ drag handle</strong> so you can reorder the column to match how you work.</p>
 
+  <!-- BUILT FROM THE APP'S OWN BUBBLE LIST, not drawn by hand.
+       The hand-drawn version of this was wrong in three ways at once: it
+       hung a badge on every row (NEXRAD, GOES, MARINE, AQI, SPEED, 2M,
+       MSLP, 3 PANELS) and no bubble in this app has ever had a badge; it
+       used sprite icons instead of the bubbles' own; and it left off the
+       info button and the drag handle that every real row carries. So
+       somebody reading it went looking for a "NEXRAD" tag that does not
+       exist.
+       A picture of the interface that is assembled by hand will always
+       drift from the interface. This one is rendered from BASE_BUBBLES,
+       the same array renderSubBubbles draws the real column from, so it
+       cannot say anything the app does not. -->
   <div class="ui-diagram">
-    <div class="ui-diagram-title">The bubble column</div>
-    <div style="display:flex; flex-direction:column; gap:6px;">
-      <div class="layer-row-demo">
-        <span class="lr-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-antenna></use></svg></span> Radar
-        <span class="lr-badge info">NEXRAD</span>
-      </div>
-      <div class="layer-row-demo">
-        <span class="lr-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-satellite></use></svg></span> Satellite
-        <span class="lr-badge info">GOES</span>
-      </div>
-      <div class="layer-row-demo">
-        <span class="lr-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-wave></use></svg></span> Waves
-        <span class="lr-badge info">MARINE</span>
-      </div>
-      <div class="layer-row-demo">
-        <span class="lr-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-fog></use></svg></span> Air
-        <span class="lr-badge info">AQI</span>
-      </div>
-      <div class="layer-row-demo">
-        <span class="lr-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-wind></use></svg></span> Wind
-        <span class="lr-badge info">SPEED</span>
-      </div>
-      <div class="layer-row-demo">
-        <span class="lr-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-temp></use></svg></span> Temperature
-        <span class="lr-badge info">2M</span>
-      </div>
-      <div class="layer-row-demo">
-        <span class="lr-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gauge></use></svg></span> Pressure
-        <span class="lr-badge info">MSLP</span>
-      </div>
-      <div class="layer-row-demo">
-        <span class="lr-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-chart-bar></use></svg></span> Models
-        <span class="lr-badge info">3 PANELS</span>
-      </div>
-    </div>
+    <div class="ui-diagram-title">The bubble column, as it is right now</div>
+    <div id="tut-bubble-demo" class="tut-bubble-demo"></div>
   </div>
 
   <h3 style="font-family:var(--display);font-size:18px;font-weight:700;letter-spacing:1px;color:#fff;margin:24px 0 10px;"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-antenna></use></svg> Radar, and its five sources</h3>
@@ -55315,6 +55294,11 @@ function openTutorial() {
   document.getElementById('tutorial-modal-overlay').classList.add('open');
   document.getElementById('tut-close-btn').classList.add('open');
   document.body.style.overflow = 'hidden';
+  // Here rather than in lqmOpenTutorial, because three other places open the
+  // tutorial directly (the first-visit prompt, the welcome flow and the quick
+  // menu) and a diagram that only filled itself in on one of those routes
+  // would be blank on the other two.
+  try { _tutRenderBubbleDemo(); } catch (e) {}
   // Activate tutorial TOC highlight on scroll
   const scrollArea = document.getElementById('tut-scroll-area');
   if (scrollArea) {
@@ -57623,6 +57607,47 @@ async function _loadUserPrefs(uid) {
 }
 
 // ── LQM INTEGRATION ─────────────────────────────────────────
+// The tutorial's picture of the bubble column, drawn from the array the app
+// itself draws it from.
+//
+// It was hand-written HTML before, and it had drifted into saying things that
+// were never true: a coloured badge on every row reading NEXRAD, GOES,
+// MARINE, AQI, SPEED, 2M, MSLP and 3 PANELS, when no bubble in this app has
+// ever carried a badge of any kind. Somebody following the tutorial went
+// looking for a tag that does not exist.
+//
+// Any hand-drawn picture of an interface drifts, because nothing makes it
+// change when the interface does. This one reads BASE_BUBBLES, the same list
+// renderSubBubbles uses, and copies the real row's parts: the bubble's own
+// icon, its label, the info button and the drag handle. Add a ninth bubble
+// tomorrow and this picture grows a ninth row on its own.
+function _tutRenderBubbleDemo() {
+  const box = document.getElementById('tut-bubble-demo');
+  if (!box) return;
+  let rows = [];
+  try { rows = (typeof BASE_BUBBLES !== 'undefined' && BASE_BUBBLES) || []; }
+  catch (e) { rows = []; }
+  if (!rows.length) {
+    // Better an honest blank than a mock-up of something that could not be
+    // read. The prose above the diagram already names all eight.
+    box.innerHTML = '<div class="tut-bubble-empty">The bubble list could not '
+      + 'be read, so there is nothing to show here rather than a drawing of '
+      + 'it. The eight are named above.</div>';
+    return;
+  }
+  box.innerHTML = rows.map(b =>
+    '<div class="tut-bubble-row">'
+    + '<span class="sb-icon">' + (typeof _eicon === 'function'
+        ? _eicon(b.icon) : (b.icon || '')) + '</span>'
+    + '<span class="sb-label">' + (b.label || b.id) + '</span>'
+    + '<span class="tut-bubble-info" title="Every bubble has one: what this '
+      + 'layer is">'
+      + '<svg class=svgi width=1em height=1em><use href=#ic-info></use></svg>'
+    + '</span>'
+    + '<span class="tut-bubble-drag" title="Drag to reorder">⠿</span>'
+    + '</div>').join('');
+}
+
 function lqmOpenTutorial() {
   if (typeof lqmClose === 'function') lqmClose();
   openTutorial();
@@ -57636,7 +57661,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'Privacy Policy and Terms of Use added, at a real page anyone can link to rather than only inside a modal. It says exactly what this app stores, what never leaves your device, which of the sources your browser talks to, and how to have anything deleted. Short version: no analytics, no tracking, nothing sold, and if you do not sign in, turn on location or post anything, nothing about you reaches a server at all. It is linked from Credits, from the tutorial, and from the sign-up button. The floating base map row beside the map is gone again: map style and Smooth were already in Settings, Fullscreen is on the animation bar, and Locate Me now has a button in Settings > GPS. The last handful of stray emoji in the interface, the turn-by-turn arrows and the road report pins, are drawn from the same icon set as everything else, so they no longer change shape from one device to the next.';
+const APP_LATEST_UPDATE = 'The tutorial\'s picture of the layer bubbles was wrong and is now generated from the app itself. The hand-drawn version hung a badge on every row reading NEXRAD, GOES, MARINE, AQI, SPEED, 2M, MSLP and 3 PANELS, and no bubble in this app has ever had a badge of any kind, so anyone following it went hunting for a tag that does not exist. It also used the wrong icons and left off the info button and the drag handle every real row carries. It is drawn from the same list the real column is drawn from now, so it shows the actual eight bubbles with their own icons and cannot drift again: add a ninth tomorrow and the picture grows a ninth row on its own.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
@@ -63042,12 +63067,9 @@ body {
   background-image: linear-gradient(180deg, #4a0202 0%, #200000 100%);
   box-shadow: var(--edge-3d);
 }
-.hero-badge, .step-num, .lr-badge {
+.hero-badge, .step-num {
   background-image: var(--grad-card);
   box-shadow: var(--edge-3d-soft);
-}
-.lr-badge.info {
-  background-image: linear-gradient(180deg, rgba(0,140,186,0.28) 0%, rgba(0,0,0,0.24) 100%);
 }
 .section-icon, .callout, .precip-bar-wrap {
   background-image: linear-gradient(180deg, rgba(255,120,110,0.12) 0%, rgba(0,0,0,0.34) 100%);
@@ -63060,13 +63082,9 @@ body {
   background-image: linear-gradient(180deg, #1a0000 0%, #050000 100%);
   box-shadow: var(--edge-3d);
 }
-.layer-row-demo {
+.tut-bubble-row {
   background-image: var(--grad-raise);
   box-shadow: var(--lift-3d-sm), var(--edge-3d);
-}
-.layer-row-demo.active {
-  background-image: var(--grad-sunk);
-  box-shadow: var(--edge-3d), inset 0 2px 5px rgba(0,0,0,0.55);
 }
 
 /* ── 15. The overlay panels go black ──────────────────────────────────── */
