@@ -6084,13 +6084,17 @@ body.shot-mode > button {
   position: fixed;
   top: 18px;
   right: 18px;
-  max-width: 230px;
+  /* Wider and flatter. The placeholder was being cut off mid-word at 230px,
+     which reads as a broken box rather than a short one, and the 16px radius
+     on a 6px padding made a tall lozenge around a small field. */
+  width: 340px;
+  max-width: calc(100vw - 36px);
   box-sizing: border-box;
   z-index: 1150;
   background: rgb(18,0,0);
   border: 1px solid rgba(170,0,0,0.45);
-  border-radius: 16px;
-  padding: 6px 8px;
+  border-radius: 11px;
+  padding: 3px 4px;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -6112,7 +6116,7 @@ body.shot-mode > button {
 }
 #lqm-search-row {
   display: flex;
-  gap: 6px;
+  gap: 5px;
   align-items: center;
 }
 #lqm-search-input {
@@ -6123,19 +6127,20 @@ body.shot-mode > button {
   color: var(--text);
   font-family: var(--mono);
   font-size: 12px;
-  padding: 6px 10px;
+  padding: 4px 9px;
   outline: none;
   transition: border-color 0.15s;
   min-width: 0;
+  border-radius: 8px;
 }
 #lqm-search-input:focus { border-color: var(--accent2); }
 #lqm-search-input::placeholder { color: var(--muted); }
 #lqm-search-go {
   background: rgba(133,0,0,0.85);
   border: 1px solid rgba(170,0,0,0.5);
-  border-radius: 10px;
+  border-radius: 8px;
   color: #fff;
-  padding: 6px 8px;
+  padding: 4px 7px;
   cursor: pointer;
   transition: background 0.15s;
   display: flex;
@@ -55755,7 +55760,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'New colour preset for Precipitation Total: Warm Low, in Settings then Model Colors. It runs the opposite way to the usual rain ramp, warm at the light end and cool at the heavy end, so the first traces are the loudest thing on screen. It is anchored to real values rather than spread across whatever range the chart has, so 6 is the same magenta on every model. It only appears while you are editing a rain field, because a rain preset offered for 500 mb heights means nothing.';
+const APP_LATEST_UPDATE = 'The search bar is wider and flatter: 340px across instead of 230, and 34px tall instead of 44. The placeholder was being cut off mid-word, which reads as a broken box rather than a small one, and it now fits. It still shrinks to fit a phone screen rather than running off the edge.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
