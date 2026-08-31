@@ -2835,6 +2835,41 @@ img.wx-model-smooth {
   margin-bottom: 2px;
   letter-spacing: 0.04em;
 }
+/* Parent / Storm, and the Follow switch beside them. Segmented buttons
+   rather than a dropdown because there are two of them and the choice is
+   made constantly while reading a hurricane. */
+.sev-domain-btns { display: flex; gap: 3px; align-items: center; }
+.sev-domain-btn {
+  font-family: var(--display);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: rgba(232,184,0,0.7);
+  background: rgba(30,8,8,0.92);
+  border: 1px solid rgba(170,0,0,0.35);
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.sev-domain-btn:hover { background: rgba(60,14,14,0.95); color: #ffd84d; }
+.sev-domain-btn.active {
+  background: rgba(232,184,0,0.18);
+  border-color: rgba(232,184,0,0.75);
+  color: #ffe680;
+}
+/* The follow switch is not one of the domains, so it does not look like one:
+   a separator and a dimmer resting state keep the pair reading as a pair. */
+.sev-domain-sep {
+  width: 1px; height: 16px; margin: 0 3px;
+  background: rgba(170,0,0,0.4);
+}
+.sev-follow-btn.active {
+  background: rgba(0,160,120,0.22);
+  border-color: rgba(0,220,170,0.7);
+  color: #7effd8;
+}
 .sev-dd-wrap select {
   background: rgba(30,8,8,0.92);
   border: 1px solid rgba(170,0,0,0.35);
@@ -10097,8 +10132,18 @@ body.clean-mode #clean-hint { opacity: 1; }
           </select>
           <!-- Only shown when the chosen model has more than one region.
                Filled in by _hdFillRegionPicker(). -->
-          <select id="sev-region-sel" onchange="_hdSetRegion(this.value)"
+          <select id="sev-region-sel" onchange="_hdPickRegion(this.value)"
                   style="display:none;margin-left:4px;"></select>
+        </div>
+        <!-- The hurricane models publish two grids per storm and the choice
+             between them is not a resolution setting, it is which picture you
+             want: the basin, or the eyewall. So it is a pair of buttons in
+             front of you rather than a third entry in a dropdown.
+             The nest moves through the run, hence Follow beside it.
+             Built by _hdFillDomainPicker(); hidden for every other model. -->
+        <div class="sev-dd-wrap" id="sev-domain-wrap" style="display:none;">
+          <label class="sev-dd-label">Domain</label>
+          <div id="sev-domain-btns" class="sev-domain-btns"></div>
         </div>
         <div class="sev-dd-wrap">
           <label class="sev-dd-label">Product</label>
@@ -16940,17 +16985,141 @@ const HD_REGION_LABELS = {
 // a dropdown should have to know that.
 const HD_BASINS = { l: 'Atlantic', e: 'E Pacific', c: 'C Pacific', w: 'W Pacific' };
 
+// A storm region is the storm and, optionally, which of the model's two grids
+// it is. "04l" is the wide parent grid, "04l-storm" the fine inner nest.
+function _hdSplitStorm(id) {
+  const m = /^(\d{2})([lecwabsp])(?:-(\w+))?$/.exec(String(id || ''));
+  if (!m) return null;
+  return { storm: m[1] + m[2], num: +m[1], basin: m[2],
+           domain: m[3] || 'parent' };
+}
+
+// 90 through 99 are invests: an area somebody is watching, which may never
+// become a storm at all. Worth saying, because "Storm 94" reads as a season
+// with ninety-three storms already in it.
+function _hdStormName(s) {
+  const b = HD_BASINS[s.basin] || s.basin.toUpperCase();
+  return (s.num >= 90 ? `Invest ${s.num}${s.basin.toUpperCase()}`
+                      : `Storm ${s.num}`) + ` (${b})`;
+}
+
 function _hdRegionLabel(id) {
   if (HD_REGION_LABELS[id]) return HD_REGION_LABELS[id];
-  const m = /^(\d{2})([lecw])$/.exec(id);
-  if (m) return `Storm ${+m[1]} (${HD_BASINS[m[2]] || m[2]})`;
+  const s = _hdSplitStorm(id);
+  if (s) return _hdStormName(s);
   return id;
+}
+
+// Every domain this model publishes for the storm now selected, so the
+// Parent/Storm switch can be built without guessing which exist: HAFS has
+// two, HMON has one, and offering a button for a grid that was never built
+// is offering a blank map.
+function _hdDomainsFor(model, storm) {
+  const out = [];
+  _hdRegionsOf(model).forEach(r => {
+    const s = _hdSplitStorm(r);
+    if (s && s.storm === storm && out.indexOf(s.domain) < 0) out.push(s.domain);
+  });
+  // Parent first however the index happened to be ordered: it is the wider
+  // view and the sensible thing to land on.
+  return out.sort((a, b) => (a === 'parent' ? -1 : b === 'parent' ? 1 : 0));
+}
+
+const HD_DOMAIN_LABELS = { parent: 'Parent', storm: 'Storm' };
+
+// THE MOVING NEST.
+//
+// Every other model in this app draws every forecast hour on the same
+// rectangle. The hurricane models' inner nest does not: it is redrawn around
+// the storm at each hour, and measured on the live data it slid about eight
+// degrees of longitude between f000 and f072. So the Pi records what each
+// frame actually covered, and this is where the page reads it back. Falling
+// back to the run's own bounds keeps every fixed-domain model working
+// exactly as before.
+function _hdFrameBounds(fhr) {
+  const fb = _hdManifest && _hdManifest.frame_bounds;
+  if (fb) {
+    const b = fb[String(fhr)] || fb[String(+fhr)];
+    if (b) return b;
+  }
+  return _hdManifest ? _hdManifest.bounds : null;
+}
+
+// Follow the storm, or hold still. Two honest ways to watch a moving nest and
+// no way to guess which somebody wants:
+//
+//   follow  the map keeps the nest in view as you scrub, so the storm stays
+//           put on your screen and the coastline slides past it. What you
+//           want while reading structure.
+//   fixed   the map stays where you put it and the storm moves across it,
+//           which is what you want to see where it is actually going.
+//
+// Remembered, because it is a way of working rather than a per-storm choice.
+const HD_FOLLOW_KEY = 'gwcfc_hd_follow';
+let _hdFollow = (() => {
+  try { return localStorage.getItem(HD_FOLLOW_KEY) !== '0'; }
+  catch (e) { return true; }
+})();
+
+function _hdSetFollow(on) {
+  _hdFollow = !!on;
+  try { localStorage.setItem(HD_FOLLOW_KEY, _hdFollow ? '1' : '0'); }
+  catch (e) {}
+  _hdFillDomainPicker();
+  // Turning it on should act at once rather than at the next frame, or the
+  // button looks like it did nothing.
+  if (_hdFollow) _hdFollowFrame();
+}
+
+// Bring the current frame into view. Only ever for a moving domain: panning
+// the map because somebody stepped an hour of a fixed model would be moving
+// the map out from under them for no reason.
+function _hdFollowFrame() {
+  if (!_hdFollow || !_hdManifest || !_hdManifest.moving) return;
+  if (typeof map === 'undefined' || !map) return;
+  const hours = _hdHoursFor(_hdField);
+  if (!hours.length) return;
+  const b = _hdFrameBounds(hours[Math.min(_hdHourIdx, hours.length - 1)]);
+  if (!b) return;
+  try {
+    const bb = L.latLngBounds(b);
+    // Only when the nest has actually left the screen. Recentring on every
+    // frame fights the user for control of the map even when the storm is
+    // already comfortably in view.
+    if (!map.getBounds().contains(bb.getCenter())) {
+      map.panTo(bb.getCenter(), { animate: true, duration: 0.4 });
+    }
+  } catch (e) {}
 }
 
 function _hdFillRegionPicker() {
   const sel = document.getElementById('sev-region-sel');
   if (!sel) return;
-  const regions = _hdRegionsOf(_hdModel);
+  let regions = _hdRegionsOf(_hdModel);
+  // ONE ROW PER STORM, not one per grid. A storm-following model publishes
+  // the same storm twice, once per domain, and listing both here would put
+  // "Storm 4 (Atlantic)" in the dropdown twice with nothing to tell them
+  // apart. The domain is its own control beside this one, so this list is
+  // collapsed to the storms and the parent entry stands for each.
+  const cur = _hdSplitStorm(_hdRegion);
+  if (regions.some(r => _hdSplitStorm(r))) {
+    const seen = new Set();
+    regions = regions.filter(r => {
+      const s = _hdSplitStorm(r);
+      if (!s) return true;
+      if (seen.has(s.storm)) return false;
+      seen.add(s.storm);
+      return true;
+    });
+    // Named and numbered storms above invests, matching the order the Pi
+    // builds them in and putting the things somebody is actually tracking at
+    // the top of the list.
+    regions.sort((a, b) => {
+      const sa = _hdSplitStorm(a), sb = _hdSplitStorm(b);
+      if (!sa || !sb) return 0;
+      return (sa.num >= 90) - (sb.num >= 90) || sa.num - sb.num;
+    });
+  }
   // Hidden rather than shown with one entry: a control with no choice in it
   // is just something else to read.
   sel.style.display = (_hdFromPicker && _hdOn && regions.length > 1)
@@ -16967,7 +17136,69 @@ function _hdFillRegionPicker() {
     o.textContent = _hdRegionLabel(r) + res;
     sel.appendChild(o);
   });
-  if (_hdRegion) sel.value = _hdRegion;
+  // On a storm-following model the rows are keyed by the parent grid, so
+  // being on the nest still has to select the storm's row rather than
+  // nothing at all.
+  if (_hdRegion) sel.value = cur ? cur.storm : _hdRegion;
+}
+
+// What the storm dropdown calls. Changing storm keeps the grid you were
+// looking at: somebody comparing two storms' eyewalls should not be dropped
+// back to the basin view halfway through, and if the new storm has no nest
+// the parent is the honest answer rather than a broken path.
+function _hdPickRegion(value) {
+  const want = _hdSplitStorm(_hdRegion);
+  const next = _hdSplitStorm(value);
+  if (want && next && want.domain !== 'parent') {
+    const doms = _hdDomainsFor(_hdModel, next.storm);
+    if (doms.indexOf(want.domain) >= 0) {
+      return _hdSetRegion(`${next.storm}-${want.domain}`);
+    }
+  }
+  return _hdSetRegion(value);
+}
+
+function _hdFillDomainPicker() {
+  const wrap = document.getElementById('sev-domain-wrap');
+  const box = document.getElementById('sev-domain-btns');
+  if (!wrap || !box) return;
+  const cur = _hdSplitStorm(_hdRegion);
+  const doms = cur ? _hdDomainsFor(_hdModel, cur.storm) : [];
+  // One domain is not a choice, and a model with no storms is not a
+  // hurricane model. Either way there is nothing to offer.
+  wrap.style.display = (_hdFromPicker && _hdOn && doms.length > 1) ? '' : 'none';
+  if (doms.length < 2) return;
+  box.innerHTML = '';
+  doms.forEach(d => {
+    const b = document.createElement('div');
+    b.className = 'sev-domain-btn' + (d === cur.domain ? ' active' : '');
+    b.textContent = HD_DOMAIN_LABELS[d] || d;
+    b.title = d === 'storm'
+      ? 'The fine inner grid, about 2 km, redrawn around the storm at every '
+        + 'forecast hour. The eyewall and the bands.'
+      : 'The wide grid, about 6 km, fixed for the whole run. The storm in '
+        + 'its surroundings.';
+    b.onclick = () => _hdSetRegion(
+      d === 'parent' ? cur.storm : `${cur.storm}-${d}`);
+    box.appendChild(b);
+  });
+  // Follow only means anything on a domain that moves, so it only appears
+  // there. On the parent grid there is nothing to follow.
+  if (_hdManifest && _hdManifest.moving) {
+    const sep = document.createElement('div');
+    sep.className = 'sev-domain-sep';
+    box.appendChild(sep);
+    const f = document.createElement('div');
+    f.className = 'sev-domain-btn sev-follow-btn' + (_hdFollow ? ' active' : '');
+    f.textContent = _hdFollow ? 'Following' : 'Fixed';
+    f.title = _hdFollow
+      ? 'The map keeps the moving nest in view as you step through the '
+        + 'forecast. Tap to hold the map still instead.'
+      : 'The map stays where you put it and the storm moves across it. '
+        + 'Tap to follow the nest instead.';
+    f.onclick = () => _hdSetFollow(!_hdFollow);
+    box.appendChild(f);
+  }
 }
 
 async function _hdSetRegion(region) {
@@ -16985,6 +17216,7 @@ async function _hdSetRegion(region) {
   _hdPopulateRun();
   _hdBuildFrameGrid();
   _hdFillRegionPicker();
+  _hdFillDomainPicker();
   _sevRender();
 }
 
@@ -17038,7 +17270,10 @@ async function _hdShow() {
   // Inspector read its pixels back without tainting the canvas. Without it
   // the picture draws the same but every pixel read throws. A recolored
   // picture is already a same-origin data: URL and needs no such asking.
-  const next = L.imageOverlay(src, _hdManifest.bounds,
+  // Per frame, not per run: see _hdFrameBounds. Drawing a moving nest on the
+  // run's single rectangle puts the early hours hundreds of kilometres from
+  // where they happened.
+  const next = L.imageOverlay(src, _hdFrameBounds(fhr) || _hdManifest.bounds,
     { opacity: modelOpacity, interactive: false, pane: 'modelPane',
       // Model fields are continuous, so they are smoothed as they stretch
       // rather than taking the radar pane's deliberately crisp rendering.
@@ -17057,6 +17292,7 @@ async function _hdShow() {
   next.addTo(map);
   _hdLayers.add(next);
   _hdLayer = next;
+  _hdFollowFrame();
   _hdRenderPanel();
 }
 
@@ -17295,6 +17531,7 @@ async function _hdPickModel(name, region) {
   }
   _hdHourIdx = Math.min(_hdHourIdx, Math.max(0, _hdHoursFor(_hdField).length - 1));
   _hdFillRegionPicker();
+  _hdFillDomainPicker();
   _hdShow();
 }
 
@@ -20167,6 +20404,7 @@ _sevSetSection = async function (value) {
     _hdPopulateRun();
     _hdBuildFrameGrid();
     _hdFillRegionPicker();
+    _hdFillDomainPicker();
     _sevRender();   // takes down whatever the last model left, then draws
     return;
   }
@@ -57434,7 +57672,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'The tutorial was rewritten against the app itself. Every claim in it was checked by opening the real page in a browser and reading what is actually on screen, so the wrong bits are gone: Radar does not open five products, it opens five sources (Normal, Level 2, Level 3, Composite, Time Machine), Models has three panels and not two, the quick menu has five buttons and not three, the overlay launcher has 32 rows and not \'20+\', and Settings has fifteen tabs. Eight features that were never in it at all now have sections: Time Machine, AI Cyclones, Cross Section, the right-click menu with soundings, the full Settings tour, Navigation, keyboard shortcuts and starred search. The map style menu (Dark / Satellite / Light / Topo / Locate / Smooth / Fullscreen) had lost its container and was rendering off the bottom of the page where nobody could reach it; it is back on the right edge under the tools.';
+const APP_LATEST_UPDATE = 'Hurricane models: every storm now, not just the named ones. The storm list came from the Hurricane Center, which only lists systems it has advisories out on, so invests and western Pacific systems were missing. It is read from the model\'s own directory now: HAFS-A is running seven storms today where two were showing. Each storm also gets both of its grids, with a Parent / Storm switch: the parent is 6 km over the whole basin, the storm nest is 2 km and three times finer. The nest moves with the storm through the run, so every frame is drawn on its own box rather than all of them on the last one, and a Following / Fixed button decides whether the map tracks it or holds still. Two rendering faults fixed as well: wind and wave direction were interpolated straight through the 0 to 360 wrap, which put scattered pixels pointing the exact opposite way, and charts are now sized by how much world they cover instead of a flat pixel count, so the tropical box gains 60 percent more detail where hurricanes are actually looked at.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
