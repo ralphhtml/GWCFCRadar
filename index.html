@@ -20617,6 +20617,14 @@ setTimeout(async function _hdPrimeModelList() {
   try {
     _hdBase = _hdBase || await _hdResolveBase();
     if (_hdBase) await _hdFreshIndex();
+    // Comparison rows drawn before the index arrived offered only the five
+    // WMS services. Now that the Pi's list exists, redraw them so its models
+    // appear in every open slot's dropdown, and give any slot already set to
+    // a Pi model (a saved group loaded at startup) its first real render.
+    if (_hdIndex && _sevCompareOn) {
+      _sevRenderSlotRows();
+      _sevRenderAllSlots();
+    }
   } catch (e) {}
 }, 2500);
 
@@ -29006,9 +29014,17 @@ function _sevValidTimeISOFor(run, frame, stepHours) {
   return new Date(runMs + frame * stepHours * 3600000).toISOString().replace('.000Z','Z');
 }
 
-function _sevMakeSlot(section, varr, run) {
+function _sevMakeSlot(section, varr, run, piRegion) {
   section = section || 'ecmwf';
-  return { id: 's' + (++_sevSlotSeq), section, var: varr || SEV_DEFAULT_VAR[section] || (SEV_PRODUCTS[section]||SEV_PRODUCTS.hrrr)[0].v, run: run || '', layer: null, dividerEl: null, labelEl: null };
+  // A "pi:" slot's defaults come from the Pi's index when the row is filled
+  // in, not from the WMS product tables, so an empty var here is deliberate:
+  // _sevFillPiSlotSelects replaces it with the first product the model
+  // actually built.
+  const pi = String(section).startsWith('pi:');
+  return { id: 's' + (++_sevSlotSeq), section,
+           var: varr || (pi ? '' : SEV_DEFAULT_VAR[section] || (SEV_PRODUCTS[section]||SEV_PRODUCTS.hrrr)[0].v),
+           run: run || '', piRegion: piRegion || '',
+           layer: null, dividerEl: null, labelEl: null };
 }
 function _sevSlotPaneName(id) { return 'sev-cmp-' + id; }
 
@@ -29025,6 +29041,72 @@ function _sevSyncSlotPaneZ() {
 }
 function _sevSlotLetter(i) { return String.fromCharCode(66 + i); } // B, C, D, ...
 
+// The Pi half of _sevRenderSlot. Every other slot type is a WMS service the
+// browser can address synchronously; a Pi model needs its manifest first (to
+// know which hours exist and what ground each frame covers), so the first
+// render of a new model/region/run fetches it, caches it on the slot, and
+// re-renders when it lands. The shared frame position (_sevFrame) is an INDEX
+// into this slot's own hours list, clamped to its end, exactly the way the
+// WMS slots clamp the shared frame to their own ranges: two models on screen
+// can step at different hour spacings, and each simply shows the closest
+// hour it actually built.
+function _sevRenderPiSlot(slot, paneName) {
+  const model = String(slot.section).slice(3);
+  // Nothing to draw until the Pi's address and index are known. Resolve them
+  // once, then come back; if they cannot be resolved the strip stays empty
+  // and the slot's label still says what was asked for.
+  if (typeof _hdBase === 'undefined' || !_hdBase || !_hdIndex) {
+    const token = (slot.piToken = (slot.piToken || 0) + 1);
+    (async () => {
+      try {
+        _hdBase = _hdBase || await _hdResolveBase();
+        if (_hdBase && !_hdIndex) await _hdFreshIndex();
+      } catch (e) {}
+      if (_hdBase && _hdIndex && token === slot.piToken
+          && _sevCompareOn && _sevExtraSlots.includes(slot)) _sevRenderSlot(slot);
+    })();
+    return;
+  }
+  const have = _hdRegionsOf(model);
+  if (!have.length) return;
+  if (!have.includes(slot.piRegion)) slot.piRegion = have[0];
+  const entry = _hdRegionEntry(model, slot.piRegion);
+  if (!entry || !entry.path) return;
+  const run = slot.run || entry.run;
+  if (!run) return;
+  const key = `${model}/${slot.piRegion}/${run}`;
+  if (!slot.piMan || slot.piManKey !== key) {
+    const token = (slot.piToken = (slot.piToken || 0) + 1);
+    const path = entry.path.replace(/[^/]+\/manifest\.json$/, run + '/manifest.json');
+    fetch(`${_hdBase}/models/${path}`, { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(man => {
+        if (!man || token !== slot.piToken) return;
+        slot.piMan = man; slot.piManKey = key;
+        if (_sevCompareOn && _sevExtraSlots.includes(slot)) _sevRenderSlot(slot);
+      }).catch(() => {});
+    return;
+  }
+  const man = slot.piMan;
+  const f = man.fields && man.fields[slot.var];
+  const hours = (f && f.hours) || [];
+  if (!hours.length) return;
+  const fhr = hours[Math.max(0, Math.min(_sevFrame, hours.length - 1))];
+  const dir = entry.path.replace(/[^/]+\/manifest\.json$/, man.run);
+  const url = `${_hdBase}/models/${dir}/${slot.var}_f${String(fhr).padStart(3, '0')}.png`;
+  // Per frame where the manifest records it, for the same reason the main
+  // panel does: a hurricane model's inner nest is redrawn around the storm
+  // each hour, so one rectangle for the whole run puts the early frames
+  // hundreds of kilometres from where they happened.
+  const fb = man.frame_bounds && (man.frame_bounds[String(fhr)] || man.frame_bounds[String(+fhr)]);
+  const bounds = fb || man.bounds;
+  if (!bounds) return;
+  const layer = L.imageOverlay(url, bounds,
+    { opacity: 1, interactive: false, pane: paneName, className: 'wx-model-smooth' });
+  layer.addTo(map);
+  slot.layer = layer;
+}
+
 function _sevRenderSlot(slot) {
   if (slot.layer) { try { map.removeLayer(slot.layer); } catch(e){} slot.layer = null; }
   if (!_sevCompareOn) return;
@@ -29038,6 +29120,10 @@ function _sevRenderSlot(slot) {
   // alert polygons. It used to be a flat 450, which is above both: turning
   // on a second model buried the state lines and every warning on screen.
   _sevSyncSlotPaneZ();
+  // A Pi model in a slot is a prebuilt picture per forecast hour, not a WMS
+  // tile service, so it takes its own branch: fetch the slot's manifest once,
+  // then lay the right hour's PNG into this slot's clipped pane.
+  if (String(slot.section).startsWith('pi:')) { _sevRenderPiSlot(slot, paneName); return; }
   const commonOpts = { format:'image/png', transparent:true, version:'1.1.1', opacity:1, pane:paneName, tileSize:256, noWrap:true };
   const frame = Math.max(_sevMinFrameFor(slot.section, slot.var), Math.min(_sevFrame, _sevMaxFrameFor(slot.section)));
   let layer = null;
@@ -29101,6 +29187,20 @@ function _sevRecalcEvenSplits() {
 }
 
 function _sevCompareLabelText(section, v, run) {
+  if (String(section).startsWith('pi:')) {
+    // A Pi model's name comes from its own index and its product from
+    // HD_FIELDS, the same sources its pickers were filled from. The run
+    // string arrives in two shapes depending on who set it: the A panel
+    // stores 2026083106 and a slot stores the Pi's own 20260831_06, so the
+    // hour is read from wherever the digits actually are.
+    const m = section.slice(3);
+    const mods = (typeof _hdIndex !== 'undefined' && _hdIndex && _hdIndex.models) || {};
+    const name = (mods[m] && mods[m].label) || m.toUpperCase();
+    const f = (typeof HD_FIELDS !== 'undefined') && HD_FIELDS.find(x => x.id === v);
+    const hh = run && (run.includes('_') ? run.slice(9, 11) : run.slice(8, 10));
+    const runLbl = run && run.length >= 10 ? `${run.slice(4,6)}/${run.slice(6,8)} ${hh}z` : 'Latest';
+    return `${name} · ${f ? f.label : (v || '-')} · ${runLbl}`;
+  }
   const name = SEV_MODEL_LABELS[section] || section.toUpperCase();
   const prods = SEV_PRODUCTS[section] || SEV_PRODUCTS.hrrr;
   const prod = prods.find(p => p.v === v);
@@ -29184,7 +29284,27 @@ function _sevSetSplit(idx, clientX) {
 function _sevRenderSlotRows() {
   const container = document.getElementById('sev-slots-container');
   if (!container) return;
-  container.innerHTML = _sevExtraSlots.map((slot, i) => `
+  // The Pi's models join the dropdown as their own group, one entry per model
+  // in its published index, under the same "pi:<model>" values the main Model
+  // picker uses, so a slot and the A panel mean the same thing by the same
+  // string. No index (the Pi unreachable, or not asked yet) means no group,
+  // and the five services that were always here still are.
+  const piMods = (typeof _hdIndex !== 'undefined' && _hdIndex && _hdIndex.models) || {};
+  container.innerHTML = _sevExtraSlots.map((slot, i) => {
+    const piOpts = Object.keys(piMods).map(k =>
+      `<option value="pi:${k}" ${slot.section === 'pi:' + k ? 'selected' : ''}>${piMods[k].label || k.toUpperCase()} (Pi)</option>`).join('');
+    // A Pi model built over several places gets a region picker; a WMS slot,
+    // or a Pi model with one region, does not need the extra dropdown.
+    const regions = String(slot.section).startsWith('pi:')
+      ? _hdRegionsOf(slot.section.slice(3)) : [];
+    const regionRow = regions.length > 1 ? `
+        <div class="sev-dd-wrap">
+          <label class="sev-dd-label">Region</label>
+          <select onchange="_sevSetSlotPiRegion('${slot.id}', this.value)">
+            ${regions.map(r => `<option value="${r}" ${r === slot.piRegion ? 'selected' : ''}>${_hdRegionLabel(r)}</option>`).join('')}
+          </select>
+        </div>` : '';
+    return `
     <div class="sev-slot-row">
       <div class="sev-slot-row-header">
         <span class="sev-slot-label">${_sevSlotLetter(i)}</span>
@@ -29199,8 +29319,10 @@ function _sevRenderSlotRows() {
             <option value="hrdps" ${slot.section==='hrdps'?'selected':''}>HRDPS (Hi-Res N. America)</option>
             <option value="ndfd" ${slot.section==='ndfd'?'selected':''}>NWS NDFD (US Forecast)</option>
             <option value="hrrr" ${slot.section==='hrrr'?'selected':''}>HRRR (18h)</option>
+            ${piOpts ? `<optgroup label="GWCFC Pi Models">${piOpts}</optgroup>` : ''}
           </select>
         </div>
+        ${regionRow}
         <div class="sev-dd-wrap">
           <label class="sev-dd-label">Product</label>
           <select id="sev-slot-var-${slot.id}" onchange="_sevSetSlotVar('${slot.id}', this.value)"></select>
@@ -29210,15 +29332,19 @@ function _sevRenderSlotRows() {
         <span class="trop-run-lbl">Run:</span>
         <select id="sev-slot-run-${slot.id}" onchange="_sevSetSlotRun('${slot.id}', this.value)"></select>
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
   _sevExtraSlots.forEach(slot => {
     const varSel = document.getElementById('sev-slot-var-' + slot.id);
+    const runSel = document.getElementById('sev-slot-run-' + slot.id);
+    if (String(slot.section).startsWith('pi:')) {
+      _sevFillPiSlotSelects(slot, varSel, runSel);
+      return;
+    }
     if (varSel) {
       const prods = SEV_PRODUCTS[slot.section] || SEV_PRODUCTS.hrrr;
       varSel.innerHTML = prods.map(p => `<option value="${p.v}"${p.v===slot.var?' selected':''}>${p.l}</option>`).join('');
     }
-    const runSel = document.getElementById('sev-slot-run-' + slot.id);
     if (runSel) {
       const first = _sevPopulateRunsFor(slot.section, runSel);
       // A saved comparison's run can rotate out of availability (model runs
@@ -29229,6 +29355,74 @@ function _sevRenderSlotRows() {
       runSel.value = slot.run;
     }
   });
+}
+
+// A Pi slot's product and run pickers are filled straight from the Pi's own
+// index entry: exactly the products that model built (labeled and grouped
+// through HD_FIELDS, the same table the main panel uses) and the archived
+// runs it still holds on disk. Also corrects the slot itself when a saved
+// choice no longer exists, for the same reason the WMS run fallback above
+// does: the dropdown and the layer that draws must agree.
+function _sevFillPiSlotSelects(slot, varSel, runSel) {
+  const model = String(slot.section).slice(3);
+  const have = _hdRegionsOf(model);
+  if (have.length && !have.includes(slot.piRegion)) slot.piRegion = have[0];
+  const entry = _hdRegionEntry(model, slot.piRegion);
+  const built = (entry && entry.fields) || [];
+  if (varSel) {
+    varSel.innerHTML = '';
+    // HD_FIELDS order, not the index's alphabetical order, so the groups
+    // read Surface, Upper Air, Severe... rather than interleaving.
+    const known = HD_FIELDS.filter(fd => built.includes(fd.id));
+    const extra = built.filter(id => !HD_FIELDS.some(fd => fd.id === id))
+                       .map(id => ({ id, label: id, group: 'Other' }));
+    const opts = known.concat(extra);
+    let lastG = null, host = varSel;
+    opts.forEach(fd => {
+      const g = fd.group || 'Other';
+      if (g !== lastG) {
+        lastG = g;
+        host = document.createElement('optgroup');
+        host.label = g;
+        varSel.appendChild(host);
+      }
+      const o = document.createElement('option');
+      o.value = fd.id; o.textContent = fd.label;
+      host.appendChild(o);
+    });
+    if (!opts.length) {
+      const o = document.createElement('option');
+      o.value = ''; o.textContent = 'nothing built yet';
+      varSel.appendChild(o);
+    }
+    if (!opts.some(fd => fd.id === slot.var)) slot.var = opts.length ? opts[0].id : '';
+    varSel.value = slot.var;
+  }
+  if (runSel) {
+    const runs = (entry && Array.isArray(entry.runs) && entry.runs.length)
+      ? entry.runs : (entry && entry.run ? [entry.run] : []);
+    runSel.innerHTML = runs.length
+      ? runs.map((r, i) => `<option value="${r}">${(i === 0 ? 'Latest · ' : '') + _hdRunLabel(r)}</option>`).join('')
+      : '<option value="">-</option>';
+    if (!runs.includes(slot.run)) slot.run = runs[0] || '';
+    runSel.value = slot.run;
+  }
+}
+
+// Region change on a Pi slot. A new region is a new set of pictures with its
+// own products and its own archive, so the cached manifest is dropped and the
+// run reset to latest; the row rebuild re-reads both from the index.
+function _sevSetSlotPiRegion(id, r) {
+  const slot = _sevExtraSlots.find(x => x.id === id);
+  if (!slot) return;
+  slot.piRegion = r;
+  slot.run = '';
+  slot.piMan = null; slot.piManKey = '';
+  _sevCurrentGroup = '';
+  _sevSyncGroupSelector();
+  _sevRenderSlotRows();
+  _sevRenderSlot(slot);
+  _sevCompareUpdateLabels();
 }
 
 function _sevAddSlot() {
@@ -29261,8 +29455,18 @@ function _sevSetSlotSection(id, s) {
   const slot = _sevExtraSlots.find(x => x.id === id);
   if (!slot) return;
   slot.section = s;
-  slot.var = SEV_DEFAULT_VAR[s] || (SEV_PRODUCTS[s]||SEV_PRODUCTS.hrrr)[0].v;
-  slot.run = '';
+  if (String(s).startsWith('pi:')) {
+    // Blank on purpose: the row rebuild fills all three from the Pi's index
+    // (first region, first built product, latest run), which is the only
+    // place the honest defaults for a Pi model live.
+    slot.piRegion = '';
+    slot.var = '';
+    slot.run = '';
+    slot.piMan = null; slot.piManKey = '';
+  } else {
+    slot.var = SEV_DEFAULT_VAR[s] || (SEV_PRODUCTS[s]||SEV_PRODUCTS.hrrr)[0].v;
+    slot.run = '';
+  }
   _sevCurrentGroup = '';
   _sevSyncGroupSelector();
   _sevRenderSlotRows();
@@ -29314,7 +29518,9 @@ function _sevSaveGroup() {
   const input = document.getElementById('sev-save-name-input');
   const name = (input?.value || '').trim();
   if (!name) { showToast('Type a name for this comparison first', 2500); return; }
-  _sevGroups[name] = _sevExtraSlots.map(s => ({ section: s.section, var: s.var, run: s.run }));
+  // The region only means anything on a Pi slot, but saving it always is
+  // harmless and saves a shape-check here and in the loader.
+  _sevGroups[name] = _sevExtraSlots.map(s => ({ section: s.section, var: s.var, run: s.run, region: s.piRegion || '' }));
   _sevCurrentGroup = name;
   _sevSaveGroupsToStorage();
   _sevSyncGroupSelector();
@@ -29338,7 +29544,7 @@ function _sevLoadGroup(name) {
     if (slot.dividerEl) slot.dividerEl.remove();
     if (slot.labelEl) slot.labelEl.remove();
   });
-  _sevExtraSlots = cfg.map(c => _sevMakeSlot(c.section, c.var, c.run));
+  _sevExtraSlots = cfg.map(c => _sevMakeSlot(c.section, c.var, c.run, c.region));
   _sevCurrentGroup = name;
   _sevSyncGroupSelector();
   _sevRecalcEvenSplits();
@@ -57661,7 +57867,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'The tutorial\'s picture of the layer bubbles was wrong and is now generated from the app itself. The hand-drawn version hung a badge on every row reading NEXRAD, GOES, MARINE, AQI, SPEED, 2M, MSLP and 3 PANELS, and no bubble in this app has ever had a badge of any kind, so anyone following it went hunting for a tag that does not exist. It also used the wrong icons and left off the info button and the drag handle every real row carries. It is drawn from the same list the real column is drawn from now, so it shows the actual eight bubbles with their own icons and cannot drift again: add a ninth tomorrow and the picture grows a ninth row on its own.';
+const APP_LATEST_UPDATE = 'The Pi\'s models should stop going stale for good. Three causes, three fixes: builds now run three at a time instead of one by one, the build clock restarts a few minutes after each pass finishes instead of once an hour (so a slow pass no longer swallows the next one), and a model that keeps failing now waits its turn with a growing timeout instead of hogging the front of the queue while healthy models age behind it. Every model also now runs to the furthest forecast hour its source actually publishes, checked against the live data servers: GFS and its wave model to 384 hours, ECMWF and its AI model to 360, the blend to 264, and HRRR/RAP to their long cycles. And the Compare button can finally compare the Pi\'s own models: every one of them, with its regions, products and five days of archived runs, can now sit in a comparison strip next to any other model or any older run.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
