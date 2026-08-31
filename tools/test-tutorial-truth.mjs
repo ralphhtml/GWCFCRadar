@@ -46,23 +46,25 @@ const TUT = (() => {
 })();
 const says = (s) => TUT.includes(s);
 
-console.log('\n1. the map style menu is reachable again');
+console.log('\n1. the map style menu is gone, and nothing it held was lost');
 {
-  // It was six loose .right-bubble divs parented straight to #map-wrap, with
-  // nothing positioning them. They stacked full-width past the bottom of a
-  // wrapper that clips overflow, so they were in the DOM and off the screen.
-  ok('the rows live inside a container now',
-     /<div id="map-style-menu">[\s\S]{0,2600}?id="rm-fullscreen"/.test(PAGE));
-  ok('and it is positioned rather than left to flow',
-     /#map-style-menu \{[\s\S]{0,300}position: absolute;/.test(PAGE));
-  // Dark is the default basemap, and rmActivate has always tried to
-  // un-highlight an #rm-dark that did not exist.
-  ok('Dark has a row, so you can get back to the default',
-     /id="rm-dark"[^>]*onclick="setMapType\('dark'\)/.test(PAGE));
-  ok('and picking Topo un-highlights the others',
-     /\['rm-dark','rm-satellite','rm-light','rm-topo'\]/.test(PAGE));
-  ok('clean mode hides it with the rest of the chrome',
-     /body\.clean-mode #map-style-menu,/.test(PAGE));
+  // Restoring this row was my call and it was the wrong one: it put seven
+  // more buttons down the side of a map that is the whole point of the app.
+  // Removed. What matters now is that nothing it carried became unreachable
+  // a second time, which is the failure the row was rescued from.
+  ok('the floating row is gone', !/id="map-style-menu"/.test(PAGE));
+  ok('and so is the styling for it', !/\.right-bubble/.test(PAGE));
+  ok('base map still has a control', /id="lqm-set-maptype"/.test(PAGE));
+  ok('Smooth still has one', /id="lqm-set-smooth"/.test(PAGE));
+  ok('Locate has a home in Settings rather than nowhere',
+     /onclick="locateUser\(\)"/.test(PAGE));
+  ok('Fullscreen is still on the animation bar', /id="fullscreen-btn"/.test(PAGE));
+  // toggleSmooth reached for the removed row without a null check, so this is
+  // the line that would have thrown on the first tap after the removal.
+  ok('toggleSmooth no longer reaches for an element that is gone',
+     !/getElementById\('rm-smooth'\)/.test(PAGE));
+  ok('and nothing else refers to the dead ids',
+     !/rm-dark|rm-locate|rm-topo|rm-fullscreen/.test(PAGE));
 }
 
 console.log('\n2. the claims that were wrong');
@@ -136,30 +138,7 @@ if (!chromium) {
   await p.waitForTimeout(2800);
   const r = await p.evaluate(async () => {
     const out = {};
-    const seen = (el) => {
-      if (!el) return false;
-      const r = el.getBoundingClientRect();
-      return r.width > 2 && r.height > 2
-          && r.top < innerHeight && r.bottom > 0
-          && r.left < innerWidth && r.right > 0;
-    };
-    // The whole point: these are on the screen, not merely in the DOM.
-    out.styleRows = [...document.querySelectorAll('#map-style-menu .right-bubble')]
-      .map(e => ({ id: e.id, on: seen(e), text: e.textContent.trim() }));
-    // And they do not sit on top of the tool rail or the overlay button.
-    const box = (id) => {
-      const e = document.getElementById(id);
-      if (!e) return null;
-      const r = e.getBoundingClientRect();
-      return { top: r.top, bottom: r.bottom, left: r.left, right: r.right };
-    };
-    out.menu = document.getElementById('map-style-menu').getBoundingClientRect().toJSON();
-    out.rail = box('right-menu');
-    out.ovBtn = box('overlay-toggle-btn');
-    // Picking a style highlights exactly one row.
-    try { setMapType('topo'); rmActivate('rm-topo'); } catch (e) {}
-    out.litAfterTopo = ['rm-dark', 'rm-satellite', 'rm-light', 'rm-topo']
-      .filter(i => document.getElementById(i).classList.contains('active'));
+    out.styleRows = document.querySelectorAll('#map-style-menu .right-bubble').length;
     // The tutorial renders, with its sections and links intact.
     try { lqmOpenTutorial(); } catch (e) {}
     await new Promise(r => setTimeout(r, 400));
@@ -176,22 +155,8 @@ if (!chromium) {
   });
   await b.close();
 
-  ok('all seven map style rows are on the screen',
-     r.styleRows.length === 7 && r.styleRows.every(x => x.on),
-     r.styleRows.filter(x => !x.on).map(x => x.id).join(', '));
-  ok('and they read Dark, Satellite, Light, Topo, Locate, Smooth, Fullscreen',
-     r.styleRows.map(x => x.text).join(',')
-       === 'Dark,Satellite,Light,Topo,Locate,Smooth,Fullscreen',
-     r.styleRows.map(x => x.text).join(','));
-  ok('the menu sits below the tool rail, not across it',
-     r.rail && r.menu.top >= r.rail.bottom,
-     `menu ${Math.round(r.menu.top)} vs rail ${r.rail && Math.round(r.rail.bottom)}`);
-  ok('and clear of the overlay button underneath it',
-     r.ovBtn && r.menu.bottom <= r.ovBtn.top,
-     `menu ${Math.round(r.menu.bottom)} vs button ${r.ovBtn && Math.round(r.ovBtn.top)}`);
-  ok('picking a base map lights exactly one row',
-     r.litAfterTopo.length === 1 && r.litAfterTopo[0] === 'rm-topo',
-     r.litAfterTopo.join(', '));
+  ok('no floating map style row is on the screen', r.styleRows === 0,
+     String(r.styleRows));
 
   ok('the tutorial renders all eighteen sections', r.sections.length === 18,
      String(r.sections.length));

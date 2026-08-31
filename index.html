@@ -1334,8 +1334,7 @@ body {
      further down the file - see the comment there. Declaring it here
      silently loses to that later same-specificity rule, exactly like the
      ≤480px case already documents; padding-only overrides that don't
-     collide, like .right-bubble below, are unaffected and fine to keep here.) */
-  .right-bubble { padding: 5px 10px; font-size: 11px; gap: 4px; }
+     collide are unaffected and fine to keep here.) */
 
   /* Float buttons , drop to just above animbar so sub-bubble/right-menu columns don't overlap.
      bottom comes from --fab-bottom (measured live off animbar's real
@@ -1444,7 +1443,6 @@ body {
   /* Sub bubbles and right menu , tighter vertical stack */
   #sub-bubbles { gap: 4px; }
   #right-menu { gap: 3px; }
-  .right-bubble { padding: 4px 9px; font-size: 10px; letter-spacing: 0.5px; }
 
   /* Main left menu bubbles (Radar/Satellite/Alerts/Models) , icon-only on
      phones to free up map/scrolling room. Sub-menu bubbles (e.g. radar
@@ -2093,67 +2091,7 @@ body {
 #export-close:hover { background:rgba(255,60,60,0.25); border-color:rgba(255,60,60,0.6); color:#fff; }
 #export-toolbar .dtb-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
-/* The map style menu: base map, Locate, Smooth, Fullscreen. Sits on the
-   right edge under the tool rail, so the whole right side of the screen is
-   "things you do to the map" top to bottom. Same clearance maths as
-   #right-menu, measured off the overlay button and the animbar, so it can
-   never grow down into them. */
-#map-style-menu {
-  position: absolute;
-  right: 12px;
-  bottom: calc(var(--menu-clearance, 120px) + 10px);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 3px;
-  z-index: 800;
-  max-height: 46vh;
-  overflow-y: auto;
-}
-@media (max-width: 768px) {
-  #map-style-menu { right: 8px; gap: 2px; }
-}
-@media (max-width: 480px) {
-  /* Phones have no room for a second right-hand column of labels. Map
-     style lives in Settings > Map there, which is where the small-screen
-     layout has always sent people. */
-  #map-style-menu { display: none; }
-}
 
-.right-bubble {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 14px;
-  font-family: var(--display);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  color: rgba(255,255,255,0.6);
-  background: rgb(90,0,0);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 20px;
-  cursor: pointer;
-  backdrop-filter: blur(4px);
-  transition: all 0.18s ease;
-  user-select: none;
-  white-space: nowrap;
-}
-.right-bubble:hover {
-  color: #fff;
-  background: rgb(120,0,0);
-  border-color: rgba(255,255,255,0.3);
-  transform: translateY(-2px);
-}
-.right-bubble.active {
-  color: #fff;
-  background: rgb(133,0,0);
-  border-color: var(--accent2);
-  box-shadow: 0 0 10px rgba(0,140,186,0.3);
-  transform: translateY(-2px);
-}
-.right-bubble .rb-icon { font-size: 13px; }
 
 
 /* Leaflet overrides */
@@ -7708,6 +7646,15 @@ footer {
   border: 1px solid rgba(170,0,0,0.5);
 }
 .auth-submit-btn:hover { background: linear-gradient(135deg, #aa0000 0%, #720000 100%); }
+.auth-legal-note {
+  margin-top: 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+  color: rgba(212,232,255,0.55);
+}
+.auth-legal-note a { color: var(--accent2); text-decoration: none; font-weight: 600; }
+.auth-legal-note a:hover { color: var(--accent); text-decoration: underline; }
 .auth-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 #auth-error-msg {
@@ -9815,7 +9762,7 @@ try {
 // symbol above (defined once, referenced everywhere via <use>) so nothing
 // user-facing renders as a native emoji glyph. The user's chosen profile
 // avatar emoji is the one deliberate exception - see _PROFILE_EMOJIS below.
-const EMOJI_ICON_MAP = {"→": "arrow", "🌀": "cyclone", "📍": "pin", "⚠": "warning", "⚠️": "warning", "📡": "antenna", "✕": "close", "←": "arrow", "💨": "wind", "⚡": "bolt", "📊": "chart-bar", "🛰": "satellite", "🛰️": "satellite", "🌊": "wave", "🌧️": "cloud-rain", "💾": "save", "📻": "radio", "🌡": "temp", "🔥": "fire", "⬡": "hex", "🌪": "tornado", "🔴": "dot", "🌧": "cloud-rain", "🌩": "storm", "📈": "chart-up", "⇄": "swap", "🌤": "cloud-sun", "❄️": "snow", "🌡️": "temp", "💧": "drop", "↗": "arrow", "🚨": "siren", "☁": "cloud", "🗺": "map", "✓": "check", "🌫️": "fog", "⛈️": "storm", "💡": "bulb", "🔢": "numbers", "👤": "user", "🗑": "trash", "↺": "refresh-ccw", "🎯": "target", "🧭": "compass", "🔵": "dot", "🚗": "car", "📌": "pin", "❌": "close", "🔊": "speaker", "🌦️": "cloud-rain", "📸": "camera", "⚙": "gear", "⚙️": "gear", "🤖": "robot", "🔒": "lock", "✨": "sparkle", "⛈": "storm", "📷": "camera", "🏢": "building", "📄": "doc", "☀️": "sun", "🌨": "cloud-snow", "🌑": "moon", "📋": "clipboard", "🌈": "rainbow", "🕐": "clock", "🌨️": "cloud-snow", "☀": "sun", "🗂": "folder", "🔍": "search", "✏": "pencil", "🔔": "bell", "🌥️": "cloud", "⛔": "blocked", "⛶": "fullscreen", "🌫": "fog", "🧊": "ice", "🌬": "fog", "☁️": "cloud", "🔭": "telescope", "✅": "check", "⛅": "cloud-sun", "👁": "eye", "🌩️": "storm", "🖥️": "desktop", "🗺️": "map", "⭐": "star", "🔎": "search", "🛩️": "plane", "🎨": "palette", "📱": "phone", "♪": "music", "★": "star", "🖍️": "pencil", "🧣": "snow", "⬤": "dot", "🔬": "microscope", "🥵": "temp", "📉": "chart-down", "⛰️": "mountain", "🌿": "leaf", "🔆": "sun", "💦": "drop", "🌢": "gauge", "🗓": "calendar", "↻": "refresh-cw", "✦": "star", "🧹": "trash", "⬇": "arrow", "🌤️": "cloud-sun", "🌅": "sunrise", "🌇": "sunrise", "📐": "ruler", "📎": "paperclip", "↑": "arrow", "↖": "arrow", "↙": "arrow", "↘": "arrow", "📶": "signal", "🎛️": "sliders", "📝": "pencil", "💬": "chat", "🌐": "globe", "🌪️": "tornado", "🇨🇦": "flag", "🍝": "noodles", "🛠️": "tools", "✏️": "pencil", "✍️": "pencil", "📏": "ruler", "🏆": "trophy", "❄": "snow", "🌥": "cloud", "🌦": "cloud-rain", "🌙": "moon", "🏔": "mountain", "📢": "megaphone", "📖": "book", "👀": "eye", "🟢": "dot", "📧": "mail", "🖼️": "image", "🔓": "unlock", "⬢": "hex", "◯": "target", "🎲": "dice", "☰": "menu", "▶": "play", "▶️": "play", "◀": "play", "▲": "arrow", "▼": "arrow", "⏸": "pause", "⏹": "stop", "⏱": "stopwatch", "⏱️": "stopwatch", "⏳": "hourglass", "●": "dot", "ⓘ": "info", "ℹ": "info", "ℹ️": "info", "〰": "wave", "〰️": "wave", "⎘": "copy", "⋮": "grip"};
+const EMOJI_ICON_MAP = {"→": "arrow", "🌀": "cyclone", "📍": "pin", "⚠": "warning", "⚠️": "warning", "📡": "antenna", "✕": "close", "←": "arrow", "💨": "wind", "⚡": "bolt", "📊": "chart-bar", "🛰": "satellite", "🛰️": "satellite", "🌊": "wave", "🌧️": "cloud-rain", "💾": "save", "📻": "radio", "🌡": "temp", "🔥": "fire", "⬡": "hex", "🌪": "tornado", "🔴": "dot", "🌧": "cloud-rain", "🌩": "storm", "📈": "chart-up", "⇄": "swap", "🌤": "cloud-sun", "❄️": "snow", "🌡️": "temp", "💧": "drop", "↗": "arrow", "🚨": "siren", "☁": "cloud", "🗺": "map", "✓": "check", "🌫️": "fog", "⛈️": "storm", "💡": "bulb", "🔢": "numbers", "👤": "user", "🗑": "trash", "↺": "refresh-ccw", "🎯": "target", "🧭": "compass", "🔵": "dot", "🚗": "car", "📌": "pin", "❌": "close", "🔊": "speaker", "🌦️": "cloud-rain", "📸": "camera", "⚙": "gear", "⚙️": "gear", "🤖": "robot", "🔒": "lock", "✨": "sparkle", "⛈": "storm", "📷": "camera", "🏢": "building", "📄": "doc", "☀️": "sun", "🌨": "cloud-snow", "🌑": "moon", "📋": "clipboard", "🌈": "rainbow", "🕐": "clock", "🌨️": "cloud-snow", "☀": "sun", "🗂": "folder", "🔍": "search", "✏": "pencil", "🔔": "bell", "🌥️": "cloud", "⛔": "blocked", "⛶": "fullscreen", "🌫": "fog", "🧊": "ice", "🌬": "fog", "☁️": "cloud", "🔭": "telescope", "✅": "check", "⛅": "cloud-sun", "👁": "eye", "🌩️": "storm", "🖥️": "desktop", "🗺️": "map", "⭐": "star", "🔎": "search", "🛩️": "plane", "🎨": "palette", "📱": "phone", "♪": "music", "★": "star", "🖍️": "pencil", "🧣": "snow", "⬤": "dot", "🔬": "microscope", "🥵": "temp", "📉": "chart-down", "⛰️": "mountain", "🌿": "leaf", "🔆": "sun", "💦": "drop", "🌢": "gauge", "🗓": "calendar", "↻": "refresh-cw", "✦": "star", "🧹": "trash", "⬇": "arrow", "🌤️": "cloud-sun", "🌅": "sunrise", "🌇": "sunrise", "📐": "ruler", "📎": "paperclip", "↑": "arrow", "↖": "arrow", "↙": "arrow", "↘": "arrow", "📶": "signal", "🎛️": "sliders", "📝": "pencil", "💬": "chat", "🌐": "globe", "🌪️": "tornado", "🇨🇦": "flag", "🏁": "flag", "🍝": "noodles", "🛠️": "tools", "✏️": "pencil", "✍️": "pencil", "📏": "ruler", "🏆": "trophy", "❄": "snow", "🌥": "cloud", "🌦": "cloud-rain", "🌙": "moon", "🏔": "mountain", "📢": "megaphone", "📖": "book", "👀": "eye", "🟢": "dot", "📧": "mail", "🖼️": "image", "🔓": "unlock", "⬢": "hex", "◯": "target", "🎲": "dice", "☰": "menu", "▶": "play", "▶️": "play", "◀": "play", "▲": "arrow", "▼": "arrow", "⏸": "pause", "⏹": "stop", "⏱": "stopwatch", "⏱️": "stopwatch", "⏳": "hourglass", "●": "dot", "ⓘ": "info", "ℹ": "info", "ℹ️": "info", "〰": "wave", "〰️": "wave", "⎘": "copy", "⋮": "grip"};
 const EMOJI_ICON_ROTATE = {"←": 180, "↑": -90, "⬇": 90, "↗": -45, "↖": -135, "↙": 135, "↘": 45, "◀": 180, "▲": -90, "▼": 90};
 function _eicon(emoji, size) {
   if (emoji == null) return '';
@@ -9868,7 +9815,6 @@ body.clean-mode #topbar,
 body.clean-mode #sidebar,
 body.clean-mode #animbar,
 body.clean-mode #right-menu,
-body.clean-mode #map-style-menu,
 body.clean-mode #sub-bubbles,
 body.clean-mode #top-search-bar,
 body.clean-mode #lqm-profile-btn,
@@ -9888,7 +9834,7 @@ body.clean-mode #poly-toolbar {
 }
 /* Transition in + out for all toggled elements */
 #tabs-left, #tabs-right, #topbar, #sidebar, #animbar,
-#right-menu, #map-style-menu, #sub-bubbles, #top-search-bar, #lqm-profile-btn, #lqm-ai-btn,
+#right-menu, #sub-bubbles, #top-search-bar, #lqm-profile-btn, #lqm-ai-btn,
 #overlay-launcher, #overlay-toggle-btn,
 #map-compass, #map-reset-bearing,
 #draw-toolbar, #text-toolbar, #stormcone-toolbar, #radius-toolbar, #dist-toolbar, #poly-toolbar {
@@ -10820,27 +10766,6 @@ body.clean-mode #clean-hint { opacity: 1; }
   <div class="xs-note"></div>
 </div>
 
-    <!-- MAP STYLE MENU.
-         These six rows had lost their container. They were direct children
-         of #map-wrap with nothing positioning them, so they laid themselves
-         out as full-width bars stacked past the bottom of a wrapper that
-         clips its overflow: present in the DOM, wired to live handlers,
-         and impossible to reach. locateUser() and toggleSmooth() had no
-         other caller anywhere in the page, so both features were simply
-         gone, while the tutorial went on describing "the right-side bubble
-         menu" as though you could tap it.
-         Dark is added because rmActivate() has always tried to un-highlight
-         an #rm-dark that did not exist, and because the default basemap
-         needs a way back once you leave it. -->
-    <div id="map-style-menu">
-      <div class="right-bubble active" id="rm-dark" onclick="setMapType('dark'); rmActivate('rm-dark')"><span class="rb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-moon></use></svg></span> Dark</div>
-      <div class="right-bubble" id="rm-satellite" onclick="setMapType('satellite'); rmActivate('rm-satellite')"><span class="rb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-satellite></use></svg></span> Satellite</div>
-      <div class="right-bubble" id="rm-light"   onclick="setMapType('light');   rmActivate('rm-light')"><span class="rb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-cloud-sun></use></svg></span> Light</div>
-      <div class="right-bubble" id="rm-topo"    onclick="setMapType('topo');    rmActivate('rm-topo')"><span class="rb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-map></use></svg></span> Topo</div>
-      <div class="right-bubble" id="rm-locate"  onclick="locateUser()"><span class="rb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-pin></use></svg></span> Locate</div>
-      <div class="right-bubble" id="rm-smooth"  onclick="toggleSmooth(); this.classList.toggle('active')"><span class="rb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-sparkle></use></svg></span> Smooth</div>
-      <div class="right-bubble" id="rm-fullscreen" onclick="toggleFullscreen()"><span class="rb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-fullscreen></use></svg></span> Fullscreen</div>
-    </div>
     </div>
     <!-- NWR Alert Recordings Panel -->
     <div id="nwr-rec-panel">
@@ -10856,17 +10781,12 @@ body.clean-mode #clean-hint { opacity: 1; }
 
 <script>
 
-// ── RIGHT MENU HELPERS ──
-function rmActivate(id) {
-  // Topo was missing from this list, so picking it left whichever style was
-  // highlighted before still lit: two rows claiming to be the current base
-  // map at once. Locate, Smooth and Fullscreen stay out of it on purpose,
-  // they are not base maps and are not mutually exclusive with one.
-  ['rm-dark','rm-satellite','rm-light','rm-topo'].forEach(i => {
-    const el = document.getElementById(i);
-    if (el) el.classList.toggle('active', i === id);
-  });
-}
+// The floating base-map row this used to light up is gone: map style is a
+// single control in Settings > Map, which is one place to look instead of
+// two that had to agree. Kept as a no-op rather than deleted because
+// setMapType and the boot path both call it, and a stub is a smaller change
+// than chasing every caller.
+function rmActivate(_id) {}
 
 
 // ── GLOBALS ──
@@ -11948,12 +11868,12 @@ function toggleAlertsPanel() {
 // same beat the panel does rather than on a poll of its own.
 const _POP_SPEC = {
   alerts: {
-    title: 'WX Alerts', icon: '⚠',
+    title: 'WX Alerts', icon: '🚨',
     body: 'alerts-panel-body', count: 'alerts-panel-count',
     btn: 'alerts-pop', accent: '#ff5555', w: 430, h: 620,
   },
   eas: {
-    title: 'EAS Alerts', icon: '◉',
+    title: 'EAS Alerts', icon: '📻',
     body: 'eas-panel-body', count: 'eas-panel-count',
     btn: 'eas-pop', accent: '#ff8c00', w: 470, h: 620,
   },
@@ -12096,7 +12016,7 @@ function _popOutPanel(which) {
     + '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?'
     + 'family=Comfortaa:wght@400;500;600;700&display=swap">'
     + `<style>${_popCss(spec.accent)}</style></head><body>`
-    + `<header><span class="t">${spec.icon} ${spec.title}</span>`
+    + `<header><span class="t">${_eicon(spec.icon)} ${spec.title}</span>`
     + '<span class="c" id="pc">-</span>'
     + '<span class="s" id="ps">live</span></header>'
     + '<main id="pm"></main></body></html>');
@@ -26637,7 +26557,17 @@ function setMapType(type) {
 // ── SMOOTH TOGGLE ──
 function toggleSmooth() {
   smoothEnabled = !smoothEnabled;
-  document.getElementById('rm-smooth').classList.toggle('active', smoothEnabled);
+  // The switch lives in Settings > Map. There used to be a second copy of it
+  // on a floating row beside the map, and this reached for that row without
+  // checking it was there, so removing the row would have thrown here on the
+  // first tap.
+  const box = document.getElementById('lqm-set-smooth');
+  if (box) box.checked = smoothEnabled;
+  // The map may not exist yet, or at all if the mapping library failed to
+  // load. This threw in that case long before the row was removed; it is
+  // guarded now because a settings toggle should not be able to take the
+  // page down with it.
+  if (typeof map === 'undefined' || !map) return;
   const radarPane = map.getPane('radarPane');
   if (radarPane) {
     radarPane.querySelectorAll('.leaflet-tile').forEach(t => {
@@ -31585,15 +31515,24 @@ function _navStepText(st) {
   if (!mod || mod === 'straight') return 'Continue' + on;
   return 'Turn ' + mod + onto;
 }
+// A turn arrow, as one of the glyphs EMOJI_ICON_MAP already knows how to turn
+// into an SVG. It used to answer with a chequered flag, a rotation dingbat and
+// four block arrows, none of which are in that map, so they reached the screen
+// as raw characters. That is worse than it sounds for turn-by-turn: a dingbat
+// is drawn by whatever font the device happens to fall back to, so the same
+// instruction is a thin outline on one phone, a colour emoji on another, and
+// an empty box on a device whose font lacks it. Every glyph here is one the
+// map covers, which makes every arrow the same stroked SVG as the rest of the
+// app, at the size and colour the panel asks for.
 function _navStepArrow(st) {
   const t = (st.maneuver && st.maneuver.type) || '';
   const mod = (st.maneuver && st.maneuver.modifier) || '';
-  if (t === 'arrive') return '\u{1F3C1}';
-  if (t === 'roundabout' || t === 'rotary') return '⟳';
-  if (mod === 'uturn') return '⤴';
-  if (/left/.test(mod)) return /slight/.test(mod) ? '↖' : '⬅';
-  if (/right/.test(mod)) return /slight/.test(mod) ? '↗' : '➡';
-  return '⬆';
+  if (t === 'arrive') return '🏁';
+  if (t === 'roundabout' || t === 'rotary') return '↻';  // refresh-cw
+  if (mod === 'uturn') return '↺';                       // refresh-ccw
+  if (/left/.test(mod)) return /slight/.test(mod) ? '↖' : '←';
+  if (/right/.test(mod)) return /slight/.test(mod) ? '↗' : '→';
+  return '↑';
 }
 function _navParseSteps(rt, pts) {
   const out = [];
@@ -31682,7 +31621,7 @@ function _navSetTurn(arrow, main, sub) {
   const a = document.getElementById('nav-turn-arrow');
   const m = document.getElementById('nav-turn-main');
   const s = document.getElementById('nav-turn-sub');
-  if (a) a.textContent = arrow;
+  if (a) a.innerHTML = _eicon(arrow, '1em') || '';
   if (m) m.textContent = main;
   if (s) s.textContent = sub;
 }
@@ -31694,7 +31633,7 @@ function _navRenderSteps() {
   el.innerHTML = rt.steps.map((st, i) =>
     `<div class="nav-step${i === _navStepIdx ? ' cur' : i < _navStepIdx ? ' done' : ''}" data-step="${i}"`
     + ` onclick="_navSayStep(${i})" title="Tap to hear this step">`
-    + `<span class="nav-step-arrow">${st.arrow}</span>`
+    + `<span class="nav-step-arrow">${_eicon(st.arrow, '1.15em')}</span>`
     + `<span class="nav-step-text">${_navEsc(st.text)}</span>`
     + `<span class="nav-step-dist">${st.dist > 40 ? _navFmtShort(st.dist) : ''}</span>`
     + `</div>`).join('');
@@ -31929,7 +31868,12 @@ function _navRestore() {
 // folded panel still says the one thing that matters.
 function _navFabGlyph() {
   const ico = document.getElementById('nav-fab-ico');
-  if (ico) ico.textContent = (_navNavOn && _navLastArrow) ? _navLastArrow : '\u{1F9ED}';
+  // The compass is the resting face, so it is the compass icon rather than
+  // the compass emoji, which no two platforms draw alike.
+  if (ico) ico.innerHTML = (_navNavOn && _navLastArrow)
+    ? _eicon(_navLastArrow, '1em')
+    : '<svg class=svgi width=1em height=1em style=vertical-align:-.15em>'
+      + '<use href=#ic-compass></use></svg>';
 }
 
 // Draggable AND tappable: a press that travels is a move, a press that
@@ -31995,12 +31939,17 @@ function _navFabGlyph() {
 // device, and ages out after four hours, because a four-hour-old speed
 // trap is folklore, not information.
 const NAV_REPORT_TYPES = {
-  police:  { label: 'Police',      emoji: '\u{1F46E}' },
-  crash:   { label: 'Crash',       emoji: '\u{1F4A5}' },
+  // Glyphs EMOJI_ICON_MAP covers, so each one paints as the same stroked
+  // SVG as the rest of the app. As emoji these were six different art styles
+  // on six different platforms, and two of them (the police officer and the
+  // collision) render with a skin tone on some devices, which is a decision
+  // nobody asked this app to make about a road report.
+  police:  { label: 'Police',      emoji: '🚨' },
+  crash:   { label: 'Crash',       emoji: '⛔' },
   hazard:  { label: 'Road Hazard', emoji: '⚠️' },
-  weather: { label: 'Bad Weather', emoji: '\u{1F327}️' },
-  traffic: { label: 'Traffic Jam', emoji: '\u{1F697}' },
-  good:    { label: 'Good News',   emoji: '\u{1F44D}' },
+  weather: { label: 'Bad Weather', emoji: '🌧' },
+  traffic: { label: 'Traffic Jam', emoji: '🚗' },
+  good:    { label: 'Good News',   emoji: '✅' },
 };
 const NAV_REPORT_TTL = 4 * 3600000;
 const NAV_REPORT_KEY = 'gwcfc_navreports';
@@ -32095,12 +32044,12 @@ function _navDrawReports(openId) {
     const mk = L.marker([rep.lat, rep.lon], {
       icon: L.divIcon({
         className: '',
-        html: `<div class="nav-rep-pin${rep.type === 'good' ? ' good' : ''}">${R.emoji}</div>`,
+        html: `<div class="nav-rep-pin${rep.type === 'good' ? ' good' : ''}">${_eicon(R.emoji, '1.1em')}</div>`,
         iconSize: [26, 26], iconAnchor: [13, 13],
       }),
     });
     mk.bindPopup(`<div class="alert-popup" style="min-width:160px;">`
-      + `<b>${R.emoji} ${R.label}</b><br>`
+      + `<b>${_eicon(R.emoji)} ${R.label}</b><br>`
       + `<span style="font-size:10px;opacity:.8;">${_navAgo(rep.at)} &middot; your report, this device only</span>`
       + `<input class="nav-rep-note" placeholder="Add a note (optional)" maxlength="140" `
       + `value="${_navEsc(rep.note)}" onchange="_navReportNote('${rep.id}', this.value)">`
@@ -48223,6 +48172,15 @@ function selectProduct(p) {
        going, which is not a unit of measurement. ─── -->
   <div class="lqm-settings-group" data-cat="gps">
     <div class="lqm-settings-category"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-pin></use></svg> GPS</div>
+    <!-- Locate is a one-shot: centre the map on me now, without switching
+         tracking on and leaving it on. It used to be a button on a floating
+         row beside the map; that row is gone, and two messages elsewhere in
+         the app tell people to "tap Locate", so it needs to exist somewhere
+         findable. Here, at the top of the tab about where you are. -->
+    <button class="lqm-settings-btn" onclick="locateUser()">
+      <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-pin></use></svg>
+      Locate Me
+    </button>
     <div class="lqm-settings-row">
       <span class="lqm-settings-lbl">Show My Location</span>
       <label class="lqm-toggle">
@@ -54082,8 +54040,6 @@ function lqmToggleSetting(key, val) {
   if (key === 'smooth') {
     // Toggle smooth interpolation if function exists
     if (typeof toggleSmooth === 'function') toggleSmooth();
-    const btn = document.getElementById('rm-smooth');
-    if (btn) btn.classList.toggle('active', val);
   } else if (key === 'autoplay') {
     // Store preference
     try { localStorage.setItem('lqm_autoplay', val ? '1' : '0'); } catch(e){}
@@ -54250,7 +54206,7 @@ function lqmSetTZ(tz) {
       </div>
       <div>
         <span style="color:var(--accent2);">→ Right side</span><br>
-        The map tools rail (eight tools), and under it the map style menu (Dark / Satellite / Light / Topo / Locate / Smooth / Fullscreen)
+        The map tools rail: draw, text, polygon, measure, radius, storm cone, inspector, cross section
       </div>
       <div>
         <span style="color:var(--accent2);"><svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(45deg)><use href=#ic-arrow></use></svg> Bottom-right</span><br>
@@ -54311,8 +54267,8 @@ function lqmSetTZ(tz) {
     </div>
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-map></use></svg></div>
-      <div class="fc-title">MAP STYLE MENU</div>
-      <p class="fc-body">On the right edge, under the tool rail: <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-moon></use></svg> Dark</strong> (the default), <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-satellite></use></svg> Satellite</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-cloud-sun></use></svg> Light</strong> and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-map></use></svg> Topo</strong> base maps, plus <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-pin></use></svg> Locate</strong> (center on your GPS position), a <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-sparkle></use></svg> Smooth</strong> animation toggle and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-fullscreen></use></svg> Fullscreen</strong>. On phones this column is hidden for room; base map lives in Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Map there instead.</p>
+      <div class="fc-title">BASE MAP</div>
+      <p class="fc-body">Four base maps: <strong>Dark</strong> (the default), <strong>Satellite</strong>, <strong>Light</strong> and <strong>Topo</strong>. They live in Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Map, alongside <strong>Smooth Animation</strong>, which switches radar tiles between smooth interpolation and crisp pixel edges. <strong>Locate Me</strong> is in Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> GPS, and <strong>Fullscreen</strong> is on the animation bar.</p>
     </div>
   </div>
 
@@ -55176,7 +55132,7 @@ function lqmSetTZ(tz) {
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-pin></use></svg></div>
       <div class="fc-title">LOCATION TRACKING</div>
-      <p class="fc-body">Follows your position on the map, with heading and a cardinal direction. Tap <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-pin></use></svg> Locate</strong> in the map style menu to center on yourself once, without turning tracking on.</p>
+      <p class="fc-body">Follows your position on the map, with heading and a cardinal direction. Tap <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-pin></use></svg> Locate Me</strong> in Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> GPS to center on yourself once, without turning tracking on.</p>
     </div>
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-car></use></svg></div>
@@ -55287,7 +55243,7 @@ function lqmSetTZ(tz) {
 
   <div class="callout">
     <div class="callout-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-phone></use></svg></div>
-    <div class="callout-body"><strong>Mobile use:</strong> the map is fully touch-optimized. Pinch to zoom, drag with one finger to pan, and use <strong>three fingers</strong> to rotate. The bubbles and the overlay launcher are sized for thumbs. The map style column is hidden on phones for room, so pick your base map in Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Map there.</div>
+    <div class="callout-body"><strong>Mobile use:</strong> the map is fully touch-optimized. Pinch to zoom, drag with one finger to pan, and use <strong>three fingers</strong> to rotate. The bubbles and the overlay launcher are sized for thumbs.</div>
   </div>
 
   <div class="callout warn">
@@ -55313,6 +55269,14 @@ function lqmSetTZ(tz) {
   </div>
 
   <button class="feedback-open-btn" onclick="openFeedback()"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-mail></use></svg> Send Feedback</button>
+
+  <h3 style="font-family:var(--display);font-size:18px;font-weight:700;letter-spacing:1px;color:#fff;margin:24px 0 10px;"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-lock></use></svg> Privacy &amp; Terms</h3>
+  <p>What this app stores, what never leaves your device, who else your browser
+  talks to, and the terms it is offered under, all on one page:
+  <a href="legal.html" target="_blank" rel="noopener"><strong>Privacy Policy &amp; Terms of Use</strong></a>.
+  The short version is that there are no analytics and no tracking anywhere in
+  this app, and if you do not sign in, turn on location, or post anything, then
+  nothing about you is stored on any server at all.</p>
 </section>
 
 <hr>
@@ -57672,7 +57636,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'Hurricane models: every storm now, not just the named ones. The storm list came from the Hurricane Center, which only lists systems it has advisories out on, so invests and western Pacific systems were missing. It is read from the model\'s own directory now: HAFS-A is running seven storms today where two were showing. Each storm also gets both of its grids, with a Parent / Storm switch: the parent is 6 km over the whole basin, the storm nest is 2 km and three times finer. The nest moves with the storm through the run, so every frame is drawn on its own box rather than all of them on the last one, and a Following / Fixed button decides whether the map tracks it or holds still. Two rendering faults fixed as well: wind and wave direction were interpolated straight through the 0 to 360 wrap, which put scattered pixels pointing the exact opposite way, and charts are now sized by how much world they cover instead of a flat pixel count, so the tropical box gains 60 percent more detail where hurricanes are actually looked at.';
+const APP_LATEST_UPDATE = 'Privacy Policy and Terms of Use added, at a real page anyone can link to rather than only inside a modal. It says exactly what this app stores, what never leaves your device, which of the sources your browser talks to, and how to have anything deleted. Short version: no analytics, no tracking, nothing sold, and if you do not sign in, turn on location or post anything, nothing about you reaches a server at all. It is linked from Credits, from the tutorial, and from the sign-up button. The floating base map row beside the map is gone again: map style and Smooth were already in Settings, Fullscreen is on the animation bar, and Locate Me now has a button in Settings > GPS. The last handful of stray emoji in the interface, the turn-by-turn arrows and the road report pins, are drawn from the same icon set as everything else, so they no longer change shape from one device to the next.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
@@ -59204,6 +59168,16 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
 
     <button class="auth-submit-btn" id="auth-submit-btn" onclick="authSubmit()">SIGN IN <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg></button>
+    <!-- Under the button, because this is the one moment somebody is deciding
+         to hand over an email address, and it is the only moment the notice is
+         genuinely useful. Not a checkbox: a checkbox nobody reads is theatre,
+         and a link somebody can actually follow is the honest version. -->
+    <div class="auth-legal-note">
+      Creating an account means agreeing to the
+      <a href="legal.html" target="_blank" rel="noopener">Terms of Use</a> and
+      <a href="legal.html#collect" target="_blank" rel="noopener">Privacy Policy</a>.
+      Nearly everything here works without one.
+    </div>
 
     <div style="display:flex;align-items:center;gap:10px;margin:12px 0 4px;">
       <div style="flex:1;height:1px;background:rgba(255,255,255,0.12);"></div>
@@ -62231,6 +62205,22 @@ function _ovOrderReset(){
         This project is not affiliated with or endorsed by NOAA, the National Weather
         Service, or any other organization listed here.
       </div>
+      <!-- The legal pages live at a real URL rather than only inside a modal.
+           A privacy policy nobody can link to is half a privacy policy: it
+           has to be reachable from outside the app, by somebody deciding
+           whether to sign up at all. Credits is its natural neighbour, since
+           this is already the panel that says where the data comes from. -->
+      <div class="credit-note" style="text-align:center;">
+        <a href="legal.html" target="_blank" rel="noopener"
+           style="color:var(--accent2);font-weight:700;text-decoration:none;">
+          <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-lock></use></svg>
+          Privacy Policy &amp; Terms of Use
+        </a>
+        <div style="margin-top:5px;opacity:0.75;">
+          What is stored, what never leaves your device, and the terms this is
+          offered under.
+        </div>
+      </div>
     </div>
 </div>
 </div>
@@ -62476,7 +62466,6 @@ function closeCredits() {
 /* ── 4. Bubbles and pills: the map's own controls ─────────────────────── */
 .layer-row,
 .sub-bubble,
-.right-bubble,
 .sat-region-bubble,
 #overlay-toggle-btn,
 .ov-pill,
@@ -62485,7 +62474,6 @@ function closeCredits() {
   box-shadow: var(--lift-3d-sm), var(--edge-3d);
 }
 .sub-bubble:hover,
-.right-bubble:hover,
 .layer-row:hover,
 .sat-region-bubble:hover,
 #overlay-toggle-btn:hover,
@@ -62494,7 +62482,6 @@ function closeCredits() {
 }
 /* Pressed reads as pressed: lit from below, and sitting a pixel lower. */
 .sub-bubble.active,
-.right-bubble.active,
 .layer-row.active,
 .ov-pill.active,
 .overlay-pill-demo.active,
