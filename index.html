@@ -6211,10 +6211,27 @@ body.shot-mode > button {
    kept so a leftover `left` from some other rule can't reintroduce the
    over-constraint explained above the base rule. */
 @media (max-width: 768px) {
-  #top-search-bar { max-width: 200px; left: auto; }
+  #top-search-bar { max-width: 200px; left: auto; right: 10px; }
+  /* Collapsed, the bar is just the star and the lens, so it sizes to them.
+     The collapse block far above set width: 44px for this, but it sits in
+     an EARLIER media query than the unconditional 340px base rule, so the
+     base rule was winning by source order and phones got a wide pill that
+     was mostly padding, drifting over the quick menu. Declared here, after
+     the base rule, the shrink actually happens; width auto rather than a
+     fixed figure so the pill is exactly its two buttons however they are
+     padded. */
+  #top-search-bar:not(.expanded) {
+    width: auto; max-width: none; padding: 3px; border-radius: 13px;
+  }
+  /* And expanding must win over the 150-200px caps above, or the search
+     field opens into a slot too small to read what you type. */
+  #top-search-bar.expanded {
+    width: min(280px, 84vw); max-width: min(280px, 84vw);
+  }
 }
 @media (max-width: 480px) {
-  #top-search-bar { max-width: 150px; left: auto; right: 8px; top: 14px; }
+  #top-search-bar { max-width: 150px; left: auto; right: 6px; top: 12px; }
+  #top-search-bar.expanded { max-width: min(280px, 84vw); }
 }
 #lqm-search-row {
   display: flex;
@@ -58721,7 +58738,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'The sounding panel grew four new tabs, borrowed from the full SHARPpy layout. Theta-E shows where the dry air sits in the column (the dip a downdraft feeds on, marked for you). SR Wind shows the wind the way the storm itself feels it, with the HP / Classic / LP supercell bands drawn in and called out in words. Advection reads warm and cold air transport straight out of how the wind turns with height. And Hazard gives the bottom-line call, PDS TOR down to NONE, with the exact numbers that drove it listed underneath. All four work from every source, including plain Open-Meteo with no Pi at all.';
+const APP_LATEST_UPDATE = 'The search bar on phones now collapses properly: instead of a wide, mostly-empty pill drifting over the menu buttons, it shrinks to just the star and the magnifier, tucked into the top-right corner. Tapping it still opens the full search field, which now also expands wider so you can read what you type.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
