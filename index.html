@@ -48312,18 +48312,8 @@ function selectProduct(p) {
     <div class="lqm-settings-row">
       <span class="lqm-settings-lbl">Theme</span>
       <select id="lqm-theme-preset" class="lqm-settings-select" onchange="themeApplyPreset(this.value)">
-        <option value="gwcfc">GWCFC Red (default)</option>
-        <option value="midnight">Midnight</option>
-        <option value="slate">Slate</option>
-        <option value="storm">Storm Green</option>
-        <option value="ocean">Deep Ocean</option>
-        <option value="ember">Ember</option>
-        <option value="forest">Forest</option>
-        <option value="nord">Nord</option>
-        <option value="violet">Violet</option>
-        <option value="desert">Desert</option>
-        <option value="carbon">Carbon</option>
-        <option value="paper">Paper (light)</option>
+        <!-- Filled from THEME_PRESETS. Thirty hand-typed options would be thirty
+             chances for the list and the table to disagree. -->
       </select>
     </div>
 
@@ -48436,7 +48426,7 @@ const THEME_SURFACES = [
 // leave a blue theme sitting on a red panel.
 const THEME_PRESETS = {
   gwcfc:    { label: 'GWCFC Red (default)', tokens: {}, surfaces: {} },
-  midnight: { label: 'Midnight',
+  midnight: { label: 'Midnight Navy',
     tokens: { '--bg': '#0b1220', '--surface': '#111a2e', '--panel': '#16203a',
               '--border': '#2a3c66', '--border2': '#2a3c66', '--accent': '#5ec8ff',
               '--accent2': '#8f7bff', '--text': '#dce7ff', '--muted': '#7387a8' },
@@ -48446,7 +48436,7 @@ const THEME_PRESETS = {
       '--grad-raise':   { type: 'grad', angle: 180, stops: ['#2c4a86', '#1a2c52'] },
       '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#3a5ea6', '#22376a'] },
       '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#0b1120', '#18233c'] } } },
-  slate:    { label: 'Slate',
+  slate:    { label: 'Stratus Slate',
     tokens: { '--bg': '#16181b', '--surface': '#1e2126', '--panel': '#262a30',
               '--border': '#3b414a', '--border2': '#3b414a', '--accent': '#ffb300',
               '--accent2': '#4fb6c8', '--text': '#e6eaef', '--muted': '#8892a0' },
@@ -48456,7 +48446,7 @@ const THEME_PRESETS = {
       '--grad-raise':   { type: 'grad', angle: 180, stops: ['#414852', '#2b3038'] },
       '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#525a66', '#363c45'] },
       '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#15181c', '#272c33'] } } },
-  storm:    { label: 'Storm Green',
+  storm:    { label: 'Storm Cell Green',
     tokens: { '--bg': '#04170f', '--surface': '#082217', '--panel': '#0c2e1f',
               '--border': '#1d5c3e', '--border2': '#1d5c3e', '--accent': '#ffd166',
               '--accent2': '#3fd6a0', '--text': '#dff5e9', '--muted': '#6d9483' },
@@ -48466,7 +48456,7 @@ const THEME_PRESETS = {
       '--grad-raise':   { type: 'grad', angle: 180, stops: ['#1d6b48', '#0e3d29'] },
       '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#268a5c', '#145236'] },
       '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#04160e', '#0f3122'] } } },
-  ocean: { label: 'Deep Ocean',
+  ocean: { label: 'Deep Ocean Blue',
     tokens: { '--bg': '#04121f', '--surface': '#08203a', '--panel': '#0b2b4d',
               '--border': '#1b5285', '--border2': '#1b5285', '--accent': '#7fdbff',
               '--accent2': '#4bc0a5', '--text': '#dcefff', '--muted': '#6f93b5', },
@@ -48476,7 +48466,7 @@ const THEME_PRESETS = {
       '--grad-raise':   { type: 'grad', angle: 180, stops: ['#155a94', '#0b3560'] },
       '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#1c76bd', '#10457c'] },
       '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#04121f', '#0e3054'] } } },
-  ember: { label: 'Ember',
+  ember: { label: 'Ember Orange',
     tokens: { '--bg': '#1a0a04', '--surface': '#2a1108', '--panel': '#38180b',
               '--border': '#7a3418', '--border2': '#7a3418', '--accent': '#ffb454',
               '--accent2': '#ff7043', '--text': '#ffe8d6', '--muted': '#a8795e', },
@@ -48486,7 +48476,7 @@ const THEME_PRESETS = {
       '--grad-raise':   { type: 'grad', angle: 180, stops: ['#7a3517', '#48200e'] },
       '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#9c4520', '#5e2a12'] },
       '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#180803', '#3a190c'] } } },
-  forest: { label: 'Forest',
+  forest: { label: 'Rainforest Green',
     tokens: { '--bg': '#071408', '--surface': '#0d2211', '--panel': '#122e17',
               '--border': '#2a5c33', '--border2': '#2a5c33', '--accent': '#a3e635',
               '--accent2': '#4ade80', '--text': '#e3f5e6', '--muted': '#7a9a80', },
@@ -48496,7 +48486,7 @@ const THEME_PRESETS = {
       '--grad-raise':   { type: 'grad', angle: 180, stops: ['#255c31', '#143620'] },
       '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#31783f', '#1c4a2b'] },
       '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#07140a', '#193d21'] } } },
-  nord: { label: 'Nord',
+  nord: { label: 'Icecap Blue',
     tokens: { '--bg': '#2e3440', '--surface': '#3b4252', '--panel': '#434c5e',
               '--border': '#4c566a', '--border2': '#4c566a', '--accent': '#88c0d0',
               '--accent2': '#a3be8c', '--text': '#eceff4', '--muted': '#8a94a6', },
@@ -48506,7 +48496,7 @@ const THEME_PRESETS = {
       '--grad-raise':   { type: 'grad', angle: 180, stops: ['#5e81ac', '#455a7d'] },
       '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#729ac9', '#4f6c96'] },
       '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#2e3440', '#3f4859'] } } },
-  violet: { label: 'Violet',
+  violet: { label: 'Nimbus Violet',
     tokens: { '--bg': '#12081f', '--surface': '#1c0f33', '--panel': '#261546',
               '--border': '#4a2a80', '--border2': '#4a2a80', '--accent': '#c4a2ff',
               '--accent2': '#65d6c0', '--text': '#ece2ff', '--muted': '#8a7aa8', },
@@ -48516,7 +48506,7 @@ const THEME_PRESETS = {
       '--grad-raise':   { type: 'grad', angle: 180, stops: ['#5a34a0', '#361d63'] },
       '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#7345c4', '#452680'] },
       '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#12081f', '#2c1852'] } } },
-  desert: { label: 'Desert',
+  desert: { label: 'Dust Devil Tan',
     tokens: { '--bg': '#1c1408', '--surface': '#2b2010', '--panel': '#3a2c16',
               '--border': '#6b5228', '--border2': '#6b5228', '--accent': '#ffd166',
               '--accent2': '#e07a5f', '--text': '#fdf1dc', '--muted': '#a8926b', },
@@ -48526,7 +48516,7 @@ const THEME_PRESETS = {
       '--grad-raise':   { type: 'grad', angle: 180, stops: ['#7a5c2c', '#4a3819'] },
       '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#9c7638', '#604a21'] },
       '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#1a1308', '#3c2d16'] } } },
-  carbon: { label: 'Carbon',
+  carbon: { label: 'Soot Charcoal',
     tokens: { '--bg': '#0a0a0b', '--surface': '#131316', '--panel': '#1b1b1f',
               '--border': '#2e2e34', '--border2': '#2e2e34', '--accent': '#e5e5e8',
               '--accent2': '#7dd3fc', '--text': '#f4f4f6', '--muted': '#8a8a94', },
@@ -48536,7 +48526,7 @@ const THEME_PRESETS = {
       '--grad-raise':   { type: 'grad', angle: 180, stops: ['#33333b', '#1f1f25'] },
       '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#43434d', '#2b2b33'] },
       '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#0d0d0f', '#26262d'] } } },
-  paper: { label: 'Paper (light)',
+  paper: { label: 'Whiteout Light',
     tokens: { '--bg': '#eef1f5', '--surface': '#f7f9fc', '--panel': '#ffffff',
               '--border': '#c9d3e0', '--border2': '#c9d3e0', '--accent': '#b45309',
               '--accent2': '#0369a1', '--text': '#16202e', '--muted': '#5c6b7f', '--warn': '#b45309', '--danger': '#b91c1c', '--success': '#15803d', },
@@ -48546,6 +48536,186 @@ const THEME_PRESETS = {
       '--grad-raise':   { type: 'grad', angle: 180, stops: ['#e8edf4', '#d4dde8'] },
       '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#f2f6fb', '#e0e7f0'] },
       '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#dbe3ec', '#eef2f7'] } } },
+  supercell: { label: 'Supercell Red',
+    tokens: { '--bg': '#160706', '--surface': '#230c0b', '--panel': '#311211',
+              '--border': '#5e2826', '--border2': '#5e2826', '--accent': '#f0514c',
+              '--accent2': '#4dcb90', '--text': '#f3e7e7', '--muted': '#a78281' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ["#481f1e", "#2a0f0f", "#140606"] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ["#3a1918", "#1f0b0a"] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ["#6a312f", "#3f1918"] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ["#8a3f3d", "#582523"] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ["#140606", "#411c1b"] } } },
+  anvil: { label: 'Anvil Orange',
+    tokens: { '--bg': '#160c06', '--surface': '#23150b', '--panel': '#321e11',
+              '--border': '#5f3d26', '--border2': '#5f3d26', '--accent': '#f08e4c',
+              '--accent2': '#4dcbbf', '--text': '#f3ece7', '--muted': '#a79081' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ["#492f1d", "#2a190e", "#140b06"] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ["#3b2517", "#1f120a"] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ["#6b462e", "#402717"] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ["#8c5b3b", "#593822"] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ["#140b06", "#422a1a"] } } },
+  lightning: { label: 'Lightning Amber',
+    tokens: { '--bg': '#161106', '--surface': '#231b0b', '--panel': '#322711',
+              '--border': '#5f4c26', '--border2': '#5f4c26', '--accent': '#f0ba4c',
+              '--accent2': '#4db6cb', '--text': '#f3efe7', '--muted': '#a79a81' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ["#493a1d", "#2a210e", "#140f06"] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ["#3b2f17", "#1f180a"] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ["#6b572e", "#403217"] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ["#8c713b", "#594622"] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ["#140f06", "#42351a"] } } },
+  drought: { label: 'Drought Yellow',
+    tokens: { '--bg': '#151307', '--surface': '#221f0c', '--panel': '#302c13',
+              '--border': '#5c5529', '--border2': '#5c5529', '--accent': '#f0d54c',
+              '--accent2': '#4da1cb', '--text': '#f3f2e7', '--muted': '#a7a281' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ["#47411f", "#282510", "#131106"] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ["#393419", "#1e1b0b"] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ["#686131", "#3d3819"] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ["#877e40", "#554f25"] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ["#131106", "#403b1c"] } } },
+  hail: { label: 'Hail Lime',
+    tokens: { '--bg': '#101408', '--surface': '#1a210d', '--panel': '#262e14',
+              '--border': '#4a5a2b', '--border2': '#4a5a2b', '--accent': '#baf04c',
+              '--accent2': '#4d62cb', '--text': '#eff3e7', '--muted': '#9aa781' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ["#394521", "#202711", "#0f1207"] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ["#2e371b", "#171d0c"] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ["#556534", "#313c1b"] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ["#6e8443", "#455327"] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ["#0f1207", "#333e1e"] } } },
+  microburst: { label: 'Microburst Green',
+    tokens: { '--bg': '#08140c', '--surface': '#0d2114', '--panel': '#142e1d',
+              '--border': '#2b5a3b', '--border2': '#2b5a3b', '--accent': '#4cf083',
+              '--accent2': '#b64dcb', '--text': '#e7f3eb', '--muted': '#81a78d' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ["#21452d", "#112718", "#07120b"] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ["#1b3724", "#0c1d12"] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ["#346544", "#1b3c26"] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ["#438459", "#275336"] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ["#07120b", "#1e3e29"] } } },
+  seafoam: { label: 'Seafoam Teal',
+    tokens: { '--bg': '#081412', '--surface': '#0d211d', '--panel': '#142e2a',
+              '--border': '#2b5a52', '--border2': '#2b5a52', '--accent': '#4cf0d5',
+              '--accent2': '#cb4da1', '--text': '#e7f3f1', '--muted': '#81a7a1' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ["#21453f", "#112724", "#071211"] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ["#1b3732", "#0c1d1a"] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ["#34655d", "#1b3c36"] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ["#438479", "#27534c"] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ["#071211", "#1e3e39"] } } },
+  cirrus: { label: 'Cirrus Cyan',
+    tokens: { '--bg': '#071315', '--surface': '#0c1f22', '--panel': '#132c30',
+              '--border': '#29555c', '--border2': '#29555c', '--accent': '#4cdbf0',
+              '--accent2': '#cb4d7b', '--text': '#e7f2f3', '--muted': '#81a2a7' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ["#1f4147", "#102528", "#061113"] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ["#193439", "#0b1b1e"] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ["#316168", "#19383d"] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ["#407e87", "#254f55"] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ["#061113", "#1c3b40"] } } },
+  skyblue: { label: 'Sky Blue',
+    tokens: { '--bg': '#070f15', '--surface': '#0c1922', '--panel': '#132430',
+              '--border': '#29475c', '--border2': '#29475c', '--accent': '#4cacf0',
+              '--accent2': '#cb4d58', '--text': '#e7eef3', '--muted': '#8197a7' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ["#1f3647", "#101e28", "#060e13"] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ["#192b39", "#0b161e"] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ["#315168", "#192e3d"] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ["#406987", "#254155"] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ["#060e13", "#1c3140"] } } },
+  squall: { label: 'Squall Deep Blue',
+    tokens: { '--bg': '#070b15', '--surface': '#0c1222', '--panel': '#121b31',
+              '--border': '#27385d', '--border2': '#27385d', '--accent': '#4c7df0',
+              '--accent2': '#cb664d', '--text': '#e7ebf3', '--muted': '#818ca7' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ["#1e2b48", "#0f1729", "#060a13"] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ["#182239", "#0a101e"] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ["#304169", "#18243e"] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ["#3e5489", "#243357"] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ["#060a13", "#1b2641"] } } },
+  twilight: { label: 'Twilight Indigo',
+    tokens: { '--bg': '#090715', '--surface': '#0e0d21', '--panel': '#16132f',
+              '--border': '#2e2a5a', '--border2': '#2e2a5a', '--accent': '#594cf0',
+              '--accent2': '#cb974d', '--text': '#e8e7f3', '--muted': '#8481a7' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ["#242046", "#121028", "#080713"] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ["#1c1a38", "#0d0b1d"] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ["#373366", "#1d1a3c"] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ["#474285", "#2a2654"] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ["#080713", "#201d3f"] } } },
+  thunder: { label: 'Thunderhead Violet',
+    tokens: { '--bg': '#0e0814', '--surface': '#160d21', '--panel': '#20142e',
+              '--border': '#412b5a', '--border2': '#412b5a', '--accent': '#994cf0',
+              '--accent2': '#cbc74d', '--text': '#ede7f3', '--muted': '#9381a7' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ["#322145", "#1b1127", "#0c0712"] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ["#281b37", "#140c1d"] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ["#4b3465", "#2a1b3c"] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ["#614384", "#3c2753"] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ["#0c0712", "#2d1e3e"] } } },
+  aurora: { label: 'Aurora Purple',
+    tokens: { '--bg': '#110715', '--surface': '#1c0d21', '--panel': '#28132f',
+              '--border': '#4e2a5a', '--border2': '#4e2a5a', '--accent': '#c74cf0',
+              '--accent2': '#accb4d', '--text': '#f0e7f3', '--muted': '#9e81a7' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ["#3c2046", "#221028", "#100713"] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ["#301a38", "#190b1d"] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ["#593366", "#341a3c"] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ["#744285", "#492654"] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ["#100713", "#361d3f"] } } },
+  mammatus: { label: 'Mammatus Pink',
+    tokens: { '--bg': '#14080f', '--surface': '#200e19', '--panel': '#2e1423',
+              '--border': '#592c46', '--border2': '#592c46', '--accent': '#f04cac',
+              '--accent2': '#58cb4d', '--text': '#f3e7ee', '--muted': '#a78197' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ["#442236", "#27111e", "#12070e"] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ["#371b2b", "#1d0c16"] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ["#643550", "#3b1c2e"] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ["#824469", "#522841"] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ["#12070e", "#3d1e30"] } } },
+  haboob: { label: 'Haboob Brown',
+    tokens: { '--bg': '#120e0a', '--surface': '#1e1610', '--panel': '#2a2118',
+              '--border': '#534132', '--border2': '#534132', '--accent': '#d8a864',
+              '--accent2': '#4dc1cb', '--text': '#f3ede7', '--muted': '#a79381' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ["#3f3227", "#241c14", "#110c09"] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ["#33281f", "#1a140e"] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ["#5e4b3b", "#372b20"] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ["#7a624d", "#4d3c2e"] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ["#110c09", "#392d23"] } } },
+  overcast: { label: 'Overcast Gray',
+    tokens: { '--bg': '#0d0e0f', '--surface': '#151719', '--panel': '#1e2124',
+              '--border': '#3e4247', '--border2': '#3e4247', '--accent': '#69a7d3',
+              '--accent2': '#cb4d58', '--text': '#e7ecf3', '--muted': '#8191a7' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ["#2f3237", "#1a1c1e", "#0c0d0e"] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ["#26282c", "#131416"] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ["#484c51", "#282b2f"] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ["#5d626a", "#393c42"] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ["#0c0d0e", "#2b2d31"] } } },
+  graupel: { label: 'Graupel Slate',
+    tokens: { '--bg': '#0c0e10', '--surface': '#13171a', '--panel': '#1c2126',
+              '--border': '#3a424b', '--border2': '#3a424b', '--accent': '#f0ba4c',
+              '--accent2': '#4db6cb', '--text': '#e7edf3', '--muted': '#8194a7' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ["#2d3339", "#181c20", "#0b0d0f"] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ["#24292e", "#111418"] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ["#444c55", "#252b31"] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ["#58636f", "#353d45"] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ["#0b0d0f", "#282e34"] } } },
+  nocturne: { label: 'Nocturne Black',
+    tokens: { '--bg': '#0d0e0f', '--surface': '#161618', '--panel': '#202023',
+              '--border': '#404045', '--border2': '#404045', '--accent': '#6eaecf',
+              '--accent2': '#cb4d62', '--text': '#e7e9f3', '--muted': '#8187a7' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ["#313235", "#1b1b1d", "#0c0c0d"] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ["#27282b", "#131415"] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ["#4a4b4f", "#292a2d"] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ["#606167", "#3b3b40"] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ["#0c0c0d", "#2c2d30"] } } },
 };
 
 // ── THE PARTS YOU CAN POINT AT ───────────────────────────────────────────
@@ -49246,6 +49416,12 @@ function _themeRenderParts() {
 
 function _themeRender() {
   _themeRenderParts();
+  const psel = document.getElementById('lqm-theme-preset');
+  if (psel && psel.options.length !== Object.keys(THEME_PRESETS).length) {
+    psel.innerHTML = Object.keys(THEME_PRESETS)
+      .map(k => '<option value="' + k + '">' + THEME_PRESETS[k].label + '</option>')
+      .join('');
+  }
   const tw = document.getElementById('lqm-theme-tokens');
   if (tw) {
     tw.innerHTML = THEME_TOKENS.map(t => {
@@ -56897,7 +57073,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'Pick an element now works on the whole app, not just the twelve things it knew by name. Point at anything that draws a background or a border and it will offer you that one element and every element like it, naming both from what they already carry. State classes like active are skipped on purpose, since a colour that comes and goes as things switch on and off is not what anyone means. There are also eight more themes: Deep Ocean, Ember, Forest, Nord, Violet, Desert, Carbon and Paper, which is a proper light theme.';
+const APP_LATEST_UPDATE = 'Thirty themes now, one for every colour, and every name says both what it feels like and what colour it is: Supercell Red, Anvil Orange, Lightning Amber, Hail Lime, Seafoam Teal, Cirrus Cyan, Sky Blue, Squall Deep Blue, Twilight Indigo, Thunderhead Violet, Aurora Purple, Mammatus Pink, Haboob Brown, Overcast Gray, Nocturne Black and more. The eighteen new ones are built from a single hue each, so nothing in them is a hand-tuned accident, and every one is checked for readable text on its own panels.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
