@@ -6126,21 +6126,21 @@ body.shot-mode > button {
   border-radius: 10px;
   color: var(--text);
   font-family: var(--mono);
-  font-size: 12px;
-  padding: 4px 9px;
+  font-size: 13px;
+  padding: 8px 12px;
   outline: none;
   transition: border-color 0.15s;
   min-width: 0;
-  border-radius: 8px;
+  border-radius: 9px;
 }
 #lqm-search-input:focus { border-color: var(--accent2); }
 #lqm-search-input::placeholder { color: var(--muted); }
 #lqm-search-go {
   background: rgba(133,0,0,0.85);
   border: 1px solid rgba(170,0,0,0.5);
-  border-radius: 8px;
+  border-radius: 9px;
   color: #fff;
-  padding: 4px 7px;
+  padding: 8px 11px;
   cursor: pointer;
   transition: background 0.15s;
   display: flex;
@@ -6148,15 +6148,19 @@ body.shot-mode > button {
   justify-content: center;
   flex-shrink: 0;
 }
-#lqm-search-go svg { width: 16px; height: 16px; }
+#lqm-search-go svg { width: 18px; height: 18px; }
 #lqm-search-go:hover { background: rgba(170,0,0,0.95); border-color: var(--accent2); }
 #lqm-search-status {
   font-family: var(--mono);
   font-size: 11px;
   color: var(--muted);
-  min-height: 14px;
   text-align: center;
 }
+/* Was min-height 14px, which reserved a band of dead space under the field
+   for a message that is only there while a search is running. It takes room
+   when it has something to say and none when it does not, which is what let
+   the field and button grow without the box growing with them. */
+#lqm-search-status:empty { display: none; }
 /* Settings overlay */
 /* ── ASTURIO AI PANEL ── */
 /* ── Asturio AI Panel ── red / gold / teal theme ── */
@@ -55760,7 +55764,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'The search bar is wider and flatter: 340px across instead of 230, and 34px tall instead of 44. The placeholder was being cut off mid-word, which reads as a broken box rather than a small one, and it now fits. It still shrinks to fit a phone screen rather than running off the edge.';
+const APP_LATEST_UPDATE = 'The search field and its button are bigger: the field went from 24px tall to 33 and the button from 32x26 to 42x36, which is a real target to hit rather than a small one. The box around them did not grow with them, it actually shrank slightly, because the empty strip under the field was reserving room for a message that only appears while a search is running. It takes space now only when it has something to say.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
