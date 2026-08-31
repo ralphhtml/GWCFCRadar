@@ -4124,6 +4124,54 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   .tm-badge { font-size: 9.5px; padding: 5px 8px; gap: 6px; }
 }
 
+/* ── Wx-pert / Lite-ning ──────────────────────────────────────────────────
+   The first-visit choice between the full app and a beginner's cut of it,
+   and the class that does the cutting. Lite-ning is subtractive on purpose:
+   one body class hides the expert chrome, so nothing is duplicated and
+   turning Wx-pert back on is removing a class, not rebuilding a page. */
+#mode-modal, #lite-intro {
+  display: none; position: fixed; inset: 0; z-index: 5000;
+  background: rgba(20, 2, 2, 0.78);
+  align-items: center; justify-content: center;
+}
+#mode-modal.open, #lite-intro.open { display: flex; }
+.mode-card-wrap {
+  background: linear-gradient(160deg, rgba(60,14,8,0.98), rgba(24,5,5,0.98));
+  border: 2px solid #e8b800; border-radius: 14px; padding: 22px 24px;
+  max-width: 560px; width: calc(100% - 36px); text-align: center;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.6); color: #ffe9a8;
+  font-family: var(--display);
+}
+.mode-head { font-weight: 700; font-size: 17px; letter-spacing: 2px; color: #e8b800; }
+.mode-sub { font-size: 12px; opacity: 0.85; margin: 8px 0 16px; }
+.mode-cards { display: flex; gap: 14px; }
+.mode-card {
+  flex: 1; display: flex; flex-direction: column; gap: 6px; align-items: center;
+  background: rgba(120,30,20,0.35); border: 2px solid rgba(232,184,0,0.45);
+  border-radius: 12px; padding: 16px 12px; cursor: pointer; color: #ffe9a8;
+  font-family: var(--display); transition: transform .12s, border-color .12s;
+}
+.mode-card:hover { transform: translateY(-2px); border-color: #e8b800; background: rgba(150,40,25,0.45); }
+.mode-ic { color: #e8b800; }
+.mode-name { font-weight: 700; font-size: 16px; letter-spacing: 1px; }
+.mode-tag { font-size: 11.5px; color: #e8b800; }
+.mode-desc { font-size: 11px; opacity: 0.85; line-height: 1.45; }
+.lite-steps {
+  text-align: left; display: flex; flex-direction: column; gap: 10px;
+  margin: 14px 0 18px; font-size: 13px; line-height: 1.5;
+}
+.lite-step b { color: #e8b800; margin-right: 8px; }
+.mode-go { display: flex; justify-content: center; }
+@media (max-width: 520px) { .mode-cards { flex-direction: column; } }
+
+/* What Lite-ning takes off the screen: the drawing and measuring rail, the
+   overlay launcher, and the draw/export toolbars. The left menu is trimmed
+   in renderSubBubbles rather than here, because bubbles are built by JS. */
+body.lite-mode #right-menu,
+body.lite-mode #overlay-toggle-btn,
+body.lite-mode #draw-toolbar,
+body.lite-mode #export-toolbar { display: none !important; }
+
 .snd-err {
   padding: 14px 12px; font-family: var(--mono); font-size: 10.5px;
   color: #ffb4a2; line-height: 1.55;
@@ -9984,6 +10032,10 @@ body.clean-mode #clean-hint { opacity: 1; }
         <svg class=svgi width=22 height=22><use href=#ic-mail></use></svg>
       </div>
       <span class="lqm-label">Feedback</span>
+    </div>
+    <div class="lqm-btn" id="lqm-mode-btn" onclick="_modeToggle()" title="Switch between Wx-pert (everything) and Lite-ning (just the weather)">
+      <div class="lqm-icon-wrap" style="font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></div>
+      <span class="lqm-label" id="lqm-mode-label">Wx-pert</span>
     </div>
   </div>
 </div>
@@ -30253,6 +30305,12 @@ function _radarBackBubble(wrap, onBack, where) {
 
 // The top of the radar row: where the picture should come from.
 function toggleRadarSub() {
+  // Lite-ning gets a radar menu in plain words instead of the source list;
+  // see _liteRadarSub for what it offers and why.
+  if (typeof _isLite === 'function' && _isLite() && typeof _liteRadarSub === 'function') {
+    _liteRadarSub();
+    return;
+  }
   const wrap = document.getElementById('sub-bubbles');
   wrap.innerHTML = '';
   _radarBackBubble(wrap, () => {
@@ -30605,7 +30663,13 @@ function _sbSaveOrder() {
 function renderSubBubbles(tab) {
   const wrap = document.getElementById('sub-bubbles');
   wrap.innerHTML = '';
-  const bubbles = _sbApplyOrder(TAB_BUBBLES[tab] || []);
+  let bubbles = _sbApplyOrder(TAB_BUBBLES[tab] || []);
+  // Lite-ning trims the column to Radar. The other seven still exist and
+  // come straight back when the mode does; typeof, because the mode helpers
+  // live in a later script block than this early first render.
+  if (typeof _isLite === 'function' && _isLite()) {
+    bubbles = bubbles.filter(b => b.id === 'radar');
+  }
   bubbles.forEach(b => {
     const el = document.createElement('div');
     const isActive = _getBubbleActive(b.id);
@@ -32582,17 +32646,26 @@ function _actuallyDismiss() {
     // Never in screenshot mode: a headless browser has empty storage, so it is
     // always a first-time visitor, and the tutorial would cover every capture.
     try {
-      if (!document.body.classList.contains('shot-mode')
-          && localStorage.getItem('gwcfc_tutorial_seen') !== '1') {
-        // Marked as OURS, so closing it runs the welcome. A tutorial the
-        // person opened from the menu closes without touching their map.
-        setTimeout(() => { _tutAutoOpened = true; openTutorial(); }, 400);
-      } else if (!document.body.classList.contains('shot-mode')) {
-        // Been here before, so no tutorial. The welcome still applies: signed
-        // out there is nothing remembering how they like the map, and signed
-        // in without a saved preset they have not said either. _runWelcome
-        // itself is what declines when a preset exists.
-        setTimeout(() => _runWelcome(), 900);
+      if (!document.body.classList.contains('shot-mode')) {
+        const seenTut = localStorage.getItem('gwcfc_tutorial_seen') === '1';
+        if (!seenTut && typeof _modeChosen === 'function' && !_modeChosen()) {
+          // A true first visit gets the Wx-pert / Lite-ning question before
+          // anything else, and the choice decides what happens next: Wx-pert
+          // opens the full tutorial, Lite-ning a four-line intro, and both
+          // end in the welcome. An existing visitor (tutorial seen, mode
+          // never set) is never asked; they default to Wx-pert below.
+          setTimeout(() => _modeOpenPicker(), 400);
+        } else if (!seenTut) {
+          // Marked as OURS, so closing it runs the welcome. A tutorial the
+          // person opened from the menu closes without touching their map.
+          setTimeout(() => { _tutAutoOpened = true; openTutorial(); }, 400);
+        } else {
+          // Been here before, so no tutorial. The welcome still applies:
+          // signed out there is nothing remembering how they like the map,
+          // and signed in without a saved preset they have not said either.
+          // _runWelcome itself is what declines when a preset exists.
+          setTimeout(() => _runWelcome(), 900);
+        }
       }
     } catch(e) {}
   }, 500);
@@ -47678,6 +47751,13 @@ function selectProduct(p) {
       </select>
     </div>
     <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Mode</span>
+      <select id="lqm-set-mode" class="lqm-settings-select" onchange="_setMode(this.value)">
+        <option value="expert">Wx-pert (everything)</option>
+        <option value="lite">Lite-ning (just the weather)</option>
+      </select>
+    </div>
+    <div class="lqm-settings-row">
       <span class="lqm-settings-lbl">Coords on Click</span>
       <label class="lqm-toggle">
         <input type="checkbox" id="lqm-set-coords" onchange="lqmToggleSetting('coords',this.checked)">
@@ -54534,7 +54614,7 @@ function lqmSetTZ(tz) {
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg></div>
       <div class="fc-title">LOGO QUICK MENU</div>
-      <p class="fc-body">The row of five buttons under the GWCFC logo, top-center: <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg> Settings</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-compass></use></svg> Navigation</strong>, <strong>Tutorial</strong> (this page), <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-star></use></svg> Credits</strong> and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-mail></use></svg> Feedback</strong>. It is <strong>shown from the first paint</strong> and stays shown. If you would rather it hid itself again, Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Map has a switch that restores the old behaviour, where it appears only when you hover or tap the logo.</p>
+      <p class="fc-body">The row of six buttons under the GWCFC logo, top-center: <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg> Settings</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-compass></use></svg> Navigation</strong>, <strong>Tutorial</strong> (this page), <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-star></use></svg> Credits</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-mail></use></svg> Feedback</strong> and the <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg> mode switch</strong>, which flips the whole app between <strong>Wx-pert</strong> (everything) and <strong>Lite-ning</strong> (just radar, warnings and forecasts). It is <strong>shown from the first paint</strong> and stays shown. If you would rather it hid itself again, Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Map has a switch that restores the old behaviour, where it appears only when you hover or tap the logo.</p>
     </div>
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-search></use></svg></div>
@@ -55612,6 +55692,210 @@ function closeTutorial() {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+   WX-PERT AND LITE-NING
+   ──────────────────────────────────────────────────────────────────────────
+   The app has two audiences and used to serve only one of them. Somebody who
+   reads soundings wants every model and every radar level on hand; somebody
+   who just heard thunder wants the radar, the warnings and their forecast,
+   and fifty-eight controls between them and that answer is a wall.
+
+   So the first visit asks, once, in their own words: Wx-pert (everything) or
+   Lite-ning (just the weather). Lite-ning is SUBTRACTIVE: one body class
+   hides the expert chrome, the bubble column is trimmed to Radar, and the
+   radar menu speaks plain words. Nothing is forked, so switching modes is
+   flipping a class and re-rendering a menu, and everything a Lite-ning user
+   learns still holds when they graduate.
+
+   Existing visitors are never asked: a person who has already seen the
+   tutorial has been using the full app, and springing a quiz on them would
+   be the app forgetting who they are. They default to Wx-pert and the
+   switch waits in the logo menu and in Settings.
+   ══════════════════════════════════════════════════════════════════════════ */
+const MODE_KEY = 'gwcfc_mode';
+
+function _modeGet() {
+  try { return localStorage.getItem(MODE_KEY) === 'lite' ? 'lite' : 'expert'; }
+  catch (e) { return 'expert'; }
+}
+function _isLite() { return _modeGet() === 'lite'; }
+// Whether a choice has actually been made, which is different from what the
+// default answer is: unset means "never asked", and only a true first visit
+// gets asked.
+function _modeChosen() {
+  try { return !!localStorage.getItem(MODE_KEY); } catch (e) { return true; }
+}
+
+function _setMode(m, opts) {
+  m = m === 'lite' ? 'lite' : 'expert';
+  try { localStorage.setItem(MODE_KEY, m); } catch (e) {}
+  if (m === 'lite') {
+    // The layers Lite-ning does not offer come off the map, not just off the
+    // menu: a hidden menu over a still-running satellite would be a layer
+    // with no off switch.
+    try { if (activeLayers.satellite) _disableSatellite(); } catch (e) {}
+    try { if (typeof _hdOn !== 'undefined' && _hdOn && typeof _hdDisable === 'function') _hdDisable(); } catch (e) {}
+    try { if (typeof _sevCompareOn !== 'undefined' && _sevCompareOn && typeof _sevToggleCompare === 'function') _sevToggleCompare(); } catch (e) {}
+  }
+  _modeApply();
+  if (!(opts && opts.quiet) && typeof showToast === 'function') {
+    showToast(m === 'lite'
+      ? 'Lite-ning mode: radar, warnings and forecasts. Switch back any time under the logo.'
+      : 'Wx-pert mode: everything is back.', 4000);
+  }
+}
+
+// Paints the current mode onto everything that shows it: the body class the
+// CSS hides by, the label on the logo menu's switch, the Settings dropdown,
+// and the bubble column, which is rebuilt so the trim applies at once.
+function _modeApply() {
+  const lite = _isLite();
+  document.body.classList.toggle('lite-mode', lite);
+  const lbl = document.getElementById('lqm-mode-label');
+  if (lbl) lbl.textContent = lite ? 'Lite-ning' : 'Wx-pert';
+  const sel = document.getElementById('lqm-set-mode');
+  if (sel) sel.value = lite ? 'lite' : 'expert';
+  try {
+    if (typeof renderSubBubbles === 'function' && document.getElementById('sub-bubbles')) {
+      renderSubBubbles(TAB_BUBBLES[currentTab] ? currentTab : 'regular');
+    }
+  } catch (e) {}
+}
+
+function _modeToggle() {
+  _setMode(_isLite() ? 'expert' : 'lite');
+}
+
+// The first-visit question. Two cards, one tap, and the answer is remembered;
+// the modal has no other way out because "which of these are you" is the one
+// thing the page cannot guess on its own.
+function _modeOpenPicker() {
+  let m = document.getElementById('mode-modal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'mode-modal';
+    m.innerHTML = `
+      <div class="mode-card-wrap" role="dialog" aria-modal="true" aria-label="Choose how much weather you want">
+        <div class="mode-head">HOW DO YOU WANT YOUR WEATHER?</div>
+        <div class="mode-sub">You can switch any time from the menu under the logo.</div>
+        <div class="mode-cards">
+          <button type="button" class="mode-card" id="mode-pick-lite" onclick="_modePick('lite')">
+            <span class="mode-ic"><svg class=svgi width=34 height=34><use href=#ic-bolt></use></svg></span>
+            <span class="mode-name">Lite-ning</span>
+            <span class="mode-tag">I just want the weather</span>
+            <span class="mode-desc">Live radar, warnings and your local forecast. Nothing else in the way.</span>
+          </button>
+          <button type="button" class="mode-card" id="mode-pick-expert" onclick="_modePick('expert')">
+            <span class="mode-ic"><svg class=svgi width=34 height=34><use href=#ic-sliders></use></svg></span>
+            <span class="mode-name">Wx-pert</span>
+            <span class="mode-tag">Show me everything</span>
+            <span class="mode-desc">Every radar level, satellite, 20+ forecast models, overlays and tools.</span>
+          </button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+  }
+  m.classList.add('open');
+}
+
+function _modePick(m) {
+  const modal = document.getElementById('mode-modal');
+  if (modal) modal.classList.remove('open');
+  _setMode(m, { quiet: true });
+  if (m === 'lite') {
+    // The full eighteen-section tutorial is exactly what a Lite-ning person
+    // asked not to have. Four lines cover their whole app; the real tutorial
+    // stays a menu tap away, and marking it seen here is what stops it
+    // auto-opening over their map on the next visit.
+    try { localStorage.setItem('gwcfc_tutorial_seen', '1'); } catch (e) {}
+    _liteIntroOpen();
+  } else {
+    _tutAutoOpened = true;
+    openTutorial();
+  }
+}
+
+// The whole Lite-ning manual. Closing it starts the welcome, so the first
+// thing after reading "the radar is on" is watching it come on.
+function _liteIntroOpen() {
+  let m = document.getElementById('lite-intro');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'lite-intro';
+    m.innerHTML = `
+      <div class="mode-card-wrap" role="dialog" aria-modal="true" aria-label="Lite-ning mode">
+        <div class="mode-head"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-bolt></use></svg> LITE-NING MODE</div>
+        <div class="lite-steps">
+          <div class="lite-step"><b>1</b>The live radar is coming on. Green is rain, yellow is heavy rain, red is storms.</div>
+          <div class="lite-step"><b>2</b>Warnings draw themselves on the map automatically. Tap one to read it.</div>
+          <div class="lite-step"><b>3</b>Tap anywhere on the map, or search a town up top, for its forecast.</div>
+          <div class="lite-step"><b>4</b>Want more power later? Switch to Wx-pert in the menu under the logo.</div>
+        </div>
+        <div class="mode-go"><button type="button" class="tm-btn tm-btn-go" onclick="_liteIntroClose()">SHOW MY WEATHER</button></div>
+      </div>`;
+    document.body.appendChild(m);
+  }
+  m.classList.add('open');
+}
+function _liteIntroClose() {
+  const m = document.getElementById('lite-intro');
+  if (m) m.classList.remove('open');
+  _runWelcome();
+}
+
+// The simplified radar menu Lite-ning shows in place of the source list.
+// Plain words on purpose: "Level 2" is an insider's name for a data feed,
+// and the person this menu serves wants the radar, not a feed. One pill
+// that is the radar, and the Time Machine, which needs no translation.
+function _liteRadarSub() {
+  const wrap = document.getElementById('sub-bubbles');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  _radarBackBubble(wrap, () => {
+    _syncParentBubble('radar');
+    renderSubBubbles(TAB_BUBBLES[currentTab] ? currentTab : 'regular');
+  });
+  const live = document.createElement('div');
+  live.className = 'sub-bubble' + (activeLayers.nexrad ? ' active' : '');
+  live.id = 'sub-lite-radar';
+  live.innerHTML = `<span class="sb-icon">${_eicon('\u{1F327}')}</span><span class="sb-label">Live Radar</span>`;
+  live.onclick = () => {
+    if (activeLayers.nexrad) {
+      activeLayers.nexrad = false;
+      _disableRadar();
+      live.classList.remove('active');
+    } else {
+      // The same enable the welcome flow uses, so Lite-ning's one radar is
+      // the same picture the app chose for every newcomer: the national
+      // composite, not a single site somebody has to know to pick.
+      _radarSource = 'normal';
+      if (typeof _prDisable === 'function') _prDisable();
+      if (typeof _clearSingleSiteRef === 'function') _clearSingleSiteRef();
+      activeLayers.nexrad = true;
+      currentProduct = 'mrms';
+      _loadMrmsComposite();
+      live.classList.add('active');
+    }
+    _syncParentBubble('radar');
+  };
+  if (LAYER_DESCRIPTIONS['radar']) live.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS['radar']));
+  wrap.appendChild(live);
+  const tm = document.createElement('div');
+  tm.className = 'sub-bubble' + (_tmAt != null ? ' active' : '');
+  tm.id = 'sub-timemachine';
+  tm.title = 'See the radar from any day back to March 2022';
+  tm.innerHTML = '<span class="sb-icon">' + _eicon('\u{1F550}')
+               + '</span><span class="sb-label">Time Machine</span>';
+  tm.onclick = () => _tmOpen('radar');
+  if (LAYER_DESCRIPTIONS['timemachine']) tm.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS['timemachine']));
+  wrap.appendChild(tm);
+  wrap.style.display = 'flex';
+}
+
+// Applied at parse time so a returning Lite-ning visitor never sees the full
+// chrome flash before it is taken away.
+try { _modeApply(); } catch (e) {}
+
+/* ══════════════════════════════════════════════════════════════════════════
    THE WELCOME
    ──────────────────────────────────────────────────────────────────────────
    Closing the tutorial used to leave a person looking at an empty map over
@@ -55767,6 +56051,9 @@ async function _runWelcome() {
   // Last, and after a pause, because it is the least urgent thing here and
   // asking it over a map still flying would be asking somebody to choose a
   // keyboard layout before they have seen the weather.
+  // Not in Lite-ning: a keyboard-layout question is exactly the kind of
+  // power-user furniture that mode exists to clear away.
+  if (typeof _isLite === 'function' && _isLite()) return;
   setTimeout(() => { try { _kbdOfferSetup(); } catch (e) { console.warn('[welcome] keys:', e); } }, 4200);
 }
 
@@ -57952,7 +58239,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'Two satellite fixes. The Satellite bubble now just opens the menu: the ABI layer only turns on when you actually pick a product, and tapping the product that is showing turns it back off, same as the radar pills. And the Time Machine is now two machines: the Radar row travels the radar, the Satellite rows travel the satellite, each with its own clock and its own named PAST badge, so you can hold one in the past while the other stays live.';
+const APP_LATEST_UPDATE = 'The app now comes in two modes. Your first visit asks one question: Wx-pert (everything, exactly as before) or Lite-ning (just the live radar, warnings and your local forecast, with the expert tools and menus cleared away and the radar menu in plain words). Pick either and switch any time with the new button in the menu under the logo, or in Settings under Display. Anyone who has used the app before is never asked and stays in full Wx-pert mode automatically.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
