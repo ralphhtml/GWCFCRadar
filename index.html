@@ -6149,6 +6149,29 @@ body.shot-mode > button {
   flex-shrink: 0;
 }
 #lqm-search-go svg { width: 18px; height: 18px; }
+/* The star sits opposite the search button, and is deliberately quieter:
+   searching is the thing you came here to do, recalling a saved place is the
+   thing you do occasionally. Same size so the row stays balanced. */
+#lqm-search-star {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(170,0,0,0.35);
+  border-radius: 9px;
+  color: rgba(255,210,120,0.85);
+  padding: 8px 11px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+#lqm-search-star svg { width: 18px; height: 18px; }
+#lqm-search-star:hover { background: rgba(255,210,120,0.18); color: #ffd478; }
+#lqm-search-star.has { color: #ffd478; }
+.si-star {
+  margin-left: 6px; cursor: pointer; flex-shrink: 0;
+  color: rgba(255,255,255,0.28); font-size: 13px; line-height: 1;
+}
+.si-star:hover { color: #ffd478; }
+.si-star.on { color: #ffd478; }
 #lqm-search-go:hover { background: rgba(170,0,0,0.95); border-color: var(--accent2); }
 #lqm-search-status {
   font-family: var(--mono);
@@ -10457,6 +10480,9 @@ body.clean-mode #clean-hint { opacity: 1; }
         <div id="timeline-labels"></div>
       </div>
       <div id="anim-time-display" title="Hold to change timezone">--:-- --- --</div>
+      <button id="fullscreen-btn" onclick="_fsToggle()" title="Full screen">
+        <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-fullscreen></use></svg>
+      </button>
       <!-- Forward one frame, mirroring the back-one-frame button on the
            other end of the bar. -->
       <button id="step-fwd-btn" onclick="stepFrame(1)" title="Forward one frame">
@@ -10542,13 +10568,8 @@ body.clean-mode #clean-hint { opacity: 1; }
   </button>
 
   <!-- Export , download the current radar/satellite/model picture or its loop -->
-  <button class="tool-btn" id="tool-export" onclick="_expToggle()" title="Export , download the current picture or its loop">
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 3v12"/>
-      <path d="M7 10l5 5 5-5"/>
-      <path d="M4 19h16"/>
-    </svg>
-  </button>
+  <!-- Export moved to Settings, Display. It is a thing you do WITH the
+       map rather than TO it, and the rail is for the drawing tools. -->
 
 
   <!-- Cross Section , a vertical slice through the storm along a line you draw -->
@@ -46909,6 +46930,9 @@ function selectProduct(p) {
 <!-- ── LOGO QUICK MENU PANELS ── -->
 <div id="top-search-bar" onclick="_searchBarTap(event)">
   <div id="lqm-search-row">
+    <button id="lqm-search-star" onclick="_starShowList()" title="Starred features and locations" aria-label="Starred">
+      <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-star></use></svg>
+    </button>
     <input id="lqm-search-input" type="text" placeholder="Search features, locations…" oninput="lqmSearchInput(this.value)" onfocus="lqmSearchFocus()" onkeydown="lqmSearchKeydown(event)" autocomplete="off" autocorrect="off" spellcheck="false"/>
     <button id="lqm-search-go" onclick="lqmDoSearch()" title="Search" aria-label="Search">
       <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -47053,6 +47077,10 @@ function selectProduct(p) {
         <div class="lqm-toggle-track"></div>
         <div class="lqm-toggle-knob"></div>
       </label>
+    </div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Export Picture or Loop</span>
+      <button class="lqm-settings-btn" onclick="lqmCloseSettings();_expToggle();">Open export tool</button>
     </div>
     <div class="lqm-settings-row">
       <span class="lqm-settings-lbl">Always Show Logo Menu</span>
@@ -48199,6 +48227,44 @@ function selectProduct(p) {
 </div>
 
 <script>
+// ── FULL SCREEN ──────────────────────────────────────────────────────────
+// On the animbar rather than the tool rail, because going full screen is
+// something you do when you settle in to watch a loop, which is exactly when
+// your hand is already on the playback controls.
+//
+// Both spellings of the API: Safari still only has the webkit one, and this
+// app is used on iPads.
+function _fsElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+function _fsToggle() {
+  const el = document.documentElement;
+  try {
+    if (_fsElement()) {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit) exit.call(document);
+    } else {
+      const req = el.requestFullscreen || el.webkitRequestFullscreen;
+      // Refused rather than missing: some browsers reject the request when it
+      // did not come from a real click, and an unhandled rejection there
+      // shows up in the console as a page error rather than as nothing.
+      if (req) { const r = req.call(el); if (r && r.catch) r.catch(() => {}); }
+    }
+  } catch (e) { /* not available, and the button simply does nothing */ }
+}
+// The button reflects the real state, not what was last clicked. Leaving full
+// screen with Escape never goes through the button, so tracking clicks would
+// have it lit while the window is not.
+function _fsSync() {
+  const b = document.getElementById('fullscreen-btn');
+  if (!b) return;
+  const on = !!_fsElement();
+  b.classList.toggle('active', on);
+  b.title = on ? 'Leave full screen' : 'Full screen';
+}
+document.addEventListener('fullscreenchange', _fsSync);
+document.addEventListener('webkitfullscreenchange', _fsSync);
+
 // ── LOGO QUICK MENU ──
 (function() {
   let _menuOpen = false;
@@ -55764,7 +55830,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'The search field and its button are bigger: the field went from 24px tall to 33 and the button from 32x26 to 42x36, which is a real target to hit rather than a small one. The box around them did not grow with them, it actually shrank slightly, because the empty strip under the field was reserving room for a message that only appears while a search is running. It takes space now only when it has something to say.';
+const APP_LATEST_UPDATE = 'Three things. There is a star button on the left of the search bar: tap the star on any feature or place in the results to keep it, and the button brings your starred list back. The export tool has moved off the right-hand tool rail into Settings then Display, and it now works on model charts, which is why it used to say there was nothing to export while a chart filled the screen. And there is a full screen button on the animation bar, between the clock and the forward-one-frame button.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
@@ -56051,7 +56117,8 @@ function lqmSearchInput(q) {
     html += '<div class="srch-section-hdr">RADAR FEATURES</div>';
     matched.forEach((c,i) => {
       const hl = c.label.replace(new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'), '<em>$1</em>');
-      html += `<div class="srch-item" onclick="_srchPickCatalog(${i+1000})"><span class="si-icon">${_eicon(c.icon)}</span><span class="si-label">${hl}</span><span class="si-type">${c.type}</span></div>`;
+      const star = _starGlyph({ kind: 'feature', label: c.label, icon: c.icon });
+      html += `<div class="srch-item" onclick="_srchPickCatalog(${i+1000})"><span class="si-icon">${_eicon(c.icon)}</span><span class="si-label">${hl}</span><span class="si-type">${c.type}</span>${star}</div>`;
     });
   }
   html += '<div class="srch-section-hdr">LOCATIONS</div>';
@@ -56083,7 +56150,9 @@ async function _srchFetchLocations(q) {
           const label = [loc.name, loc.admin1, loc.country_code].filter(Boolean).join(', ');
           const el = document.createElement('div');
           el.className = 'srch-item';
-          el.innerHTML = `<span class="si-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-pin></use></svg></span><span class="si-label">${_ccEsc(label)}</span><span class="si-type">LOCATION</span>`;
+          el.innerHTML = `<span class="si-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-pin></use></svg></span><span class="si-label">${_ccEsc(label)}</span><span class="si-type">LOCATION</span>`
+            + _starGlyph({ kind: 'location', label: label,
+                           lat: loc.latitude, lng: loc.longitude });
           el.onclick = () => _srchPickLocation(loc, label);
           frag.appendChild(el);
         });
@@ -56094,6 +56163,131 @@ async function _srchFetchLocations(q) {
       }
     }
   } catch(e) { }
+}
+
+// ── STARRED FEATURES AND LOCATIONS ───────────────────────────────────────
+// Recents are automatic and roll off; stars are chosen and stay. Both live in
+// this dropdown, stars above recents, because the whole point of pinning one
+// is not to go hunting for it.
+//
+// A star holds enough to REDO the thing rather than a reference to it: a
+// location keeps its coordinates, a feature keeps its catalogue id. Holding a
+// live action function would not survive a reload, which is the one moment a
+// saved thing has to work.
+const STAR_KEY = 'gwcfc_stars';
+const STAR_MAX = 40;
+let _stars = [];
+try {
+  const raw = JSON.parse(localStorage.getItem(STAR_KEY) || '[]');
+  if (Array.isArray(raw)) _stars = raw.filter(x => x && typeof x.label === 'string');
+} catch (e) { /* a corrupt list must not cost the page its search box */ }
+
+function _starSave() {
+  try { localStorage.setItem(STAR_KEY, JSON.stringify(_stars.slice(0, STAR_MAX))); } catch (e) {}
+  _starSyncBtn();
+}
+// The button lights when there is something saved, so an empty list is
+// visible as empty before it is clicked rather than after.
+function _starSyncBtn() {
+  const b = document.getElementById('lqm-search-star');
+  if (b) b.classList.toggle('has', _stars.length > 0);
+}
+function _starKeyOf(item) {
+  return (item.kind || 'feature') + '|' + item.label;
+}
+function _starHas(item) {
+  const k = _starKeyOf(item);
+  return _stars.some(s => _starKeyOf(s) === k);
+}
+function _starToggle(item) {
+  const k = _starKeyOf(item);
+  const i = _stars.findIndex(s => _starKeyOf(s) === k);
+  if (i >= 0) _stars.splice(i, 1);
+  else _stars.unshift(item);
+  _starSave();
+  return i < 0;
+}
+// Clicking a star must not also fire the row it sits in, or starring a place
+// would star it and then fly there, which is not what the star means.
+function _starRowClick(ev, encoded) {
+  ev.stopPropagation();
+  let item;
+  try { item = JSON.parse(decodeURIComponent(encoded)); } catch (e) { return; }
+  const on = _starToggle(item);
+  const el = ev.currentTarget;
+  if (el) { el.classList.toggle('on', on); el.textContent = on ? '\u2605' : '\u2606'; }
+}
+// The star glyph for a result row. The item is carried encoded rather than by
+// index, because the list it came from is rebuilt on every keystroke and an
+// index into a list that no longer exists stars the wrong thing.
+function _starGlyph(item) {
+  const on = _starHas(item);
+  const enc = encodeURIComponent(JSON.stringify(item));
+  return '<span class="si-star' + (on ? ' on' : '') + '" title="Star this"'
+    + ' onclick="_starRowClick(event, \'' + enc + '\')">'
+    + (on ? '\u2605' : '\u2606') + '</span>';
+}
+
+function _starOpen(item) {
+  if (item.kind === 'location' && window.map && isFinite(item.lat) && isFinite(item.lng)) {
+    map.flyTo([item.lat, item.lng], Math.max(map.getZoom(), 8), { duration: 1.2 });
+    lqmCloseSearch();
+    return;
+  }
+  // A feature is redone by finding it in the live catalogue by name, so a
+  // star saved a version ago still works as long as the feature still exists.
+  const hit = (typeof _srchCatalog === 'function' ? _srchCatalog() : [])
+    .find(c => c.label === item.label);
+  if (!hit || typeof hit.action !== 'function') {
+    if (typeof showToast === 'function') {
+      showToast('That feature is not available any more.', 2200);
+    }
+    return;
+  }
+  lqmCloseSearch();
+  setTimeout(() => { try { hit.action(); } catch (e) {} }, 150);
+}
+
+// Opening the list opens the search bar with it, because the list lives in
+// the search dropdown and a dropdown under a closed bar is invisible.
+function _starShowList() {
+  if (typeof lqmOpenSearch === 'function') lqmOpenSearch();
+  const dd = document.getElementById('lqm-search-dropdown');
+  if (!dd) return;
+  dd.innerHTML = '';
+  const hdr = document.createElement('div');
+  hdr.className = 'srch-section-hdr';
+  hdr.textContent = _stars.length ? 'STARRED' : 'NOTHING STARRED YET';
+  dd.appendChild(hdr);
+  if (!_stars.length) {
+    const el = document.createElement('div');
+    el.className = 'srch-item';
+    el.innerHTML = '<span class="si-label" style="color:var(--muted)">'
+      + 'Search for a feature or a place, then tap its star to keep it here.</span>';
+    dd.appendChild(el);
+  }
+  _starRenderInto(dd);
+  dd.classList.add('open');
+}
+
+// Shared by the star list and the default dropdown, so the two can never
+// disagree about what is starred.
+function _starRenderInto(dd) {
+  _stars.slice(0, 8).forEach(item => {
+    const el = document.createElement('div');
+    el.className = 'srch-item';
+    const icon = item.kind === 'location'
+      ? '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-pin></use></svg>'
+      : (typeof _eicon === 'function' ? _eicon(item.icon) : '');
+    // The label came from a geocoding API, so it is set as text rather than
+    // concatenated into markup.
+    el.innerHTML = '<span class="si-icon">' + icon + '</span>'
+      + '<span class="si-label"></span><span class="si-type">STAR</span>'
+      + _starGlyph(item);
+    el.querySelector('.si-label').textContent = item.label;
+    el.onclick = () => _starOpen(item);
+    dd.appendChild(el);
+  });
 }
 
 const _srchMatchedCache = [];
@@ -56116,6 +56310,14 @@ function _srchPickLocation(loc, label) {
 function _srchShowDefault() {
   const dd = document.getElementById('lqm-search-dropdown');
   dd.innerHTML = '';
+  // Stars first: they were chosen, recents merely happened.
+  if (_stars.length) {
+    const sh = document.createElement('div');
+    sh.className = 'srch-section-hdr';
+    sh.textContent = 'STARRED';
+    dd.appendChild(sh);
+    _starRenderInto(dd);
+  }
   if (_srchRecent.length) {
     const hdr = document.createElement('div');
     hdr.className = 'srch-section-hdr';
@@ -66096,6 +66298,19 @@ function _expActiveSource() {
       && typeof radarFrames !== 'undefined' && radarFrames.length) {
     return { kind: 'nexrad', count: radarFrames.length, label: 'Radar' };
   }
+  // Model charts. This is the gap that made the tool look broken: with a
+  // model on screen and nothing else, all three tests above failed and the
+  // panel said "Nothing on screen to export yet" over a full map. The chart
+  // is a plain image overlay, so it is the easiest of the lot to export.
+  if (typeof _hdOn !== 'undefined' && _hdOn && typeof _hdLayer !== 'undefined'
+      && _hdLayer && _hdLayer.getElement && _hdLayer.getElement()) {
+    const hrs = (typeof _hdHoursFor === 'function')
+      ? (_hdHoursFor(_hdField) || []).length : 1;
+    const spec = (typeof HD_FIELDS !== 'undefined'
+      && HD_FIELDS.find(f => f.id === _hdField)) || {};
+    return { kind: 'model', count: Math.max(1, hrs),
+             label: spec.label || 'Model chart' };
+  }
   return null;
 }
 
@@ -66183,6 +66398,19 @@ async function _expFrameImage(src, idx) {
     const frame = radarFrames[idx];
     const timeStr = frame.iso || frame.timeStr;
     return _expLoadImage(_expWmsFrameUrl(IEM_NEXRAD_WMS, IEM_NEXRAD_LAYER, timeStr));
+  }
+  if (src.kind === 'model') {
+    // Whatever the overlay is showing right now. Stepping the forecast hour
+    // first, when there is one to step, so a loop export is the loop and not
+    // the same hour repeated.
+    const hours = (typeof _hdHoursFor === 'function')
+      ? (_hdHoursFor(_hdField) || []) : [];
+    if (hours.length > idx && typeof _hdShow === 'function') {
+      _hdHourIdx = idx;
+      try { await _hdShow(); } catch (e) {}
+    }
+    const el = _hdLayer && _hdLayer.getElement && _hdLayer.getElement();
+    return (el && el.src) ? _expLoadImage(el.src) : null;
   }
   return null;
 }
