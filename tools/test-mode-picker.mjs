@@ -178,6 +178,23 @@ console.log('\n2. a brand-new visitor is asked, and Lite-ning answers for them')
   });
   ok('on desktop the tag is visible on the pill', tag.shown);
   ok('and tapping it opens Settings', tag.opened);
+
+  // The app menu's seat inside the account panel follows the sign-in
+  // state: below the avatar and name for an account, above the sign-in
+  // invitation for a guest. One element, moved, never duplicated.
+  const seat = await p.evaluate(() => {
+    const menu = document.getElementById('lqm-panel-menu');
+    _lqmPlacePanelMenu(true);
+    const signedIn = menu.previousElementSibling
+      && menu.previousElementSibling.id === 'lqm-profile-sub-txt';
+    _lqmPlacePanelMenu(false);
+    const guest = menu.nextElementSibling
+      && menu.nextElementSibling.id === 'lqm-profile-guest';
+    return { signedIn, guest, copies: document.querySelectorAll('#lqm-panel-menu').length };
+  });
+  ok('signed in, the menu sits below the avatar and name', seat.signedIn);
+  ok('signed out, it returns above the sign-in invitation', seat.guest);
+  ok('and there is exactly one of it', seat.copies === 1, String(seat.copies));
   await p.close();
 }
 
