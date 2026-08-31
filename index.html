@@ -1109,22 +1109,6 @@ body {
   border-color: var(--accent);
   box-shadow: 0 0 10px rgba(170,0,0,0.3);
 }
-/* The mode tag on the account pill: a label first, a shortcut second. */
-#profile-mode-tag {
-  font-family: var(--mono); font-size: 8px; letter-spacing: 0.5px;
-  color: #ffd478; background: rgba(232,184,0,0.12);
-  border: 1px solid rgba(232,184,0,0.4); border-radius: 8px;
-  padding: 2px 7px; white-space: nowrap; cursor: pointer;
-  transition: background 0.15s;
-}
-#profile-mode-tag:hover { background: rgba(232,184,0,0.28); }
-/* Not on phones: the pill is already sharing its corner with the update bar
-   there, and the mode is one Settings tap away. The tag is a desktop's
-   luxury of width. */
-@media (max-width: 768px) {
-  #profile-mode-tag { display: none; }
-}
-
 /* Vertical, drag-to-reorder overlay list */
 #overlay-pills-row {
   display: flex;
@@ -4672,7 +4656,11 @@ body.lite-mode #export-toolbar { display: none !important; }
   transition: none;
 }
 #map-compass {
-  display: none;
+  /* Retired for good: this drew a dark circle at top-center, exactly where
+     the logo sits, whenever the map was rotated. !important so neither the
+     .visible class nor any inline style can ever bring it back. The reset
+     button (#map-reset-bearing) still works. */
+  display: none !important;
   position: absolute;
   top: 14px;
   left: 50%;
@@ -4683,12 +4671,6 @@ body.lite-mode #export-toolbar { display: none !important; }
   gap: 4px;
   pointer-events: none;
 }
-/* Retired from the screen, not from the code. The rotation compass drew a
-   dark 42px circle at top-center, exactly where the logo sits, so a rotated
-   map looked like a black bubble had landed on the branding. The reset
-   button (#map-reset-bearing) still works; the JS that toggles .visible
-   still runs and now moves nothing visible. */
-#map-compass.visible { display: none; }
 #map-compass-ring {
   width: 42px; height: 42px;
   border-radius: 50%;
@@ -10123,14 +10105,6 @@ body.clean-mode #clean-hint { opacity: 1; }
 <div id="lqm-profile-btn" onclick="lqmToggleProfile()">
   <div id="lqm-profile-avatar-sm"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-user></use></svg></div>
   <span class="lqm-label" id="lqm-profile-label">Sign In</span>
-  <!-- Which mode this browser is in, worn on the account pill rather than
-       spent on a button of its own. Tapping it opens Settings, where the
-       mode dropdown lives; stopPropagation so the tap does not also open
-       the profile panel underneath it. Shown signed in or out, because the
-       mode belongs to the browser, not the account. -->
-  <span id="profile-mode-tag"
-        onclick="event.stopPropagation(); lqmToggleSettingsPanel();"
-        title="Your mode. Change it in Settings under Display.">WX-PERT &#183; EXPERT</span>
 </div>
 <button id="lqm-ai-btn" onclick="lqmOpenAI()" title="Asturio AI" aria-label="Asturio AI">
   <img src="assets/img/asturio-btn.png" loading="lazy" decoding="async" />
@@ -33165,9 +33139,6 @@ function _actuallyDismiss() {
           // Marked as OURS, so closing it runs the welcome. A tutorial the
           // person opened from the menu closes without touching their map.
           setTimeout(() => { _tutAutoOpened = true; openTutorial(); }, 400);
-          // A first visit is not "catching up": everything is new to them,
-          // so the changelog stays quiet and starts counting from here.
-          try { if (typeof _clMarkSeen === 'function') _clMarkSeen(); } catch (e) {}
         } else {
           // Been here before, so no tutorial. The welcome still applies:
           // signed out there is nothing remembering how they like the map,
@@ -48276,14 +48247,10 @@ function selectProduct(p) {
         <div class="lqm-toggle-knob"></div>
       </label>
     </div>
-    <div class="lqm-settings-row">
-      <span class="lqm-settings-lbl">Compass Rose</span>
-      <label class="lqm-toggle">
-        <input type="checkbox" id="lqm-set-compass" checked onchange="lqmToggleSetting('compass',this.checked)">
-        <div class="lqm-toggle-track"></div>
-        <div class="lqm-toggle-knob"></div>
-      </label>
-    </div>
+    <!-- The Compass Rose row is retired with the compass itself: it drew a
+         dark circle over the logo whenever the map was rotated, and a toggle
+         that controls something invisible is a lie in switch form. The
+         'compass' key in lqmToggleSetting stays for old saved settings. -->
     <div class="lqm-settings-row">
       <span class="lqm-settings-lbl">Scale Bar</span>
       <label class="lqm-toggle">
@@ -55130,7 +55097,7 @@ function lqmSetTZ(tz) {
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg></div>
       <div class="fc-title">ACCOUNT MENU</div>
-      <p class="fc-body">Tap the <strong>account pill</strong>, top left (or the <strong>GWCFC logo</strong>, top center) to open the account panel. A strip of five buttons sits at its top: <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg> Settings</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-compass></use></svg> Navigation</strong>, <strong>Tutorial</strong> (this page), <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-star></use></svg> Credits</strong> and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-mail></use></svg> Feedback</strong>, there whether or not you are signed in. On desktop the pill also wears a small tag saying whether you are in <strong>Wx-pert</strong> (everything) or <strong>Lite-ning</strong> (just radar, warnings and forecasts); tap the tag, or open Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Display, to switch modes.</p>
+      <p class="fc-body">Tap the <strong>account pill</strong>, top left (or the <strong>GWCFC logo</strong>, top center) to open the account panel. A strip of five buttons sits at its top: <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg> Settings</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-compass></use></svg> Navigation</strong>, <strong>Tutorial</strong> (this page), <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-star></use></svg> Credits</strong> and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-mail></use></svg> Feedback</strong> and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-sparkle></use></svg> Updates</strong> (the changelog), there whether or not you are signed in. The app also comes in two modes, <strong>Wx-pert</strong> (everything) and <strong>Lite-ning</strong> (just radar, warnings and forecasts); switch any time in Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Display.</p>
     </div>
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-search></use></svg></div>
@@ -56203,8 +56170,31 @@ function closeTutorial() {
   // rearranged and a forecast panel put in front of them for the trouble.
   if (_tutAutoOpened) {
     _tutAutoOpened = false;
-    _runWelcome();
+    _fvSignup();
   }
+}
+
+// ── THE FIRST-VISIT GREETING LINE ──────────────────────────────────────────
+// A brand-new visitor is walked through, in order: the Wx-pert / Lite-ning
+// question, the tutorial (the four-line intro if they chose Lite-ning), the
+// account panel with its sign-up options (shown once, closing it is always
+// allowed), then the changelog, and only then the welcome flight that turns
+// the radar on. Each step starts when the previous one closes, so nothing
+// ever stacks on top of anything else.
+let _fvStep = null;
+function _fvSignup() {
+  _fvStep = 'signup';
+  setTimeout(() => {
+    try { if (typeof _profileOpen !== 'undefined' && !_profileOpen) lqmToggleProfile(); }
+    catch (e) {}
+  }, 400);
+}
+// Called from BOTH ways the account panel closes (the X path and tapping
+// the pill again), so the line moves on no matter how they leave it.
+function _fvProfileClosed() {
+  if (_fvStep !== 'signup') return;
+  _fvStep = 'changelog';
+  setTimeout(() => { try { _clOpen(); } catch (e) {} }, 400);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -56255,7 +56245,7 @@ function _setMode(m, opts) {
   _modeApply();
   if (!(opts && opts.quiet) && typeof showToast === 'function') {
     showToast(m === 'lite'
-      ? 'Lite-ning mode: radar, warnings and forecasts. Switch back any time in Settings, or tap the tag on your account pill.'
+      ? 'Lite-ning mode: radar, warnings and forecasts. Switch back any time in Settings under Display.'
       : 'Wx-pert mode: everything is back.', 4000);
   }
 }
@@ -56266,13 +56256,6 @@ function _setMode(m, opts) {
 function _modeApply() {
   const lite = _isLite();
   document.body.classList.toggle('lite-mode', lite);
-  // The tag on the account pill states the CURRENT mode, both names at
-  // once so the themed word and the plain word teach each other. Changing
-  // it happens in Settings (tapping the tag opens them), not on a button
-  // of its own: a sixth quick-menu button broke the row on phones and
-  // read as a control worth pressing to see what it did.
-  const tag = document.getElementById('profile-mode-tag');
-  if (tag) tag.innerHTML = lite ? 'LITE-NING &#183; BEGINNER' : 'WX-PERT &#183; EXPERT';
   const sel = document.getElementById('lqm-set-mode');
   if (sel) sel.value = lite ? 'lite' : 'expert';
   try {
@@ -56322,10 +56305,6 @@ function _modePick(m) {
   const modal = document.getElementById('mode-modal');
   if (modal) modal.classList.remove('open');
   _setMode(m, { quiet: true });
-  // Picking a mode means this is a first visit, and a first visit has no
-  // "what changed" to catch up on: mark the changelog seen so it does not
-  // greet a brand-new person with history.
-  try { if (typeof _clMarkSeen === 'function') _clMarkSeen(); } catch (e) {}
   if (m === 'lite') {
     // The full eighteen-section tutorial is exactly what a Lite-ning person
     // asked not to have. Four lines cover their whole app; the real tutorial
@@ -56353,7 +56332,7 @@ function _liteIntroOpen() {
           <div class="lite-step"><b>1</b>The live radar is coming on. Green is rain, yellow is heavy rain, red is storms.</div>
           <div class="lite-step"><b>2</b>Warnings draw themselves on the map automatically. Tap one to read it.</div>
           <div class="lite-step"><b>3</b>Tap anywhere on the map, or search a town up top, for its forecast.</div>
-          <div class="lite-step"><b>4</b>Want more power later? Tap the tag on your account pill, top left, and switch to Wx-pert in Settings.</div>
+          <div class="lite-step"><b>4</b>Want more power later? Open the account panel, top left, then Settings, and switch to Wx-pert under Display.</div>
         </div>
         <div class="mode-go"><button type="button" class="tm-btn tm-btn-go" onclick="_liteIntroClose()">SHOW MY WEATHER</button></div>
       </div>`;
@@ -56364,7 +56343,7 @@ function _liteIntroOpen() {
 function _liteIntroClose() {
   const m = document.getElementById('lite-intro');
   if (m) m.classList.remove('open');
-  _runWelcome();
+  _fvSignup();
 }
 
 // The simplified radar menu Lite-ning shows in place of the source list.
@@ -58759,6 +58738,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-08-31-j', date: 'Aug 31, 2026',
+    text: 'First visits now get the full welcome: the Wx-pert or Lite-ning question, the tutorial (a short intro for Lite-ning), a look at the account panel with its sign-up options (skippable), and this changelog, in that order. The little mode tag on the account pill is retired; your mode lives in Settings under Display.' },
   { id: '2026-08-31-i', date: 'Aug 31, 2026',
     text: 'The little update bar above the logo is retired and replaced by this changelog: it opens once when something new has shipped, and the full history lives behind the new Updates button in the account panel. Also removed the dark compass circle that could sit on top of the logo when the map was rotated.' },
   { id: '2026-08-31-h', date: 'Aug 31, 2026',
@@ -58788,6 +58769,12 @@ function _clClose() {
   const m = document.getElementById('changelog-modal');
   if (m) m.classList.remove('open');
   _clMarkSeen();
+  // The changelog is the last greeting on a first visit: closing it is what
+  // finally starts the welcome flight.
+  if (typeof _fvStep !== 'undefined' && _fvStep) {
+    _fvStep = null;
+    setTimeout(() => { try { _runWelcome(); } catch (e) {} }, 600);
+  }
 }
 
 function _clOpen() {
@@ -58853,6 +58840,9 @@ function lqmToggleProfile() {
   _profileOpen = !_profileOpen;
   const el = document.getElementById('lqm-profile-overlay');
   if (el) el.classList.toggle('lqm-panel-open', _profileOpen);
+  if (!_profileOpen) {
+    try { if (typeof _fvProfileClosed === 'function') _fvProfileClosed(); } catch (e) {}
+  }
   if (_profileOpen && !_currentUser && FIREBASE_READY) {
     // already showing guest state
   } else if (_profileOpen && !FIREBASE_READY) {
@@ -58867,6 +58857,7 @@ function lqmCloseProfile() {
   _profileOpen = false;
   const el = document.getElementById('lqm-profile-overlay');
   if (el) el.classList.remove('lqm-panel-open');
+  try { if (typeof _fvProfileClosed === 'function') _fvProfileClosed(); } catch (e) {}
 }
 
 // ── TUTORIAL OPEN/CLOSE UPDATED ──────────────────────────────
