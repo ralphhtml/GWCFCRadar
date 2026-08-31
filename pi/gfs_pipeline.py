@@ -25,7 +25,10 @@ import re
 import shutil
 import sys
 import tempfile
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, FIRST_COMPLETED
+from concurrent.futures import wait as futures_wait
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
@@ -1539,6 +1542,94 @@ MODELS = {
     },
 }
 
+# ── Full reach ──────────────────────────────────────────────────────────────
+#
+# Every model runs to the last forecast hour its publisher actually writes.
+# These used to stop early (GFS at 120 of its 384, HAFS at 72 of its 126,
+# the blend at 120 of 264), which read on the site as models that just end.
+#
+# Applied here as a patch table rather than edits to thirty definitions, so
+# the reach of the fleet is one screenful with the evidence beside it. EVERY
+# number below was read off the live bucket listings the day this was
+# written, not off documentation, because run_is_complete probes the last
+# hour and a reach the publisher does not write makes a model look
+# permanently unfinished: it would never build again at all.
+#
+# The ladders get SPARSER further out on purpose. Day eight at 12-hourly
+# costs a fraction of day one at 3-hourly, and nobody scrubs day eight
+# frame by frame.
+FULL_REACH = {
+    # Verified: gfs.<date>/00/atmos pgrb2.0p25 holds f000-f384, 209 files.
+    "gfs":      {"steps": [(120, 3), (240, 6), (384, 12)], "out": 384},
+    # Verified: geavg pgrb2a.0p50 f000-f384, 105 files. The 0p50 members
+    # (gec00, gep01-07, gespr) publish the same set.
+    "gefs":     {"steps": [(240, 6), (384, 12)], "out": 384},
+    "gefsspr":  {"steps": [(240, 6), (384, 12)], "out": 384},
+    "gefsc00":  {"steps": [(240, 6), (384, 12)], "out": 384},
+    "gefsp01":  {"steps": [(240, 6), (384, 12)], "out": 384},
+    "gefsp02":  {"steps": [(240, 6), (384, 12)], "out": 384},
+    "gefsp03":  {"steps": [(240, 6), (384, 12)], "out": 384},
+    "gefsp04":  {"steps": [(240, 6), (384, 12)], "out": 384},
+    "gefsp05":  {"steps": [(240, 6), (384, 12)], "out": 384},
+    "gefsp06":  {"steps": [(240, 6), (384, 12)], "out": 384},
+    "gefsp07":  {"steps": [(240, 6), (384, 12)], "out": 384},
+    # Verified: pgrb2s (the 0p25 "select" set) stops at f240, so the 0p25
+    # ensemble products reach 240 and no further. Asking for 384 here is
+    # asking for files that do not exist.
+    "gefs0p25": {"out": 240},
+    "gefsp08":  {"out": 240},
+    "gefsp09":  {"out": 240},
+    "gefsp10":  {"out": 240},
+    "gefsp11":  {"out": 240},
+    "gefsp12":  {"out": 240},
+    "gefsspr25": {"out": 240},
+    # Verified: nam.t00z.awphys runs f00-f84, 53 files (hourly to 36, then
+    # 3-hourly). Fetched 3-hourly throughout, which is the tier that exists
+    # the whole way.
+    "nam":      {"out": 84},
+    # Verified: 48 hours at 00/06/12/18Z, 18 otherwise. Hourly through 18,
+    # 3-hourly beyond, because the synoptic cycles publish hourly all the
+    # way but 49 hourly frames of a 3 km model is real money on a Pi.
+    "hrrr":     {"steps": [(18, 1), (48, 3)], "out": 48,
+                 "out_by_cyc": {0: 48, 6: 48, 12: 48, 18: 48, 1: 18, 2: 18,
+                                3: 18, 4: 18, 5: 18, 7: 18, 8: 18, 9: 18,
+                                10: 18, 11: 18, 13: 18, 14: 18, 15: 18,
+                                16: 18, 17: 18, 19: 18, 20: 18, 21: 18,
+                                22: 18, 23: 18}},
+    # Verified: rap.t03z reaches f51; the extended cycles are 03/09/15/21.
+    "rap":      {"steps": [(21, 1), (51, 3)], "out": 51,
+                 "out_by_cyc": {3: 51, 9: 51, 15: 51, 21: 51, 0: 21, 1: 21,
+                                2: 21, 4: 21, 5: 21, 6: 21, 7: 21, 8: 21,
+                                10: 21, 11: 21, 12: 21, 13: 21, 14: 21,
+                                16: 21, 17: 21, 18: 21, 19: 21, 20: 21,
+                                22: 21, 23: 21}},
+    # Verified: blend.t00z and t01z and t07z core all hold f264, every
+    # cycle. The ladder lands near today's cost while reaching 11 days.
+    "nbm":      {"steps": [(36, 3), (120, 6), (264, 12)], "out": 264},
+    # Verified: the open-data IFS reaches 360h now (it was 240 when this
+    # pipeline first learned it, and 144 was always short). AIFS single too.
+    "ecmwf":    {"out": 360},
+    "ecmwfaifs": {"out": 360},
+    # Verified: gfswave global publishes f000-f384.
+    "gfswave":  {"steps": [(240, 6), (384, 12)], "out": 384},
+    # Verified: hfsa parent.atm holds f000-f126 (43 files at 3-hourly).
+    # 72 was leaving the last two days of every hurricane forecast unbuilt.
+    "hafs":     {"out": 126},
+    "hafsb":    {"out": 126},
+    "hwrf":     {"out": 126},
+    "hmon":     {"out": 126},
+}
+for _n, _patch in FULL_REACH.items():
+    if _n in MODELS:
+        MODELS[_n].update(_patch)
+        # The regional crops inherit the parent's reach unless they say
+        # otherwise for a reason of their own; a tropics override written
+        # when the base stopped at 144 must not now CUT the extended base.
+        for _r in (MODELS[_n].get("regions") or {}).values():
+            if _r.get("out") and _patch.get("out") \
+               and _r["out"] < _patch["out"]:
+                _r["out"] = _patch["out"]
+
 # Order matters: this is also the order they are built in, and the time budget
 # below stops starting new ones once the hour is nearly gone. So the ones worth
 # having most are first, and the long range ones that nobody minds being an
@@ -1781,12 +1872,16 @@ def upsample_edge_for(shape, bounds):
 
 
 # How long a standard build may spend before it stops starting new models.
-# With twenty of them a bad afternoon at NOAA could otherwise run past the
-# hour, and since the next run cannot start while this one holds the lock,
-# one slow build would swallow the following one. Forty minutes leaves the
-# hourly rhythm intact. Models named explicitly on the command line ignore
-# this: asking for one by name means meaning it.
-TIME_BUDGET_S = 40 * 60
+# Passes now chain: the systemd timer refires a few minutes after each one
+# finishes, rather than at a fixed minute past the hour. That changes what
+# this number is for. It no longer guards an hourly appointment, it sets how
+# often the queue gets re-sorted by staleness, and shorter is better for
+# that: a pass that ends sooner hands the freshest picture of who needs
+# building to the next pass sooner. Twenty-five minutes is enough to move a
+# handful of models with three workers, without letting one slow afternoon
+# at NOAA pin the queue order for an hour. Models named explicitly on the
+# command line ignore this: asking for one by name means meaning it.
+TIME_BUDGET_S = 25 * 60
 
 # The budget above exists to protect the hourly rhythm. A first build has no
 # rhythm to protect: nothing is on the map yet, and stopping after forty
@@ -1875,8 +1970,27 @@ def storm_region_cost(region):
 # Some servers refuse the default python-requests user agent outright, and a
 # 403 from that is indistinguishable from a wrong address. Saying who we are
 # costs nothing and removes a whole class of confusing failure.
-HTTP = requests.Session()
-HTTP.headers.update({"User-Agent": "GWCFCRadar/1.0 (Raspberry Pi; weather map tiles)"})
+# One Session PER THREAD, now that builds run in parallel. requests does not
+# promise a Session is safe to share across threads, and the failure mode of
+# sharing one anyway is a corrupted response once a week that looks like NOAA
+# sent garbage. A handful of sessions costs a few sockets.
+_http_local = threading.local()
+
+
+def _http():
+    if getattr(_http_local, "session", None) is None:
+        sess = requests.Session()
+        sess.headers.update({"User-Agent":
+                             "GWCFCRadar/1.0 (Raspberry Pi; weather map tiles)"})
+        _http_local.session = sess
+    return _http_local.session
+
+
+# The name the OTHER pipelines import. They are single processes doing one
+# thing at a time, so handing them the importing thread's session is exactly
+# the sharing that was always there. Inside THIS file, _http() is the one to
+# call, because build workers each need their own.
+HTTP = _http()
 
 FILTER_BASE = "https://nomads.ncep.noaa.gov/cgi-bin"
 RAW_BASE = "https://nomads.ncep.noaa.gov/pub/data/nccf/com"
@@ -1899,6 +2013,7 @@ RAW_BASE = "https://nomads.ncep.noaa.gov/pub/data/nccf/com"
 # requests answer, bursts do not.
 _NOMADS_MIN_GAP = 0.7          # seconds; NOMADS allows about 120 hits a minute
 _nomads_last = [0.0]
+_pace_lock = threading.Lock()
 _ECMWF_MIN_GAP = 0.35
 _ecmwf_last = [0.0]
 
@@ -1923,18 +2038,25 @@ def http_get(url, tries=4, **kw):
     nomads = is_nomads(url)
     ecmwf = is_ecmwf(url)
     for attempt in range(tries):
+        # The gap is a PROMISE TO THE SERVER, so it is enforced across every
+        # worker at once: the reservation of the next send time happens under
+        # the lock, the sleeping happens outside it. Three threads sleeping
+        # inside the lock would serialise the fetches and undo the point of
+        # having three.
         if nomads:
-            gap = _NOMADS_MIN_GAP - (time.time() - _nomads_last[0])
-            if gap > 0:
-                time.sleep(gap)
-            _nomads_last[0] = time.time()
+            with _pace_lock:
+                wait = max(0.0, _nomads_last[0] + _NOMADS_MIN_GAP - time.time())
+                _nomads_last[0] = time.time() + wait
+            if wait > 0:
+                time.sleep(wait)
         elif ecmwf:
-            gap = _ECMWF_MIN_GAP - (time.time() - _ecmwf_last[0])
-            if gap > 0:
-                time.sleep(gap)
-            _ecmwf_last[0] = time.time()
+            with _pace_lock:
+                wait = max(0.0, _ecmwf_last[0] + _ECMWF_MIN_GAP - time.time())
+                _ecmwf_last[0] = time.time() + wait
+            if wait > 0:
+                time.sleep(wait)
         try:
-            r = HTTP.get(url, allow_redirects=not nomads, **kw)
+            r = _http().get(url, allow_redirects=not nomads, **kw)
         except requests.RequestException:
             if attempt == tries - 1:
                 raise
@@ -3896,7 +4018,7 @@ def lut_for(ramp, lo, hi):
 
 # ── NOAA ────────────────────────────────────────────────────────────────────
 
-def fhours_for(m):
+def fhours_for(m, cyc=None):
     """
     The forecast hours to fetch for a model, from its step and reach.
 
@@ -3904,8 +4026,44 @@ def fhours_for(m):
     Blend has nothing at f000, because a blend of forecasts has nothing to say
     about a time that has already happened, and asking for it got a 404 that
     read as the whole model being missing.
+
+    "steps" is a LADDER, because that is how the big models actually publish.
+    GFS is not "3-hourly to 384": it is 3-hourly to 120, 6-hourly to 240 and
+    12-hourly to 384, and pretending otherwise either cuts the reach short
+    (out at 120, which is where this app was) or asks for hours that do not
+    exist. A ladder is a list of (through, step) pairs:
+
+        "steps": [(120, 3), (240, 6), (384, 12)]
+
+    reads as: every 3 hours through f120, every 6 through f240, every 12
+    through f384. Each rung starts one of its own steps past where the rung
+    before ended, so the hours line up with the files NOAA writes.
+
+    "out_by_cyc" exists because some models reach further on some cycles.
+    HRRR runs to 48 hours at 00, 06, 12 and 18Z and to 18 otherwise, and RAP
+    to 51 on its extended cycles. That matters more than convenience: the
+    run-completeness check probes THE LAST HOUR, so a reach the cycle does
+    not publish makes the model look permanently unfinished and it never
+    builds at all. Every number in this file's ladders was read off the live
+    buckets, not off documentation, for exactly that reason.
     """
-    return list(range(m.get("first", 0), m["out"] + 1, m["step"]))
+    out = m.get("out")
+    if cyc is not None and m.get("out_by_cyc"):
+        out = m["out_by_cyc"].get(int(cyc), out)
+    steps = m.get("steps")
+    if not steps:
+        return list(range(m.get("first", 0), out + 1, m["step"]))
+    hours = []
+    start = m.get("first", 0)
+    for i, (through, step) in enumerate(steps):
+        stop_at = min(through, out) if out is not None else through
+        if start <= stop_at:
+            hours.extend(range(start, stop_at + 1, step))
+        if hours and i + 1 < len(steps):
+            start = hours[-1] + steps[i + 1][1]
+        if out is not None and (not hours or hours[-1] >= out):
+            break
+    return hours
 
 
 def raw_candidates(m):
@@ -4038,7 +4196,7 @@ def run_is_complete(m, date_str, cyc):
     does not serve .idx at all: asking it for one returns an HTML error with a
     200, which reads as success and makes the check useless.
     """
-    last = fhours_for(m)[-1]
+    last = fhours_for(m, cyc)[-1]
     if m.get("source") == "ecmwf":
         return ecmwf_index(m, date_str, cyc, last, timeout=30)[1] is not None
     if m.get("source") in URL_SOURCES:
@@ -4995,6 +5153,75 @@ def split_storm_region(key):
     return key, "parent"
 
 
+# ── Failure backoff ─────────────────────────────────────────────────────────
+#
+# THE QUEUE HAD A PLUG IN IT, and this is the unplugging. Jobs are sorted
+# stalest-first, which is right, but a model that CANNOT build (its address
+# changed, its publisher is down, one field of it 404s every hour) is by
+# definition the stalest thing on the list, so it sits at the head of every
+# single pass and burns the front of the budget on the same failure, hour
+# after hour, while healthy models queue behind it. That, plus a fleet too
+# big for one sequential 40-minute window, is the whole of "the majority of
+# the models are stale and it keeps happening".
+#
+# So failed attempts are remembered, per job, per target run. A job that
+# already failed to build the run it is currently after waits out a delay
+# that doubles each consecutive failure, capped at four hours. The moment
+# the publisher's next cycle comes due the target changes and the slate is
+# clean, so a model that comes back is picked up on its next run, not after
+# some fixed penalty. "Not published yet" never lands here at all: that is
+# one cheap probe, not a failure.
+_ATTEMPTS_PATH = os.path.join(OUT_DIR, "_attempts.json")
+_attempts_lock = threading.Lock()
+
+# Why the last build_model call on THIS thread came back without its target:
+# "unpublished" when the run simply is not on the server yet, which is one
+# cheap probe and nobody's fault. Only a real failure earns backoff; punishing
+# a model because NOAA is twenty minutes later than our lag estimate would be
+# adding staleness in the name of removing it.
+_build_why = threading.local()
+
+
+def _attempts_load():
+    try:
+        with open(_ATTEMPTS_PATH) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _attempts_save(state):
+    with _attempts_lock:
+        try:
+            write_json(_ATTEMPTS_PATH, state)
+        except OSError:
+            pass
+
+
+def backoff_wait_s(entry, target_run):
+    """Seconds this job still has to sit out, or 0 when it may try."""
+    if not entry or entry.get("run") != target_run:
+        return 0
+    fails = int(entry.get("fails", 0))
+    if fails <= 0:
+        return 0
+    delay = min(4 * 3600, 15 * 60 * (2 ** (fails - 1)))
+    return max(0, int(entry.get("at", 0) + delay - time.time()))
+
+
+def note_attempt(state, key, target_run, succeeded):
+    """Record how one job's attempt at one run went."""
+    with _attempts_lock:
+        if succeeded:
+            state.pop(key, None)
+            return
+        prev = state.get(key) or {}
+        fails = int(prev.get("fails", 0)) + 1 \
+            if prev.get("run") == target_run else 1
+        state[key] = {"run": target_run, "at": time.time(), "fails": fails}
+
+
 def build_model(name, m, region="conus"):
     """
     Build one run of one model over one region.
@@ -5020,9 +5247,10 @@ def build_model(name, m, region="conus"):
 
     if not run_is_complete(m, date_str, cyc):
         log(f"{name}: {run_id} not published yet")
+        _build_why.reason = "unpublished"
         return _newest_manifest(model_dir)
 
-    hours = fhours_for(m)
+    hours = fhours_for(m, cyc)
     log(f"{name}: building {run_id} ({len(hours)} hours)")
     os.makedirs(run_dir, exist_ok=True)
     t0 = time.time()
@@ -5253,6 +5481,8 @@ def main(models=None):
     # Only when running the standard list. Naming models explicitly means
     # meaning it, and a hand-run build should finish what it was asked for.
     budget = TIME_BUDGET_S if not models else None
+    attempts = _attempts_load()
+    skipped_backoff = 0
 
     # Written before anything is built, from whatever is already on disk. The
     # site reads this file and nothing else, so while it is absent there is no
@@ -5289,6 +5519,16 @@ def main(models=None):
             man = _newest_manifest(os.path.join(OUT_DIR, name, region))
             never = man is None
             sp = region_spec(m, region)
+            # The run this job would be building if it ran right now. Pure
+            # clock arithmetic, no network. It is both the key the backoff
+            # remembers failures under and the yardstick the attempt is
+            # judged against afterwards.
+            _d, _c = cycle_for(sp)
+            target = f"{_d}_{_c}"
+            wait = backoff_wait_s(attempts.get(f"{name}/{region}"), target)
+            if wait > 0:
+                skipped_backoff += 1
+                continue
             # Roughly what this will cost: how many hours, times how big a
             # grid. Only ever compared against other models, so the units do
             # not matter, only the ordering.
@@ -5305,7 +5545,7 @@ def main(models=None):
             # makes the queue self-levelling: whatever is stalest is next, and
             # a model drops to the back the moment it is rebuilt.
             run = "" if never else str(man.get("run", ""))
-            jobs.append((0 if never else 1, run, cost, name, region, m))
+            jobs.append((0 if never else 1, run, cost, name, region, m, target))
     # Never built first, and among those the cheap ones first. A cold start
     # otherwise spends twenty minutes on the single most expensive model
     # before anything at all reaches the site, which looks like nothing is
@@ -5314,53 +5554,104 @@ def main(models=None):
     # never-built first (all run=="", so still cheapest-first for a cold
     # start), then already-built oldest-run-first, cheapest breaking ties.
     jobs.sort(key=lambda j: (j[0], j[1], j[2]))
-    jobs = [(p, n, r, m) for p, _run, _c, n, r, m in jobs]
+    jobs = [(p, n, r, m, t) for p, _run, _c, n, r, m, t in jobs]
     fresh = sum(1 for j in jobs if j[0] == 0)
     if fresh:
         log(f"{fresh} of {len(jobs)} have never been built, doing those first")
+    if skipped_backoff:
+        log(f"{skipped_backoff} sitting out a failure backoff this pass")
 
-    for n, (_new, name, region, m) in enumerate(jobs):
-        # A never-built model gets the long budget, a refresh gets the short
-        # one. Otherwise the first pass never reaches the end of the list: the
-        # hourly models are the expensive ones, they go first, and forty
-        # minutes is gone before the rest have had a turn.
-        limit = CATCHUP_BUDGET_S if _new == 0 else budget
-        if limit and time.time() - started > limit:
-            # Out of time rather than out of models. Everything already built
-            # is kept and listed, and the rest are picked up next run, which
-            # will put them first because they are the ones with nothing.
-            left = ", ".join(f"{a}/{b}" for _p, a, b, _m in jobs[n:][:6])
-            mins = int((time.time() - started) / 60)
-            log(f"stopping after {mins} min with {len(jobs) - n} left: {left}"
-                + (" ..." if len(jobs) - n > 6 else ""))
-            for _p, later, reg, _lm in jobs[n:]:
-                man = _newest_manifest(os.path.join(OUT_DIR, later, reg))
-                if man:
-                    any_ok = True
-                    index["models"].setdefault(later, _model_head(
-                        later, MODELS[later]))["regions"][reg] = _index_entry(
-                            later, reg, man)
-            break
+    # ── The build, on a small crew rather than a queue of one ──────────────
+    #
+    # This loop used to be sequential, and that was the arithmetic behind the
+    # staleness: one worker, a 40 minute window per hour, and a fleet whose
+    # 6-hourly models all publish in the same burst. The work per burst was
+    # simply larger than one worker's window, so the queue never drained, and
+    # every new model made it worse.
+    #
+    # A build is mostly WAITING: on NOMADS' pacing gap, on a byte-range
+    # request, on a slow far-away server. Three builds can wait at the same
+    # time. The pacing gate is shared and locked, so the promise made to
+    # NOMADS is kept by the crew as a whole, and the index is only ever
+    # touched under a lock. Each job writes its own directory, so the builds
+    # themselves cannot collide.
+    workers = max(1, int(os.environ.get("GWCFC_WORKERS", "3")))
+    index_lock = threading.Lock()
 
+    def _finish(jnew, name, region, m, target, result):
+        nonlocal any_ok
+        man, why = result
+        with index_lock:
+            got = bool(man and man.get("run") == target)
+            # An unpublished run is neither success nor failure: nothing was
+            # attempted, so nothing is recorded and nothing backs off.
+            if got or why != "unpublished":
+                note_attempt(attempts, f"{name}/{region}", target, got)
+            if man:
+                any_ok = True
+                index["models"].setdefault(name, _model_head(name, m))[
+                    "regions"][region] = _index_entry(name, region, man)
+            done = sum(len(v["regions"]) for v in index["models"].values())
+            log(f"  [{done}/{len(jobs)}] {name}/{region}"
+                + ("" if man else "  nothing yet"))
+            # Published as it goes rather than only at the end, so a model
+            # that has just finished is on the site within the minute.
+            any_ok = _publish(index, names) or any_ok
+
+    def _run_job(name, m, region):
+        _build_why.reason = None
         try:
             man = build_model(name, m, region)
         except Exception as e:
             # One model failing must not cost the others.
             log(f"{name}/{region}: failed: {e}")
             man = _newest_manifest(os.path.join(OUT_DIR, name, region))
-        if man:
-            any_ok = True
-            index["models"].setdefault(name, _model_head(name, m))[
-                "regions"][region] = _index_entry(name, region, man)
-        done = sum(len(v["regions"]) for v in index["models"].values())
-        log(f"  [{done}/{len(jobs)}] {name}/{region}"
-            + ("" if man else "  nothing yet"))
-        # Written as it goes rather than only at the end, so a model that has
-        # just finished shows up on the site within the minute instead of
-        # waiting for every other model to finish first.
-        # Published after every model rather than at the end, so one that has
-        # just finished is on the site within the minute.
-        any_ok = _publish(index, names) or any_ok
+        return man, getattr(_build_why, "reason", None)
+
+    inflight = {}
+    ran_out_at = None
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        pending = list(enumerate(jobs))
+        while pending or inflight:
+            while pending and len(inflight) < workers and ran_out_at is None:
+                n, (jnew, name, region, m, target) = pending[0]
+                # A never-built model gets the long budget, a refresh the
+                # short one, same as always; only who is holding the
+                # stopwatch changed.
+                limit = CATCHUP_BUDGET_S if jnew == 0 else budget
+                if limit and time.time() - started > limit:
+                    ran_out_at = n
+                    break
+                pending.pop(0)
+                fut = pool.submit(_run_job, name, m, region)
+                inflight[fut] = (jnew, name, region, m, target)
+            if not inflight:
+                break
+            done_futs, _ = futures_wait(list(inflight),
+                                        return_when=FIRST_COMPLETED)
+            for fut in done_futs:
+                jnew, name, region, m, target = inflight.pop(fut)
+                _finish(jnew, name, region, m, target, fut.result())
+
+    if ran_out_at is not None:
+        # Out of time rather than out of models. Everything already built is
+        # kept and listed, and the rest are picked up next pass, which the
+        # chained timer starts minutes from now rather than at the top of
+        # some future hour.
+        left_jobs = jobs[ran_out_at:]
+        left = ", ".join(f"{a}/{b}" for _p, a, b, _m, _t in left_jobs[:6])
+        mins = int((time.time() - started) / 60)
+        log(f"stopping after {mins} min with {len(left_jobs)} left: {left}"
+            + (" ..." if len(left_jobs) > 6 else ""))
+        for _p, later, reg, _lm, _t in left_jobs:
+            man = _newest_manifest(os.path.join(OUT_DIR, later, reg))
+            if man:
+                any_ok = True
+                index["models"].setdefault(later, _model_head(
+                    later, MODELS[later]))["regions"][reg] = _index_entry(
+                        later, reg, man)
+
+    _attempts_save(attempts)
 
     # Soundings are their own product rather than a model: same source, but
     # pressure levels instead of surface fields, and read back as numbers.

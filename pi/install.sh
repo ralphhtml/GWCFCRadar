@@ -263,22 +263,32 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 ExecStart=$VENV/bin/python $REPO/pi/gfs_pipeline.py
-# A run is minutes, not hours. If it is still going after one, something is
-# wrong and a stuck run must not block every run after it.
-TimeoutStartSec=3600
+# The timer refires only after this unit deactivates, so a genuinely hung
+# pass would block every pass after it forever; this timeout is what breaks
+# that chain. Four hours, not one: the pipeline's own budgets end a pass at
+# 25 minutes normally and 3 hours on a first-install catch-up, plus however
+# long the jobs already in flight take to land, so anything still running
+# at four hours is truly stuck rather than merely thorough.
+TimeoutStartSec=14400
 Nice=10
 EOF
 
 cat > "$UNITS/gwcfc-models.timer" <<'EOF'
 [Unit]
-Description=Build GWCFC model images hourly
+Description=Build GWCFC model images, back to back
 
 [Timer]
-# Hourly rather than four times a day on purpose: the pipeline works out
-# whether there is anything new and exits in under a second when there is not,
-# so a run is picked up as soon as it publishes rather than at a fixed guess.
-# The offset keeps it off the hour, where everyone else's cron lands.
-OnCalendar=*:17
+# Chained, not hourly. This used to be OnCalendar=*:17, and that shape is why
+# models kept going stale: a pass that finished at :30 sat idle for 47 minutes
+# with work still in the queue, and a pass that ran LONG swallowed the next
+# tick entirely because the lock made the overlapping run exit. Interval
+# timers fire relative to the unit instead: three minutes after each pass
+# deactivates, the next one starts, so a long catch-up delays the next pass
+# rather than losing it, and a short pass hands off almost immediately. The
+# pipeline still exits in under a second when nothing new has published, so
+# the quiet case costs one probe every few minutes rather than a rebuild.
+OnBootSec=120
+OnUnitInactiveSec=180
 Persistent=true
 
 [Install]
