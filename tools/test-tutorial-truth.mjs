@@ -94,6 +94,27 @@ console.log('\n2. the claims that were wrong');
      !says('Sea Surface Temp'));
 }
 
+console.log('\n2b. the bubble diagram is generated, not drawn by hand');
+{
+  // It used to be static HTML that hung a badge on every row: NEXRAD, GOES,
+  // MARINE, AQI, SPEED, 2M, MSLP, 3 PANELS. No bubble in this app has ever
+  // had a badge, so anyone following the tutorial went hunting for a tag
+  // that does not exist. It also used sprite icons rather than the bubbles'
+  // own, and left off the info button and drag handle every real row has.
+  ok('the invented badges are gone',
+     !/class="lr-badge/.test(PAGE) && !/\.lr-badge\s*[{,]/.test(PAGE));
+  ok('and so is the hand-drawn row', !/layer-row-demo/.test(PAGE));
+  ok('the diagram is a container the page fills in',
+     /<div id="tut-bubble-demo" class="tut-bubble-demo"><\/div>/.test(PAGE));
+  ok('it is built from the same list the real column is built from',
+     /BASE_BUBBLES/.test(
+       (PAGE.match(/function _tutRenderBubbleDemo\(\)[\s\S]*?\n\}/) || [''])[0]));
+  ok('and it renders every time the tutorial opens, by any route',
+     /function openTutorial\(\)[\s\S]{0,800}_tutRenderBubbleDemo\(\)/.test(PAGE));
+  ok('an unreadable list says so rather than drawing a fake one',
+     /nothing to show here rather than a drawing/.test(PAGE));
+}
+
 console.log('\n3. the features it never mentioned at all');
 {
   const sections = [...TUT.matchAll(/<section class="section" id="([a-z]+)"/g)]
@@ -139,6 +160,14 @@ if (!chromium) {
   const r = await p.evaluate(async () => {
     const out = {};
     out.styleRows = document.querySelectorAll('#map-style-menu .right-bubble').length;
+    // The diagram against the real column, side by side. Labels, icons and
+    // the order of the parts all have to agree, because the whole point of
+    // generating it is that it cannot say anything the app does not.
+    try { renderSubBubbles('regular'); } catch (e) {}
+    const realRows = [...document.querySelectorAll('#sub-bubbles .sub-bubble-main')];
+    out.realLabels = realRows.map(x => x.querySelector('.sb-label').textContent);
+    out.realIcon = realRows[0]
+      ? realRows[0].querySelector('.sb-icon').innerHTML : '';
     // The tutorial renders, with its sections and links intact.
     try { lqmOpenTutorial(); } catch (e) {}
     await new Promise(r => setTimeout(r, 400));
@@ -151,6 +180,12 @@ if (!chromium) {
       .map(u => u.getAttribute('href'))
       .filter(h => h && h.startsWith('#') && !document.querySelector(h));
     out.height = body.scrollHeight;
+    const demoRows = [...body.querySelectorAll('.tut-bubble-row')];
+    out.demoLabels = demoRows.map(x => x.querySelector('.sb-label').textContent);
+    out.demoIcon = demoRows[0]
+      ? demoRows[0].querySelector('.sb-icon').innerHTML : '';
+    out.demoParts = demoRows[0]
+      ? [...demoRows[0].children].map(c => c.className) : [];
     return out;
   });
   await b.close();
@@ -165,6 +200,15 @@ if (!chromium) {
      r.brokenIcons.length === 0, r.brokenIcons.join(', '));
   ok('it is a long read, as a complete tutorial should be',
      r.height > 15000, String(r.height));
+  ok('the diagram lists exactly the real bubbles, in order',
+     JSON.stringify(r.demoLabels) === JSON.stringify(r.realLabels),
+     `${r.demoLabels} vs ${r.realLabels}`);
+  ok('and draws them with the bubbles\' own icons',
+     r.demoIcon === r.realIcon && r.demoIcon.length > 20);
+  ok('with the info button and drag handle a real row has',
+     r.demoParts.join(',')
+       === 'sb-icon,sb-label,tut-bubble-info,tut-bubble-drag',
+     r.demoParts.join(','));
   ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
 }
 
