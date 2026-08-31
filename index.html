@@ -1114,6 +1114,15 @@ body {
   border-color: var(--accent);
   box-shadow: 0 0 10px rgba(170,0,0,0.3);
 }
+/* The mode tag on the account pill: a label first, a shortcut second. */
+#profile-mode-tag {
+  font-family: var(--mono); font-size: 8px; letter-spacing: 0.5px;
+  color: #ffd478; background: rgba(232,184,0,0.12);
+  border: 1px solid rgba(232,184,0,0.4); border-radius: 8px;
+  padding: 2px 7px; white-space: nowrap; cursor: pointer;
+  transition: background 0.15s;
+}
+#profile-mode-tag:hover { background: rgba(232,184,0,0.28); }
 
 /* Vertical, drag-to-reorder overlay list */
 #overlay-pills-row {
@@ -10102,10 +10111,6 @@ body.clean-mode #clean-hint { opacity: 1; }
       </div>
       <span class="lqm-label">Feedback</span>
     </div>
-    <div class="lqm-btn" id="lqm-mode-btn" onclick="_modeToggle()" title="Switch between Wx-pert (everything) and Lite-ning (just the weather)">
-      <div class="lqm-icon-wrap" style="font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></div>
-      <span class="lqm-label" id="lqm-mode-label">Wx-pert</span>
-    </div>
   </div>
 </div>
 
@@ -10115,6 +10120,14 @@ body.clean-mode #clean-hint { opacity: 1; }
 <div id="lqm-profile-btn" onclick="lqmToggleProfile()">
   <div id="lqm-profile-avatar-sm"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-user></use></svg></div>
   <span class="lqm-label" id="lqm-profile-label">Sign In</span>
+  <!-- Which mode this browser is in, worn on the account pill rather than
+       spent on a button of its own. Tapping it opens Settings, where the
+       mode dropdown lives; stopPropagation so the tap does not also open
+       the profile panel underneath it. Shown signed in or out, because the
+       mode belongs to the browser, not the account. -->
+  <span id="profile-mode-tag"
+        onclick="event.stopPropagation(); lqmToggleSettingsPanel();"
+        title="Your mode. Change it in Settings under Display.">WX-PERT &#183; EXPERT</span>
 </div>
 <button id="lqm-ai-btn" onclick="lqmOpenAI()" title="Asturio AI" aria-label="Asturio AI">
   <img src="assets/img/asturio-btn.png" loading="lazy" decoding="async" />
@@ -55109,7 +55122,7 @@ function lqmSetTZ(tz) {
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg></div>
       <div class="fc-title">LOGO QUICK MENU</div>
-      <p class="fc-body">The row of six buttons under the GWCFC logo, top-center: <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg> Settings</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-compass></use></svg> Navigation</strong>, <strong>Tutorial</strong> (this page), <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-star></use></svg> Credits</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-mail></use></svg> Feedback</strong> and the <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg> mode switch</strong>, which flips the whole app between <strong>Wx-pert</strong> (everything) and <strong>Lite-ning</strong> (just radar, warnings and forecasts). It is <strong>shown from the first paint</strong> and stays shown. If you would rather it hid itself again, Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Map has a switch that restores the old behaviour, where it appears only when you hover or tap the logo.</p>
+      <p class="fc-body">The row of five buttons under the GWCFC logo, top-center: <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg> Settings</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-compass></use></svg> Navigation</strong>, <strong>Tutorial</strong> (this page), <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-star></use></svg> Credits</strong> and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-mail></use></svg> Feedback</strong>. The small tag on your <strong>account pill</strong>, top left, says whether you are in <strong>Wx-pert</strong> (everything) or <strong>Lite-ning</strong> (just radar, warnings and forecasts); tap it to open Settings, where the mode switch lives. The row is <strong>shown from the first paint</strong> and stays shown. If you would rather it hid itself again, Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Map has a switch that restores the old behaviour, where it appears only when you hover or tap the logo.</p>
     </div>
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-search></use></svg></div>
@@ -56234,7 +56247,7 @@ function _setMode(m, opts) {
   _modeApply();
   if (!(opts && opts.quiet) && typeof showToast === 'function') {
     showToast(m === 'lite'
-      ? 'Lite-ning mode: radar, warnings and forecasts. Switch back any time under the logo.'
+      ? 'Lite-ning mode: radar, warnings and forecasts. Switch back any time in Settings, or tap the tag on your account pill.'
       : 'Wx-pert mode: everything is back.', 4000);
   }
 }
@@ -56245,12 +56258,13 @@ function _setMode(m, opts) {
 function _modeApply() {
   const lite = _isLite();
   document.body.classList.toggle('lite-mode', lite);
-  // The button is an action, so it names its DESTINATION, not the current
-  // state: in Lite-ning it reads Wx-pert, which is also how somebody who
-  // tapped it out of curiosity sees the way back at a glance. The Settings
-  // dropdown is the one that states which mode is on.
-  const lbl = document.getElementById('lqm-mode-label');
-  if (lbl) lbl.textContent = lite ? 'Wx-pert' : 'Lite-ning';
+  // The tag on the account pill states the CURRENT mode, both names at
+  // once so the themed word and the plain word teach each other. Changing
+  // it happens in Settings (tapping the tag opens them), not on a button
+  // of its own: a sixth quick-menu button broke the row on phones and
+  // read as a control worth pressing to see what it did.
+  const tag = document.getElementById('profile-mode-tag');
+  if (tag) tag.innerHTML = lite ? 'LITE-NING &#183; BEGINNER' : 'WX-PERT &#183; EXPERT';
   const sel = document.getElementById('lqm-set-mode');
   if (sel) sel.value = lite ? 'lite' : 'expert';
   try {
@@ -56275,7 +56289,7 @@ function _modeOpenPicker() {
     m.innerHTML = `
       <div class="mode-card-wrap" role="dialog" aria-modal="true" aria-label="Choose how much weather you want">
         <div class="mode-head">HOW DO YOU WANT YOUR WEATHER?</div>
-        <div class="mode-sub">You can switch any time from the menu under the logo.</div>
+        <div class="mode-sub">You can switch any time in Settings. The tag on your account pill, top left, always says which mode you are in.</div>
         <div class="mode-cards">
           <button type="button" class="mode-card" id="mode-pick-lite" onclick="_modePick('lite')">
             <span class="mode-ic"><svg class=svgi width=34 height=34><use href=#ic-bolt></use></svg></span>
@@ -56327,7 +56341,7 @@ function _liteIntroOpen() {
           <div class="lite-step"><b>1</b>The live radar is coming on. Green is rain, yellow is heavy rain, red is storms.</div>
           <div class="lite-step"><b>2</b>Warnings draw themselves on the map automatically. Tap one to read it.</div>
           <div class="lite-step"><b>3</b>Tap anywhere on the map, or search a town up top, for its forecast.</div>
-          <div class="lite-step"><b>4</b>Want more power later? Switch to Wx-pert in the menu under the logo.</div>
+          <div class="lite-step"><b>4</b>Want more power later? Tap the tag on your account pill, top left, and switch to Wx-pert in Settings.</div>
         </div>
         <div class="mode-go"><button type="button" class="tm-btn tm-btn-go" onclick="_liteIntroClose()">SHOW MY WEATHER</button></div>
       </div>`;
@@ -58738,7 +58752,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'The search bar on phones now collapses properly: instead of a wide, mostly-empty pill drifting over the menu buttons, it shrinks to just the star and the magnifier, tucked into the top-right corner. Tapping it still opens the full search field, which now also expands wider so you can read what you type.';
+const APP_LATEST_UPDATE = 'The mode moved off the menu and onto your account pill. The quick menu under the logo is back to five buttons in one straight row, and a small gold tag on the account pill, top left, now says which mode you are in (WX-PERT / EXPERT or LITE-NING / BEGINNER). Tap the tag to open Settings, where the mode switch lives under Display.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');

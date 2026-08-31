@@ -40,8 +40,9 @@ console.log('\n1. the source keeps the shape of the feature');
   ok('choosing Lite-ning waives the full tutorial, not the welcome',
      /_modePick[\s\S]{0,900}gwcfc_tutorial_seen', '1'/.test(PAGE)
      && /_liteIntroClose[\s\S]{0,200}_runWelcome\(\)/.test(PAGE));
-  ok('the switch lives in the logo menu and in Settings',
-     /id="lqm-mode-btn"/.test(PAGE) && /id="lqm-set-mode"/.test(PAGE));
+  ok('the mode is worn on the account pill and changed in Settings',
+     /id="profile-mode-tag"/.test(PAGE) && /id="lqm-set-mode"/.test(PAGE)
+     && !/id="lqm-mode-btn"/.test(PAGE));
   ok('Lite-ning trims the bubble column in the renderer',
      /renderSubBubbles[\s\S]{0,900}_isLite\(\)[\s\S]{0,200}b\.id === 'radar'/.test(PAGE));
   ok('and gives radar a plain-words menu',
@@ -116,7 +117,7 @@ console.log('\n2. a brand-new visitor is asked, and Lite-ning answers for them')
     bubbles: [...document.querySelectorAll('#sub-bubbles .sb-label')].map(x => x.textContent),
     railGone: getComputedStyle(document.getElementById('right-menu')).display === 'none',
     launcherGone: getComputedStyle(document.getElementById('overlay-toggle-btn')).display === 'none',
-    modeLabel: document.getElementById('lqm-mode-label').textContent,
+    modeLabel: document.getElementById('profile-mode-tag').textContent,
   }));
   ok('the choice is saved', lite.saved === 'lite', String(lite.saved));
   ok('the page wears the mode', lite.body === true);
@@ -128,9 +129,10 @@ console.log('\n2. a brand-new visitor is asked, and Lite-ning answers for them')
      JSON.stringify(lite.bubbles));
   ok('the drawing and measuring rail is gone', lite.railGone);
   ok('so is the overlay launcher', lite.launcherGone);
-  // The button is an action, so it names its destination: in Lite-ning it
-  // reads Wx-pert, which is the way back at a glance.
-  ok('the logo menu switch points the way back', lite.modeLabel === 'Wx-pert',
+  // The account-pill tag states the current mode in both its names, the
+  // themed one and the plain one, so each teaches the other.
+  ok('the account pill wears the mode, both names',
+     /LITE-NING/.test(lite.modeLabel) && /BEGINNER/.test(lite.modeLabel),
      lite.modeLabel);
 
   // Its radar menu speaks plain words.
@@ -156,22 +158,23 @@ console.log('\n2. a brand-new visitor is asked, and Lite-ning answers for them')
       saved: localStorage.getItem('gwcfc_mode'),
       bubbles: document.querySelectorAll('#sub-bubbles .sub-bubble-main').length,
       railBack: getComputedStyle(document.getElementById('right-menu')).display !== 'none',
-      modeLabel: document.getElementById('lqm-mode-label').textContent,
+      modeLabel: document.getElementById('profile-mode-tag').textContent,
     };
   });
   ok('the switch flips back to Wx-pert', back.saved === 'expert', back.saved);
   ok('all eight bubbles return', back.bubbles === 8, String(back.bubbles));
   ok('and so do the tools', back.railBack);
-  ok('with the label pointing at Lite-ning again', back.modeLabel === 'Lite-ning',
-     back.modeLabel);
+  ok('with the tag following', /WX-PERT/.test(back.modeLabel)
+     && /EXPERT/.test(back.modeLabel), back.modeLabel);
   await p.close();
 }
 
-console.log('\n4. on a phone, the six-button row fits and nothing hides under it');
+console.log('\n4. on a phone: one straight row, the mode tag, and nothing hidden');
 {
-  // The regression this pins: the sixth button pushed the always-shown quick
-  // menu past both screen edges on a phone, printing SETTINGS over the layer
-  // bubbles and cutting the mode switch off entirely.
+  // The regressions this pins: a sixth button once pushed the always-shown
+  // quick menu past both screen edges and then wrapped alone onto a second
+  // line; the mode lives on the account pill as a tag now, so the row is
+  // five buttons, straight, and centered under the logo.
   const p = await browser.newPage({ viewport: { width: 390, height: 844 } });
   p.on('pageerror', e => errsAll.push(String(e).slice(0, 180)));
   await p.addInitScript(() => {
@@ -208,8 +211,24 @@ console.log('\n4. on a phone, the six-button row fits and nothing hides under it
     const se = sb.getBoundingClientRect();
     sb.classList.remove('expanded');
     const searchExpanded = Math.round(se.width);
+    // One straight row, centered under the logo: the sixth button used to
+    // wrap alone onto a second line, which read as broken.
+    const btns = [...qm.querySelectorAll('.lqm-btn')]
+      .map(x => x.getBoundingClientRect());
+    const logo = document.getElementById('topbar-logo-img').getBoundingClientRect();
+    // The tag on the account pill, and what tapping it opens.
+    const tagEl = document.getElementById('profile-mode-tag');
+    const tagRect = tagEl.getBoundingClientRect();
+    tagEl.click();
+    const settingsOpened = !!document.querySelector('#lqm-settings-overlay.lqm-panel-open');
+    if (typeof lqmToggleSettingsPanel === 'function' && settingsOpened) lqmToggleSettingsPanel();
     return {
       searchCollapsed, searchExpanded,
+      oneRow: btns.every(x => Math.round(x.top) === Math.round(btns[0].top)),
+      centerOff: Math.round(Math.abs(
+        (r.left + r.right) / 2 - (logo.left + logo.right) / 2)),
+      tag: { shown: tagRect.width > 0, text: tagEl.textContent },
+      settingsOpened,
       open: qm.classList.contains('lqm-open'),
       left: Math.round(r.left), right: Math.round(r.right),
       bottom: Math.round(r.bottom),
@@ -221,8 +240,8 @@ console.log('\n4. on a phone, the six-button row fits and nothing hides under it
     };
   });
   await p.close();
-  ok('the menu is open with all six buttons', m.open && m.buttons === 6,
-     JSON.stringify(m));
+  ok('the menu is open with its five buttons, one straight row',
+     m.open && m.buttons === 5, JSON.stringify(m));
   ok('and fits inside the screen, both edges',
      m.left >= 0 && m.right <= m.vw, `${m.left}..${m.right} of ${m.vw}`);
   ok('the clearance was measured off its real bottom edge',
@@ -235,6 +254,12 @@ console.log('\n4. on a phone, the six-button row fits and nothing hides under it
      JSON.stringify(m.searchCollapsed));
   ok('and expanding it opens a field wide enough to read',
      m.searchExpanded >= 250, String(m.searchExpanded));
+  ok('the five buttons sit in one straight row', m.oneRow);
+  ok('centered under the logo', m.centerOff <= 30, m.centerOff + 'px off');
+  ok('the account pill wears the mode tag',
+     m.tag.shown && /WX-PERT/.test(m.tag.text) && /EXPERT/.test(m.tag.text),
+     JSON.stringify(m.tag));
+  ok('and tapping the tag opens Settings', m.settingsOpened);
 }
 
 console.log('\n3. the choice is remembered, and old friends are never quizzed');
