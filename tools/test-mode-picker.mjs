@@ -37,12 +37,12 @@ console.log('\n1. the source keeps the shape of the feature');
      && /body\.lite-mode #overlay-toggle-btn/.test(PAGE));
   ok('the picker outranks the auto-tutorial on a first visit',
      /_modeChosen\(\)\) \{[\s\S]{0,700}_modeOpenPicker\(\)/.test(PAGE));
-  ok('choosing Lite-ning waives the full tutorial, not the welcome',
+  ok('choosing Lite-ning waives the full tutorial, not the greeting line',
      /_modePick[\s\S]{0,900}gwcfc_tutorial_seen', '1'/.test(PAGE)
-     && /_liteIntroClose[\s\S]{0,200}_runWelcome\(\)/.test(PAGE));
-  ok('the mode is worn on the account pill and changed in Settings',
-     /id="profile-mode-tag"/.test(PAGE) && /id="lqm-set-mode"/.test(PAGE)
-     && !/id="lqm-mode-btn"/.test(PAGE));
+     && /_liteIntroClose[\s\S]{0,200}_fvSignup\(\)/.test(PAGE));
+  ok('the mode is changed in Settings, with no tag or button of its own',
+     /id="lqm-set-mode"/.test(PAGE)
+     && !/id="profile-mode-tag"/.test(PAGE) && !/id="lqm-mode-btn"/.test(PAGE));
   ok('Lite-ning trims the bubble column in the renderer',
      /renderSubBubbles[\s\S]{0,900}_isLite\(\)[\s\S]{0,200}b\.id === 'radar'/.test(PAGE));
   ok('and gives radar a plain-words menu',
@@ -117,7 +117,6 @@ console.log('\n2. a brand-new visitor is asked, and Lite-ning answers for them')
     bubbles: [...document.querySelectorAll('#sub-bubbles .sb-label')].map(x => x.textContent),
     railGone: getComputedStyle(document.getElementById('right-menu')).display === 'none',
     launcherGone: getComputedStyle(document.getElementById('overlay-toggle-btn')).display === 'none',
-    modeLabel: document.getElementById('profile-mode-tag').textContent,
   }));
   ok('the choice is saved', lite.saved === 'lite', String(lite.saved));
   ok('the page wears the mode', lite.body === true);
@@ -129,22 +128,36 @@ console.log('\n2. a brand-new visitor is asked, and Lite-ning answers for them')
      JSON.stringify(lite.bubbles));
   ok('the drawing and measuring rail is gone', lite.railGone);
   ok('so is the overlay launcher', lite.launcherGone);
-  // The account-pill tag states the current mode in both its names, the
-  // themed one and the plain one, so each teaches the other.
-  ok('the account pill wears the mode, both names',
-     /LITE-NING/.test(lite.modeLabel) && /BEGINNER/.test(lite.modeLabel),
-     lite.modeLabel);
 
-  // Its radar menu speaks plain words.
-  const radar = await p.evaluate(() => {
+  // Closing the intro no longer jumps straight to the welcome: the rest of
+  // the first-visit greeting line comes first. Sign-up panel (skippable),
+  // then the changelog, and only then the welcome flight. The radar menu
+  // check rides along at the end.
+  const radar = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
     _liteIntroClose();
+    await wait(700);
+    const signupOpen =
+      !!document.querySelector('#lqm-profile-overlay.lqm-panel-open');
+    lqmCloseProfile();
+    await wait(700);
+    const clOpen = !!document.querySelector('#changelog-modal.open');
+    _clClose();
+    await wait(900);
     toggleRadarSub();
     return {
+      signupOpen, clOpen,
+      clSeen: localStorage.getItem('gwcfc_changelog_seen'),
+      newestId: APP_CHANGELOG[0].id,
       welcomeRan: _welcomeRan === true,
       labels: [...document.querySelectorAll('#sub-bubbles .sb-label')].map(x => x.textContent),
     };
   });
-  ok('closing the intro starts the welcome', radar.welcomeRan);
+  ok('closing the intro opens the sign-up panel', radar.signupOpen);
+  ok('closing that opens the changelog', radar.clOpen);
+  ok('which starts their history at today',
+     radar.clSeen === radar.newestId, `${radar.clSeen} vs ${radar.newestId}`);
+  ok('and dismissing the changelog starts the welcome', radar.welcomeRan);
   ok('the radar menu says Live Radar and Time Machine, nothing cryptic',
      radar.labels.includes('Live Radar') && radar.labels.includes('Time Machine')
      && !radar.labels.includes('Level 2') && !radar.labels.includes('Level 3'),
@@ -158,26 +171,15 @@ console.log('\n2. a brand-new visitor is asked, and Lite-ning answers for them')
       saved: localStorage.getItem('gwcfc_mode'),
       bubbles: document.querySelectorAll('#sub-bubbles .sub-bubble-main').length,
       railBack: getComputedStyle(document.getElementById('right-menu')).display !== 'none',
-      modeLabel: document.getElementById('profile-mode-tag').textContent,
+      tagGone: !document.getElementById('profile-mode-tag'),
     };
   });
   ok('the switch flips back to Wx-pert', back.saved === 'expert', back.saved);
   ok('all eight bubbles return', back.bubbles === 8, String(back.bubbles));
   ok('and so do the tools', back.railBack);
-  ok('with the tag following', /WX-PERT/.test(back.modeLabel)
-     && /EXPERT/.test(back.modeLabel), back.modeLabel);
-
-  // On desktop the tag is visible and doubles as the door to Settings.
-  const tag = await p.evaluate(() => {
-    const t = document.getElementById('profile-mode-tag');
-    const shown = getComputedStyle(t).display !== 'none'
-      && t.getBoundingClientRect().width > 0;
-    t.click();
-    const opened = !!document.querySelector('#lqm-settings-overlay.lqm-panel-open');
-    return { shown, opened };
-  });
-  ok('on desktop the tag is visible on the pill', tag.shown);
-  ok('and tapping it opens Settings', tag.opened);
+  // The pill tag is retired everywhere (it was already hidden on phones):
+  // the mode now lives only in Settings under Display.
+  ok('the mode tag is gone from the account pill', back.tagGone);
 
   // The app menu's seat inside the account panel follows the sign-in
   // state: below the avatar and name for an account, above the sign-in
@@ -243,7 +245,6 @@ console.log("\n4. on a phone: the row is retired, the menu lives in the account 
     // top of the account panel now, there whether or not anyone is signed
     // in. On a phone the mode tag also stays off the pill, because the
     // corner is already crowded.
-    const tagEl = document.getElementById('profile-mode-tag');
     const panel = document.getElementById('lqm-profile-overlay');
     panel.classList.add('lqm-panel-open');
     const pm = document.getElementById('lqm-panel-menu');
@@ -253,7 +254,7 @@ console.log("\n4. on a phone: the row is retired, the menu lives in the account 
     panel.classList.remove('lqm-panel-open');
     return {
       searchCollapsed, searchExpanded,
-      tagHidden: getComputedStyle(tagEl).display === 'none',
+      tagGone: !document.getElementById('profile-mode-tag'),
       rowGone: getComputedStyle(qm).display === 'none',
       menuShown, menuLabels,
       bubblesTop: br ? Math.round(br.top) : null,
@@ -271,7 +272,7 @@ console.log("\n4. on a phone: the row is retired, the menu lives in the account 
      JSON.stringify(m.searchCollapsed));
   ok('and expanding it opens a field wide enough to read',
      m.searchExpanded >= 250, String(m.searchExpanded));
-  ok('the mode tag stays off the pill on a phone', m.tagHidden);
+  ok('the mode tag is gone here too', m.tagGone);
 }
 
 console.log('\n3. the choice is remembered, and old friends are never quizzed');

@@ -104,6 +104,18 @@ const arm = (opts = {}) => page.evaluate((o) => {
 
 const result = () => page.evaluate(() => window.__w);
 
+// The first-visit greeting line now sits between the tutorial and the
+// welcome: closing the auto-opened tutorial opens the sign-up panel, then
+// the changelog, and the welcome only flies after that last dismissal. This
+// helper walks the whole line, ending where closeTutorial alone used to.
+const closeAndGreet = () => page.evaluate(async () => {
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  _tutAutoOpened = true; closeTutorial();
+  await wait(600); lqmCloseProfile();
+  await wait(600); _clClose();
+  await wait(700);
+});
+
 console.log('\n1. the pieces are wired up');
 {
   ok('no page errors on boot', errors.length === 0, errors[0]);
@@ -119,7 +131,7 @@ console.log('\n1. the pieces are wired up');
 console.log('\n2. closing the auto-opened tutorial gives them their weather');
 {
   await arm({ geo: 'grant' });
-  await page.evaluate(() => { _tutAutoOpened = true; closeTutorial(); });
+  await closeAndGreet();
   await page.waitForTimeout(2600);
   const r = await result();
   ok('the 1 km composite is switched on', r.composite === 1, String(r.composite));
@@ -164,7 +176,7 @@ console.log('\n4. a signed-in account with a saved preset is left alone');
 {
   await arm({ signedIn: true, geo: 'grant',
               profile: { savedLayers: { nexrad: false, satellite: true } } });
-  await page.evaluate(() => { _tutAutoOpened = true; closeTutorial(); });
+  await closeAndGreet();
   await page.waitForTimeout(1200);
   const r = await result();
   // Saving a preset is somebody saying how they want the map. Overriding it
@@ -180,7 +192,7 @@ console.log('\n4b. signed in WITHOUT a preset still gets the welcome');
   await arm({ signedIn: true, geo: 'grant', profile: { displayName: 'Test' } });
   const has = await page.evaluate(() => _welcomeHasSavedPreset());
   ok('an account that has saved nothing has no preset', has === false, String(has));
-  await page.evaluate(() => { _tutAutoOpened = true; closeTutorial(); });
+  await closeAndGreet();
   await page.waitForTimeout(2600);
   const r = await result();
   ok('so they are treated like anyone who has not chosen', r.composite === 1,
@@ -202,7 +214,7 @@ console.log('\n4c. an empty saved-layers object is not an instruction');
 console.log('\n5. a refused location prompt falls back rather than giving up');
 {
   await arm({ geo: 'deny' });
-  await page.evaluate(() => { _tutAutoOpened = true; closeTutorial(); });
+  await closeAndGreet();
   await page.waitForTimeout(3000);
   const r = await result();
   ok('the radar still comes on', r.composite === 1, String(r.composite));
@@ -216,7 +228,7 @@ console.log('\n5. a refused location prompt falls back rather than giving up');
 console.log('\n5b. a prompt that never answers does not hang the welcome');
 {
   await arm({ geo: 'hang' });
-  await page.evaluate(() => { _tutAutoOpened = true; closeTutorial(); });
+  await closeAndGreet();
   // Longer than the internal timeout, shorter than forever.
   await page.waitForTimeout(11000);
   const r = await result();
@@ -229,7 +241,7 @@ console.log('\n6. with no location at all it says so instead of half working');
   // Kill the fallback too, so neither source can answer.
   await page.route('**ipapi.co**', route => route.abort());
   await arm({ geo: 'deny' });
-  await page.evaluate(() => { _tutAutoOpened = true; closeTutorial(); });
+  await closeAndGreet();
   await page.waitForTimeout(3000);
   const r = await result();
   ok('the radar is still switched on, which is most of the value',
@@ -244,11 +256,9 @@ console.log('\n6. with no location at all it says so instead of half working');
 console.log('\n7. it runs once, not once per close');
 {
   await arm({ geo: 'grant' });
-  await page.evaluate(() => {
-    _tutAutoOpened = true; closeTutorial();
-    _tutAutoOpened = true; closeTutorial();
-    _tutAutoOpened = true; closeTutorial();
-  });
+  await closeAndGreet();
+  await closeAndGreet();
+  await closeAndGreet();
   await page.waitForTimeout(2600);
   const r = await result();
   ok('three closes load the composite once', r.composite === 1, String(r.composite));
@@ -257,7 +267,7 @@ console.log('\n7. it runs once, not once per close');
 console.log('\n8. an existing GPS fix is used rather than asking again');
 {
   await arm({ gps: [40.71, -74.01], geo: 'deny' });
-  await page.evaluate(() => { _tutAutoOpened = true; closeTutorial(); });
+  await closeAndGreet();
   await page.waitForTimeout(2600);
   const r = await result();
   // Location tracking already on means the answer is already known, and
@@ -271,10 +281,8 @@ console.log('\n8. an existing GPS fix is used rather than asking again');
 console.log('\n9. screenshot mode is left alone');
 {
   await arm({ geo: 'grant' });
-  await page.evaluate(() => {
-    document.body.classList.add('shot-mode');
-    _tutAutoOpened = true; closeTutorial();
-  });
+  await page.evaluate(() => document.body.classList.add('shot-mode'));
+  await closeAndGreet();
   await page.waitForTimeout(1200);
   const r = await result();
   // A headless capture has empty storage, so it is always a first visit, and

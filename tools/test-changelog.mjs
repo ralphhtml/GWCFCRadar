@@ -42,8 +42,10 @@ console.log('\n1. the source keeps the shape of the feature');
   ok('the Updates button sits in the account panel menu',
      /lqmCloseProfile\(\);_clOpen\(\)/.test(PAGE)
      && /<span>Updates<\/span>/.test(PAGE));
-  ok('the compass circle is retired in CSS, not by deleting its JS',
-     /#map-compass\.visible \{ display: none; \}/.test(PAGE));
+  ok('the compass circle is retired in CSS with !important, so neither the'
+     + ' .visible class nor an inline style can revive it',
+     /#map-compass \{[\s\S]{0,500}display: none !important;/.test(PAGE)
+     && !/id="lqm-set-compass"/.test(PAGE));
   const EM = String.fromCharCode(0x2014);
   ok('no em dashes here or in the page',
      !PAGE.includes(EM)
@@ -137,24 +139,45 @@ console.log('\n2. a returning visitor is told what changed, exactly once');
   await p.close();
 }
 
-console.log('\n3. a brand-new visitor is never greeted with history');
+console.log('\n3. a first visit walks the whole greeting line, in order');
 {
+  // Question, tutorial, sign-up panel, changelog, welcome. Each step opens
+  // when the one before it closes, and nothing stacks.
   const p = await boot(null);
-  const r = await p.evaluate(() => ({
-    changelog: !!document.querySelector('#changelog-modal.open'),
-    picker: !!document.querySelector('#mode-modal.open'),
-  }));
-  ok('the first visit shows the mode question, not the changelog',
-     r.picker && !r.changelog, JSON.stringify(r));
-  // Answering the question is what starts their clock: the newest id is
-  // recorded as seen, so their next visit is quiet too.
-  const r2 = await p.evaluate(() => {
+  const r = await p.evaluate(async () => {
+    const wait = ms => new Promise(res => setTimeout(res, ms));
+    const out = {};
+    out.picker = !!document.querySelector('#mode-modal.open');
+    out.changelogTooEarly = !!document.querySelector('#changelog-modal.open');
     _modePick('expert');
-    return { seen: localStorage.getItem('gwcfc_changelog_seen'),
-             newest: APP_CHANGELOG[0].id };
+    await wait(200);
+    out.tutorial =
+      !!document.querySelector('#tutorial-modal-overlay.open');
+    closeTutorial();
+    await wait(700);
+    out.signup =
+      !!document.querySelector('#lqm-profile-overlay.lqm-panel-open');
+    out.changelogStillWaiting =
+      !!document.querySelector('#changelog-modal.open');
+    lqmCloseProfile();
+    await wait(700);
+    out.changelog = !!document.querySelector('#changelog-modal.open');
+    _clClose();
+    await wait(900);
+    out.seen = localStorage.getItem('gwcfc_changelog_seen');
+    out.newest = APP_CHANGELOG[0].id;
+    out.welcomeRan = _welcomeRan === true;
+    return out;
   });
-  ok('choosing a mode marks the changelog seen', r2.seen === r2.newest,
-     `${r2.seen} vs ${r2.newest}`);
+  ok('the mode question comes first, not the changelog',
+     r.picker && !r.changelogTooEarly, JSON.stringify(r));
+  ok('choosing Wx-pert opens the tutorial', r.tutorial);
+  ok('closing the tutorial opens the sign-up panel',
+     r.signup && !r.changelogStillWaiting);
+  ok('closing that opens the changelog', r.changelog);
+  ok('dismissing it starts their history at today', r.seen === r.newest,
+     `${r.seen} vs ${r.newest}`);
+  ok('and only then does the welcome fly', r.welcomeRan);
   await p.close();
 }
 
