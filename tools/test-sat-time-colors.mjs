@@ -36,7 +36,9 @@ console.log('\n1. the frame list anchors at the travelled-to moment');
 {
   const src = (PAGE.match(/function _buildGoesFrames\(\) \{[\s\S]*?\n\}/) || [])[0];
   ok('the frame builder was found', !!src);
-  const mk = new Function('_tmAt', 'SAT_FRAME_MIN', '_satFrameCount',
+  // The satellite has its own clock now (_tmSatAt); the radar's _tmAt must
+  // not move this list at all.
+  const mk = new Function('_tmSatAt', 'SAT_FRAME_MIN', '_satFrameCount',
     src + '\nreturn _buildGoesFrames();');
   const count = () => 12;
   // Travelled to noon UTC on a known date.
@@ -62,16 +64,23 @@ console.log('\n1. the frame list anchors at the travelled-to moment');
      Date.now() - liveLast < 45 * 60e3);
 }
 
-console.log('\n2. the jump drives satellite, and no longer demands a radar site');
+console.log('\n2. the satellite machine is its own, with its own clock');
 {
   ok('satellite counts as a destination', /function _tmSatActive\(\)/.test(PAGE)
      && /activeLayers\.satellite/.test(PAGE));
-  ok('the no-target message asks for either, not radar specifically',
-     /Turn on radar or satellite first, then travel to a time\./.test(PAGE));
-  ok('a jump rebuilds the satellite frames',
-     /if \(sat\) \{[\s\S]{0,700}loadGoesLayer\(\)/.test(PAGE));
+  // Two clocks, not one: travelling the radar must no longer drag the
+  // satellite into the past with it, or the other way round.
+  ok('the satellite keeps a separate moment from the radar',
+     /let _tmAt = null;/.test(PAGE) && /let _tmSatAt = null;/.test(PAGE));
+  ok('a satellite jump asks for a satellite product, not a radar',
+     /Pick a satellite product first, then travel to a time\./.test(PAGE));
+  ok('a satellite jump rebuilds the satellite frames only',
+     /_tmScope === 'sat'\) \{[\s\S]{0,900}loadGoesLayer\(\)/.test(PAGE));
   ok('and back-to-live rebuilds them again',
-     /_tmLive[\s\S]{0,400}if \(sat\) \{ try \{ loadGoesLayer\(\); \} catch \(e\) \{\} \}/.test(PAGE));
+     /_tmLive[\s\S]{0,400}if \(_tmSatActive\(\)\) \{ try \{ loadGoesLayer\(\); \} catch \(e\) \{\} \}/.test(PAGE));
+  ok('the frame list reads the satellite clock, not the radar one',
+     /_buildGoesFrames\(\) \{[\s\S]{0,1400}_tmSatAt === 'number'/.test(PAGE)
+     && !/function _buildGoesFrames\(\) \{[\s\S]{0,1600}typeof _tmAt ===/.test(PAGE));
   // The Pi composites keep three days. Promising a picture beyond that would
   // be the one way this feature could lie.
   ok('a Pi composite past its window says so instead of showing the wrong day',
@@ -83,6 +92,10 @@ console.log('\n2. the jump drives satellite, and no longer demands a radar site'
      /playbar scrubs the approach/.test(PAGE));
   ok('the PAST badge machinery is shared, not duplicated',
      (PAGE.match(/function _tmSyncBadge\(\)/g) || []).length === 1);
+  ok('but each travelled layer wears its own named badge',
+     /'tm-badge', 'RADAR'/.test(PAGE) && /'tm-badge-sat', 'SATELLITE'/.test(PAGE));
+  ok('and turning satellite off returns its clock to live',
+     /function _disableSatellite\(\) \{[\s\S]{0,900}_tmSatAt = null/.test(PAGE));
 }
 
 /*
@@ -107,14 +120,15 @@ console.log('\n2b. the satellite rows open the time machine themselves');
   ok('the kind row offers it', /_satTimeMachineBubble\(wrap\)/.test(kinds));
   ok('the category row offers it', /_satTimeMachineBubble\(wrap\)/.test(kind));
   ok('and the product row offers it', /_satTimeMachineBubble\(wrap\)/.test(cat));
-  // Same _tmAt underneath as the radar button, so travelling from either row
-  // moves both pictures. A second piece of state would let the two rows
-  // disagree about what time it is.
-  ok('it opens the same machine the radar row opens',
-     /function _satTimeMachineBubble[\s\S]{0,600}tm\.onclick = \(\) => _tmOpen\(\);/
+  // Its own scope: the satellite rows open the machine FOR the satellite,
+  // and the radar row opens it for the radar. One shared modal, two clocks.
+  ok('it opens the machine for the satellite',
+     /function _satTimeMachineBubble[\s\S]{0,700}tm\.onclick = \(\) => _tmOpen\('sat'\);/
        .test(PAGE));
-  ok('and lights while a past moment is held',
-     /function _satTimeMachineBubble[\s\S]{0,300}_tmAt != null \? ' active' : ''/
+  ok('while the radar row opens it for the radar',
+     /tm\.onclick = \(\) => _tmOpen\('radar'\);/.test(PAGE));
+  ok('and lights while a past SATELLITE moment is held',
+     /function _satTimeMachineBubble[\s\S]{0,400}_tmSatAt != null \? ' active' : ''/
        .test(PAGE));
   ok('its id does not collide with the radar row button',
      /'sub-sat-timemachine'/.test(PAGE) && /'sub-timemachine'/.test(PAGE));

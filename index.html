@@ -4101,8 +4101,10 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
 .tm-btn:hover { background: rgba(170,0,0,0.42); }
 .tm-btn-go { border-color: #e8b800; background: rgba(232,184,0,0.18); color: #ffe9a8; }
 .tm-btn-go:hover { background: rgba(232,184,0,0.34); }
-/* The standing reminder that what is on screen is not now. */
-#tm-badge {
+/* The standing reminder that what is on screen is not now. A class rather
+   than the one id, because radar and satellite each keep their own clock now
+   and both badges can be up at once, stacked by _tmPlaceBadge. */
+.tm-badge {
   position: fixed; top: 8px; left: 50%; transform: translateX(-50%);
   z-index: 1200; cursor: pointer; user-select: none;
   display: flex; align-items: center; gap: 9px;
@@ -4112,14 +4114,14 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   border: 2px solid #e8b800; border-radius: 8px; padding: 6px 11px;
   box-shadow: 0 4px 18px rgba(0,0,0,0.5);
 }
-#tm-badge b { color: #e8b800; letter-spacing: 2px; }
-#tm-badge .tm-live {
+.tm-badge b { color: #e8b800; letter-spacing: 2px; }
+.tm-badge .tm-live {
   border-left: 1px solid rgba(232,184,0,0.4); padding-left: 9px;
   font-size: 9.5px; opacity: 0.85;
 }
-#tm-badge:hover .tm-live { opacity: 1; color: #fff; }
+.tm-badge:hover .tm-live { opacity: 1; color: #fff; }
 @media (max-width: 480px) {
-  #tm-badge { font-size: 9.5px; padding: 5px 8px; gap: 6px; }
+  .tm-badge { font-size: 9.5px; padding: 5px 8px; gap: 6px; }
 }
 
 .snd-err {
@@ -22719,16 +22721,21 @@ async function _l3BucketNewest(site, code, at) {
 // The first of March is the honest edge to offer, because offering a date
 // with nothing behind it is offering a disappointment.
 const TM_FLOOR = Date.UTC(2022, 2, 1);
-// Which moment the radar is showing, or null for live.
-let _tmAt = null;
+// Which moment each picture is showing, or null for live. Two clocks, not
+// one: the radar and the satellite are different instruments with different
+// archives, and one machine driving both meant travelling the radar dragged
+// the satellite along whether you asked or not. Each row's Time Machine now
+// moves only its own picture.
+let _tmAt = null;      // the radar's moment
+let _tmSatAt = null;   // the satellite's moment
+// Which picture the open modal is set to drive: the radar row opens it as
+// 'radar', the satellite row as 'sat'. Every jump goes to this one only.
+let _tmScope = 'radar';
 
 function _tmSite() {
   return _prBucketSite || _l2Site || _refStation || null;
 }
 
-// Jump the current radar to a moment. Everything else about the picture, the
-// site, the product, the tilt, stays exactly as it is: this control changes
-// WHEN and nothing else.
 // Whether the satellite layer is on and in a mode the time machine can
 // drive. The WMS bands take any TIME their archive holds; the Pi's own RGB
 // composites keep three days of frames and no more, so travelling further
@@ -22737,25 +22744,22 @@ function _tmSatActive() {
   return !!(typeof activeLayers !== 'undefined' && activeLayers.satellite);
 }
 
+// Jump the picture the modal was opened for to a moment. Everything else
+// about it, the site, the product, the tilt, the sector, stays exactly as
+// it is: this control changes WHEN and nothing else.
 async function _tmJump(ms) {
-  const site = _tmSite();
-  const sat = _tmSatActive();
-  if (!site && !sat) {
-    if (typeof showToast === 'function') {
-      showToast('Turn on radar or satellite first, then travel to a time.', 3500);
-    }
-    return;
-  }
   const at = Math.max(TM_FLOOR, Math.min(Date.now(), +ms || 0));
-  _tmAt = at;
-  _tmClose();
   const when = new Date(at).toISOString().slice(0, 16).replace('T', ' ') + 'Z';
-  if (typeof showToast === 'function') {
-    const what = [site && String(site).toUpperCase(), sat && 'satellite']
-      .filter(Boolean).join(' + ');
-    showToast(`${what} at ${when}`, 3000);
-  }
-  if (sat) {
+  if (_tmScope === 'sat') {
+    if (!_tmSatActive()) {
+      if (typeof showToast === 'function') {
+        showToast('Pick a satellite product first, then travel to a time.', 3500);
+      }
+      return;
+    }
+    _tmSatAt = at;
+    _tmClose();
+    if (typeof showToast === 'function') showToast(`satellite at ${when}`, 3000);
     if (typeof _goesIsPi === 'function' && _goesIsPi()) {
       // Said plainly rather than silently showing the wrong day: the Pi
       // composites keep three days, the plain bands reach years back.
@@ -22764,46 +22768,76 @@ async function _tmJump(ms) {
       }
     }
     try { loadGoesLayer(); } catch (e) { console.warn('[tm] satellite:', e); }
+    _tmSyncBadge();
+    return;
   }
-  if (site) await _l3BucketShow(site, at);
+  const site = _tmSite();
+  if (!site) {
+    if (typeof showToast === 'function') {
+      showToast('Turn on a radar first, then travel to a time.', 3500);
+    }
+    return;
+  }
+  _tmAt = at;
+  _tmClose();
+  if (typeof showToast === 'function') {
+    showToast(`${String(site).toUpperCase()} at ${when}`, 3000);
+  }
+  await _l3BucketShow(site, at);
   _tmSyncBadge();
 }
 
 async function _tmLive() {
-  const site = _tmSite();
-  const sat = _tmSatActive();
-  _tmAt = null;
   _tmClose();
-  if (sat) { try { loadGoesLayer(); } catch (e) {} }
+  if (_tmScope === 'sat') {
+    _tmSatAt = null;
+    if (_tmSatActive()) { try { loadGoesLayer(); } catch (e) {} }
+    _tmSyncBadge();
+    return;
+  }
+  const site = _tmSite();
+  _tmAt = null;
   if (site) await _l3BucketShow(site, null);
   _tmSyncBadge();
 }
 
-// A standing mark that the picture is not live. Without it, a radar from
+// Back to live for ONE picture, from its badge, whichever the modal was
+// last opened for. The badge names its own layer, so clicking it must not
+// depend on which menu somebody happened to visit last.
+async function _tmLiveScope(scope) {
+  _tmScope = scope === 'sat' ? 'sat' : 'radar';
+  return _tmLive();
+}
+
+// A standing mark that a picture is not live. Without it, a radar from
 // three years ago looks exactly like a radar from three minutes ago, which
-// is the one way this feature could actually mislead somebody.
+// is the one way this feature could actually mislead somebody. One badge
+// per travelled layer, each naming its own, since the two clocks are
+// independent now and either one can be in the past on its own.
 function _tmSyncBadge() {
-  let el = document.getElementById('tm-badge');
-  if (_tmAt == null) { if (el) el.remove(); return; }
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'tm-badge';
-    el.onclick = () => _tmLive();
-    document.body.appendChild(el);
-  }
-  el.innerHTML = '<b>PAST</b> '
-    + new Date(_tmAt).toISOString().slice(0, 16).replace('T', ' ') + 'Z'
-    + '<span class="tm-live">BACK TO LIVE</span>';
-  _tmPlaceBadge(el);
+  [['tm-badge', 'RADAR', _tmAt, 'radar'],
+   ['tm-badge-sat', 'SATELLITE', _tmSatAt, 'sat']].forEach(([id, name, at, scope]) => {
+    let el = document.getElementById(id);
+    if (at == null) { if (el) el.remove(); return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.id = id;
+      el.className = 'tm-badge';
+      el.onclick = () => _tmLiveScope(scope);
+      document.body.appendChild(el);
+    }
+    el.innerHTML = `<b>${name} PAST</b> `
+      + new Date(at).toISOString().slice(0, 16).replace('T', ' ') + 'Z'
+      + '<span class="tm-live">BACK TO LIVE</span>';
+  });
+  _tmPlaceBadge();
 }
 
 // Below the update bar rather than on top of it. The bar is dismissible, so
 // where it ends is a question rather than a constant, and the first version
 // of this sat at a fixed 8px and printed itself straight through the bar's
 // text. Measured instead, and re-measured on a resize.
-function _tmPlaceBadge(el) {
-  el = el || document.getElementById('tm-badge');
-  if (!el) return;
+function _tmPlaceBadge() {
   let top = 8;
   try {
     const ub = document.getElementById('update-bar');
@@ -22814,7 +22848,14 @@ function _tmPlaceBadge(el) {
       }
     }
   } catch (e) {}
-  el.style.top = top + 'px';
+  // Stacked, radar first: when both layers are in the past there are two
+  // badges, and each has to be readable and clickable on its own.
+  ['tm-badge', 'tm-badge-sat'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.top = top + 'px';
+    top += Math.max(30, el.getBoundingClientRect().height) + 6;
+  });
 }
 addEventListener('resize', () => { try { _tmPlaceBadge(); } catch (e) {} });
 
@@ -22823,7 +22864,11 @@ function _tmClose() {
   if (m) m.classList.remove('open');
 }
 
-function _tmOpen() {
+function _tmOpen(scope) {
+  // Which picture this visit drives, remembered until the next open: the
+  // radar row passes 'radar', the satellite row 'sat', and every button in
+  // the modal then moves only that one.
+  _tmScope = scope === 'sat' ? 'sat' : 'radar';
   let m = document.getElementById('tm-modal');
   if (!m) {
     m = document.createElement('div');
@@ -22867,22 +22912,29 @@ function _tmOpen() {
       q.appendChild(b);
     });
   }
-  const site = _tmSite();
   const floor = new Date(TM_FLOOR).toISOString().slice(0, 10);
   const today = new Date().toISOString().slice(0, 10);
   const d = m.querySelector('#tm-date');
   d.min = floor; d.max = today;
-  if (!d.value) d.value = new Date(_tmAt || Date.now()).toISOString().slice(0, 10);
-  const sat = _tmSatActive();
-  m.querySelector('.tm-note').innerHTML = (site || sat)
-    ? `Scrubbing <b>${[site && _ccEsc(String(site).toUpperCase()), sat && 'SATELLITE']
-        .filter(Boolean).join(' + ')}</b>. The archive `
-      + `reaches back to <b>${floor}</b>, about ${
-        Math.floor((Date.now() - TM_FLOOR) / 86400e3 / 365 * 10) / 10} years. `
+  const sat = _tmScope === 'sat';
+  // The card says which picture it is holding, and the date lands on that
+  // picture's own moment: the two clocks are independent, so opening the
+  // satellite's machine must not show the radar's date.
+  m.querySelector('.tm-title').textContent =
+    'TIME MACHINE - ' + (sat ? 'SATELLITE' : 'RADAR');
+  d.value = new Date((sat ? _tmSatAt : _tmAt) || Date.now())
+    .toISOString().slice(0, 10);
+  const years = Math.floor((Date.now() - TM_FLOOR) / 86400e3 / 365 * 10) / 10;
+  const site = _tmSite();
+  const ready = sat ? _tmSatActive() : !!site;
+  m.querySelector('.tm-note').innerHTML = ready
+    ? `Scrubbing <b>${sat ? 'SATELLITE' : _ccEsc(String(site).toUpperCase())}</b>`
+      + ` only. The archive reaches back to <b>${floor}</b>, about ${years} years. `
       + (sat ? 'Satellite arrives as the hours leading up to your moment, so the '
              + 'playbar scrubs the approach. ' : '')
       + 'A source that was down that day has nothing to show, and will say so.'
-    : 'Turn on radar or satellite first, then choose a moment.';
+    : (sat ? 'Pick a satellite product first, then choose a moment.'
+           : 'Turn on a radar first, then choose a moment.');
   m.classList.add('open');
 }
 
@@ -27032,15 +27084,16 @@ function _satFrameCount() {
 // Pi's own three days of history and does not guess at times at all, which is
 // why the two are built differently.
 function _buildGoesFrames() {
-  // Anchored at the time machine's moment when one is set, at the present
-  // otherwise. The loop then ENDS at the travelled-to time, so scrubbing
-  // back from it shows the hours leading up to that moment, which is what
-  // "show me the satellite when the derecho hit" actually means. Everything
-  // downstream, the playbar, the labels, the frame pool, works on whatever
-  // list this returns and needs no other change: the WMS takes any TIME its
-  // archive holds, so a frame from last year is fetched exactly like a frame
-  // from twenty minutes ago.
-  const now = (typeof _tmAt === 'number' && _tmAt) ? new Date(_tmAt) : new Date();
+  // Anchored at the SATELLITE time machine's moment when one is set, at the
+  // present otherwise; the radar's own clock (_tmAt) is deliberately not
+  // consulted, since the two machines are independent. The loop then ENDS at
+  // the travelled-to time, so scrubbing back from it shows the hours leading
+  // up to that moment, which is what "show me the satellite when the derecho
+  // hit" actually means. Everything downstream, the playbar, the labels, the
+  // frame pool, works on whatever list this returns and needs no other
+  // change: the WMS takes any TIME its archive holds, so a frame from last
+  // year is fetched exactly like a frame from twenty minutes ago.
+  const now = (typeof _tmSatAt === 'number' && _tmSatAt) ? new Date(_tmSatAt) : new Date();
   now.setUTCSeconds(0, 0);
   now.setUTCMinutes(Math.floor(now.getUTCMinutes() / SAT_FRAME_MIN) * SAT_FRAME_MIN - 20);
   const frames = [];
@@ -27279,6 +27332,13 @@ function _disableSatellite() {
   goesFrames = [];
   const el = document.getElementById('sub-satellite');
   if (el) el.classList.remove('active');
+  // The satellite's time machine belongs to the satellite. Off means live
+  // next time: leaving the clock set would make the next enable quietly
+  // open on some past day, wearing a PAST badge nobody asked for.
+  if (typeof _tmSatAt !== 'undefined' && _tmSatAt != null) {
+    _tmSatAt = null;
+    try { _tmSyncBadge(); } catch (e) {}
+  }
 }
 
 function _reloadGoesIfActive() {
@@ -27302,7 +27362,18 @@ function _setGoesProduct(id) {
     if (_goesIsPi() && _goesRegionId !== 'auto' && !GOES_PI_SECTOR[_goesRegionId])
       _goesRegionId = 'auto';
   }
-  _reloadGoesIfActive();
+  if (!activeLayers.satellite) {
+    // Choosing a product IS the on switch. The Satellite bubble only opens
+    // the menu now, so this is the first moment the person has actually
+    // asked for a picture; loadGoesLayer rather than the reload below,
+    // because only it starts the 60-second live refresh.
+    _disableRadar();
+    activeLayers.satellite = true;
+    if (typeof _syncParentBubble === 'function') _syncParentBubble('satellite');
+    loadGoesLayer();
+  } else {
+    _reloadGoesIfActive();
+  }
   // The products live directly in the bubble column now rather than in a grid
   // of their own, and only the category currently open is on screen, so this
   // asks the column rather than a wrapper that no longer exists.
@@ -27346,6 +27417,16 @@ function _goesProductBubble(p) {
   el.innerHTML = `<span class="sb-icon">${_eicon(p.icon)}</span>`
     + `<span class="sb-label">${_ccEsc ? _ccEsc(p.label) : p.label}</span>`;
   el.onclick = () => {
+    // Tapping the product that is already showing turns the layer off, the
+    // same bargain every radar product pill keeps. With the parent bubble no
+    // longer force-enabling the layer, this is also the honest off switch
+    // that lives where the on switch does.
+    if (activeLayers.satellite && _goesProductId === p.id) {
+      _disableSatellite();
+      el.classList.remove('active');
+      if (typeof _syncParentBubble === 'function') _syncParentBubble('satellite');
+      return;
+    }
     document.querySelectorAll('#sub-bubbles [data-product-id]')
       .forEach(b => b.classList.remove('active'));
     el.classList.add('active');
@@ -27387,19 +27468,19 @@ function toggleSatelliteSub() {
 
 // The way into the archive, on the satellite row as well as the radar one.
 //
-// It was only ever on the radar row, which made travelling to a moment and
-// then looking at satellite a two-menu job: out of satellite, into radar,
-// travel, back out, back into satellite. The machine already drives both
-// layers, so the button belongs in both places. Same shared _tmAt underneath,
-// so travelling from either row moves both pictures together.
+// This is the SATELLITE's own machine, with its own clock (_tmSatAt): it
+// used to share the radar's, so travelling from either row dragged both
+// pictures into the past together. Now this button moves the satellite
+// alone, the radar row's button moves the radar alone, and each layer
+// wears its own PAST badge while it is travelled.
 function _satTimeMachineBubble(wrap) {
   const tm = document.createElement('div');
-  tm.className = 'sub-bubble' + (_tmAt != null ? ' active' : '');
+  tm.className = 'sub-bubble' + (_tmSatAt != null ? ' active' : '');
   tm.id = 'sub-sat-timemachine';
-  tm.title = 'Travel to any moment, and scrub the hours up to it';
+  tm.title = 'Travel the satellite to any moment, and scrub the hours up to it';
   tm.innerHTML = '<span class="sb-icon">' + _eicon('\u{1F550}')
                + '</span><span class="sb-label">Time Machine</span>';
-  tm.onclick = () => _tmOpen();
+  tm.onclick = () => _tmOpen('sat');
   if (LAYER_DESCRIPTIONS['timemachine']) {
     tm.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS['timemachine']));
   }
@@ -27652,7 +27733,11 @@ const SB_ICON_MODELS = '<svg viewBox="0 0 24 24" width="14" height="14" fill="no
 
 const BASE_BUBBLES = [
   { id: 'radar',       icon: SB_ICON_RADAR,     label: 'Radar',       action: () => toggleRadarSub() },
-  { id: 'satellite',   icon: SB_ICON_SATELLITE, label: 'Satellite',   action: () => { if (!activeLayers.satellite) { _disableRadar(); activeLayers.satellite = true; loadGoesLayer(); } toggleSatelliteSub(); } },
+  // Opens the menu and nothing else. This used to switch the ABI layer on
+  // the instant the bubble was tapped, so browsing the satellite products
+  // meant already wearing one; now the first product picked is what turns
+  // the layer on (see _setGoesProduct).
+  { id: 'satellite',   icon: SB_ICON_SATELLITE, label: 'Satellite',   action: () => { toggleSatelliteSub(); } },
   { id: 'waves',       icon: SB_ICON_WAVES,     label: 'Waves',       action: () => toggleWavesSub() },
   { id: 'air',         icon: SB_ICON_AIR,       label: 'Air',         action: () => toggleAirSub() },
   { id: 'wind',        icon: SB_ICON_WIND,      label: 'Wind',        action: () => toggleWindSub() },
@@ -30198,12 +30283,12 @@ function toggleRadarSub() {
     const tm = document.createElement('div');
     tm.className = 'sub-bubble' + (_tmAt != null ? ' active' : '');
     tm.id = 'sub-timemachine';
-    tm.title = 'Travel to any moment back to March 2022';
+    tm.title = 'Travel the radar to any moment back to March 2022';
     // _eicon takes the emoji, not the slug it maps to: handed 'clock' it
     // finds no entry and prints the word.
     tm.innerHTML = '<span class="sb-icon">' + _eicon('\u{1F550}')
                  + '</span><span class="sb-label">Time Machine</span>';
-    tm.onclick = () => _tmOpen();
+    tm.onclick = () => _tmOpen('radar');
     if (LAYER_DESCRIPTIONS['timemachine']) {
       tm.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS['timemachine']));
     }
@@ -54662,18 +54747,18 @@ function lqmSetTZ(tz) {
     <div class="section-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-clock></use></svg></div>
     <div>
       <div class="section-title">TIME MACHINE</div>
-      <div class="section-sub">Radar and satellite, at a moment you choose</div>
+      <div class="section-sub">Radar and satellite, each at a moment you choose</div>
     </div>
   </div>
 
   <p>The playbar at the bottom scrubs the last few hours. The <strong>Time Machine</strong> moves that whole window to somewhere else in the past, so you can look at a derecho from last spring the same way you would look at this afternoon.</p>
 
-  <p>It has a row in <strong>Radar</strong> and a row at every level of <strong>Satellite</strong>, and both open the same machine: travel from either place and both pictures move together. Pick a date and a time, and the playbar becomes <strong>the approach to that moment</strong>, the hours leading up to it, oldest frame first.</p>
+  <p>There are <strong>two machines</strong>: a row in <strong>Radar</strong> that travels the radar, and a row at every level of <strong>Satellite</strong> that travels the satellite. Each keeps its own clock, so you can hold the radar on last spring while the satellite stays live, or send each to a different moment. Pick a date and a time, and the playbar becomes <strong>the approach to that moment</strong>, the hours leading up to it, oldest frame first.</p>
 
   <div class="steps">
     <div class="step">
       <div class="step-num">1</div>
-      <div class="step-body">Turn on <strong>radar or satellite</strong> first. With neither on there is nothing to travel to, and the machine says so rather than pretending.</div>
+      <div class="step-body">Turn on the layer you want to travel first: a <strong>radar</strong> for its machine, a <strong>satellite product</strong> for its own. With it off there is nothing to travel to, and the machine says so rather than pretending.</div>
     </div>
     <div class="step">
       <div class="step-num">2</div>
@@ -54681,11 +54766,11 @@ function lqmSetTZ(tz) {
     </div>
     <div class="step">
       <div class="step-num">3</div>
-      <div class="step-body">A <strong>PAST</strong> badge appears while you are away from the present, so you can never mistake an old loop for a live one. Play, scrub and step exactly as normal.</div>
+      <div class="step-body">A <strong>PAST</strong> badge appears for each travelled layer, named RADAR or SATELLITE, so you can never mistake an old loop for a live one. Play, scrub and step exactly as normal.</div>
     </div>
     <div class="step">
       <div class="step-num">4</div>
-      <div class="step-body">Tap <strong>back to live</strong> to return to now. Both radar and satellite rebuild their frame lists at the present moment.</div>
+      <div class="step-body">Tap a badge's <strong>back to live</strong> to return that layer to now; the other stays wherever you put it.</div>
     </div>
   </div>
 
@@ -57867,7 +57952,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'The Pi\'s models should stop going stale for good. Three causes, three fixes: builds now run three at a time instead of one by one, the build clock restarts a few minutes after each pass finishes instead of once an hour (so a slow pass no longer swallows the next one), and a model that keeps failing now waits its turn with a growing timeout instead of hogging the front of the queue while healthy models age behind it. Every model also now runs to the furthest forecast hour its source actually publishes, checked against the live data servers: GFS and its wave model to 384 hours, ECMWF and its AI model to 360, the blend to 264, and HRRR/RAP to their long cycles. And the Compare button can finally compare the Pi\'s own models: every one of them, with its regions, products and five days of archived runs, can now sit in a comparison strip next to any other model or any older run.';
+const APP_LATEST_UPDATE = 'Two satellite fixes. The Satellite bubble now just opens the menu: the ABI layer only turns on when you actually pick a product, and tapping the product that is showing turns it back off, same as the radar pills. And the Time Machine is now two machines: the Radar row travels the radar, the Satellite rows travel the satellite, each with its own clock and its own named PAST badge, so you can hold one in the past while the other stays live.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
