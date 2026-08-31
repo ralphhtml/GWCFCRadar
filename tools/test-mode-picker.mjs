@@ -196,7 +196,20 @@ console.log('\n4. on a phone, the six-button row fits and nothing hides under it
     const r = qm.getBoundingClientRect();
     const bubbles = document.getElementById('sub-bubbles');
     const br = bubbles ? bubbles.getBoundingClientRect() : null;
+    // The search bar's phone collapse used to lose to the desktop width by
+    // source order, leaving a mostly-empty 150px pill drifting over the
+    // quick menu. Collapsed it must size to its two buttons and hug the
+    // corner; expanded it must open wide enough to read what you type.
+    const sb = document.getElementById('top-search-bar');
+    const sc = sb.getBoundingClientRect();
+    const searchCollapsed = { w: Math.round(sc.width),
+                              right: Math.round(innerWidth - sc.right) };
+    sb.classList.add('expanded');
+    const se = sb.getBoundingClientRect();
+    sb.classList.remove('expanded');
+    const searchExpanded = Math.round(se.width);
     return {
+      searchCollapsed, searchExpanded,
       open: qm.classList.contains('lqm-open'),
       left: Math.round(r.left), right: Math.round(r.right),
       bottom: Math.round(r.bottom),
@@ -217,6 +230,11 @@ console.log('\n4. on a phone, the six-button row fits and nothing hides under it
   ok('so the layer bubbles start below it, not underneath it',
      m.bubblesTop === null || m.bubblesTop >= m.bottom,
      `bubbles ${m.bubblesTop} vs menu bottom ${m.bottom}`);
+  ok('the collapsed search bar is just its two buttons, hugging the corner',
+     m.searchCollapsed.w <= 120 && m.searchCollapsed.right <= 12,
+     JSON.stringify(m.searchCollapsed));
+  ok('and expanding it opens a field wide enough to read',
+     m.searchExpanded >= 250, String(m.searchExpanded));
 }
 
 console.log('\n3. the choice is remembered, and old friends are never quizzed');
