@@ -207,32 +207,36 @@
     .thanks a:hover { transform: scale(1.1); border-color: var(--gold); }
 
     /* ── LAYOUT ── */
-    main { max-width: 1080px; margin: 0 auto; padding: 26px 18px 60px; }
+    /* Sized up across the board: on a desktop the old 1080px column with
+       17px card titles left most of the screen empty and the archive
+       looking like a sidebar. The type scales with the viewport (clamp),
+       so phones keep sane sizes without a second set of numbers. */
+    main { max-width: 1440px; margin: 0 auto; padding: 34px 24px 70px; }
     .crumbs {
       display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-      font-size: 14px; color: var(--muted); margin-bottom: 18px;
+      font-size: 15px; color: var(--muted); margin-bottom: 20px;
     }
     .crumbs a { color: var(--blue2); text-decoration: none; cursor: pointer; }
     .crumbs a:hover { text-decoration: underline; }
-    h1 { font-size: 26px; margin-bottom: 6px; }
+    h1 { font-size: clamp(28px, 3.2vw, 42px); margin-bottom: 8px; }
     h1 .gold { color: var(--gold); }
-    .sub { color: var(--muted); font-size: 14px; margin-bottom: 22px; }
+    .sub { color: var(--muted); font-size: clamp(15px, 1.3vw, 18px); margin-bottom: 26px; }
 
-    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
     .card {
       background: var(--bg2);
       background-image: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(0,0,0,0.25) 100%);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 14px;
       box-shadow: var(--edge-3d);
-      padding: 16px 18px;
+      padding: 24px 26px;
       cursor: pointer;
       transition: transform 0.15s, border-color 0.15s;
       overflow: hidden;
     }
     .card:hover { transform: translateY(-2px); border-color: rgba(0,140,186,0.6); }
-    .card .t { font-weight: 700; font-size: 17px; display: flex; align-items: center; gap: 8px; }
-    .card .m { color: var(--muted); font-size: 13px; margin-top: 6px; }
+    .card .t { font-weight: 700; font-size: clamp(19px, 1.7vw, 23px); display: flex; align-items: center; gap: 10px; }
+    .card .m { color: var(--muted); font-size: clamp(14px, 1.2vw, 16px); margin-top: 8px; }
     .card .cnt { color: var(--gold); font-weight: 600; }
     .card.dim { opacity: 0.5; cursor: default; }
     .card.dim:hover { transform: none; border-color: var(--border); }
@@ -241,9 +245,9 @@
     .pill {
       background: var(--bg3);
       border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 7px 14px;
-      font-size: 14px; font-family: var(--font);
+      border-radius: 18px;
+      padding: 8px 16px;
+      font-size: 15px; font-family: var(--font);
       color: var(--text);
       cursor: pointer;
     }
@@ -267,20 +271,20 @@
     .player .now b { color: var(--gold); }
     .player audio { width: 100%; }
     .player .warn { color: var(--accent2); font-size: 12px; margin-top: 6px; display: none; }
-    .hourgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; margin-bottom: 20px; }
+    .hourgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 7px; margin-bottom: 22px; }
     .chunkbtn {
       background: var(--bg3);
       border: 1px solid rgba(0,140,186,0.35);
       border-radius: 8px;
       color: var(--text);
-      font-family: var(--font); font-size: 12px;
-      padding: 8px 4px;
+      font-family: var(--font); font-size: 13.5px;
+      padding: 9px 4px;
       cursor: pointer;
     }
     .chunkbtn:hover { border-color: var(--blue2); color: var(--blue2); }
     .chunkbtn.playing { background: linear-gradient(180deg, rgba(0,140,186,0.5), rgba(0,60,90,0.5)); border-color: var(--blue2); color: #fff; }
     .chunkbtn.hl { border-color: var(--gold); box-shadow: 0 0 6px rgba(232,184,0,0.35); }
-    h2 { font-size: 19px; margin: 22px 0 10px; }
+    h2 { font-size: clamp(20px, 1.8vw, 25px); margin: 26px 0 12px; }
     .hlcard {
       background: var(--bg2);
       border: 1px solid rgba(232,184,0,0.4);
@@ -304,8 +308,8 @@
       padding: 4px 12px; cursor: pointer;
     }
     .hlcard .playhl:hover { border-color: var(--blue2); }
-    .hlcard .tr { font-size: 13px; color: rgba(240,240,240,0.85); line-height: 1.5; }
-    .empty { color: var(--muted); font-style: italic; padding: 20px 4px; }
+    .hlcard .tr { font-size: 15px; color: rgba(240,240,240,0.85); line-height: 1.55; }
+    .empty { color: var(--muted); font-style: italic; font-size: 15px; padding: 20px 4px; }
 
     .notice {
       background: rgba(0,140,186,0.12);
@@ -319,7 +323,7 @@
     .notice.demo { border-color: rgba(232,184,0,0.5); background: rgba(232,184,0,0.08); }
 
     /* ── ABOUT ── */
-    .about p { margin-bottom: 12px; line-height: 1.7; font-size: 15px; }
+    .about p { margin-bottom: 14px; line-height: 1.7; font-size: clamp(15px, 1.3vw, 17px); }
 
     footer {
       border-top: 1px solid var(--border);
