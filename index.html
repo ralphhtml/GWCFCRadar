@@ -48303,6 +48303,13 @@ function selectProduct(p) {
       for looks. Changes apply as you make them and are kept for next time.
     </div>
     <div class="lqm-settings-row">
+      <button class="lqm-settings-btn" onclick="themeReset()">Reset all app colors</button>
+    </div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:0 0 8px;line-height:1.5;">
+      Puts every color back the way it shipped: the theme, the surfaces, and anything you picked out
+      individually. It does not touch radar, model or satellite colors.
+    </div>
+    <div class="lqm-settings-row">
       <span class="lqm-settings-lbl">Theme</span>
       <select id="lqm-theme-preset" class="lqm-settings-select" onchange="themeApplyPreset(this.value)">
         <option value="gwcfc">GWCFC Red (default)</option>
@@ -48333,6 +48340,8 @@ function selectProduct(p) {
     <div class="lqm-settings-row">
       <button class="lqm-settings-btn" onclick="themePickStart()">Pick an element on screen</button>
     </div>
+    <div id="lqm-theme-items"></div>
+    <div style="font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent2);padding:10px 0 2px;">Every one of that kind</div>
     <div id="lqm-theme-parts"></div>
 
     <div style="font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent2);padding:12px 0 2px;">Share</div>
@@ -48343,9 +48352,6 @@ function selectProduct(p) {
     <textarea id="lqm-theme-io" rows="2" spellcheck="false" placeholder="Copy out puts your theme here. Paste someone else's in and press Paste in."
       style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:9px;padding:5px 7px;resize:vertical;"></textarea>
     <div id="lqm-theme-io-status" style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:3px 0 6px;"></div>
-    <div class="lqm-settings-row">
-      <button class="lqm-settings-btn" onclick="themeReset()">Reset to the shipped colors</button>
-    </div>
   </div>
 
   <!-- ─── AI ─── -->
@@ -48493,9 +48499,18 @@ function _themePartsApply() {
     document.head.appendChild(_partStyleEl);
   }
   const out = [];
-  THEME_PARTS.forEach(pt => {
-    const cfg = (_theme.parts || {})[pt.id];
+  // Kinds first, then single elements, so an id rule sits after the class
+  // rule it is meant to beat. An id already outranks a class, so this is
+  // belt and braces rather than the mechanism, but it costs nothing and it
+  // means the sheet reads in the order it takes effect.
+  const rows = THEME_PARTS.map(pt => ({ sel: pt.sel, cfg: (_theme.parts || {})[pt.id] }))
+    .concat(Object.keys(_theme.items || {}).map(sel => ({
+      // The key IS the selector, and it only ever gets in through
+      // _themeItemKey, which builds it from an id it has checked.
+      sel: sel, cfg: (_theme.items || {})[sel] })));
+  rows.forEach(({ sel, cfg }) => {
     if (!cfg) return;
+    const pt = { sel: sel };
     const decls = [];
     const bg = _themeSurfaceCss(cfg.bg);
     // These parts are styled by rules with their own specificity, and some
@@ -48552,6 +48567,70 @@ function themePartColor(id, which, c) {
   if (!clean) return;
   _themePartWrite(id, which === 'text' ? { text: clean } : { border: clean });
 }
+// ── ONE BUTTON RATHER THAN EVERY BUTTON ──────────────────────────────────
+// A kind covers "all tool buttons"; this covers "that tool button". It works
+// because the elements worth pointing at carry stable ids: a layer bubble is
+// always #sub-radar, a tool is always #tool-draw, and those ids are rebuilt
+// identically every time the menu is, so a colour attached to one survives a
+// redraw. An element with no id cannot be told apart from its siblings next
+// time the page loads, so it is offered as its kind and the panel says so.
+function _themeItemKey(el) {
+  if (!el || !el.id) return null;
+  // The key is written straight into a selector, so the id has to look like
+  // an id and nothing else.
+  return /^[A-Za-z][\w-]*$/.test(el.id) ? '#' + el.id : null;
+}
+function _themeItemLabel(el, part) {
+  const t = (el.getAttribute('title') || '').trim();
+  const lbl = el.querySelector && el.querySelector('.sb-label');
+  const txt = (lbl ? lbl.textContent : el.textContent || '').trim().slice(0, 24);
+  return (txt || t || el.id) + ' (this one)';
+}
+function _themeItemOf(sel) {
+  const cur = (_theme.items || {})[sel] || {};
+  return {
+    label: cur.label || sel,
+    bg: cur.bg ? { type: cur.bg.type === 'solid' ? 'solid' : 'grad',
+                   angle: cur.bg.angle != null ? cur.bg.angle : 180,
+                   stops: (Array.isArray(cur.bg.stops) && cur.bg.stops.length >= 2)
+                     ? cur.bg.stops.slice() : ['#333333', '#111111'],
+                   color: _themeClean(cur.bg.color) || '#333333' } : null,
+    text: _themeClean(cur.text) || '',
+    border: _themeClean(cur.border) || '',
+  };
+}
+function _themeItemWrite(sel, patch) {
+  if (!_theme.items) _theme.items = {};
+  _theme.items[sel] = Object.assign({}, _theme.items[sel] || {}, patch);
+  _themeSave();
+  _themePartsApply();
+  _themeRender();
+}
+function themeItemBg(sel, patch) {
+  const cur = _themeItemOf(sel).bg
+    || { type: 'grad', angle: 180, stops: ['#333333', '#111111'], color: '#333333' };
+  _themeItemWrite(sel, { bg: Object.assign(cur, patch) });
+}
+function themeItemStop(sel, i, c) {
+  const clean = _themeClean(c);
+  if (!clean) return;
+  const cur = _themeItemOf(sel).bg
+    || { type: 'grad', angle: 180, stops: ['#333333', '#111111'], color: '#333333' };
+  cur.stops[i] = clean;
+  _themeItemWrite(sel, { bg: cur });
+}
+function themeItemColor(sel, which, c) {
+  const clean = _themeClean(c);
+  if (!clean) return;
+  _themeItemWrite(sel, which === 'text' ? { text: clean } : { border: clean });
+}
+function themeItemClear(sel) {
+  if (_theme.items) delete _theme.items[sel];
+  _themeSave();
+  _themePartsApply();
+  _themeRender();
+}
+
 function themePartClear(id) {
   if (_theme.parts) delete _theme.parts[id];
   _themeSave();
@@ -48647,10 +48726,25 @@ function _pickClick(e) {
     return;
   }
   _themeFocusPart = m.part.id;
+  // Both are offered: the one you clicked, and every one like it. Which of
+  // those was meant is genuinely ambiguous, and guessing wrong either buries
+  // the change or spreads it across the whole menu.
+  const key = _themeItemKey(m.el);
+  if (key) {
+    if (!_theme.items) _theme.items = {};
+    if (!_theme.items[key]) {
+      _theme.items[key] = { label: _themeItemLabel(m.el, m.part) };
+      _themeSave();
+    }
+    _themeFocusItem = key;
+  } else {
+    _themeFocusItem = null;
+  }
   if (typeof lqmOpenSettings === 'function') lqmOpenSettings();
   if (typeof lqmSettingsCat === 'function') lqmSettingsCat('app-colors');
   setTimeout(() => {
-    const blk = document.getElementById('part-' + m.part.id);
+    const blk = document.getElementById(
+      _themeFocusItem ? ('item-' + _themeFocusItem.slice(1)) : ('part-' + m.part.id));
     if (blk) {
       blk.scrollIntoView({ block: 'center', behavior: 'smooth' });
       blk.classList.add('theme-part-flash');
@@ -48658,14 +48752,14 @@ function _pickClick(e) {
     }
   }, 80);
 }
-let _themeFocusPart = null;
+let _themeFocusPart = null, _themeFocusItem = null;
 
-let _theme = { tokens: {}, surfaces: {}, parts: {} };
+let _theme = { tokens: {}, surfaces: {}, parts: {}, items: {} };
 try {
   const raw = JSON.parse(localStorage.getItem(THEME_KEY) || 'null');
   if (raw && typeof raw === 'object') {
     _theme = { tokens: raw.tokens || {}, surfaces: raw.surfaces || {},
-               parts: raw.parts || {} };
+               parts: raw.parts || {}, items: raw.items || {} };
   }
 } catch (e) { /* the pre-paint loader has already ignored it too */ }
 // The tokens and surfaces went on before the first paint; the per-part sheet
@@ -48734,7 +48828,7 @@ function themeApplyPreset(key) {
     // A preset is a whole look. Keeping per-part overrides across a theme
     // switch would leave one green button sitting in a blue app with nothing
     // on screen explaining why.
-    parts: {},
+    parts: {}, items: {},
     tokens: Object.assign({}, p.tokens),
     surfaces: Object.keys(p.surfaces || {}).reduce((o, k) => {
       const sf = p.surfaces[k];
@@ -48756,7 +48850,7 @@ function _themeClearProps() {
   THEME_SURFACES.forEach(t => r.style.removeProperty(t.v));
 }
 function themeReset() {
-  _theme = { tokens: {}, surfaces: {}, parts: {} };
+  _theme = { tokens: {}, surfaces: {}, parts: {}, items: {} };
   _themeClearProps();
   _themePartsApply();   // or the injected sheet survives the reset
   try { localStorage.removeItem(THEME_KEY); } catch (e) {}
@@ -48780,7 +48874,7 @@ function themeImport() {
   if (!raw || typeof raw !== 'object') { say('That is not a theme.'); return; }
   // Rebuilt field by field rather than trusted wholesale. This came off
   // somebody's clipboard and ends up in CSS properties.
-  const out = { tokens: {}, surfaces: {}, parts: {} };
+  const out = { tokens: {}, surfaces: {}, parts: {}, items: {} };
   const known = new Set(THEME_TOKENS.map(t => t.v));
   Object.keys(raw.tokens || {}).forEach(k => {
     const c = _themeClean(raw.tokens[k]);
@@ -48818,8 +48912,28 @@ function themeImport() {
     const bd = _themeClean(src.border); if (bd) o.border = bd;
     if (Object.keys(o).length) out.parts[k] = o;
   });
+  // Single elements, same treatment. The key becomes a selector, so it has
+  // to be an id selector and nothing else.
+  Object.keys(raw.items || {}).forEach(k => {
+    if (!/^#[A-Za-z][\w-]*$/.test(k)) return;
+    const src = raw.items[k] || {};
+    const o = { label: String(src.label || k).slice(0, 40) };
+    if (src.bg) {
+      const stops = (Array.isArray(src.bg.stops) ? src.bg.stops : [])
+        .map(_themeClean).filter(Boolean);
+      const col = _themeClean(src.bg.color);
+      if (src.bg.type === 'solid' && col) {
+        o.bg = { type: 'solid', angle: +src.bg.angle || 180, color: col, stops: [col, col] };
+      } else if (stops.length >= 2) {
+        o.bg = { type: 'grad', angle: +src.bg.angle || 180, stops: stops.slice(0, 4) };
+      }
+    }
+    const tx = _themeClean(src.text); if (tx) o.text = tx;
+    const bd = _themeClean(src.border); if (bd) o.border = bd;
+    if (o.bg || o.text || o.border) out.items[k] = o;
+  });
   const n = Object.keys(out.tokens).length + Object.keys(out.surfaces).length
-          + Object.keys(out.parts).length;
+          + Object.keys(out.parts).length + Object.keys(out.items).length;
   if (!n) { say('Nothing usable in that theme.'); return; }
   _theme = out;
   _themeClearProps();
@@ -48829,7 +48943,79 @@ function themeImport() {
   say('Loaded ' + n + ' colour' + (n === 1 ? '' : 's') + '.');
 }
 
+// One block builder for both, because a single element and a whole kind get
+// exactly the same controls and keeping two copies of this markup is how the
+// two drift apart.
+function _themeBlockHtml(o) {
+  const bg = o.cfg.bg
+    || { type: 'grad', angle: 180, stops: ['#333333', '#111111'], color: '#333333' };
+  const isSolid = bg.type === 'solid';
+  const prev = _themeSurfaceCss(bg) || 'none';
+  const q = (fn, extra) => fn + "('" + o.key + "'" + (extra || '') + ')';
+  let h = '<div class="lqm-settings-row"><span class="lqm-settings-lbl">' + _mbEsc(o.label)
+    + (o.on ? '' : ' <span style="opacity:.5">(default)</span>') + '</span>'
+    + '<select class="lqm-settings-select" onchange="' + q(o.fnBg, ', { type: this.value })')
+    + '">'
+    + '<option value="grad"' + (isSolid ? '' : ' selected') + '>Gradient</option>'
+    + '<option value="solid"' + (isSolid ? ' selected' : '') + '>Solid</option>'
+    + '</select></div>';
+  h += '<div class="lqm-theme-prev" style="background-image:' + prev + '"></div>';
+  if (isSolid) {
+    h += '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Fill</span>'
+      + '<input type="color" class="lqm-theme-sw" value="' + bg.color
+      + '" oninput="' + q(o.fnBg, ', { color: this.value })') + '"></div>';
+  } else {
+    h += '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Fill stops</span>'
+      + '<div style="display:flex;gap:5px;align-items:center;">'
+      + bg.stops.map((c, i) => '<input type="color" class="lqm-theme-sw" value="' + c
+          + '" oninput="' + q(o.fnStop, ', ' + i + ', this.value)') + '">').join('')
+      + '</div></div>'
+      + '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Angle</span>'
+      + '<div style="display:flex;align-items:center;gap:6px;">'
+      + '<input type="range" class="lqm-slider" min="0" max="360" step="15" value="' + bg.angle
+      + '" oninput="' + q(o.fnBg, ', { angle: this.value })') + '">'
+      + '<span style="font-family:var(--mono);font-size:9px;color:var(--accent2);min-width:32px;">'
+      + bg.angle + 'deg</span></div></div>';
+  }
+  h += '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Text</span>'
+    + '<input type="color" class="lqm-theme-sw" value="' + (o.cfg.text || '#ffffff')
+    + '" oninput="' + q(o.fnColor, ", 'text', this.value)") + '"></div>'
+    + '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Border</span>'
+    + '<input type="color" class="lqm-theme-sw" value="' + (o.cfg.border || '#000000')
+    + '" oninput="' + q(o.fnColor, ", 'border', this.value)") + '"></div>';
+  if (o.on) {
+    h += '<div class="lqm-settings-row"><button class="lqm-settings-btn" onclick="'
+      + q(o.fnClear) + '">Back to default</button></div>';
+  }
+  return '<div class="lqm-theme-block" id="' + o.domId + '">' + h + '</div>';
+}
+
+function _themeRenderItems() {
+  const w = document.getElementById('lqm-theme-items');
+  if (!w) return;
+  const keys = Object.keys(_theme.items || {});
+  if (!keys.length) {
+    w.innerHTML = '<div style="font-family:var(--mono);font-size:9px;color:var(--muted);'
+      + 'padding:2px 0 6px;line-height:1.5;">Nothing picked yet. Use the button above and'
+      + ' click one button or bubble to colour just that one.</div>';
+    return;
+  }
+  w.innerHTML = keys.map(sel => {
+    const cfg = _themeItemOf(sel);
+    // "on" only once it has a colour: picking one creates the entry so it can
+    // be edited, and an entry with nothing set is not an override.
+    const raw = (_theme.items || {})[sel] || {};
+    const on = !!(raw.bg || raw.text || raw.border);
+    return _themeBlockHtml({
+      key: sel, label: cfg.label, cfg: cfg, on: on,
+      domId: 'item-' + sel.slice(1),
+      fnBg: 'themeItemBg', fnStop: 'themeItemStop',
+      fnColor: 'themeItemColor', fnClear: 'themeItemClear' });
+  }).join('');
+}
+
 function _themeRenderParts() {
+  _themeRenderItems();
   const w = document.getElementById('lqm-theme-parts');
   if (!w) return;
   w.innerHTML = THEME_PARTS.map(pt => {
@@ -56530,7 +56716,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'App Colors can now be pointed at things. Settings, App Colors, Pick an element on screen: the panel closes, you click any layer bubble, tool button, search bar or playback control, and it brings you back with that part ready to recolor. It outlines what it is about to take as you move over it, and Escape backs out. Twelve parts are covered, each with its own fill (solid or gradient), text and border color. Picking one button recolors every button of that kind, which is almost always what is meant.';
+const APP_LATEST_UPDATE = 'Two additions to App Colors. There is a Reset all app colors button at the top of the card, which puts the theme, the surfaces and anything you picked out individually back the way it shipped. And you can now colour ONE button rather than every button of its kind: pick an element and the panel offers both, the one you clicked at the top and every one like it below. It works on anything with a stable name, which is every layer bubble, tool button and playback control, so the colour survives the menu being rebuilt.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
