@@ -175,14 +175,14 @@ console.log('\n3d. one button rather than every button');
   ok('picking offers both the one clicked and every one like it',
      /Both are offered: the one you clicked, and every one like it/.test(PAGE));
   ok('and lands on the single element when there is one',
-     /_themeFocusItem \? \('item-' \+ _themeFocusItem\.slice\(1\)\)/.test(PAGE));
+     /_themeFocusItem \? _themeDomId\(_themeFocusItem\)/.test(PAGE));
   ok('id rules are written after class rules, in the order they take effect',
      /Kinds first, then single elements/.test(PAGE));
   ok('one block builder serves both, so the two cannot drift',
      (PAGE.match(/function _themeBlockHtml\(o\)/g) || []).length === 1);
   ok('there is a per element clear', /function themeItemClear\(sel\)/.test(PAGE));
-  ok('an imported item key has to be an id selector',
-     /if \(!\/\^#\[A-Za-z\]\[\\w-\]\*\$\/\.test\(k\)\) return;/.test(PAGE));
+  ok('an imported item key has to be a class or an id selector',
+     /if \(!\/\^\[#\.\]\[A-Za-z\]\[\\w-\]\*\$\/\.test\(k\)\) return;/.test(PAGE));
   ok('the label is escaped, since it comes off the element on screen',
      /_mbEsc\(o\.label\)/.test(PAGE));
   ok('an element with no id is explained rather than silently ignored',
@@ -199,6 +199,71 @@ console.log('\n3e. reset all');
      /It does not touch radar, model or satellite colors\./.test(PAGE));
   ok('and it clears single elements too',
      /_theme = \{ tokens: \{\}, surfaces: \{\}, parts: \{\}, items: \{\} \};/.test(PAGE));
+}
+
+console.log('\n3f. picking works on the rest of the app, not twelve things');
+{
+  ok('anything paintable falls back to its own class or id',
+     /function _themePaintable\(el\)/.test(PAGE)
+     && /function _themeClassKey\(el\)/.test(PAGE));
+  // Colouring `.active` would make the colour come and go as things are
+  // switched on and off, which is not what "make this green" means.
+  ok('state classes are skipped, since a state is not a kind',
+     /const THEME_SKIP_CLASSES = new Set\(/.test(PAGE)
+     && /'active', 'on', 'off', 'open'/.test(PAGE));
+  // A bare span inside a button is not the button.
+  ok('it walks up to something that actually paints, not the nearest node',
+     /A bare span inside a button is not the button/.test(PAGE));
+  ok('the walk is bounded rather than climbing to the document',
+     /steps\+\+ < 8/.test(PAGE));
+  ok('an auto kind is stored by its selector, like the rest',
+     /if \(m\.part\.auto\)/.test(PAGE));
+  ok('a class or an id, and nothing else, can become one',
+     /const THEME_NAME_RE = \/\^\[A-Za-z\]\[\\w-\]\*\$\//.test(PAGE));
+  ok('an imported key is checked for both shapes',
+     /\/\^\[#\.\]\[A-Za-z\]\[\\w-\]\*\$\/\.test\(k\)/.test(PAGE));
+  // A selector is not a legal id attribute.
+  ok('the editor block gets a name derived from the selector',
+     /function _themeDomId\(sel\)/.test(PAGE));
+  ok('and the label is something a person can recognise later',
+     /function _themeAutoLabel\(el, cls, id\)/.test(PAGE));
+}
+
+console.log('\n3g. the themes');
+{
+  const blk = (PAGE.match(/const THEME_PRESETS = \{[\s\S]*?\n\};/) || [''])[0];
+  const P = new Function(blk + '\nreturn THEME_PRESETS;')();
+  ok('twelve themes ship', Object.keys(P).length === 12, String(Object.keys(P).length));
+  ok('every one is on the picker',
+     Object.keys(P).every(k => new RegExp('<option value="' + k + '"').test(PAGE)));
+  const hex = c => /^#[0-9a-f]{6}$/.test(c);
+  Object.keys(P).forEach(k => {
+    const t = P[k].tokens || {}, sf = P[k].surfaces || {};
+    if (k === 'gwcfc') { ok('the default is the absence of overrides',
+      !Object.keys(t).length && !Object.keys(sf).length); return; }
+    // A theme that moved the accent and left the panels behind would put a
+    // blue accent on a red slab.
+    ok(k + ' sets colours and surfaces together',
+       Object.keys(t).length >= 9 && Object.keys(sf).length === 5);
+    ok('  ' + k + ' uses only plain hex',
+       Object.values(t).every(hex)
+       && Object.values(sf).every(x => x.stops.every(hex)));
+  });
+  // Light text on a light panel is the way a theme ships unreadable.
+  const lum = h => (0.2126 * parseInt(h.slice(1, 3), 16)
+                  + 0.7152 * parseInt(h.slice(3, 5), 16)
+                  + 0.0722 * parseInt(h.slice(5, 7), 16));
+  Object.keys(P).filter(k => k !== 'gwcfc').forEach(k => {
+    const t = P[k].tokens;
+    const panel = P[k].surfaces['--grad-panel'].stops[0];
+    ok('  ' + k + ' has readable text on its own panel',
+       Math.abs(lum(t['--text']) - lum(panel)) > 90,
+       Math.round(Math.abs(lum(t['--text']) - lum(panel))));
+  });
+  ok('one of them is a light theme, which is the real test of the token set',
+     lum(P.paper.tokens['--bg']) > 200 && lum(P.paper.tokens['--text']) < 80);
+  ok('and it moves warn, danger and success too, since the dark ones would glare',
+     ['--warn', '--danger', '--success'].every(v => hex(P.paper.tokens[v] || '')));
 }
 
 console.log('\n4. recolouring a real page');
@@ -308,6 +373,27 @@ else {
     out.badKey = _themeItemKey(bad);
     one.remove(); two.remove();
 
+    // Something the curated list has never heard of.
+    const odd = document.createElement('div');
+    odd.className = 'totally-made-up-widget active';
+    odd.style.background = '#222';
+    odd.style.border = '1px solid #444';
+    odd.textContent = 'Odd thing';
+    document.body.appendChild(odd);
+    const inner2 = document.createElement('span');
+    inner2.textContent = 'label';
+    odd.appendChild(inner2);
+    const autoM = themePickMatch(inner2);
+    out.autoSel = autoM && autoM.part.sel;
+    out.autoIsAuto = !!(autoM && autoM.part.auto);
+    out.autoLabel = autoM && autoM.part.l;
+    if (autoM) {
+      themeItemBg(autoM.part.sel, { type: 'solid', color: '#ff8800' });
+      await settled();
+      out.autoBg = getComputedStyle(odd).backgroundImage;
+    }
+    odd.remove();
+
     themeReset();
     await settled();
     out.itemsAfterResetAll = Object.keys(_theme.items || {}).length;
@@ -358,6 +444,13 @@ else {
   ok('an id that is not a plain id is refused', r.badKey === null, String(r.badKey));
   ok('reset all clears the single elements as well', r.itemsAfterResetAll === 0,
      String(r.itemsAfterResetAll));
+  ok('something the curated list never heard of resolves to its own class',
+     r.autoSel === '.totally-made-up-widget', String(r.autoSel));
+  ok('  reached from a click on the label inside it', r.autoIsAuto);
+  ok('  with a label a person can recognise',
+     /Odd thing/.test(r.autoLabel || ''), String(r.autoLabel));
+  ok('  and colouring it actually paints it',
+     /255, 136, 0/.test(r.autoBg || ''), (r.autoBg || '').slice(0, 50));
   ok('no uncaught page errors', errs.length === 0, errs.join(' | '));
 }
 
