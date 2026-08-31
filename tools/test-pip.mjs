@@ -20,7 +20,8 @@ const ok = (name, cond, extra) => {
 
 console.log('\n1. the source');
 const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-ok('no em dash anywhere in the page', !html.includes('—'));
+ok('no em dash anywhere in the page',
+   !html.includes(String.fromCharCode(0x2014)));
 ok('all three panels grew a float button',
    /id="alerts-pip"/.test(html) && /id="eas-pip"/.test(html) && /id="nav-pip"/.test(html));
 ok('each button hands off to the one shared engine',

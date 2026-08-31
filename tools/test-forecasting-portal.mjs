@@ -18,7 +18,8 @@ const ok = (name, cond, extra) => {
 
 console.log('\n1. the source');
 const html = readFileSync(join(ROOT, 'forecasting-portal.html'), 'utf8');
-ok('no em dash anywhere in the page', !html.includes('—'));
+ok('no em dash anywhere in the page',
+   !html.includes(String.fromCharCode(0x2014)));
 ok('no emoji: the artwork is drawn',
    ![...html].some(c => {
      const p = c.codePointAt(0);

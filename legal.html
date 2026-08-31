@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy &amp; Terms · GWCFC Radar</title>
+<meta name="description" content="What GWCFC Radar stores, where it goes, and the terms you use it under.">
+<link rel="icon" href="assets/img/gwcfc-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Same palette and typeface as the app, so this does not read as a page
+   somebody bolted on from a template. */
+:root {
+  --bg:      #5a0000;
+  --surface: #720000;
+  --panel:   #850000;
+  --border:  #AA0000;
+  --accent:  #e8b800;
+  --accent2: #008CBA;
+  --text:    #d4e8ff;
+  --muted:   #b08a8a;
+  --font:    'Comfortaa', system-ui, sans-serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.65;
+  -webkit-text-size-adjust: 100%;
+}
+.wrap { max-width: 820px; margin: 0 auto; padding: 28px 20px 80px; }
+
+header { padding: 12px 0 26px; border-bottom: 1px solid var(--border); margin-bottom: 26px; }
+.back {
+  display: inline-flex; align-items: center; gap: 7px;
+  color: var(--accent2); text-decoration: none;
+  font-size: 13px; font-weight: 600; margin-bottom: 18px;
+}
+.back:hover { color: var(--accent); }
+h1 { font-size: 27px; font-weight: 700; letter-spacing: 0.5px; color: #fff; }
+.sub { color: var(--muted); font-size: 13px; margin-top: 6px; }
+
+nav.toc {
+  display: flex; flex-wrap: wrap; gap: 7px;
+  margin: 22px 0 30px;
+}
+nav.toc a {
+  font-size: 12px; padding: 6px 12px; border-radius: 6px;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); text-decoration: none;
+}
+nav.toc a:hover { border-color: var(--accent); color: var(--accent); }
+
+section { margin-bottom: 40px; scroll-margin-top: 20px; }
+h2 {
+  font-size: 20px; font-weight: 700; color: #fff;
+  margin: 34px 0 12px; letter-spacing: 0.4px;
+}
+h2:first-child { margin-top: 0; }
+h3 {
+  font-size: 15px; font-weight: 700; color: var(--accent);
+  margin: 22px 0 8px;
+}
+p { margin-bottom: 12px; font-size: 14.5px; }
+ul { margin: 0 0 14px 20px; }
+li { margin-bottom: 7px; font-size: 14.5px; }
+strong { color: #fff; font-weight: 700; }
+a { color: var(--accent2); }
+a:hover { color: var(--accent); }
+
+.note {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 13px 15px; margin: 16px 0;
+  font-size: 14px;
+}
+.note.warn { border-color: var(--accent); background: rgba(232,184,0,0.08); }
+
+table { width: 100%; border-collapse: collapse; margin: 14px 0 18px; font-size: 13.5px; }
+th, td { text-align: left; padding: 9px 11px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--accent); font-weight: 700; white-space: nowrap; }
+.scroller { overflow-x: auto; }
+
+footer {
+  border-top: 1px solid var(--border); margin-top: 44px; padding-top: 20px;
+  color: var(--muted); font-size: 12.5px;
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <a class="back" href="index.html">&#8592; Back to the radar</a>
+  <h1>Privacy &amp; Terms</h1>
+  <div class="sub">GWCFC Radar &middot; last updated 31 August 2026</div>
+</header>
+
+<nav class="toc">
+  <a href="#short">The short version</a>
+  <a href="#collect">What is stored</a>
+  <a href="#location">Location</a>
+  <a href="#photos">Photos &amp; chat</a>
+  <a href="#thirdparty">Who else sees it</a>
+  <a href="#control">Your control</a>
+  <a href="#terms">Terms of use</a>
+  <a href="#safety">Safety</a>
+  <a href="#contact">Contact</a>
+</nav>
+
+<section id="short">
+  <h2>The short version</h2>
+  <p>GWCFC Radar is a weather map run by one person in their spare time. It is
+  free, there is nothing to buy, and none of your data is sold or used for
+  advertising. There are no analytics or tracking scripts on the page.</p>
+  <p>Most of what the app remembers about you never leaves your device. If you
+  do not sign in, do not turn on location, and do not post a photo or a chat
+  message, then nothing about you is stored on any server at all.</p>
+  <div class="note warn">
+    <strong>The one thing to read even if you read nothing else:</strong> this
+    app is not an official warning service. It does not replace NOAA Weather
+    Radio, Wireless Emergency Alerts, or what your local emergency management
+    tells you to do. See <a href="#safety">Safety</a>.
+  </div>
+</section>
+
+<section id="collect">
+  <h2>What is stored, and where</h2>
+  <p>Two different places, and the difference matters.</p>
+
+  <h3>On your device only</h3>
+  <p>Kept in your browser's own storage. It never reaches a server, and clearing
+  your browser data deletes all of it:</p>
+  <ul>
+    <li>Every setting: units, colours, map style, layer order, opacity, themes,
+      keyboard bindings, which panels are open.</li>
+    <li>Your starred places and features, and your saved model comparisons.</li>
+    <li>Inspector pins, drawings, storm cones, and text you place on the map.</li>
+    <li>Weather radio recordings you make, and the videos you attach to a Cloud
+      Capture post (only the still thumbnail is uploaded, up to 60 MB stays
+      here).</li>
+    <li>Navigation reports you file, which are also deleted automatically after
+      four hours.</li>
+  </ul>
+
+  <h3>On a server, only if you choose to</h3>
+  <div class="scroller">
+  <table>
+    <tr><th>What</th><th>When it is stored</th><th>Where</th></tr>
+    <tr>
+      <td>Email address and password</td>
+      <td>Only if you create an account</td>
+      <td>Google Firebase Authentication</td>
+    </tr>
+    <tr>
+      <td>Display name, avatar, profile picture, chosen font</td>
+      <td>Only if you fill them in</td>
+      <td>Firebase Firestore</td>
+    </tr>
+    <tr>
+      <td>Home region and saved layer preset</td>
+      <td>Only if you press Save Region or Save Layers</td>
+      <td>Firebase Firestore</td>
+    </tr>
+    <tr>
+      <td>Chat messages and mentions</td>
+      <td>Only messages you send</td>
+      <td>Firebase Firestore</td>
+    </tr>
+    <tr>
+      <td>Cloud Capture photos and their location</td>
+      <td>Only posts you submit</td>
+      <td>Firebase Firestore</td>
+    </tr>
+    <tr>
+      <td>Outlooks and alerts</td>
+      <td>Only if you are a GWCFC forecaster publishing one</td>
+      <td>Firebase Firestore</td>
+    </tr>
+  </table>
+  </div>
+  <p>There is no analytics package, no advertising identifier, no session
+  recording, and no third-party tracking pixel anywhere in this app.</p>
+</section>
+
+<section id="location">
+  <h2>Location</h2>
+  <p>The app asks for your location in three situations, and never otherwise:</p>
+  <ul>
+    <li><strong>Locate.</strong> One reading, used to centre the map, then
+      forgotten.</li>
+    <li><strong>Location tracking and navigation.</strong> A continuous reading
+      while it is switched on, used to draw where you are, work out a route, and
+      colour that route by the weather along it. It stays in the browser.</li>
+    <li><strong>Rain Near Me and alert notifications.</strong> Your position is
+      compared against radar and against active warnings, in the browser, to
+      decide whether to notify you.</li>
+  </ul>
+  <p>Your position is <strong>not</strong> uploaded, logged, or shared, with one
+  exception you choose explicitly: the location attached to a Cloud Capture post
+  or a navigation report, because a photo of a wall cloud with no location on it
+  is of no use to anybody.</p>
+  <p>Routing is calculated by an external routing service, which necessarily
+  receives the start and end points of the route you ask for. Turn location off
+  in your browser or device settings at any time and the rest of the app keeps
+  working.</p>
+</section>
+
+<section id="photos">
+  <h2>Photos, chat and anything else you post</h2>
+  <p>Cloud Capture posts and chat messages are <strong>public to everyone using
+  the app</strong>. Treat them that way. Do not post anything you would not want
+  a stranger to see, and think before you post a photo taken at your own house.</p>
+  <p>Photos submitted to Cloud Capture pass through an automated check before
+  they appear on the map. That check is not perfect. Anything that gets through
+  and should not have can be reported through Feedback and will be removed.</p>
+  <p>Videos are different from photos on purpose: the clip stays on the device
+  that submitted it and only its first frame is uploaded, so a video is playable
+  where it was made and shows as a thumbnail everywhere else.</p>
+</section>
+
+<section id="thirdparty">
+  <h2>Who else your browser talks to</h2>
+  <p>A weather map is mostly other people's data. Your browser fetches directly
+  from these, which means each one can see your IP address and what you asked
+  for, the same as visiting any website:</p>
+  <ul>
+    <li><strong>NOAA and the National Weather Service</strong>, including SPC,
+      WPC, NHC, CPC and the NEXRAD and MRMS archives, for radar, alerts,
+      outlooks and forecasts.</li>
+    <li><strong>Open-Meteo</strong> for forecast, marine and air quality fields.</li>
+    <li><strong>Google Firebase</strong> for accounts, chat and Cloud Capture.</li>
+    <li><strong>Google Gemini</strong>, if you ask Asturio AI a question. Your
+      question and the on-screen weather context are sent so it can answer.</li>
+    <li><strong>MapTiler and OpenStreetMap</strong> for the base map tiles.</li>
+    <li><strong>Google Fonts</strong> for the typeface.</li>
+    <li><strong>Blitzortung</strong> for lightning, <strong>SpotterNetwork</strong>
+      for spotters and chasers, <strong>Ambient Weather</strong> for personal
+      weather stations, <strong>Environment Canada</strong> for Canadian alerts,
+      and state transport agencies for traffic cameras.</li>
+    <li><strong>Public CORS relays</strong>, for a handful of agency endpoints
+      that refuse to answer a browser directly. A relay sees the request and
+      your IP; nothing personal is put in one.</li>
+    <li><strong>A Raspberry Pi</strong> run by the developer, which renders the
+      model charts, satellite composites and soundings.</li>
+  </ul>
+  <p>Each of these has its own privacy policy and none of them is controlled by
+  this app. Every one is listed with a link in <strong>Credits</strong>, inside
+  the app.</p>
+</section>
+
+<section id="control">
+  <h2>Your control over any of it</h2>
+  <ul>
+    <li><strong>Everything on your device</strong> goes when you clear your
+      browser's site data, or through the reset controls in Settings.</li>
+    <li><strong>Your account and everything attached to it</strong> can be
+      deleted on request. Ask through Feedback and it will be removed, along
+      with your chat messages and Cloud Capture posts.</li>
+    <li><strong>Individual posts</strong> can be removed on request without
+      deleting your account.</li>
+    <li><strong>Never signing in at all</strong> is a supported way to use this
+      app. Nearly every feature works signed out.</li>
+  </ul>
+  <p>This app is not aimed at children under 13 and accounts should not be
+  created for them.</p>
+</section>
+
+<section id="terms">
+  <h2>Terms of use</h2>
+
+  <h3>1. What this is</h3>
+  <p>GWCFC Radar is provided free, as is, with no warranty of any kind. It is a
+  situational awareness tool built by a hobbyist, not a commercial product and
+  not an official source.</p>
+
+  <h3>2. No warranty, and what that means in practice</h3>
+  <p>Weather data can be late, wrong, incomplete or missing. Radar sites go
+  down. Models are wrong routinely, and that is normal. Feeds change shape
+  without notice. Nothing here is guaranteed to be accurate, current or
+  available, and the developer is not liable for any loss, injury or damage
+  arising from use of this app or reliance on anything it shows.</p>
+
+  <h3>3. Data you post</h3>
+  <p>You keep ownership of photos, videos and messages you submit. By posting
+  them you grant permission to display them in the app to other users. Do not
+  post anything unlawful, harassing, or that you do not hold the rights to, and
+  do not post other people's private information. Anything breaking that will be
+  removed, and accounts may be suspended.</p>
+
+  <h3>4. Fair use of the data feeds</h3>
+  <p>The public agencies and free APIs behind this app pay for their own
+  bandwidth. Do not scrape the app, automate requests through it, or use it in a
+  way that would put load on those services beyond ordinary personal use.</p>
+
+  <h3>5. Third-party terms come with the data</h3>
+  <p>Some sources carry their own conditions, and using that data through this
+  app means agreeing to them too. The machine-learning cyclone models are
+  research products with their own terms of use, and are experimental guidance
+  rather than a forecast.</p>
+
+  <h3>6. Broadcast and re-use</h3>
+  <p>StormStream mode and the export tools exist so this app can be used on
+  stream and on air, and that is welcome. Credit the underlying agencies, and do
+  not present GWCFC products as official National Weather Service products. They
+  are tagged distinctly in the app for exactly that reason.</p>
+
+  <h3>7. Changes</h3>
+  <p>These terms and the privacy notice above can change as the app does. The
+  date at the top of this page says when they last did, and material changes are
+  announced in the update bar above the logo.</p>
+</section>
+
+<section id="safety">
+  <h2>Safety</h2>
+  <div class="note warn">
+    <p><strong>This app does not replace official warnings.</strong> During
+    dangerous weather, act on NOAA Weather Radio, Wireless Emergency Alerts, and
+    your local emergency management, in that order, before anything you see
+    here.</p>
+    <p style="margin-bottom:0">The weather radio streams in this app come from
+    third-party relays and can drop or be region-blocked. They are a
+    convenience, not a receiver.</p>
+  </div>
+  <p>Navigation is for planning a route around weather before you set off, and
+  for a passenger to watch. It is not a reason to look at a radar app while
+  driving.</p>
+</section>
+
+<section id="contact">
+  <h2>Contact</h2>
+  <p>Anything about this page, a data removal request, or a problem with
+  something somebody posted: use the <strong>Feedback</strong> button in the
+  app, under the logo. It reaches the developer directly and needs no account.</p>
+</section>
+
+<footer>
+  GWCFC Radar &middot; weather data from NOAA, NWS, SPC, WPC, NHC and others,
+  listed in full under Credits in the app.
+  <br>
+  <a href="index.html">Back to the radar</a>
+</footer>
+
+</div>
+</body>
+</html>
