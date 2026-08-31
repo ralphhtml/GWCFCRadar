@@ -1330,8 +1330,12 @@ console.log('\n13e. the panel is four views, not one long column');
     return { tabs, panes, atOpen, onNumbers, lit, onWind, homes, noteOutside,
              chartInPane, tabsAbove, marked, redrawn };
   });
-  ok('the four views offered are the ones Open-Meteo can fill',
-     r.tabs.join(',') === 'chart,hodo,wind,numbers', r.tabs.join(','));
+  // Four grew to eight: the SHARPpy side panels (theta-e, SR wind, inferred
+  // advection, hazard type) joined, and every one of them is computed from
+  // the same profile, so Open-Meteo can fill all eight.
+  ok('the eight views offered are the ones any source can fill',
+     r.tabs.join(',') === 'chart,hodo,wind,numbers,thermo,srwind,advect,hazard',
+     r.tabs.join(','));
   // Image showed a picture only the Pi renders, so with the Pi sources hidden
   // it could only ever be blank. Hidden, not deleted, like everything else.
   ok('Image and Source are gone from the bar but still in the panel',
@@ -1586,7 +1590,9 @@ console.log('\n13g3. the panel stopped decorating itself');
       wordAnim: ws.animationName,
       whereBorder: where.borderTopWidth,
       count: btns.length,
-      sameRow: btns.every(b => Math.round(b.top) === Math.round(btns[0].top)),
+      // Eight tabs now, as a grid of four columns: the first four share a
+      // row, the second four share the next, and every column lines up.
+      rowOf: btns.map(b => Math.round(b.top)),
       equal: wide.every(x => Math.abs(x - wide[0]) <= 1),
       wide,
     };
@@ -1599,8 +1605,14 @@ console.log('\n13g3. the panel stopped decorating itself');
   ok('and it does not pulse for attention', r.wordAnim === 'none', r.wordAnim);
   ok('the coordinate is a caption, not a chip', r.whereBorder === '0px',
      r.whereBorder);
-  ok('the four views share one row', r.count === 4 && r.sameRow,
-     r.count + ' tabs');
+  // Grown from four views to eight (Theta-E, SR Wind, Advection and Hazard
+  // joined), which no longer fit one readable row: the track is a grid of
+  // four columns now, two tidy rows of four.
+  ok('the eight views sit in two rows of four', r.count === 8
+     && r.rowOf.slice(0, 4).every(t => t === r.rowOf[0])
+     && r.rowOf.slice(4).every(t => t === r.rowOf[4])
+     && r.rowOf[4] > r.rowOf[0],
+     r.count + ' tabs at rows ' + r.rowOf.join(','));
   ok('in equal parts, so none of them reads as the important one',
      r.equal, r.wide.join(','));
 }
