@@ -233,9 +233,25 @@ console.log('\n3g. the themes');
 {
   const blk = (PAGE.match(/const THEME_PRESETS = \{[\s\S]*?\n\};/) || [''])[0];
   const P = new Function(blk + '\nreturn THEME_PRESETS;')();
-  ok('twelve themes ship', Object.keys(P).length === 12, String(Object.keys(P).length));
-  ok('every one is on the picker',
-     Object.keys(P).every(k => new RegExp('<option value="' + k + '"').test(PAGE)));
+  ok('thirty themes ship', Object.keys(P).length === 30, String(Object.keys(P).length));
+  // Thirty hand-typed options would be thirty chances for the list and the
+  // table to disagree, so the picker is built from the table.
+  ok('the picker is filled from the table rather than typed out',
+     /psel\.innerHTML = Object\.keys\(THEME_PRESETS\)/.test(PAGE)
+     && !/<option value="midnight"/.test(PAGE));
+  // The names have to work both ways: as weather, and as a colour.
+  const COLOURS = ['red', 'orange', 'amber', 'yellow', 'lime', 'green', 'teal',
+    'cyan', 'blue', 'indigo', 'violet', 'purple', 'pink', 'brown', 'tan',
+    'gray', 'grey', 'slate', 'charcoal', 'black', 'navy', 'light'];
+  const noColour = Object.keys(P).filter(k => k !== 'gwcfc')
+    .filter(k => !COLOURS.some(c => P[k].label.toLowerCase().includes(c)));
+  ok('every name says which colour it is', noColour.length === 0, noColour.join(', '));
+  const noWeather = Object.keys(P).filter(k => k !== 'gwcfc')
+    .filter(k => P[k].label.trim().split(/\s+/).length < 2);
+  ok('and every name has a weather word in front of it',
+     noWeather.length === 0, noWeather.join(', '));
+  ok('no two themes share a name',
+     new Set(Object.values(P).map(x => x.label)).size === Object.keys(P).length);
   const hex = c => /^#[0-9a-f]{6}$/.test(c);
   Object.keys(P).forEach(k => {
     const t = P[k].tokens || {}, sf = P[k].surfaces || {};
