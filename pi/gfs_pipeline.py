@@ -21,11 +21,13 @@ exits quickly when there is not.
 import bz2
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
 import time
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
 import numpy as np
 import requests
@@ -134,7 +136,27 @@ def region_spec(m, key):
         # A storm is not a place. There is no box to apply: the model already
         # publishes a small grid that follows the storm, and the bounds come
         # from the data the way they do for everything else.
-        spec["storm"] = key
+        storm, domain = split_storm_region(key)
+        spec["storm"] = storm
+        spec["domain"] = domain
+        # Two shapes of address, because the two model families name their
+        # domains differently. HAFS differs only by the word "parent" or
+        # "storm" in one template; HWRF publishes altogether different files
+        # per nest, so it gives a dict keyed by domain.
+        raw = m.get("raw")
+        if isinstance(raw, dict):
+            spec["raw"] = raw.get(domain) or raw.get("parent")
+        elif isinstance(raw, str):
+            spec["raw"] = raw.replace("{domain}", domain)
+        elif isinstance(raw, (list, tuple)):
+            spec["raw"] = [r.replace("{domain}", domain) for r in raw]
+        # The inner nest is redrawn around the storm at every forecast hour,
+        # so its bounds are a property of the FRAME and not of the run. See
+        # build_model: this is what makes it record them per frame.
+        spec["moving"] = (domain == "storm")
+        spec["res"] = m.get("domain_res", {}).get(domain, m.get("res"))
+        spec["region_label"] = ("Storm domain" if domain == "storm"
+                                else "Parent domain")
         return spec
     # The region carries a label of its own ("Alaska"), which must not become
     # the model's label: a NAM run over Alaska is still NAM. It is kept under
@@ -787,43 +809,86 @@ MODELS = {
     },
     "hafs": {
         # The hurricane model. Unlike everything else here it is not published
-        # on a fixed domain: there is one run per active storm, on a grid that
-        # follows that storm, and when nothing is out there it does not run at
-        # all. So its regions are worked out at build time from the Hurricane
-        # Center's own list of what is active, and the bounds come from the
-        # data, which they already did for every model.
+        # on a fixed domain: there is one run per active storm, on grids that
+        # follow that storm, and when nothing is out there it does not run at
+        # all. So its regions are worked out at build time from the model's
+        # own output directory, and the bounds come from the data, which they
+        # already did for every model.
+        #
+        # TWO DOMAINS PER STORM, and they are genuinely different pictures.
+        # Measured off the live GRIB headers for 04l on 2026-08-31 06z:
+        #
+        #   parent  1681 x 1361 at 0.06 deg, box 235.3 to 336.1 E. Identical
+        #           at every forecast hour: a fixed synoptic window.
+        #   storm   1001 x  801 at 0.02 deg, box 20 deg wide, and it MOVES:
+        #           280.7 E at f000, 272.5 E at f072, tracking the storm
+        #           about eight degrees west over three days.
+        #
+        # Three times finer per degree on the nest, which is why a hurricane
+        # looked soft: the parent grid cannot resolve an eyewall.
         "fetch": "range", "per_storm": True,
+        "domains": ["parent", "storm"],
+        "domain_res": {"parent": "6 km parent", "storm": "2 km storm nest"},
+        "storm_bucket_key": "hafs", "storm_prefix": "hfsa/{date}/{cyc}/",
         "label": "HAFS-A", "res": "storm following", "cycle_h": 6, "lag_h": 5,
         "raw": "hafs/prod/hfsa.{date}/{cyc}/"
-               "{storm}.{date}{cyc}.hfsa.parent.atm.f{fhr:03d}.grb2.idx",
+               "{storm}.{date}{cyc}.hfsa.{domain}.atm.f{fhr:03d}.grb2.idx",
         "step": 3, "out": 72,
     },
     "hafsb": {
         "fetch": "range", "per_storm": True,
+        "domains": ["parent", "storm"],
+        "domain_res": {"parent": "6 km parent", "storm": "2 km storm nest"},
+        "storm_bucket_key": "hafs", "storm_prefix": "hfsb/{date}/{cyc}/",
         "label": "HAFS-B", "res": "storm following", "cycle_h": 6, "lag_h": 5,
         "raw": "hafs/prod/hfsb.{date}/{cyc}/"
-               "{storm}.{date}{cyc}.hfsb.parent.atm.f{fhr:03d}.grb2.idx",
+               "{storm}.{date}{cyc}.hfsb.{domain}.atm.f{fhr:03d}.grb2.idx",
         "step": 3, "out": 72,
     },
     "hwrf": {
-        # Still running alongside HAFS on your reference site, so carried
-        # rather than assumed retired. Storm following, like HAFS, and the
-        # exact filename is the part worth checking: scan_sources.py hur will
-        # print what is really there.
+        # HWRF and HMON below were the previous generation of hurricane model,
+        # and HAFS-A and HAFS-B replaced them. Whether they still publish is a
+        # question about NOAA's servers rather than about this code, and it is
+        # answered on the Pi rather than guessed at here:
+        #
+        #     ~/wxenv/bin/python ~/GWCFCRadar/pi/scan_sources.py hur
+        #
+        # If that prints hwrf and hmon directories with files in them, add the
+        # name to DEFAULT_MODELS and they build. The definitions are kept
+        # correct and current rather than deleted so that is a one word change.
+        # Their storm lists come from the Hurricane Center, since they have no
+        # bucket of their own to read: HAFS is the only hurricane model with a
+        # public mirror.
+        #
+        # Domains named as HWRF names them: it publishes three nests where
+        # HAFS publishes two, and the middle one is the closest match to the
+        # HAFS "storm" nest so it takes that name.
         "fetch": "range", "per_storm": True,
+        "domains": ["parent", "storm"],
+        "domain_res": {"parent": "13 km synoptic", "storm": "2 km core"},
         "label": "HWRF", "res": "storm following", "cycle_h": 6, "lag_h": 5,
-        "raw": [
-            "hur/prod/hwrf.{date}{cyc}/"
-            "{storm}.{date}{cyc}.hwrfprs.storm.0p015.f{fhr:03d}.grb2.idx",
-            "hur/prod/hwrf.{date}{cyc}/"
-            "{storm}.{date}{cyc}.hwrfprs.core.0p02.f{fhr:03d}.grb2.idx",
-            "hur/prod/hwrf.{date}{cyc}/"
-            "{storm}.{date}{cyc}.hwrfprs.synoptic.0p125.f{fhr:03d}.grb2.idx",
-        ],
+        "raw": {
+            "parent": [
+                "hur/prod/hwrf.{date}{cyc}/"
+                "{storm}.{date}{cyc}.hwrfprs.synoptic.0p125.f{fhr:03d}.grb2.idx",
+            ],
+            "storm": [
+                "hur/prod/hwrf.{date}{cyc}/"
+                "{storm}.{date}{cyc}.hwrfprs.core.0p02.f{fhr:03d}.grb2.idx",
+                "hur/prod/hwrf.{date}{cyc}/"
+                "{storm}.{date}{cyc}.hwrfprs.storm.0p015.f{fhr:03d}.grb2.idx",
+            ],
+        },
         "step": 3, "out": 72,
     },
     "hmon": {
+        # HMON publishes one grid rather than a nest and a parent, so both
+        # domains point at the same files. The picker still offers one entry
+        # rather than two identical ones, because domains_for below drops a
+        # domain a model has no separate address for.
         "fetch": "range", "per_storm": True,
+        "domains": ["parent"],
+        "domain_res": {"parent": "storm following"},
         "label": "HMON", "res": "storm following", "cycle_h": 6, "lag_h": 5,
         "raw": [
             "hur/prod/hmon.{date}{cyc}/"
@@ -1531,8 +1596,17 @@ DEFAULT_MODELS = ["hrrr", "rtma", "rap", "gfs", "nam", "namnest", "nbm",
 # Nothing was dropped, and nothing new was added.
 
 # Defined above and deliberately not built. Each of these was checked against
-# the publisher's own directory listing and the files are not there: HWRF and
-# HMON have been retired in favour of HAFS, the NSSL window member is gone,
+# the publisher's own directory listing and the files are not there. HWRF and
+# HMON are the two worth explaining, because they are asked for: HAFS-A and
+# HAFS-B replaced them as NOAA's operational hurricane models, and the last
+# check of hur/prod found no directories for either. Their definitions here
+# are current and carry the parent/storm domain machinery, so if that check
+# comes back differently on your Pi they build by adding the name to
+# DEFAULT_MODELS above and nothing else. To find out:
+#
+#     ~/wxenv/bin/python ~/GWCFCRadar/pi/scan_sources.py hur
+#
+# The NSSL window member is gone,
 # ETSS moved off the open server, and the Canadian and German addresses used
 # here changed shape. They are kept rather than deleted because the definitions
 # are still correct in shape, so when an address is worked out again the model
@@ -1613,7 +1687,14 @@ RETRIES = 3
 # actually made. Decoded, a frame is about 12 MB against roughly 6 before;
 # the playback pool only ever holds the incoming frame and the outgoing one,
 # so the working set grows by megabytes, not by frame count.
-MAX_EDGE_PX = 2560
+#
+# 3200 now rather than 2560, and what makes that safe is the total-pixel
+# budget beside it (SMOOTH_MAX_TOTAL_PX): a long edge on its own says nothing
+# about how much memory a picture takes, because a wide thin strip and a
+# square of the same longest side differ fourfold. With both limits in force
+# the widest boxes get the extra pixels they were short of and the worst case
+# is bounded by the budget rather than by the square of this number.
+MAX_EDGE_PX = 3200
 
 # How small a picture is allowed to be before it gets interpolated up.
 #
@@ -1641,6 +1722,62 @@ MAX_EDGE_PX = 2560
 # pixels cost Pi time and card space, and that is the price of the picture
 # being drawn from values instead of smeared from colours.
 SMOOTH_MIN_EDGE_PX = 2000
+
+# THE FLAT NUMBER ABOVE IS NOT ENOUGH ON ITS OWN, because 2000 pixels means
+# something different depending on how much of the world they are spread over.
+# Measured across the boxes this pipeline actually builds:
+#
+#   CONUS    70 deg wide  ->  2000 px  =  28.6 px per degree
+#   Tropics 155 deg wide  ->  2000 px  =  12.9 px per degree
+#
+# Same picture size, less than half the detail, and the Tropics box is exactly
+# where somebody zooms in on a hurricane. That is the blur: not the kernel and
+# not the file size, just too few pixels per degree over a big box.
+#
+# So the target is a DENSITY, and the long edge is worked out from how wide
+# the box is. Two things bound it, because a density alone would ask for a
+# picture no phone could decode:
+#
+#   MAX_EDGE_PX below      the longest side, unchanged in spirit
+#   SMOOTH_MAX_TOTAL_PX    the total, which is what memory actually cares
+#                          about: a browser holds width x height x 4 bytes,
+#                          and a long thin image is cheap where a square one
+#                          of the same long edge is not
+#
+# 4.5 million pixels is about 18 MB decoded, which the PlayStation 5 browser
+# holds without complaint. What that buys, measured: Tropics 12.9 -> 20.6 px
+# per degree (+60 percent), the Atlantic box 20.0 -> 28.6 (+43), the HAFS
+# parent grid 19.8 -> 23.4 (+18). CONUS barely moves, because CONUS was
+# already the box the flat 2000 happened to suit.
+SMOOTH_TARGET_PX_PER_DEG = 30.0
+SMOOTH_MAX_TOTAL_PX = 4_500_000
+
+
+def upsample_edge_for(shape, bounds):
+    """How long the picture's long edge should be, given the box it covers.
+
+    Falls back to the flat floor when the bounds are unknown, which is what
+    every caller did before this existed.
+    """
+    if not bounds:
+        return SMOOTH_MIN_EDGE_PX
+    try:
+        (la1, lo1), (la2, lo2) = bounds
+        wide, tall = abs(float(lo2) - float(lo1)), abs(float(la2) - float(la1))
+    except (TypeError, ValueError):
+        return SMOOTH_MIN_EDGE_PX
+    long_deg = max(wide, tall)
+    if long_deg <= 0:
+        return SMOOTH_MIN_EDGE_PX
+    # The picture's own shape, not the box's: a grid can be cropped to
+    # something a little different from what was asked for.
+    h, w = (shape + (1, 1))[:2] if isinstance(shape, tuple) else (1, 1)
+    ratio = (min(h, w) / float(max(h, w))) if max(h, w) else 1.0
+
+    edge = long_deg * SMOOTH_TARGET_PX_PER_DEG
+    if edge * edge * ratio > SMOOTH_MAX_TOTAL_PX and ratio > 0:
+        edge = (SMOOTH_MAX_TOTAL_PX / ratio) ** 0.5
+    return int(round(max(SMOOTH_MIN_EDGE_PX, min(edge, MAX_EDGE_PX))))
 
 
 # How long a standard build may spend before it stops starting new models.
@@ -1705,6 +1842,35 @@ MB_PER_HOUR = {
 REGION_COST = {"conus": 1.0, "conus32": 0.7, "tropics": 1.4, "alaska": 0.3,
                "hawaii": 0.12, "prico": 0.12,
                "atlantic": 1.2, "epacific": 0.8, "arctic": 1.0}
+
+
+def storm_region_cost(region):
+    """
+    Where a storm's pictures sit in the build queue.
+
+    Reading the model's own directory instead of the Hurricane Center's list
+    found seven storms where two were being built, which is the whole point,
+    but it also means the hurricane models are now a real share of the work:
+    seven storms times two domains is fourteen builds where there were two.
+    The queue is self-levelling and will get through all of them, so nothing
+    is dropped. What this decides is the ORDER, so that if a bad afternoon at
+    NOAA does run the clock out, the thing left unbuilt is the one that
+    matters least.
+
+    Named and numbered storms first. Numbers 90 to 99 are invests, areas being
+    watched that may never become anything, and a hurricane the Hurricane
+    Center is writing advisories on should never wait behind one.
+
+    Parent before nest within a storm, because the parent grid is the one that
+    still shows something useful if the nest never gets built: it covers the
+    whole basin, where the nest is twenty degrees of ocean.
+    """
+    storm, domain = split_storm_region(region)
+    m = STORM_ID_RE.match(storm)
+    if not m:
+        return 1.0
+    invest = 90 <= int(m.group(1)) <= 99
+    return (1.0 if not invest else 3.0) * (1.0 if domain == "parent" else 1.3)
 
 # Some servers refuse the default python-requests user agent outright, and a
 # 403 from that is indistinguishable from a wrong address. Saying who we are
@@ -4166,13 +4332,27 @@ def open_fields(grib_path, regrid_box=None):
     return found
 
 
-def smooth_upsample(data, min_edge=None, max_edge=None):
+def smooth_upsample(data, min_edge=None, max_edge=None, angular=False):
     """Interpolate a coarse field up so it does not arrive as visible squares.
 
     Bicubic on the values themselves. See SMOOTH_MIN_EDGE_PX for why this
     happens before the colour ramp rather than after it.
 
-    Two things it is careful about:
+    ANGULAR FIELDS GO ROUND THE BACK. A direction is a number from 0 to 360
+    where 359 and 1 are two degrees apart, and interpolation does not know
+    that: halfway between them it puts 180, which is the exact opposite
+    direction. The wrap wanders across the map cell by cell, so what it
+    produces is not a smooth error but speckle, a scattering of pixels
+    pointing the wrong way through an otherwise clean field.
+
+    Measured on a field sweeping through north: plain bicubic on the degrees
+    was wrong by up to 150.7 degrees, with 0.42 percent of pixels more than a
+    right angle out. Interpolating the direction as a VECTOR instead, sine
+    and cosine separately and the angle taken back with atan2, brings the
+    worst error to 1.6 degrees and the count of pixels more than 45 degrees
+    out to zero. Five fields need this: wdir, dirpw, swdir, wvdir, swdir2.
+
+    Two more things it is careful about:
 
     Missing data does not survive interpolation. A NaN dragged through a
     bicubic kernel poisons every pixel it touches, so the holes are filled
@@ -4207,11 +4387,22 @@ def smooth_upsample(data, min_edge=None, max_edge=None):
     fill = float(np.nanmean(data[~bad])) if bad.any() else 0.0
     filled = np.where(bad, fill, data).astype(np.float32)
 
-    # np.array, not np.asarray: PIL hands back a read-only view, and the
-    # mask step below writes into this.
-    out = np.array(
-        Image.fromarray(filled, mode="F").resize((nw, nh), Image.BICUBIC),
-        dtype=np.float32)
+    def _grow(a):
+        # np.array, not np.asarray: PIL hands back a read-only view, and the
+        # mask step below writes into this.
+        return np.array(
+            Image.fromarray(np.asarray(a, dtype=np.float32), mode="F")
+                 .resize((nw, nh), Image.BICUBIC), dtype=np.float32)
+
+    if angular:
+        # Round the back: the two components of the unit vector interpolate
+        # cleanly through the wrap because neither of them has one.
+        rad = np.deg2rad(filled)
+        out = np.rad2deg(np.arctan2(_grow(np.sin(rad)),
+                                    _grow(np.cos(rad)))) % 360.0
+        out = out.astype(np.float32)
+    else:
+        out = _grow(filled)
 
     if bad.any():
         # Resampled as "how much of this pixel was real data", then cut at a
@@ -4225,7 +4416,7 @@ def smooth_upsample(data, min_edge=None, max_edge=None):
     return out
 
 
-def render_png(values, lats, spec, out_path):
+def render_png(values, lats, spec, out_path, bounds=None):
     """
     Turn one field into an RGBA PNG the size of the grid.
 
@@ -4246,7 +4437,16 @@ def render_png(values, lats, spec, out_path):
     """
     data = spec["convert"](np.asarray(values, dtype=np.float32))
 
+    # Two limits, not one. The long edge is the old cap; the total is what
+    # memory actually cares about, and it is the one that lets the long edge
+    # be raised at all. A 3200 by 700 strip and a 3200 by 3000 square have
+    # the same longest side and differ by a factor of four in what a browser
+    # has to hold, so capping only the side made the cap either too tight for
+    # the strip or too loose for the square.
     step = max(1, int(np.ceil(max(data.shape) / float(MAX_EDGE_PX))))
+    total = data.shape[0] * data.shape[1]
+    if total > SMOOTH_MAX_TOTAL_PX:
+        step = max(step, int(np.ceil((total / SMOOTH_MAX_TOTAL_PX) ** 0.5)))
     if step > 1:
         # Picked with linspace rather than a plain [::step] slice so the first
         # and last cell are always kept. A slice drops up to step-1 cells off
@@ -4265,7 +4465,12 @@ def render_png(values, lats, spec, out_path):
     if lats is not None and len(lats) > 1 and lats[0] < lats[-1]:
         data = np.flipud(data)
 
-    data = smooth_upsample(data)
+    # The "direction" ramp is a hue wheel that comes back to where it started,
+    # which is the giveaway that the field it colours wraps too. That is the
+    # one flag smooth_upsample needs to interpolate it as a bearing rather
+    # than as a plain number.
+    data = smooth_upsample(data, min_edge=upsample_edge_for(data.shape, bounds),
+                           angular=(spec.get("ramp") == "direction"))
 
     lo, hi = spec["range"]
     norm = (data - lo) / float(hi - lo)
@@ -4493,6 +4698,47 @@ def _run_age_h(run_id, now=None):
     return ((now or datetime.now(timezone.utc)) - t).total_seconds() / 3600.0
 
 
+def prune_dead_storms(name, m, alive, keep_h=36.0):
+    """
+    Throw away the storms this model is no longer running.
+
+    A fixed region is a place and places do not go away, so nothing here ever
+    had to remove one. Storms do: an invest is watched for a day or two and
+    then either becomes a hurricane or stops existing, and a busy season puts
+    dozens of them through. Left alone, every one of them keeps its pictures
+    on the card for ever.
+
+    The menu already self-cleans, because _publish only lists what
+    regions_of returns and that is now read from the model's live directory.
+    This is the disk half of the same fact.
+
+    A grace period rather than deleting the moment a storm drops off the
+    list, because a model skips a cycle now and then, and a storm that comes
+    back an hour later should not have to be fetched again from nothing.
+    """
+    if not m.get("per_storm"):
+        return
+    base = os.path.join(OUT_DIR, name)
+    if not os.path.isdir(base):
+        return
+    keep = set(alive)
+    for reg in os.listdir(base):
+        d = os.path.join(base, reg)
+        if not os.path.isdir(d) or reg in keep:
+            continue
+        storm, _dom = split_storm_region(reg)
+        if not STORM_ID_RE.match(storm):
+            continue
+        try:
+            age_h = (time.time() - os.path.getmtime(d)) / 3600.0
+        except OSError:
+            continue
+        if age_h > keep_h:
+            log(f"  {name}: {reg} is no longer running, removing "
+                f"({age_h:.0f}h old)")
+            shutil.rmtree(d, ignore_errors=True)
+
+
 def prune(model_dir, keep_days=None):
     """Drop runs older than the archive window, by age rather than by count.
 
@@ -4592,37 +4838,122 @@ class Lock:
 # ── Main ────────────────────────────────────────────────────────────────────
 
 NHC_STORMS = "https://www.nhc.noaa.gov/CurrentStorms.json"
-_storms_cache = {"at": 0, "ids": []}
+_storms_cache = {}
+
+# One storm id as the hurricane models spell it: two digits and a basin
+# letter. 04l is the fourth Atlantic system of the season, 11e the eleventh
+# eastern Pacific one, 94w an invest in the western Pacific.
+STORM_ID_RE = re.compile(r"^(\d{2})([lecwabsp])$")
 
 
-def active_storms():
+def _storms_from_bucket(m, date_str, cyc):
     """
-    The storms the Hurricane Center currently lists, as HAFS names them.
+    The storms a model is actually running, read from its own directory.
 
-    HAFS publishes one run per storm, named for it: 05l is the fifth Atlantic
-    storm of the season, 03e the third eastern Pacific one. Nothing in a fixed
-    list can know that, so it is asked.
+    THIS USED TO ASK THE HURRICANE CENTER, and that was the bug. NHC's
+    CurrentStorms.json lists the systems NHC has advisories out on. The
+    hurricane models run on a good deal more than that:
 
-    Cached for the length of a build, because every HAFS model would otherwise
-    ask again for an answer that cannot have changed in the meantime.
+      - INVESTS. 94w, 95e, 96w, 97l are areas being investigated, and the
+        models run on them precisely because nobody yet knows whether they
+        will become anything. They are never in activeStorms.
+      - THE WESTERN PACIFIC. That is JTWC's basin, not NHC's, so NHC does not
+        list those systems at all, named or not.
+
+    Measured against the live bucket the day this was written: HAFS-A was
+    running seven storms (04l, 11e, 12e, 94w, 95e, 96w, 97l) and HAFS-B five
+    (04l, 11e, 12e, 95e, 97l), while NHC's list would have yielded two or
+    three. That is the whole of "there are four storms and I only have two".
+
+    So the question is asked of the thing that answers it: the model's own
+    output directory for the cycle being built. Nothing can be listed there
+    that has no data, and nothing with data can be missed.
     """
-    if time.time() - _storms_cache["at"] < 900:
-        return _storms_cache["ids"]
+    bucket = S3_MIRRORS.get(m.get("storm_bucket_key") or "")
+    prefix = (m.get("storm_prefix") or "").format(date=date_str, cyc=cyc)
+    if not bucket or not prefix:
+        return None
+    ids, token = set(), None
+    # A cycle holds a few thousand keys, so this pages. Capped at twenty
+    # pages: twenty thousand keys is far past any real cycle, and a cap means
+    # a bucket that somehow never stops cannot hang the build.
+    for _ in range(20):
+        url = (f"https://{bucket}.s3.amazonaws.com/?list-type=2"
+               f"&prefix={prefix}&max-keys=1000")
+        if token:
+            url += "&continuation-token=" + quote(token, safe="")
+        try:
+            r = http_get(url, timeout=45)
+            if r.status_code != 200:
+                return None
+        except requests.RequestException:
+            return None
+        body = r.text
+        for key in re.findall(r"<Key>([^<]*)</Key>", body):
+            tail = key[len(prefix):] if key.startswith(prefix) else key
+            head = tail.split(".", 1)[0].lower()
+            if STORM_ID_RE.match(head):
+                ids.add(head)
+        nxt = re.search(r"<NextContinuationToken>([^<]*)</NextContinuationToken>",
+                        body)
+        if not nxt:
+            break
+        token = nxt.group(1)
+    return sorted(ids)
+
+
+def _storms_from_nhc():
+    """
+    The Hurricane Center's own list, as a fallback.
+
+    Only reached when a model has no bucket to read, or the bucket could not
+    be listed. It undercounts, for the reasons above, but an undercount beats
+    nothing at all when the alternative is no hurricane model on the map.
+    """
     ids = []
     try:
         r = http_get(NHC_STORMS, timeout=30)
         if r.status_code == 200:
             for st in (r.json().get("activeStorms") or []):
-                # "al052026" is basin, number, year. HAFS wants "05l": the
-                # number, then one letter for the basin.
+                # "al052026" is basin, number, year. The models want "05l":
+                # the number, then one letter for the basin.
                 sid = str(st.get("id") or "").lower()
                 if len(sid) >= 8 and sid[:2] in ("al", "ep", "cp", "wp"):
                     ids.append(f"{sid[2:4]}{sid[0]}")
     except Exception as e:
         log(f"could not read the storm list: {e}")
-    _storms_cache.update(at=time.time(), ids=ids)
+    return sorted(set(ids))
+
+
+def active_storms(m=None, date_str=None, cyc=None):
+    """
+    The storms one model is running this cycle.
+
+    Per model, not once globally: HAFS-A and HAFS-B do not run the same set,
+    and neither does HWRF or HMON. Asking once and reusing the answer gave
+    every model whichever list happened to be fetched first.
+
+    Cached per model and cycle for a quarter hour, because each model asks
+    once per region and the answer cannot change inside a build.
+    """
+    if m is None:
+        return _storms_from_nhc()
+    if date_str is None or cyc is None:
+        date_str, cyc = cycle_for(m)
+    ck = (m.get("storm_prefix") or m.get("label") or "?", date_str, cyc)
+    hit = _storms_cache.get(ck)
+    if hit and time.time() - hit["at"] < 900:
+        return hit["ids"]
+
+    ids = _storms_from_bucket(m, date_str, cyc)
+    where = "its own directory"
+    if not ids:
+        ids = _storms_from_nhc()
+        where = "the Hurricane Center (no directory listing)"
+    _storms_cache[ck] = {"at": time.time(), "ids": ids}
     if ids:
-        log(f"active storms: {', '.join(ids)}")
+        log(f"{m.get('label', '?')}: {len(ids)} storms from {where}: "
+            + ", ".join(ids))
     return ids
 
 
@@ -4632,10 +4963,36 @@ def regions_of(m):
 
     A storm following model has no fixed regions: what exists depends on what
     is out there today, so its regions are the storms rather than places.
+
+    Each storm contributes TWO regions, one per domain. The hurricane models
+    publish a wide parent grid and a fine inner nest for the same storm, and
+    they are different pictures rather than two resolutions of one:
+
+      parent  0.06 deg (about 6 km), a fixed box roughly 100 by 50 degrees.
+              The storm in its surroundings: the steering flow, the ridge,
+              the dry air being pulled in.
+      storm   0.02 deg (about 2 km), a box about 20 by 16 degrees that MOVES
+              with the storm through the run. The eyewall, the bands, the
+              structure the parent grid cannot resolve at all.
+
+    Both figures measured off the real GRIB headers rather than taken from
+    documentation. The nest is three times finer per degree, which is most of
+    the answer to a hurricane looking soft on the map.
     """
     if m.get("per_storm"):
-        return active_storms()
+        out = []
+        for s in active_storms(m):
+            for dom in m.get("domains") or ["parent"]:
+                out.append(s if dom == "parent" else f"{s}-{dom}")
+        return out
     return list((m.get("regions") or {"conus": {}}).keys())
+
+
+def split_storm_region(key):
+    """A storm region as its storm and its domain: "04l-storm" is both."""
+    if key.endswith("-storm"):
+        return key[:-len("-storm")], "storm"
+    return key, "parent"
 
 
 def build_model(name, m, region="conus"):
@@ -4680,6 +5037,19 @@ def build_model(name, m, region="conus"):
     # actually kept is what stops the image being stretched to a rectangle it
     # does not fill.
     bounds_seen = None
+    # A MOVING DOMAIN NEEDS BOUNDS PER FRAME, not one for the run.
+    #
+    # Every fixed-domain model draws every hour on the same rectangle, so one
+    # bounds served the whole manifest. The hurricane models' inner nest is
+    # redrawn around the storm at each forecast hour: measured on 04l, the
+    # box slid from 280.7 E at f000 to 272.5 E at f072. Stretching all of
+    # those frames onto whichever rectangle happened to be recorded last puts
+    # the early hours some eight degrees of longitude, about eight hundred
+    # kilometres, from where they happened.
+    #
+    # So a moving model records what each frame actually covered, and the
+    # page draws each one on its own rectangle.
+    frame_bounds = {}
     for fhr in hours:
         with tempfile.NamedTemporaryFile(suffix=".grib2", delete=False) as tf:
             tmp = tf.name
@@ -4710,6 +5080,10 @@ def build_model(name, m, region="conus"):
                 # thing, and the difference is what puts a picture a few
                 # kilometres from where it belongs.
                 bounds_seen = bounds_from(lats, _lons)
+                if m.get("moving"):
+                    # Every field of one hour shares a grid, so the first one
+                    # to arrive settles the frame and the rest agree with it.
+                    frame_bounds.setdefault(fhr, bounds_seen)
                 # A model may override the scale. Spread is a distance, so
                 # the deterministic range would put every value at one end.
                 if m.get("ranges", {}).get(key) or m.get("ramp"):
@@ -4725,7 +5099,8 @@ def build_model(name, m, region="conus"):
                 scales[key] = {"lo": spec["range"][0], "hi": spec["range"][1],
                                "ramp": spec["ramp"]}
                 lo, hi = render_png(vals, lats, spec,
-                                    os.path.join(run_dir, f"{key}_f{fhr:03d}.png"))
+                                    os.path.join(run_dir, f"{key}_f{fhr:03d}.png"),
+                                    bounds=bounds_seen)
                 built.setdefault(key, []).append(fhr)
                 r = ranges.setdefault(key, [lo, hi])
                 r[0], r[1] = min(r[0], lo), max(r[1], hi)
@@ -4753,6 +5128,17 @@ def build_model(name, m, region="conus"):
                    for k, v in built.items()},
         "seconds": round(time.time() - t0, 1),
     }
+    if m.get("storm"):
+        manifest["storm"] = m["storm"]
+        manifest["domain"] = m.get("domain", "parent")
+        manifest["region_label"] = m.get("region_label")
+    if m.get("moving") and frame_bounds:
+        # Keyed by forecast hour as a string, because JSON has no integer
+        # keys and a reader that assumes otherwise gets undefined rather than
+        # a rectangle.
+        manifest["moving"] = True
+        manifest["frame_bounds"] = {str(k): v for k, v in
+                                    sorted(frame_bounds.items())}
     # Written last: a run that died halfway leaves no manifest, so the site
     # keeps serving the previous complete one rather than a half-built set.
     write_json(done, manifest)
@@ -4803,7 +5189,7 @@ def _runs_on_disk(name, region):
 
 def _index_entry(name, region, man):
     """One model's line in latest.json, which is all the page reads to start."""
-    return {
+    entry = {
         "label": man.get("label", name), "res": man.get("res", ""),
         "run": man["run"], "cycle": man.get("cycle", ""),
         "path": f"{name}/{region}/{man['run']}/manifest.json",
@@ -4814,6 +5200,13 @@ def _index_entry(name, region, man):
         # these by swapping the run segment of the path above.
         "runs": _runs_on_disk(name, region),
     }
+    # The storm-following extras, carried up into the index so the picker can
+    # group two domains of one storm together without fetching both manifests
+    # to find out they are related.
+    for k in ("storm", "domain", "moving", "region_label"):
+        if man.get(k) is not None:
+            entry[k] = man[k]
+    return entry
 
 
 def _publish(index, names, any_ok=True):
@@ -4885,7 +5278,14 @@ def main(models=None):
         if not m:
             log(f"unknown model: {name}")
             continue
-        for region in regions_of(m):
+        regs = regions_of(m)
+        # Done here rather than after building, so a season's worth of dead
+        # invests is off the card before this pass starts writing to it.
+        try:
+            prune_dead_storms(name, m, regs)
+        except Exception as e:
+            log(f"{name}: could not tidy old storms: {e}")
+        for region in regs:
             man = _newest_manifest(os.path.join(OUT_DIR, name, region))
             never = man is None
             sp = region_spec(m, region)
@@ -4893,7 +5293,8 @@ def main(models=None):
             # grid. Only ever compared against other models, so the units do
             # not matter, only the ordering.
             cost = (len(fhours_for(sp)) * MB_PER_HOUR.get(name, 5.0)
-                    * REGION_COST.get(region, 1.0))
+                    * (storm_region_cost(region) if m.get("per_storm")
+                       else REGION_COST.get(region, 1.0)))
             # Among things that already exist, the OLDEST run goes first.
             # Cost alone is a fixed order, so once a model has been built even
             # once it sits at the same place in the list for ever: the budget

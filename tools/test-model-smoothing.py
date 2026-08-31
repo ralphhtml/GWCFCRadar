@@ -112,9 +112,19 @@ ok("a field that is entirely missing comes back unchanged rather than raising",
    smooth(np.full((10, 10), np.nan, dtype=np.float32)).shape == (10, 10))
 
 print("\n4. it only ever adds pixels")
-fine = np.zeros((1100, 1400), dtype=np.float32)
+# 1100x1400 used to stand in for "already fine enough", but its long edge is
+# 1400 and the floor is 2000, so it was always going to be upsampled and this
+# check was always going to fail. It did, at every commit. A grid past the
+# floor is one whose LONG EDGE is past the floor, which is what the function
+# actually tests, so the fixture says that now.
+fine = np.zeros((int(MIN_EDGE * 0.8), MIN_EDGE + 200), dtype=np.float32)
 ok("a grid already past the floor is returned untouched",
    smooth(fine).shape == fine.shape, str(smooth(fine).shape))
+# And the case the old fixture was really describing: below the floor, it
+# grows, because that is the entire point of the function.
+coarse = np.zeros((240, 300), dtype=np.float32)
+ok("a grid below the floor is grown up to it",
+   max(smooth(coarse).shape) == MIN_EDGE, str(smooth(coarse).shape))
 ok("a grid at the cap is not pushed past it",
    max(smooth(np.zeros((MAX_EDGE, MAX_EDGE), dtype=np.float32)).shape) <= MAX_EDGE)
 
@@ -128,7 +138,12 @@ for shape in [(1, 1), (0, 0), (1, 50), (50, 1), (2, 2)]:
 
 print("\n6. it is wired into the one place every model field is written")
 ok("render_png smooths before it colours",
-   src.index("data = smooth_upsample(data)") < src.index('rgb = lut_for('))
+   # The call carries arguments now (a density-derived min_edge, and the
+   # angular flag that stops bearing fields being interpolated through the
+   # 0/360 wrap), so this matches the call rather than one exact spelling of
+   # it. What is being checked is the ORDER, which is the thing that matters:
+   # interpolate the values, then colour them.
+   src.index("data = smooth_upsample(data,") < src.index('rgb = lut_for('))
 ok("the interpolation happens on values, not on finished colours",
    "smooth_upsample" not in src[src.index("rgb = lut_for("):
                                 src.index("rgb = lut_for(") + 400])

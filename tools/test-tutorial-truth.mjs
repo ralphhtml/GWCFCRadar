@@ -210,8 +210,13 @@ console.log('\n5. house rules');
                  'tools/audit-tutorial.mjs'];
   const bad = files.filter(f => readFileSync(join(ROOT, f), 'utf8').includes(EM));
   ok('no em dashes', bad.length === 0, bad.join(', '));
-  ok('the update bar says what changed',
-     /const APP_LATEST_UPDATE = 'The tutorial was rewritten/.test(PAGE));
+  // This used to pin the update bar to the exact sentence shipped with the
+  // tutorial rewrite, which made every LATER change fail a test about the
+  // tutorial. The bar is rewritten on purpose at every change; what this
+  // suite can honestly hold it to is that it says something at all.
+  const bar = (PAGE.match(/const APP_LATEST_UPDATE = '([\s\S]*?)';\n/) || [])[1];
+  ok('the update bar carries a message', !!bar && bar.length > 20,
+     bar ? String(bar.length) : 'missing');
 }
 
 console.log(fail ? `\n${fail} FAILED, ${pass} passed` : `\nall ${pass} passed`);
