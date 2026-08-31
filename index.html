@@ -48316,6 +48316,14 @@ function selectProduct(p) {
         <option value="midnight">Midnight</option>
         <option value="slate">Slate</option>
         <option value="storm">Storm Green</option>
+        <option value="ocean">Deep Ocean</option>
+        <option value="ember">Ember</option>
+        <option value="forest">Forest</option>
+        <option value="nord">Nord</option>
+        <option value="violet">Violet</option>
+        <option value="desert">Desert</option>
+        <option value="carbon">Carbon</option>
+        <option value="paper">Paper (light)</option>
       </select>
     </div>
 
@@ -48458,6 +48466,86 @@ const THEME_PRESETS = {
       '--grad-raise':   { type: 'grad', angle: 180, stops: ['#1d6b48', '#0e3d29'] },
       '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#268a5c', '#145236'] },
       '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#04160e', '#0f3122'] } } },
+  ocean: { label: 'Deep Ocean',
+    tokens: { '--bg': '#04121f', '--surface': '#08203a', '--panel': '#0b2b4d',
+              '--border': '#1b5285', '--border2': '#1b5285', '--accent': '#7fdbff',
+              '--accent2': '#4bc0a5', '--text': '#dcefff', '--muted': '#6f93b5', },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ['#123f6b', '#0a2542', '#04121f'] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ['#10365c', '#071c31'] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ['#155a94', '#0b3560'] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#1c76bd', '#10457c'] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#04121f', '#0e3054'] } } },
+  ember: { label: 'Ember',
+    tokens: { '--bg': '#1a0a04', '--surface': '#2a1108', '--panel': '#38180b',
+              '--border': '#7a3418', '--border2': '#7a3418', '--accent': '#ffb454',
+              '--accent2': '#ff7043', '--text': '#ffe8d6', '--muted': '#a8795e', },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ['#4a2010', '#2d1208', '#180803'] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ['#3d1a0c', '#1f0c05'] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ['#7a3517', '#48200e'] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#9c4520', '#5e2a12'] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#180803', '#3a190c'] } } },
+  forest: { label: 'Forest',
+    tokens: { '--bg': '#071408', '--surface': '#0d2211', '--panel': '#122e17',
+              '--border': '#2a5c33', '--border2': '#2a5c33', '--accent': '#a3e635',
+              '--accent2': '#4ade80', '--text': '#e3f5e6', '--muted': '#7a9a80', },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ['#1a4022', '#102916', '#07140a'] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ['#16351c', '#0b1d0f'] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ['#255c31', '#143620'] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#31783f', '#1c4a2b'] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#07140a', '#193d21'] } } },
+  nord: { label: 'Nord',
+    tokens: { '--bg': '#2e3440', '--surface': '#3b4252', '--panel': '#434c5e',
+              '--border': '#4c566a', '--border2': '#4c566a', '--accent': '#88c0d0',
+              '--accent2': '#a3be8c', '--text': '#eceff4', '--muted': '#8a94a6', },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ['#4c566a', '#3b4252', '#2e3440'] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ['#434c5e', '#333a48'] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ['#5e81ac', '#455a7d'] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#729ac9', '#4f6c96'] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#2e3440', '#3f4859'] } } },
+  violet: { label: 'Violet',
+    tokens: { '--bg': '#12081f', '--surface': '#1c0f33', '--panel': '#261546',
+              '--border': '#4a2a80', '--border2': '#4a2a80', '--accent': '#c4a2ff',
+              '--accent2': '#65d6c0', '--text': '#ece2ff', '--muted': '#8a7aa8', },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ['#3a2168', '#231340', '#12081f'] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ['#2f1a55', '#180c2c'] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ['#5a34a0', '#361d63'] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#7345c4', '#452680'] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#12081f', '#2c1852'] } } },
+  desert: { label: 'Desert',
+    tokens: { '--bg': '#1c1408', '--surface': '#2b2010', '--panel': '#3a2c16',
+              '--border': '#6b5228', '--border2': '#6b5228', '--accent': '#ffd166',
+              '--accent2': '#e07a5f', '--text': '#fdf1dc', '--muted': '#a8926b', },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ['#4d3a1d', '#2f2411', '#1a1308'] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ['#40301a', '#221a0d'] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ['#7a5c2c', '#4a3819'] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#9c7638', '#604a21'] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#1a1308', '#3c2d16'] } } },
+  carbon: { label: 'Carbon',
+    tokens: { '--bg': '#0a0a0b', '--surface': '#131316', '--panel': '#1b1b1f',
+              '--border': '#2e2e34', '--border2': '#2e2e34', '--accent': '#e5e5e8',
+              '--accent2': '#7dd3fc', '--text': '#f4f4f6', '--muted': '#8a8a94', },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ['#232329', '#17171b', '#0d0d0f'] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ['#1f1f24', '#121215'] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ['#33333b', '#1f1f25'] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#43434d', '#2b2b33'] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#0d0d0f', '#26262d'] } } },
+  paper: { label: 'Paper (light)',
+    tokens: { '--bg': '#eef1f5', '--surface': '#f7f9fc', '--panel': '#ffffff',
+              '--border': '#c9d3e0', '--border2': '#c9d3e0', '--accent': '#b45309',
+              '--accent2': '#0369a1', '--text': '#16202e', '--muted': '#5c6b7f', '--warn': '#b45309', '--danger': '#b91c1c', '--success': '#15803d', },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ['#ffffff', '#f2f5f9', '#e6ebf2'] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ['#ffffff', '#f0f4f8'] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ['#e8edf4', '#d4dde8'] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#f2f6fb', '#e0e7f0'] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#dbe3ec', '#eef2f7'] } } },
 };
 
 // ── THE PARTS YOU CAN POINT AT ───────────────────────────────────────────
@@ -48574,6 +48662,13 @@ function themePartColor(id, which, c) {
 // identically every time the menu is, so a colour attached to one survives a
 // redraw. An element with no id cannot be told apart from its siblings next
 // time the page loads, so it is offered as its kind and the panel says so.
+// A selector like '.sub-bubble' or '#play-btn' is not a legal element id, so
+// the block that edits it gets a name derived from the selector rather than
+// the selector itself.
+function _themeDomId(sel) {
+  return 'themeblk-' + String(sel).replace(/[^A-Za-z0-9_-]/g, '_');
+}
+
 function _themeItemKey(el) {
   if (!el || !el.id) return null;
   // The key is written straight into a selector, so the id has to look like
@@ -48679,8 +48774,58 @@ function _pickKey(e) {
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); themePickStop(); }
 }
 
-// What was actually pointed at. Walks outward from the element under the
-// cursor, first match wins, which is why the list is ordered specific first.
+// What was actually pointed at.
+//
+// The curated list is tried first, because those are the twelve things worth
+// having a proper name for. But the app is far bigger than twelve things, and
+// "that is not something with its own color yet" is a useless answer to
+// somebody pointing at a thing they can plainly see. So anything else falls
+// back to whatever the element itself offers: its id for that one element,
+// and a class for every element like it.
+//
+// Between them those cover the app, because everything on screen is either
+// identified or classed, and if a particular node is neither then one of its
+// parents within a few steps will be.
+
+// Classes that describe a STATE rather than a kind. Colouring `.active` would
+// mean the colour appears and disappears as things are switched on and off,
+// which is not what anyone means by "make this button green".
+const THEME_SKIP_CLASSES = new Set([
+  'active', 'on', 'off', 'open', 'closed', 'visible', 'hidden', 'show', 'hide',
+  'expanded', 'collapsed', 'selected', 'disabled', 'dragging', 'has',
+  'theme-pick-hot', 'theme-part-flash', 'leaflet-interactive',
+]);
+const THEME_NAME_RE = /^[A-Za-z][\w-]*$/;
+
+// The most useful class on an element: the first that names a kind rather
+// than a state. Deliberately the FIRST rather than the longest, since the
+// convention in this file is that the kind is written first and the
+// modifiers after it.
+function _themeClassKey(el) {
+  if (!el || !el.classList) return null;
+  for (const c of el.classList) {
+    if (THEME_SKIP_CLASSES.has(c)) continue;
+    if (!THEME_NAME_RE.test(c)) continue;
+    return '.' + c;
+  }
+  return null;
+}
+
+// Something worth colouring is something that has a background or a border of
+// its own. A bare span inside a button is not the button, and colouring it
+// would look like nothing happened.
+function _themePaintable(el) {
+  if (!el || el.nodeType !== 1) return false;
+  if (el === document.body || el === document.documentElement) return false;
+  const cs = getComputedStyle(el);
+  const bg = cs.backgroundColor;
+  const hasBg = bg && bg !== 'transparent' && !/rgba\(0, 0, 0, 0\)/.test(bg);
+  const hasImg = cs.backgroundImage && cs.backgroundImage !== 'none';
+  const hasBorder = parseFloat(cs.borderTopWidth) > 0
+    || parseFloat(cs.borderLeftWidth) > 0;
+  return hasBg || hasImg || hasBorder;
+}
+
 function themePickMatch(el) {
   if (!el || !el.closest) return null;
   for (let i = 0; i < THEME_PARTS.length; i++) {
@@ -48689,7 +48834,31 @@ function themePickMatch(el) {
     try { hit = el.closest(pt.sel); } catch (e) { hit = null; }
     if (hit) return { part: pt, el: hit };
   }
+  // Nothing curated. Walk up for the nearest thing that actually paints
+  // something, and name it from what it already carries.
+  let node = el, steps = 0;
+  while (node && node.nodeType === 1 && steps++ < 8) {
+    if (node === document.body) break;
+    if (_themePaintable(node)) {
+      const cls = _themeClassKey(node);
+      const id = (node.id && THEME_NAME_RE.test(node.id)) ? '#' + node.id : null;
+      if (cls || id) {
+        return { part: { id: cls || id, l: _themeAutoLabel(node, cls, id),
+                         sel: cls || id, auto: true }, el: node };
+      }
+    }
+    node = node.parentElement;
+  }
   return null;
+}
+
+// A name a person can recognise later in a list, rather than a selector.
+function _themeAutoLabel(el, cls, id) {
+  const t = (el.getAttribute('title') || '').trim();
+  const txt = (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 22);
+  const base = txt || t || '';
+  const what = cls || id;
+  return base ? (base + ' [' + what + ']') : what;
 }
 
 function _pickMove(e) {
@@ -48726,6 +48895,16 @@ function _pickClick(e) {
     return;
   }
   _themeFocusPart = m.part.id;
+  // A kind the curated list does not know is kept in the same store the
+  // single elements use, keyed by its selector. That is what makes this work
+  // on the rest of the app rather than on twelve things.
+  if (m.part.auto) {
+    if (!_theme.items) _theme.items = {};
+    if (!_theme.items[m.part.sel]) {
+      _theme.items[m.part.sel] = { label: m.part.l };
+      _themeSave();
+    }
+  }
   // Both are offered: the one you clicked, and every one like it. Which of
   // those was meant is genuinely ambiguous, and guessing wrong either buries
   // the change or spreads it across the whole menu.
@@ -48744,7 +48923,8 @@ function _pickClick(e) {
   if (typeof lqmSettingsCat === 'function') lqmSettingsCat('app-colors');
   setTimeout(() => {
     const blk = document.getElementById(
-      _themeFocusItem ? ('item-' + _themeFocusItem.slice(1)) : ('part-' + m.part.id));
+      _themeFocusItem ? _themeDomId(_themeFocusItem)
+        : (m.part.auto ? _themeDomId(m.part.sel) : ('part-' + m.part.id)));
     if (blk) {
       blk.scrollIntoView({ block: 'center', behavior: 'smooth' });
       blk.classList.add('theme-part-flash');
@@ -48915,7 +49095,8 @@ function themeImport() {
   // Single elements, same treatment. The key becomes a selector, so it has
   // to be an id selector and nothing else.
   Object.keys(raw.items || {}).forEach(k => {
-    if (!/^#[A-Za-z][\w-]*$/.test(k)) return;
+    // Either shape, and nothing else: these become selectors.
+    if (!/^[#.][A-Za-z][\w-]*$/.test(k)) return;
     const src = raw.items[k] || {};
     const o = { label: String(src.label || k).slice(0, 40) };
     if (src.bg) {
@@ -49008,7 +49189,7 @@ function _themeRenderItems() {
     const on = !!(raw.bg || raw.text || raw.border);
     return _themeBlockHtml({
       key: sel, label: cfg.label, cfg: cfg, on: on,
-      domId: 'item-' + sel.slice(1),
+      domId: _themeDomId(sel),
       fnBg: 'themeItemBg', fnStop: 'themeItemStop',
       fnColor: 'themeItemColor', fnClear: 'themeItemClear' });
   }).join('');
@@ -56716,7 +56897,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'Two additions to App Colors. There is a Reset all app colors button at the top of the card, which puts the theme, the surfaces and anything you picked out individually back the way it shipped. And you can now colour ONE button rather than every button of its kind: pick an element and the panel offers both, the one you clicked at the top and every one like it below. It works on anything with a stable name, which is every layer bubble, tool button and playback control, so the colour survives the menu being rebuilt.';
+const APP_LATEST_UPDATE = 'Pick an element now works on the whole app, not just the twelve things it knew by name. Point at anything that draws a background or a border and it will offer you that one element and every element like it, naming both from what they already carry. State classes like active are skipped on purpose, since a colour that comes and goes as things switch on and off is not what anyone means. There are also eight more themes: Deep Ocean, Ember, Forest, Nord, Violet, Desert, Carbon and Paper, which is a proper light theme.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
