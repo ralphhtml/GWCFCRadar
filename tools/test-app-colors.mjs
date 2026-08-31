@@ -107,6 +107,64 @@ console.log('\n3. the editor');
      /those stand for measurements rather than/.test(PAGE));
 }
 
+console.log('\n3b. pointing at one thing on screen');
+{
+  ok('there is a pick button', /onclick="themePickStart\(\)"/.test(PAGE));
+  ok('settings closes first, since the thing is usually under the panel',
+     /function themePickStart\(\)[\s\S]{0,220}lqmCloseSettings\(\)/.test(PAGE));
+  ok('a banner says what to do and how to stop',
+     /Click the thing you want to recolor\./.test(PAGE)
+     && /onclick="themePickStop\(\)"/.test(PAGE));
+  ok('Escape backs out, so the mode is not a trap',
+     /function _pickKey\(e\)[\s\S]{0,120}themePickStop\(\)/.test(PAGE));
+  // Picking the Radar bubble must not also turn radar on.
+  ok('the pick click is swallowed in the capture phase',
+     /_pickClick, true\)/.test(PAGE)
+     && /e\.preventDefault\(\);\s*\n\s*e\.stopPropagation\(\);/.test(PAGE));
+  ok('every listener it adds is removed again',
+     (PAGE.match(/document\.addEventListener\('(mousemove|click|keydown)', _pick/g) || []).length === 3
+     && (PAGE.match(/document\.removeEventListener\('(mousemove|click|keydown)', _pick/g) || []).length === 3);
+  ok('hovering shows what will be taken', /theme-pick-hot/.test(PAGE));
+  ok('and clicking something with no colour of its own says so',
+     /That is not something with its own color yet\./.test(PAGE));
+  ok('a pick lands back in App Colors on the right block',
+     /lqmSettingsCat\('app-colors'\)/.test(PAGE)
+     && /scrollIntoView\(\{ block: 'center'/.test(PAGE)
+     && /theme-part-flash/.test(PAGE));
+}
+
+console.log('\n3c. the parts, and how they are written');
+{
+  const list = (PAGE.match(/const THEME_PARTS = \[[\s\S]*?\n\];/) || [''])[0];
+  const PARTS = new Function(list + '\nreturn THEME_PARTS;')();
+  ok('twelve parts are offered', PARTS.length === 12, String(PARTS.length));
+  ok('covering bubbles, tools, the search bar and the playback bar',
+     ['bubble-main', 'tool-btn', 'search', 'anim-btn', 'animbar', 'popup']
+       .every(id => PARTS.some(p => p.id === id)));
+  // A main bubble also matches .sub-bubble, so order decides which it reads
+  // as, and getting it backwards would restyle the whole menu silently.
+  const iMain = PARTS.findIndex(p => p.id === 'bubble-main');
+  const iSub = PARTS.findIndex(p => p.id === 'bubble-sub');
+  ok('the specific selector is tried before the general one', iMain < iSub,
+     iMain + ' vs ' + iSub);
+  ok('the same is true of the playback buttons and their bar',
+     PARTS.findIndex(p => p.id === 'anim-btn') < PARTS.findIndex(p => p.id === 'animbar'));
+  ok('one stylesheet is rewritten whole, never appended to',
+     /_partStyleEl\.textContent = out\.join/.test(PAGE)
+     && /Appending rules would pile up a new one on/.test(PAGE));
+  // One line's worth: the sentence wraps across comment lines.
+  ok('and it is the override layer, which is why it is important',
+     /the override layer/.test(PAGE));
+  ok('the per-part sheet is applied at boot, not only in Settings',
+     /DOMContentLoaded', function \(\) \{ _themePartsApply\(\); \}/.test(PAGE));
+  ok('reset clears the injected sheet too',
+     /_themePartsApply\(\);   \/\/ or the injected sheet survives the reset/.test(PAGE));
+  ok('switching theme drops per-part overrides rather than stranding one',
+     /Keeping per-part overrides across a theme/.test(PAGE));
+  ok('imported parts are rebuilt like everything else',
+     /const knownP = new Set\(THEME_PARTS\.map/.test(PAGE));
+}
+
 console.log('\n4. recolouring a real page');
 let chromium;
 try { ({ chromium } = await import('playwright')); } catch {}
@@ -120,8 +178,13 @@ else {
   p.on('pageerror', e => errs.push(e.message));
   await p.goto('file://' + join(ROOT, 'index.html'), { waitUntil: 'domcontentloaded' });
   await p.waitForTimeout(2500);
-  const r = await p.evaluate(() => {
+  const r = await p.evaluate(async () => {
     const out = {};
+    // Replacing a stylesheet's text is not visible to getComputedStyle in the
+    // same synchronous block: Chromium re-parses on the next tick. Reading
+    // straight after a change reports the OLD value, which is a property of
+    // the test rather than of the page.
+    const settled = () => new Promise(r => setTimeout(r, 60));
     const root = document.documentElement;
     const read = v => getComputedStyle(root).getPropertyValue(v).trim();
     out.shippedAccent = read('--accent');
@@ -159,6 +222,33 @@ else {
     out.accentAfterHostile = read('--accent');
     out.styleAttr = root.getAttribute('style') || '';
 
+    // The pick flow, driven the way a person drives it.
+    themePickStart();
+    out.picking = document.body.classList.contains('theme-picking');
+    out.bar = !!document.getElementById('theme-pick-bar');
+    const bub = document.createElement('div');
+    bub.className = 'sub-bubble sub-bubble-main';
+    document.body.appendChild(bub);
+    const inner = document.createElement('span');
+    bub.appendChild(inner);
+    // Clicking the label inside a bubble has to resolve to the bubble.
+    out.matched = (themePickMatch(inner) || {}).part;
+    out.matchedId = out.matched && out.matched.id;
+    themePickStop();
+    out.stopped = !document.body.classList.contains('theme-picking');
+
+    // Colour that part and check a real element on screen changes.
+    themePartBg('bubble-main', { type: 'solid', color: '#00ff00' });
+    themePartColor('bubble-main', 'text', '#ff00ff');
+    await settled();
+    out.bubbleBg = getComputedStyle(bub).backgroundImage;
+    out.bubbleText = getComputedStyle(bub).color;
+    out.sheet = (document.getElementById('gwcfc-part-colors') || {}).textContent || '';
+    themePartClear('bubble-main');
+    await settled();
+    out.afterClear = getComputedStyle(bub).backgroundImage;
+    bub.remove();
+
     themeReset();
     out.finalAccent = read('--accent');
     return out;
@@ -185,6 +275,18 @@ else {
   ok('and nothing of it reached the style attribute',
      !/url\(|javascript:/.test(r.styleAttr), r.styleAttr.slice(0, 120));
   ok('reset clears back to shipped once more', r.finalAccent === r.shippedAccent);
+  ok('pick mode turns on', r.picking && r.bar);
+  ok('and clicking inside a bubble resolves to the bubble, not the label',
+     r.matchedId === 'bubble-main', String(r.matchedId));
+  ok('cancelling turns it off again', r.stopped);
+  ok('colouring a part changes a real element on screen',
+     /0, 255, 0/.test(r.bubbleBg), r.bubbleBg.slice(0, 80));
+  ok('and its text with it', r.bubbleText === 'rgb(255, 0, 255)', r.bubbleText);
+  ok('the injected sheet holds only the part that was changed',
+     r.sheet.indexOf('.sub-bubble-main{') === 0
+     && r.sheet.split('\n').length === 1, r.sheet.slice(0, 90));
+  ok('back to default really removes it',
+     !/0, 255, 0/.test(r.afterClear), r.afterClear.slice(0, 60));
   ok('no uncaught page errors', errs.length === 0, errs.join(' | '));
 }
 
