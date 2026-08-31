@@ -128,7 +128,9 @@ console.log('\n2. a brand-new visitor is asked, and Lite-ning answers for them')
      JSON.stringify(lite.bubbles));
   ok('the drawing and measuring rail is gone', lite.railGone);
   ok('so is the overlay launcher', lite.launcherGone);
-  ok('the logo menu switch names the mode', lite.modeLabel === 'Lite-ning',
+  // The button is an action, so it names its destination: in Lite-ning it
+  // reads Wx-pert, which is the way back at a glance.
+  ok('the logo menu switch points the way back', lite.modeLabel === 'Wx-pert',
      lite.modeLabel);
 
   // Its radar menu speaks plain words.
@@ -160,8 +162,61 @@ console.log('\n2. a brand-new visitor is asked, and Lite-ning answers for them')
   ok('the switch flips back to Wx-pert', back.saved === 'expert', back.saved);
   ok('all eight bubbles return', back.bubbles === 8, String(back.bubbles));
   ok('and so do the tools', back.railBack);
-  ok('with the label following', back.modeLabel === 'Wx-pert', back.modeLabel);
+  ok('with the label pointing at Lite-ning again', back.modeLabel === 'Lite-ning',
+     back.modeLabel);
   await p.close();
+}
+
+console.log('\n4. on a phone, the six-button row fits and nothing hides under it');
+{
+  // The regression this pins: the sixth button pushed the always-shown quick
+  // menu past both screen edges on a phone, printing SETTINGS over the layer
+  // bubbles and cutting the mode switch off entirely.
+  const p = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  p.on('pageerror', e => errsAll.push(String(e).slice(0, 180)));
+  await p.addInitScript(() => {
+    try { localStorage.setItem('gwcfc_tutorial_seen', '1'); } catch (e) {}
+  });
+  await p.route('**://**', route => {
+    const url = route.request().url();
+    if (url.startsWith('file://')) return route.continue();
+    if (url.includes('leaflet') && url.endsWith('.js'))
+      return route.fulfill({ contentType: 'application/javascript',
+        body: readFileSync(join(LEAFLET, 'leaflet.js'), 'utf8') });
+    if (url.includes('leaflet') && url.endsWith('.css'))
+      return route.fulfill({ contentType: 'text/css',
+        body: readFileSync(join(LEAFLET, 'leaflet.css'), 'utf8') });
+    return route.abort();
+  });
+  await p.goto('file://' + join(ROOT, 'index.html'),
+               { waitUntil: 'domcontentloaded' });
+  await p.waitForTimeout(4600);
+  const m = await p.evaluate(() => {
+    const qm = document.getElementById('logo-quick-menu');
+    const r = qm.getBoundingClientRect();
+    const bubbles = document.getElementById('sub-bubbles');
+    const br = bubbles ? bubbles.getBoundingClientRect() : null;
+    return {
+      open: qm.classList.contains('lqm-open'),
+      left: Math.round(r.left), right: Math.round(r.right),
+      bottom: Math.round(r.bottom),
+      vw: innerWidth,
+      buttons: qm.querySelectorAll('.lqm-btn').length,
+      bubblesTop: br ? Math.round(br.top) : null,
+      clearVar: getComputedStyle(document.documentElement)
+        .getPropertyValue('--lqm-clear').trim(),
+    };
+  });
+  await p.close();
+  ok('the menu is open with all six buttons', m.open && m.buttons === 6,
+     JSON.stringify(m));
+  ok('and fits inside the screen, both edges',
+     m.left >= 0 && m.right <= m.vw, `${m.left}..${m.right} of ${m.vw}`);
+  ok('the clearance was measured off its real bottom edge',
+     parseInt(m.clearVar) >= m.bottom, `${m.clearVar} vs bottom ${m.bottom}`);
+  ok('so the layer bubbles start below it, not underneath it',
+     m.bubblesTop === null || m.bubblesTop >= m.bottom,
+     `bubbles ${m.bubblesTop} vs menu bottom ${m.bottom}`);
 }
 
 console.log('\n3. the choice is remembered, and old friends are never quizzed');

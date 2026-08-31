@@ -2029,7 +2029,12 @@ body {
    these unconditional desktop rules, since equal-specificity CSS rules
    resolve by source order, not by which one is inside a media query. */
 @media (max-width: 480px) {
-  #sub-bubbles, #right-menu { top: 90px; bottom: auto; }
+  /* Measured, not guessed: the quick menu starts shown now and is two rows
+     deep on the narrowest phones, so a fixed 90px put the layer bubbles
+     underneath it. _syncFabClearance writes --lqm-clear from the menu's
+     real bottom edge and re-measures when the menu opens or closes; 90px
+     stays as the floor for when it is hidden. */
+  #sub-bubbles, #right-menu { top: var(--lqm-clear, 90px); bottom: auto; }
 }
 /* Landscape phones (e.g. iPhone/Pixel rotated: ~390-400px tall but 800+px
    wide) never trip the max-width breakpoints above, so they were still
@@ -6114,6 +6119,22 @@ body.shot-mode > button {
   text-transform: uppercase;
   color: rgba(255,255,255,0.65);
   white-space: nowrap;
+}
+/* Six buttons have to fit a phone. This row was sized once, on desktop, for
+   five buttons; the sixth (the mode switch) pushed it past both screen edges
+   on a phone, printing SETTINGS over the layer bubbles on the left and
+   cutting the new button off on the right. Shrink to fit, and wrap to a
+   second line as the last resort, so the row can never run off screen again
+   however many buttons it grows. */
+@media (max-width: 768px) {
+  #logo-quick-menu { gap: 6px; flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 16px); }
+  .lqm-icon-wrap { width: 38px; height: 38px; border-radius: 11px; }
+  .lqm-label { font-size: 7px; letter-spacing: 0.5px; }
+}
+@media (max-width: 480px) {
+  #logo-quick-menu { gap: 4px; }
+  .lqm-icon-wrap { width: 33px; height: 33px; border-radius: 10px; }
+  .lqm-label { font-size: 6.5px; letter-spacing: 0.3px; }
 }
 /* Top-right search bar , always visible, no open/close toggle.
    Anchored purely with `right` + `max-width`, no `left`. This used to also
@@ -32624,6 +32645,20 @@ function _syncFabClearance() {
   const btnHeight = Math.max(aiBtn ? aiBtn.getBoundingClientRect().height : 0, toggleBtn ? toggleBtn.getBoundingClientRect().height : 0) || 58;
   const menuClearance = Math.round(clearance + btnHeight + 12);
   document.documentElement.style.setProperty('--menu-clearance', menuClearance + 'px');
+  // Where the top-anchored phone menus may begin: just under the quick menu
+  // while it is open (it starts shown now, and wraps to two rows on narrow
+  // phones), and at the old 90px floor when it is hidden. Measured off the
+  // real element for the same reason --menu-clearance is: the height is a
+  // question, not a constant.
+  try {
+    const qm = document.getElementById('logo-quick-menu');
+    let clear = 90;
+    if (qm && qm.classList.contains('lqm-open')) {
+      const r = qm.getBoundingClientRect();
+      if (r.height > 0) clear = Math.max(90, Math.round(r.bottom) + 8);
+    }
+    document.documentElement.style.setProperty('--lqm-clear', clear + 'px');
+  } catch (e) {}
 }
 window.addEventListener('resize', _syncFabClearance);
 window.addEventListener('orientationchange', () => setTimeout(_syncFabClearance, 250));
@@ -50145,6 +50180,10 @@ document.addEventListener('webkitfullscreenchange', _fsSync);
     _menuOpen = true;
     const menu = document.getElementById('logo-quick-menu');
     if (menu) menu.classList.add('lqm-open');
+    // The phone bubble columns start below this menu, so its edge has to be
+    // re-measured whenever it appears; after the transition, so the measure
+    // reads where it lands rather than where it started.
+    if (typeof _syncFabClearance === 'function') setTimeout(_syncFabClearance, 260);
   }
 
   function _closeMenu() {
@@ -50156,6 +50195,7 @@ document.addEventListener('webkitfullscreenchange', _fsSync);
     _menuOpen = false;
     const menu = document.getElementById('logo-quick-menu');
     if (menu) menu.classList.remove('lqm-open');
+    if (typeof _syncFabClearance === 'function') setTimeout(_syncFabClearance, 260);
     // Settings intentionally NOT auto-closed here - it should only close via
     // its own close button or by clicking the Settings menu item again,
     // not from an unrelated outside click or the quick-menu hover timeout.
@@ -55750,8 +55790,12 @@ function _setMode(m, opts) {
 function _modeApply() {
   const lite = _isLite();
   document.body.classList.toggle('lite-mode', lite);
+  // The button is an action, so it names its DESTINATION, not the current
+  // state: in Lite-ning it reads Wx-pert, which is also how somebody who
+  // tapped it out of curiosity sees the way back at a glance. The Settings
+  // dropdown is the one that states which mode is on.
   const lbl = document.getElementById('lqm-mode-label');
-  if (lbl) lbl.textContent = lite ? 'Lite-ning' : 'Wx-pert';
+  if (lbl) lbl.textContent = lite ? 'Wx-pert' : 'Lite-ning';
   const sel = document.getElementById('lqm-set-mode');
   if (sel) sel.value = lite ? 'lite' : 'expert';
   try {
@@ -58239,7 +58283,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'The app now comes in two modes. Your first visit asks one question: Wx-pert (everything, exactly as before) or Lite-ning (just the live radar, warnings and your local forecast, with the expert tools and menus cleared away and the radar menu in plain words). Pick either and switch any time with the new button in the menu under the logo, or in Settings under Display. Anyone who has used the app before is never asked and stays in full Wx-pert mode automatically.';
+const APP_LATEST_UPDATE = 'Fixed the phone layout the new mode switch broke: the six buttons under the logo now shrink to fit your screen and wrap to a second row instead of running off both edges, and the layer bubbles start below the menu instead of underneath it. The mode button also now names where it takes you, so in Lite-ning it reads Wx-pert, the way back.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
