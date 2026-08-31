@@ -165,6 +165,42 @@ console.log('\n3c. the parts, and how they are written');
      /const knownP = new Set\(THEME_PARTS\.map/.test(PAGE));
 }
 
+console.log('\n3d. one button rather than every button');
+{
+  ok('a single element is keyed by its id',
+     /function _themeItemKey\(el\)/.test(PAGE));
+  // The key is written straight into a selector.
+  ok('and only if the id looks like an id',
+     /\/\^\[A-Za-z\]\[\\w-\]\*\$\/\.test\(el\.id\)/.test(PAGE));
+  ok('picking offers both the one clicked and every one like it',
+     /Both are offered: the one you clicked, and every one like it/.test(PAGE));
+  ok('and lands on the single element when there is one',
+     /_themeFocusItem \? \('item-' \+ _themeFocusItem\.slice\(1\)\)/.test(PAGE));
+  ok('id rules are written after class rules, in the order they take effect',
+     /Kinds first, then single elements/.test(PAGE));
+  ok('one block builder serves both, so the two cannot drift',
+     (PAGE.match(/function _themeBlockHtml\(o\)/g) || []).length === 1);
+  ok('there is a per element clear', /function themeItemClear\(sel\)/.test(PAGE));
+  ok('an imported item key has to be an id selector',
+     /if \(!\/\^#\[A-Za-z\]\[\\w-\]\*\$\/\.test\(k\)\) return;/.test(PAGE));
+  ok('the label is escaped, since it comes off the element on screen',
+     /_mbEsc\(o\.label\)/.test(PAGE));
+  ok('an element with no id is explained rather than silently ignored',
+     /An element with no id cannot be told apart from its siblings next/.test(PAGE));
+}
+
+console.log('\n3e. reset all');
+{
+  ok('there is a reset all button at the top of the card',
+     /<button class="lqm-settings-btn" onclick="themeReset\(\)">Reset all app colors<\/button>/.test(PAGE));
+  // Two buttons doing the same thing is a question about which is which.
+  ok('and only one of them', (PAGE.match(/onclick="themeReset\(\)"/g) || []).length === 1);
+  ok('it says what it covers and what it leaves alone',
+     /It does not touch radar, model or satellite colors\./.test(PAGE));
+  ok('and it clears single elements too',
+     /_theme = \{ tokens: \{\}, surfaces: \{\}, parts: \{\}, items: \{\} \};/.test(PAGE));
+}
+
 console.log('\n4. recolouring a real page');
 let chromium;
 try { ({ chromium } = await import('playwright')); } catch {}
@@ -249,7 +285,32 @@ else {
     out.afterClear = getComputedStyle(bub).backgroundImage;
     bub.remove();
 
+    // One element, not the kind.
+    const one = document.createElement('div');
+    one.className = 'sub-bubble sub-bubble-main';
+    one.id = 'sub-testonly';
+    document.body.appendChild(one);
+    const two = document.createElement('div');
+    two.className = 'sub-bubble sub-bubble-main';
+    document.body.appendChild(two);
+    out.itemKey = _themeItemKey(one);
+    themeItemBg('#sub-testonly', { type: 'solid', color: '#0000ff' });
+    await settled();
+    out.oneBg = getComputedStyle(one).backgroundImage;
+    out.twoBg = getComputedStyle(two).backgroundImage;
+    out.itemSheet = (document.getElementById('gwcfc-part-colors') || {}).textContent || '';
+    themeItemClear('#sub-testonly');
+    await settled();
+    out.oneAfterClear = getComputedStyle(one).backgroundImage;
+    // An id that is not a plain id must not become a selector.
+    const bad = document.createElement('div');
+    bad.className = 'tool-btn'; bad.id = 'x\", y';
+    out.badKey = _themeItemKey(bad);
+    one.remove(); two.remove();
+
     themeReset();
+    await settled();
+    out.itemsAfterResetAll = Object.keys(_theme.items || {}).length;
     out.finalAccent = read('--accent');
     return out;
   });
@@ -287,6 +348,16 @@ else {
      && r.sheet.split('\n').length === 1, r.sheet.slice(0, 90));
   ok('back to default really removes it',
      !/0, 255, 0/.test(r.afterClear), r.afterClear.slice(0, 60));
+  ok('a single element is keyed by its id', r.itemKey === '#sub-testonly', String(r.itemKey));
+  ok('colouring one leaves its identical neighbour alone',
+     /0, 0, 255/.test(r.oneBg) && !/0, 0, 255/.test(r.twoBg),
+     r.oneBg.slice(0, 40) + ' | ' + r.twoBg.slice(0, 40));
+  ok('and the rule it wrote is an id rule',
+     /#sub-testonly\{/.test(r.itemSheet), r.itemSheet.slice(0, 80));
+  ok('clearing that one puts it back', !/0, 0, 255/.test(r.oneAfterClear));
+  ok('an id that is not a plain id is refused', r.badKey === null, String(r.badKey));
+  ok('reset all clears the single elements as well', r.itemsAfterResetAll === 0,
+     String(r.itemsAfterResetAll));
   ok('no uncaught page errors', errs.length === 0, errs.join(' | '));
 }
 
