@@ -79,11 +79,13 @@ console.log('\n2. the claims that were wrong');
      /LEVEL 2[\s\S]{0,600}Spectrum Width/.test(TUT));
   ok('Models is three panels, not two',
      says('Three sub-bubbles') && says('AI Cyclones'));
-  ok('the quick menu is described with all five of its buttons',
+  // The row under the logo is retired; the five app buttons live at the top
+  // of the account panel now, and the tutorial says so.
+  ok('the account menu is described with all five of its buttons',
      ['Settings', 'Navigation', 'Tutorial', 'Credits', 'Feedback']
-       .every(b => /LOGO QUICK MENU[\s\S]{0,1600}/.exec(TUT)[0].includes(b)));
-  ok('and as shown by default rather than hidden behind the logo',
-     says('shown from the first paint'));
+       .every(b => /ACCOUNT MENU[\s\S]{0,1600}/.exec(TUT)[0].includes(b)));
+  ok('and as open to everyone, signed in or not',
+     says('there whether or not you are signed in'));
   ok('the overlay launcher is counted, not estimated',
      says('32 optional layers') && !says('20+ optional layers'));
   ok('Settings is described as fifteen tabs',

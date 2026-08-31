@@ -950,11 +950,6 @@ body {
 .nwr-header-text { display: flex; flex-direction: column; gap: 1px; }
 .nwr-callsign { font-family: var(--display); font-size: 14px; font-weight: 700; letter-spacing: 1px; color: #ff9900; }
 .nwr-sitename { font-family: var(--mono); font-size: 9px; color: rgba(255,255,255,0.45); }
-.nwr-status-badge {
-  margin-left: auto; flex-shrink: 0;
-  font-family: var(--display); font-size: 8px; font-weight: 700; letter-spacing: 1px;
-  padding: 2px 7px; border-radius: 20px;
-}
 .nwr-body { padding: 8px 13px 4px; }
 .nwr-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-bottom: 4px; }
 .nwr-meta-cell { display: flex; flex-direction: column; gap: 1px; }
@@ -1123,6 +1118,12 @@ body {
   transition: background 0.15s;
 }
 #profile-mode-tag:hover { background: rgba(232,184,0,0.28); }
+/* Not on phones: the pill is already sharing its corner with the update bar
+   there, and the mode is one Settings tap away. The tag is a desktop's
+   luxury of width. */
+@media (max-width: 768px) {
+  #profile-mode-tag { display: none; }
+}
 
 /* Vertical, drag-to-reorder overlay list */
 #overlay-pills-row {
@@ -6108,7 +6109,11 @@ body.shot-mode > button {
 }
 #update-bar-close:hover { color: #fff; background: rgba(255,255,255,0.1); }
 #logo-quick-menu {
-  display: flex;
+  /* Retired from the screen, not from the code. The five buttons this row
+     carried live inside the account panel now (#lqm-panel-menu), where they
+     do not cover the map; everything that opened or pinned this row still
+     runs and simply moves nothing visible. */
+  display: none !important;
   flex-direction: row;
   gap: 10px;
   margin-top: 4px;
@@ -6117,6 +6122,19 @@ body.shot-mode > button {
   pointer-events: none;
   transition: opacity 0.22s ease, transform 0.22s ease;
 }
+/* The five app buttons, as a tidy strip at the top of the account panel. */
+#lqm-panel-menu {
+  display: flex; gap: 6px; margin: 2px 24px 12px 0;
+}
+.lqm-pm-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  background: rgba(50,0,0,0.6); border: 1px solid rgba(170,0,0,0.35);
+  border-radius: 10px; padding: 8px 2px; cursor: pointer;
+  color: #d4e8ff; font-family: var(--mono); font-size: 6.5px;
+  letter-spacing: 0.4px; text-transform: uppercase;
+  transition: background 0.15s, border-color 0.15s;
+}
+.lqm-pm-btn:hover { background: rgb(90,0,0); border-color: var(--accent2); }
 #logo-quick-menu.lqm-open {
   opacity: 1;
   transform: translateY(0) scale(1);
@@ -10076,7 +10094,9 @@ body.clean-mode #clean-hint { opacity: 1; }
         <svg class=svgi width=1em height=1em><use href=#ic-close></use></svg>
       </button>
     </div>
-  <div id="logo" style="display:flex;align-items:center;text-decoration:none;cursor:pointer;" onclick="lqmOpenMenu()"><img id="topbar-logo-img" src="assets/img/gwcfc-logo.png" decoding="async"/></div>
+  <!-- The logo opens the account panel now, since that is where the app
+       menu it used to reveal has moved. -->
+  <div id="logo" style="display:flex;align-items:center;text-decoration:none;cursor:pointer;" onclick="lqmToggleProfile()"><img id="topbar-logo-img" src="assets/img/gwcfc-logo.png" decoding="async"/></div>
   <div id="logo-quick-menu">
     <div class="lqm-btn" id="lqm-settings-btn" onclick="lqmToggleSettingsPanel()">
       <div class="lqm-icon-wrap" style="font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg></div>
@@ -44985,10 +45005,6 @@ function _nwrBuildPopup(call, p, gwesStream, wxrStream, wusaStream) {
   const stream   = gwesStream || wxrStream || wusaStream;
   const siteName = p?.SITENAME || stream?.server_name?.split(' - ')[0] || call;
   const state    = p?.STATE  || '';
-  const statusBadgeStyle = isOut
-    ? 'background:rgba(255,50,50,0.15);border:1px solid rgba(255,50,50,0.4);color:#ff6060;'
-    : 'background:rgba(0,255,100,0.1);border:1px solid rgba(0,255,100,0.3);color:#00e676;';
-
   // src (stream URL) and siteName come from an external stream-directory API,
   // so both are escaped for the JS-string-inside-HTML-attribute context they
   // sit in below (see _jsAttrEsc), not just interpolated as-is.
@@ -45038,7 +45054,10 @@ function _nwrBuildPopup(call, p, gwesStream, wxrStream, wusaStream) {
         <span class="nwr-callsign">${call}</span>
         <span class="nwr-sitename">${siteName}${state ? ', ' + state : ''}</span>
       </div>
-      <span class="nwr-status-badge" style="${statusBadgeStyle}">${isOut ? 'OFFLINE' : 'LIVE'}</span>
+      <!-- The LIVE / OFFLINE pill that used to sit here is gone: it was
+           doubling the Status row below it, and its green oval was showing
+           up over the map reading as a stray control. One place says the
+           status now, in words, where the other facts live. -->
     </div>
     <div class="nwr-body">
       <div class="nwr-meta-grid">
@@ -55121,8 +55140,8 @@ function lqmSetTZ(tz) {
   <div class="card-grid">
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg></div>
-      <div class="fc-title">LOGO QUICK MENU</div>
-      <p class="fc-body">The row of five buttons under the GWCFC logo, top-center: <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg> Settings</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-compass></use></svg> Navigation</strong>, <strong>Tutorial</strong> (this page), <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-star></use></svg> Credits</strong> and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-mail></use></svg> Feedback</strong>. The small tag on your <strong>account pill</strong>, top left, says whether you are in <strong>Wx-pert</strong> (everything) or <strong>Lite-ning</strong> (just radar, warnings and forecasts); tap it to open Settings, where the mode switch lives. The row is <strong>shown from the first paint</strong> and stays shown. If you would rather it hid itself again, Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Map has a switch that restores the old behaviour, where it appears only when you hover or tap the logo.</p>
+      <div class="fc-title">ACCOUNT MENU</div>
+      <p class="fc-body">Tap the <strong>account pill</strong>, top left (or the <strong>GWCFC logo</strong>, top center) to open the account panel. A strip of five buttons sits at its top: <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg> Settings</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-compass></use></svg> Navigation</strong>, <strong>Tutorial</strong> (this page), <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-star></use></svg> Credits</strong> and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-mail></use></svg> Feedback</strong>, there whether or not you are signed in. On desktop the pill also wears a small tag saying whether you are in <strong>Wx-pert</strong> (everything) or <strong>Lite-ning</strong> (just radar, warnings and forecasts); tap the tag, or open Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Display, to switch modes.</p>
     </div>
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-search></use></svg></div>
@@ -58752,7 +58771,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'The mode moved off the menu and onto your account pill. The quick menu under the logo is back to five buttons in one straight row, and a small gold tag on the account pill, top left, now says which mode you are in (WX-PERT / EXPERT or LITE-NING / BEGINNER). Tap the tag to open Settings, where the mode switch lives under Display.';
+const APP_LATEST_UPDATE = 'The top of the screen got a cleanup. The five menu buttons that sat under the logo now live at the top of the account panel: tap your account pill or the logo to open it. The Wx-pert / Lite-ning tag shows on desktop only, since phone corners were getting crowded. And the stray green LIVE pill from the weather radio stations is gone; the station popup says its status in the Status row instead.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
@@ -60317,6 +60336,18 @@ document.addEventListener('DOMContentLoaded', () => {
      ══════════════════════════════════════════════ -->
 <div id="lqm-profile-overlay">
   <button id="lqm-profile-close" onclick="lqmCloseProfile()"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-close></use></svg></button>
+
+  <!-- The app menu, moved in from under the logo. It sits ABOVE the
+       guest/user split so it is there whether or not anyone is signed in:
+       Settings and the Tutorial belong to everybody. Each button closes
+       this panel first, so the thing it opens is not fighting it. -->
+  <div id="lqm-panel-menu">
+    <button class="lqm-pm-btn" onclick="lqmCloseProfile();lqmToggleSettingsPanel()"><svg class=svgi width=18 height=18><use href=#ic-gear></use></svg><span>Settings</span></button>
+    <button class="lqm-pm-btn" onclick="lqmCloseProfile();_navOpen()"><svg class=svgi width=18 height=18><use href=#ic-compass></use></svg><span>Navigation</span></button>
+    <button class="lqm-pm-btn" onclick="lqmCloseProfile();lqmOpenTutorial()"><svg class=svgi width=18 height=18><use href=#ic-book></use></svg><span>Tutorial</span></button>
+    <button class="lqm-pm-btn" onclick="lqmCloseProfile();openCredits()"><svg class=svgi width=18 height=18><use href=#ic-star></use></svg><span>Credits</span></button>
+    <button class="lqm-pm-btn" onclick="lqmCloseProfile();openFeedback()"><svg class=svgi width=18 height=18><use href=#ic-mail></use></svg><span>Feedback</span></button>
+  </div>
 
   <!-- Guest / logged-out state -->
   <div id="lqm-profile-guest">
