@@ -290,10 +290,11 @@ console.log('\n5. travelling to a moment');
      r.quickJumps >= 8, String(r.quickJumps));
   ok('and it says how far back it reaches, and which radar',
      /2022-03-01/.test(r.note) && /KTLX/.test(r.note), r.note.slice(0, 90));
-  // The machine drives satellite now as well as radar, so with neither on
-  // the ask is for either of them, not for a radar site specifically.
-  ok('with nothing picked it says to turn one of the two on',
-     /Turn on radar or satellite/.test(r.noSiteNote), r.noSiteNote.slice(0, 60));
+  // Opened from the radar row (the no-argument default is the radar scope),
+  // the machine drives the radar alone now - the satellite has its own - so
+  // with no site picked the ask is for a radar, specifically.
+  ok('with no radar picked it says to turn one on',
+     /Turn on a radar first/.test(r.noSiteNote), r.noSiteNote.slice(0, 60));
   ok('Escape closes it', r.closed);
 }
 
