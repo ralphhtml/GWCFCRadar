@@ -4175,12 +4175,33 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
    and the class that does the cutting. Lite-ning is subtractive on purpose:
    one body class hides the expert chrome, so nothing is duplicated and
    turning Wx-pert back on is removing a class, not rebuilding a page. */
-#mode-modal, #lite-intro {
+#mode-modal, #lite-intro, #changelog-modal {
   display: none; position: fixed; inset: 0; z-index: 5000;
   background: rgba(20, 2, 2, 0.78);
   align-items: center; justify-content: center;
 }
-#mode-modal.open, #lite-intro.open { display: flex; }
+#mode-modal.open, #lite-intro.open, #changelog-modal.open { display: flex; }
+/* The changelog list inside the shared card. The card centers everything,
+   which is right for a two-button choice and wrong for reading, so the list
+   flips back to left-aligned text and scrolls on its own when history grows
+   past what one screen can hold. */
+.cl-list {
+  text-align: left; max-height: 55vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 14px;
+  margin: 14px 0 16px; padding-right: 6px;
+}
+.cl-entry { line-height: 1.5; }
+.cl-date {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 1px;
+  color: #e8b800; display: flex; align-items: center; gap: 8px;
+  margin-bottom: 3px;
+}
+.cl-new {
+  font-size: 9px; font-weight: 700; letter-spacing: 1px;
+  background: #e8b800; color: #2a0800; border-radius: 8px;
+  padding: 1px 7px;
+}
+.cl-text { font-size: 13px; color: #ffe9a8; }
 .mode-card-wrap {
   background: linear-gradient(160deg, rgba(60,14,8,0.98), rgba(24,5,5,0.98));
   border: 2px solid #e8b800; border-radius: 14px; padding: 22px 24px;
@@ -4662,7 +4683,12 @@ body.lite-mode #export-toolbar { display: none !important; }
   gap: 4px;
   pointer-events: none;
 }
-#map-compass.visible { display: flex; }
+/* Retired from the screen, not from the code. The rotation compass drew a
+   dark 42px circle at top-center, exactly where the logo sits, so a rotated
+   map looked like a black bubble had landed on the branding. The reset
+   button (#map-reset-bearing) still works; the JS that toggles .visible
+   still runs and now moves nothing visible. */
+#map-compass.visible { display: none; }
 #map-compass-ring {
   width: 42px; height: 42px;
   border-radius: 50%;
@@ -6017,12 +6043,6 @@ body.lite-mode #export-toolbar { display: none !important; }
      the logo - let events pass through and the children opt back in. */
   pointer-events: none;
 }
-/* One-line "what changed" strip, sits above the logo as part of the same
-   flex column - so the logo just flows down to make room, instead of this
-   needing to know or guess the logo's pixel position (which is what every
-   other top-anchored element - tabs, search, profile - already assumes,
-   and shifting all of those too is how a small banner turns into a layout
-   regression). Content comes from APP_LATEST_UPDATE further down. */
 
 /* Screenshot mode (?shot=1). Hides the interface so a capture is map, data and
    attribution only. Attribution deliberately stays: MapTiler and OpenStreetMap
@@ -6030,7 +6050,6 @@ body.lite-mode #export-toolbar { display: none !important; }
    image travels away from the page carrying the credit with it. */
 body.shot-mode #topbar,
 body.shot-mode #logo-wrap,
-body.shot-mode #update-bar,
 body.shot-mode #logo,
 body.shot-mode #logo-quick-menu,
 body.shot-mode #sidebar,
@@ -6072,42 +6091,6 @@ body.shot-mode > button {
    which is the whole reason a shot is being taken, so a capture that dropped
    it would return a bare map. Its two skip buttons still go, above. */
 
-#update-bar {
-  pointer-events: all;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  max-width: min(360px, calc(100vw - 24px));
-  margin-bottom: 6px;
-  padding: 5px 8px 5px 10px;
-  border-radius: 20px;
-  background: rgba(20,0,0,0.85);
-  border: 1px solid rgba(255,215,0,0.5);
-  backdrop-filter: blur(4px);
-  box-shadow: 0 2px 10px rgba(0,0,0,0.4);
-  font-family: var(--display);
-  font-size: 10px;
-  letter-spacing: 0.3px;
-  color: rgba(255,255,255,0.85);
-  cursor: default;
-}
-#update-bar-icon { color: #ffd700; display: inline-flex; flex-shrink: 0; }
-#update-bar-text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-#update-bar-close {
-  flex-shrink: 0;
-  background: none; border: none; padding: 2px;
-  color: rgba(255,255,255,0.45);
-  cursor: pointer;
-  display: inline-flex;
-  border-radius: 50%;
-}
-#update-bar-close:hover { color: #fff; background: rgba(255,255,255,0.1); }
 #logo-quick-menu {
   /* Retired from the screen, not from the code. The five buttons this row
      carried live inside the account panel now (#lqm-panel-menu), where they
@@ -6900,7 +6883,6 @@ body.theme-picking, body.theme-picking * { cursor: crosshair !important; }
   /* Narrow enough to clear the Sign In button (left) and search icon
      (right), which sit close to the edges at this width - the 360px
      desktop width would run straight into both. */
-  #update-bar { max-width: min(210px, calc(100vw - 130px)); font-size: 9px; padding: 4px 6px 4px 8px; }
 }
 
 
@@ -10091,13 +10073,10 @@ body.clean-mode #clean-hint { opacity: 1; }
 
 <div id="topbar">
   <div id="logo-wrap">
-    <div id="update-bar" style="display:none;">
-      <span id="update-bar-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-sparkle></use></svg></span>
-      <span id="update-bar-text"></span>
-      <button id="update-bar-close" onclick="_dismissUpdateBar();" title="Dismiss" aria-label="Dismiss">
-        <svg class=svgi width=1em height=1em><use href=#ic-close></use></svg>
-      </button>
-    </div>
+    <!-- The one-line update bar that sat here grew up into the changelog
+         modal (see APP_CHANGELOG): it opens once when something new has
+         shipped, and the history lives behind Updates in the account
+         panel. -->
   <!-- The logo opens the account panel now, since that is where the app
        menu it used to reveal has moved. -->
   <div id="logo" style="display:flex;align-items:center;text-decoration:none;cursor:pointer;" onclick="lqmToggleProfile()"><img id="topbar-logo-img" src="assets/img/gwcfc-logo.png" decoding="async"/></div>
@@ -23398,10 +23377,10 @@ function _tmSyncBadge() {
   _tmPlaceBadge();
 }
 
-// Below the update bar rather than on top of it. The bar is dismissible, so
-// where it ends is a question rather than a constant, and the first version
-// of this sat at a fixed 8px and printed itself straight through the bar's
-// text. Measured instead, and re-measured on a resize.
+// The update bar this used to dodge is retired (the changelog modal replaced
+// it), so the badge normally sits at its base 8px now. The measurement stays
+// as a guard: if anything ever occupies that slot again, the badge moves
+// below it instead of printing through it.
 function _tmPlaceBadge() {
   let top = 8;
   try {
@@ -33186,12 +33165,18 @@ function _actuallyDismiss() {
           // Marked as OURS, so closing it runs the welcome. A tutorial the
           // person opened from the menu closes without touching their map.
           setTimeout(() => { _tutAutoOpened = true; openTutorial(); }, 400);
+          // A first visit is not "catching up": everything is new to them,
+          // so the changelog stays quiet and starts counting from here.
+          try { if (typeof _clMarkSeen === 'function') _clMarkSeen(); } catch (e) {}
         } else {
           // Been here before, so no tutorial. The welcome still applies:
           // signed out there is nothing remembering how they like the map,
           // and signed in without a saved preset they have not said either.
           // _runWelcome itself is what declines when a preset exists.
           setTimeout(() => _runWelcome(), 900);
+          // And if something shipped since their last visit, say so, once.
+          // After the welcome starts so the flight is not hidden behind it.
+          setTimeout(() => { try { if (typeof _clMaybeOpen === 'function') _clMaybeOpen(); } catch (e) {} }, 1500);
         }
       }
     } catch(e) {}
@@ -56337,6 +56322,10 @@ function _modePick(m) {
   const modal = document.getElementById('mode-modal');
   if (modal) modal.classList.remove('open');
   _setMode(m, { quiet: true });
+  // Picking a mode means this is a first visit, and a first visit has no
+  // "what changed" to catch up on: mark the changelog seen so it does not
+  // greet a brand-new person with history.
+  try { if (typeof _clMarkSeen === 'function') _clMarkSeen(); } catch (e) {}
   if (m === 'lite') {
     // The full eighteen-section tutorial is exactly what a Lite-ning person
     // asked not to have. Four lines cover their whole app; the real tutorial
@@ -57652,14 +57641,6 @@ function _gwNewVersionReady() {
       showToast('A newer version of the site just finished downloading. '
               + 'Reload to use it.', 12000);
     }
-    const bar = document.getElementById('update-bar');
-    if (bar) {
-      bar.classList.remove('off');
-      bar.innerHTML = 'A newer version is ready. '
-        + '<a href="#" style="color:#8fe3a8;font-weight:700" '
-        + 'onclick="location.reload();return false">Reload now</a>';
-      bar.style.display = '';
-    }
   } catch (e) {}
 }
 document.addEventListener('DOMContentLoaded', () => {
@@ -58770,33 +58751,80 @@ function lqmOpenTutorial() {
 }
 
 
-// ── UPDATE BAR ──────────────────────────────────────────────────────────────
-// One line above the logo describing whatever the most recent code change
-// was. Edited by hand each time a change ships (see CLAUDE.md) - not
-// auto-generated from git history, so it stays a short, plain-English
-// summary instead of a raw commit log. Dismissing it is remembered per
-// message (keyed on the text itself, not a version number), so editing
-// this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'A small tidy-up in the account panel: when you are signed in, the five menu buttons (Settings, Navigation, Tutorial, Credits, Feedback) now sit below your avatar and name instead of above them, so the panel reads as you first, then your menu. Signed out, they stay at the top above the sign-in invitation.';
+// ── THE CHANGELOG ──────────────────────────────────────────────────────────
+// The one-line update bar grew up into this: a real history. Every shipped
+// change adds an entry at the TOP of this list (newest first), each with a
+// stable id. When the newest id is one a returning visitor has not seen,
+// the changelog opens itself once; after that it waits in the account
+// panel's Updates button. A brand-new visitor never gets it, because a
+// history of a site you have never used is nobody's first question.
+const APP_CHANGELOG = [
+  { id: '2026-08-31-i', date: 'Aug 31, 2026',
+    text: 'The little update bar above the logo is retired and replaced by this changelog: it opens once when something new has shipped, and the full history lives behind the new Updates button in the account panel. Also removed the dark compass circle that could sit on top of the logo when the map was rotated.' },
+  { id: '2026-08-31-h', date: 'Aug 31, 2026',
+    text: 'The five menu buttons (Settings, Navigation, Tutorial, Credits, Feedback) moved off the map and into the account panel, seated below your avatar and name when you are signed in. Tapping the logo opens that panel too.' },
+  { id: '2026-08-31-g', date: 'Aug 31, 2026',
+    text: 'The stray green LIVE pill from the NOAA Weather Radio stations is gone (the station popup already says its status in words), and the Wx-pert / Lite-ning tag shows on desktop only.' },
+  { id: '2026-08-31-f', date: 'Aug 31, 2026',
+    text: 'Phone polish: the search bar now truly collapses to just the star and the magnifier in the top-right corner, and opens wider when tapped so you can read what you type.' },
+  { id: '2026-08-31-e', date: 'Aug 31, 2026',
+    text: 'The app now comes in two modes. A first visit asks one question: Wx-pert (everything) or Lite-ning (just live radar, warnings and your local forecast, in plain words). Switch any time in Settings under Display.' },
+  { id: '2026-08-31-d', date: 'Aug 31, 2026',
+    text: 'The sounding panel grew four SHARPpy-style tabs: Theta-E (where the dry air sits), SR Wind (the wind as the storm feels it, with HP / Classic / LP bands), Advection (warm and cold air transport read from the wind’s turning) and Hazard (the bottom-line call with its reasons listed).' },
+  { id: '2026-08-31-c', date: 'Aug 31, 2026',
+    text: 'Satellite is opt-in now: the Satellite bubble just opens the menu, and the first product you pick is what turns the layer on. The Time Machine also split in two, so the radar and the satellite each keep their own clock and their own PAST badge.' },
+  { id: '2026-08-31-b', date: 'Aug 31, 2026',
+    text: 'The Pi’s models should stop going stale for good: builds run three at a time, the build clock restarts minutes after each pass, and a failing model waits its turn instead of hogging the queue. Every model now also reaches the furthest forecast hour its source publishes, and the Compare button can compare the Pi’s own models and their archived runs.' },
+  { id: '2026-08-31-a', date: 'Aug 31, 2026',
+    text: 'The site has a real Privacy Policy and Terms page, linked from Credits, the tutorial and the sign-up button, and the tutorial’s layer diagram is now generated from the app itself so it can never drift from the truth.' },
+];
+const CL_SEEN_KEY = 'gwcfc_changelog_seen';
 
-function _initUpdateBar() {
-  const bar = document.getElementById('update-bar');
-  if (!bar || !APP_LATEST_UPDATE) return;
-  let dismissed = null;
-  try { dismissed = localStorage.getItem('lqm_update_bar_dismissed'); } catch(e) {}
-  if (dismissed === APP_LATEST_UPDATE) return;
-  document.getElementById('update-bar-text').textContent = APP_LATEST_UPDATE;
-  bar.style.display = 'flex';
+function _clMarkSeen() {
+  try { localStorage.setItem(CL_SEEN_KEY, APP_CHANGELOG[0].id); } catch (e) {}
 }
-function _dismissUpdateBar() {
-  const bar = document.getElementById('update-bar');
-  if (bar) bar.style.display = 'none';
-  try { localStorage.setItem('lqm_update_bar_dismissed', APP_LATEST_UPDATE); } catch(e) {}
+
+function _clClose() {
+  const m = document.getElementById('changelog-modal');
+  if (m) m.classList.remove('open');
+  _clMarkSeen();
 }
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', _initUpdateBar);
-} else {
-  _initUpdateBar();
+
+function _clOpen() {
+  let m = document.getElementById('changelog-modal');
+  if (!m) {
+    let seen = null;
+    try { seen = localStorage.getItem(CL_SEEN_KEY); } catch (e) {}
+    const rows = APP_CHANGELOG.map((e, i) => `
+      <div class="cl-entry">
+        <div class="cl-date">${e.date}${i === 0 && e.id !== seen
+          ? ' <span class="cl-new">NEW</span>' : ''}</div>
+        <div class="cl-text">${e.text}</div>
+      </div>`).join('');
+    m = document.createElement('div');
+    m.id = 'changelog-modal';
+    m.innerHTML = `
+      <div class="mode-card-wrap" role="dialog" aria-modal="true" aria-label="What changed">
+        <div class="mode-head"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-sparkle></use></svg> WHAT CHANGED</div>
+        <div class="cl-list">${rows}</div>
+        <div class="mode-go"><button type="button" class="tm-btn tm-btn-go" onclick="_clClose()">GOT IT</button></div>
+      </div>`;
+    document.body.appendChild(m);
+    m.addEventListener('click', (e) => { if (e.target === m) _clClose(); });
+  }
+  m.classList.add('open');
+}
+
+// Opens itself exactly once per new entry, and only for someone who has
+// been here before: the dismissal is what marks it read.
+function _clMaybeOpen() {
+  let seen = null;
+  try { seen = localStorage.getItem(CL_SEEN_KEY); } catch (e) {}
+  if (seen === APP_CHANGELOG[0].id) return;
+  let returning = false;
+  try { returning = localStorage.getItem('gwcfc_tutorial_seen') === '1'; } catch (e) {}
+  if (!returning) { _clMarkSeen(); return; }
+  _clOpen();
 }
 
 let _profileOpen = false;
@@ -60376,6 +60404,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <button class="lqm-pm-btn" onclick="lqmCloseProfile();lqmOpenTutorial()"><svg class=svgi width=18 height=18><use href=#ic-book></use></svg><span>Tutorial</span></button>
     <button class="lqm-pm-btn" onclick="lqmCloseProfile();openCredits()"><svg class=svgi width=18 height=18><use href=#ic-star></use></svg><span>Credits</span></button>
     <button class="lqm-pm-btn" onclick="lqmCloseProfile();openFeedback()"><svg class=svgi width=18 height=18><use href=#ic-mail></use></svg><span>Feedback</span></button>
+    <button class="lqm-pm-btn" onclick="lqmCloseProfile();_clOpen()"><svg class=svgi width=18 height=18><use href=#ic-sparkle></use></svg><span>Updates</span></button>
   </div>
 
   <!-- Guest / logged-out state -->
@@ -64096,11 +64125,6 @@ function closeCredits() {
   background-image: radial-gradient(circle at 35% 30%, #ff9d92 0%, #d02020 55%, #6a0000 100%);
 }
 
-#update-bar {
-  background-image: linear-gradient(180deg, #4a0303 0%, #1c0000 100%);
-  box-shadow: var(--lift-3d-sm), var(--edge-3d);
-  border-color: var(--edge-red);
-}
 #lqm-profile-btn, #lqm-search-go, #past-alerts-toggle, #clean-hint {
   background-image: var(--grad-raise);
   box-shadow: var(--edge-3d-soft);
