@@ -166,15 +166,26 @@ console.log('\n2. a brand-new visitor is asked, and Lite-ning answers for them')
   ok('and so do the tools', back.railBack);
   ok('with the tag following', /WX-PERT/.test(back.modeLabel)
      && /EXPERT/.test(back.modeLabel), back.modeLabel);
+
+  // On desktop the tag is visible and doubles as the door to Settings.
+  const tag = await p.evaluate(() => {
+    const t = document.getElementById('profile-mode-tag');
+    const shown = getComputedStyle(t).display !== 'none'
+      && t.getBoundingClientRect().width > 0;
+    t.click();
+    const opened = !!document.querySelector('#lqm-settings-overlay.lqm-panel-open');
+    return { shown, opened };
+  });
+  ok('on desktop the tag is visible on the pill', tag.shown);
+  ok('and tapping it opens Settings', tag.opened);
   await p.close();
 }
 
-console.log('\n4. on a phone: one straight row, the mode tag, and nothing hidden');
+console.log("\n4. on a phone: the row is retired, the menu lives in the account panel");
 {
-  // The regressions this pins: a sixth button once pushed the always-shown
-  // quick menu past both screen edges and then wrapped alone onto a second
-  // line; the mode lives on the account pill as a tag now, so the row is
-  // five buttons, straight, and centered under the logo.
+  // The quick-menu row's whole history of phone breakage ends here: the row
+  // is retired outright, and its five buttons live at the top of the
+  // account panel, which cannot overflow a screen edge.
   const p = await browser.newPage({ viewport: { width: 390, height: 844 } });
   p.on('pageerror', e => errsAll.push(String(e).slice(0, 180)));
   await p.addInitScript(() => {
@@ -211,55 +222,38 @@ console.log('\n4. on a phone: one straight row, the mode tag, and nothing hidden
     const se = sb.getBoundingClientRect();
     sb.classList.remove('expanded');
     const searchExpanded = Math.round(se.width);
-    // One straight row, centered under the logo: the sixth button used to
-    // wrap alone onto a second line, which read as broken.
-    const btns = [...qm.querySelectorAll('.lqm-btn')]
-      .map(x => x.getBoundingClientRect());
-    const logo = document.getElementById('topbar-logo-img').getBoundingClientRect();
-    // The tag on the account pill, and what tapping it opens.
+    // The row under the logo is retired: the five app buttons live at the
+    // top of the account panel now, there whether or not anyone is signed
+    // in. On a phone the mode tag also stays off the pill, because the
+    // corner is already crowded.
     const tagEl = document.getElementById('profile-mode-tag');
-    const tagRect = tagEl.getBoundingClientRect();
-    tagEl.click();
-    const settingsOpened = !!document.querySelector('#lqm-settings-overlay.lqm-panel-open');
-    if (typeof lqmToggleSettingsPanel === 'function' && settingsOpened) lqmToggleSettingsPanel();
+    const panel = document.getElementById('lqm-profile-overlay');
+    panel.classList.add('lqm-panel-open');
+    const pm = document.getElementById('lqm-panel-menu');
+    const menuShown = pm && pm.getBoundingClientRect().width > 0;
+    const menuLabels = pm
+      ? [...pm.querySelectorAll('.lqm-pm-btn span')].map(s => s.textContent) : [];
+    panel.classList.remove('lqm-panel-open');
     return {
       searchCollapsed, searchExpanded,
-      oneRow: btns.every(x => Math.round(x.top) === Math.round(btns[0].top)),
-      centerOff: Math.round(Math.abs(
-        (r.left + r.right) / 2 - (logo.left + logo.right) / 2)),
-      tag: { shown: tagRect.width > 0, text: tagEl.textContent },
-      settingsOpened,
-      open: qm.classList.contains('lqm-open'),
-      left: Math.round(r.left), right: Math.round(r.right),
-      bottom: Math.round(r.bottom),
-      vw: innerWidth,
-      buttons: qm.querySelectorAll('.lqm-btn').length,
+      tagHidden: getComputedStyle(tagEl).display === 'none',
+      rowGone: getComputedStyle(qm).display === 'none',
+      menuShown, menuLabels,
       bubblesTop: br ? Math.round(br.top) : null,
-      clearVar: getComputedStyle(document.documentElement)
-        .getPropertyValue('--lqm-clear').trim(),
     };
   });
   await p.close();
-  ok('the menu is open with its five buttons, one straight row',
-     m.open && m.buttons === 5, JSON.stringify(m));
-  ok('and fits inside the screen, both edges',
-     m.left >= 0 && m.right <= m.vw, `${m.left}..${m.right} of ${m.vw}`);
-  ok('the clearance was measured off its real bottom edge',
-     parseInt(m.clearVar) >= m.bottom, `${m.clearVar} vs bottom ${m.bottom}`);
-  ok('so the layer bubbles start below it, not underneath it',
-     m.bubblesTop === null || m.bubblesTop >= m.bottom,
-     `bubbles ${m.bubblesTop} vs menu bottom ${m.bottom}`);
+  ok('the row under the logo is gone', m.rowGone);
+  ok('its five buttons live in the account panel instead',
+     m.menuShown && JSON.stringify(m.menuLabels)
+       === JSON.stringify(['Settings', 'Navigation', 'Tutorial', 'Credits', 'Feedback']),
+     JSON.stringify(m.menuLabels));
   ok('the collapsed search bar is just its two buttons, hugging the corner',
      m.searchCollapsed.w <= 120 && m.searchCollapsed.right <= 12,
      JSON.stringify(m.searchCollapsed));
   ok('and expanding it opens a field wide enough to read',
      m.searchExpanded >= 250, String(m.searchExpanded));
-  ok('the five buttons sit in one straight row', m.oneRow);
-  ok('centered under the logo', m.centerOff <= 30, m.centerOff + 'px off');
-  ok('the account pill wears the mode tag',
-     m.tag.shown && /WX-PERT/.test(m.tag.text) && /EXPERT/.test(m.tag.text),
-     JSON.stringify(m.tag));
-  ok('and tapping the tag opens Settings', m.settingsOpened);
+  ok('the mode tag stays off the pill on a phone', m.tagHidden);
 }
 
 console.log('\n3. the choice is remembered, and old friends are never quizzed');
