@@ -261,9 +261,10 @@ console.log("\n4. on a phone: the row is retired, the menu lives in the account 
   });
   await p.close();
   ok('the row under the logo is gone', m.rowGone);
-  ok('its five buttons live in the account panel instead',
+  ok('its buttons live in the account panel instead, Updates included',
      m.menuShown && JSON.stringify(m.menuLabels)
-       === JSON.stringify(['Settings', 'Navigation', 'Tutorial', 'Credits', 'Feedback']),
+       === JSON.stringify(['Settings', 'Navigation', 'Tutorial', 'Credits',
+                           'Feedback', 'Updates']),
      JSON.stringify(m.menuLabels));
   ok('the collapsed search bar is just its two buttons, hugging the corner',
      m.searchCollapsed.w <= 120 && m.searchCollapsed.right <= 12,

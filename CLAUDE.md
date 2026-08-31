@@ -20,6 +20,12 @@ Keep explanations concise but clear. Use analogies where helpful. Treat it like 
 
 Never use the em dash character (Unicode U+2014) anywhere in this repo: not in UI text, popups, code comments, commit messages, or any file. Use a regular hyphen (-), a comma, a colon, or split into two sentences instead.
 
-## Update the update bar on every change
+## Add a changelog entry on every change
 
-There's a small dismissible bar above the logo (`#update-bar` in index.html) that shows what the most recent change was. Its text lives in the `APP_LATEST_UPDATE` constant, right above the `_initUpdateBar` function. Every time you ship a code change, edit that string to a short, plain-English summary of what just changed - this is a manual edit, not auto-generated from commits. Dismissal is remembered per-message-text, so changing the string is what makes the bar reappear for users who already dismissed the previous one.
+The old update bar is gone. The site now has a changelog modal: the `APP_CHANGELOG` array in index.html (right above the `_clMarkSeen` function). Every time you ship a code change, add a NEW entry at the TOP of that array (newest first), shaped like the ones already there:
+
+- `id`: a stable unique string, `'YYYY-MM-DD-x'` where x is a letter that increments within the day (a, b, c...)
+- `date`: the human date, like `'Aug 31, 2026'`
+- `text`: a short, plain-English summary of what just changed - written by hand, not generated from commits
+
+The modal opens itself once for returning visitors whenever the newest id is one they have not seen, and the full history is always available from the Updates button in the account panel. Never edit or reuse an old entry's id: the "have you seen this" check compares the newest id to the one saved in localStorage, so a fresh id is what makes the modal appear.
