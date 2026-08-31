@@ -6135,6 +6135,10 @@ body.shot-mode > button {
   transition: background 0.15s, border-color 0.15s;
 }
 .lqm-pm-btn:hover { background: rgb(90,0,0); border-color: var(--accent2); }
+/* Signed in, the strip is re-homed under the avatar and name (see
+   _lqmPlacePanelMenu); there it no longer shares a line with the close
+   button, so the right margin that dodged it goes. */
+#lqm-view-profile #lqm-panel-menu { margin: 10px 0 12px; }
 #logo-quick-menu.lqm-open {
   opacity: 1;
   transform: translateY(0) scale(1);
@@ -56932,6 +56936,7 @@ function _updateProfileBadge(user, avatarEmoji) {
     if (nm) { nm.textContent = name; nm.style.fontFamily = _fontFamilyFor(_selectedNameFont); }
     document.getElementById('lqm-profile-guest').style.display = 'none';
     document.getElementById('lqm-profile-user').style.display  = '';
+    if (typeof _lqmPlacePanelMenu === 'function') _lqmPlacePanelMenu(true);
     // Show profile summary view by default (not edit view)
     document.getElementById('lqm-view-profile').classList.add('open');
     document.getElementById('lqm-view-edit').classList.remove('open');
@@ -56947,6 +56952,7 @@ function _updateProfileBadge(user, avatarEmoji) {
     const u = document.getElementById('lqm-profile-user');
     if (g) g.style.display = '';
     if (u) u.style.display  = 'none';
+    if (typeof _lqmPlacePanelMenu === 'function') _lqmPlacePanelMenu(false);
   }
 }
 
@@ -58771,7 +58777,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'The top of the screen got a cleanup. The five menu buttons that sat under the logo now live at the top of the account panel: tap your account pill or the logo to open it. The Wx-pert / Lite-ning tag shows on desktop only, since phone corners were getting crowded. And the stray green LIVE pill from the weather radio stations is gone; the station popup says its status in the Status row instead.';
+const APP_LATEST_UPDATE = 'A small tidy-up in the account panel: when you are signed in, the five menu buttons (Settings, Navigation, Tutorial, Credits, Feedback) now sit below your avatar and name instead of above them, so the panel reads as you first, then your menu. Signed out, they stay at the top above the sign-in invitation.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
@@ -58794,6 +58800,27 @@ if (document.readyState === 'loading') {
 }
 
 let _profileOpen = false;
+// Where the five-button app menu sits inside the account panel. Signed in,
+// it belongs BELOW the avatar and the name, so the panel reads as "you,
+// then your menu"; signed out there is no name to sit under, so it stays at
+// the top above the sign-in invitation. One element, moved, rather than two
+// copies that would drift apart.
+function _lqmPlacePanelMenu(signedIn) {
+  const menu = document.getElementById('lqm-panel-menu');
+  if (!menu) return;
+  if (signedIn) {
+    const sub = document.getElementById('lqm-profile-sub-txt');
+    if (sub && sub.parentElement && menu.previousElementSibling !== sub) {
+      sub.parentElement.insertBefore(menu, sub.nextSibling);
+    }
+  } else {
+    const guest = document.getElementById('lqm-profile-guest');
+    if (guest && guest.parentElement && menu.nextElementSibling !== guest) {
+      guest.parentElement.insertBefore(menu, guest);
+    }
+  }
+}
+
 function lqmToggleProfile() {
   _profileOpen = !_profileOpen;
   const el = document.getElementById('lqm-profile-overlay');
@@ -60337,9 +60364,11 @@ document.addEventListener('DOMContentLoaded', () => {
 <div id="lqm-profile-overlay">
   <button id="lqm-profile-close" onclick="lqmCloseProfile()"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-close></use></svg></button>
 
-  <!-- The app menu, moved in from under the logo. It sits ABOVE the
-       guest/user split so it is there whether or not anyone is signed in:
-       Settings and the Tutorial belong to everybody. Each button closes
+  <!-- The app menu, moved in from under the logo. This is its GUEST seat,
+       above the sign-in invitation; once somebody signs in,
+       _lqmPlacePanelMenu re-homes the same element below their avatar and
+       name, so the panel reads as "you, then your menu". Settings and the
+       Tutorial belong to everybody, signed in or not. Each button closes
        this panel first, so the thing it opens is not fighting it. -->
   <div id="lqm-panel-menu">
     <button class="lqm-pm-btn" onclick="lqmCloseProfile();lqmToggleSettingsPanel()"><svg class=svgi width=18 height=18><use href=#ic-gear></use></svg><span>Settings</span></button>
