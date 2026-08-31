@@ -6164,6 +6164,21 @@ body.shot-mode > button {
   flex-shrink: 0;
 }
 #lqm-search-star svg { width: 18px; height: 18px; }
+.lqm-theme-sw {
+  width: 30px; height: 22px; padding: 0; cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.22); border-radius: 5px;
+  background: none; flex-shrink: 0;
+}
+.lqm-theme-block {
+  border: 1px solid rgba(255,255,255,0.1); border-radius: 7px;
+  padding: 5px 7px; margin-bottom: 7px;
+}
+/* A real strip of the gradient, drawn with the same CSS the surface will
+   use, so the preview cannot disagree with the result. */
+.lqm-theme-prev {
+  height: 16px; border-radius: 4px; margin: 3px 0 5px;
+  border: 1px solid rgba(255,255,255,0.14);
+}
 #lqm-search-star:hover { background: rgba(255,210,120,0.18); color: #ffd478; }
 #lqm-search-star.has { color: #ffd478; }
 .si-star {
@@ -9621,6 +9636,60 @@ body.gwcfc-crosshair #map::after {
 .leaflet-radar-pane img { transition: opacity 80ms ease-in-out; }
 
 </style>
+<script>
+// ── APP COLOURS: applied before the first paint ──────────────────────────
+// The whole of this app's chrome is already drawn from CSS custom properties,
+// so recolouring it is a matter of overriding those on :root rather than
+// touching a single rule. This runs HERE, immediately after the stylesheet
+// and before any of the page exists, because applying a saved theme from a
+// later script means everybody sees the shipped red first and then a flash to
+// their own colours.
+//
+// It is deliberately tiny and dependency-free for the same reason: it is on
+// the critical path of every load.
+window.THEME_KEY = 'gwcfc_theme';
+window._themeClean = function (c) {
+  return /^#[0-9a-fA-F]{6}$/.test(String(c || '')) ? String(c).toLowerCase() : null;
+};
+// A surface is a solid colour or a gradient. Both end up as a background
+// IMAGE so one property can hold either, which is what lets a surface switch
+// between them without every rule that uses it needing to know.
+window._themeSurfaceCss = function (sf) {
+  if (!sf || typeof sf !== 'object') return null;
+  const ang = Math.max(0, Math.min(360, parseInt(sf.angle, 10) || 180));
+  if (sf.type === 'solid') {
+    const c = window._themeClean(sf.color);
+    return c ? 'linear-gradient(' + ang + 'deg, ' + c + ' 0%, ' + c + ' 100%)' : null;
+  }
+  const stops = (Array.isArray(sf.stops) ? sf.stops : [])
+    .map(window._themeClean).filter(Boolean);
+  if (stops.length < 2) return null;
+  const step = 100 / (stops.length - 1);
+  return 'linear-gradient(' + ang + 'deg, ' + stops
+    .map((c, i) => c + ' ' + (i * step).toFixed(1) + '%').join(', ') + ')';
+};
+window._themeApply = function (cfg) {
+  const r = document.documentElement;
+  if (!cfg || typeof cfg !== 'object') return;
+  const t = cfg.tokens || {};
+  Object.keys(t).forEach(function (k) {
+    // Only a plain hex reaches a CSS property. This value comes out of
+    // storage, and anything else could carry a url() or close the
+    // declaration and start another one.
+    const c = window._themeClean(t[k]);
+    if (c && /^--[a-z0-9-]+$/.test(k)) r.style.setProperty(k, c);
+  });
+  const sfs = cfg.surfaces || {};
+  Object.keys(sfs).forEach(function (k) {
+    const css = window._themeSurfaceCss(sfs[k]);
+    if (css && /^--[a-z0-9-]+$/.test(k)) r.style.setProperty(k, css);
+  });
+};
+try {
+  const raw = localStorage.getItem(window.THEME_KEY);
+  if (raw) window._themeApply(JSON.parse(raw));
+} catch (e) { /* a corrupt theme must never cost the page its stylesheet */ }
+</script>
 <!-- Firebase SDK loaded dynamically so it never blocks window.load or init() -->
 <script>
 (function(){
@@ -26249,6 +26318,7 @@ function setMapType(type) {
   // something else happens to redraw them.
   if (typeof _mbAutoSync === 'function') { try { _mbAutoSync(); } catch (e) {} }
   if (typeof _mbStyleSyncUi === 'function') { try { _mbStyleSyncUi(); } catch (e) {} }
+  if (typeof _themeRender === 'function') { try { _themeRender(); } catch (e) {} }
 }
 
 // ── SMOOTH TOGGLE ──
@@ -48191,6 +48261,53 @@ function selectProduct(p) {
     </div>
   </div>
 
+  <!-- ─── APP COLORS ───
+       Its own card, which is what earns it a tab in the rail: the rail reads
+       one heading per group. Chrome only, deliberately. Radar, Model and
+       Satellite colours have their own editors because those map colours to
+       DATA VALUES, and mixing "what dBZ is red" with "what colour is a
+       button" in one place would make both harder to find. -->
+  <div class="lqm-settings-group" data-cat="app-colors">
+    <div class="lqm-settings-category"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-palette></use></svg> App Colors</div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:2px 0 6px;line-height:1.5;">
+      The colours of the app itself: buttons, bubbles, panels, menus and popups. Radar, model and
+      satellite colours live in their own sections, since those stand for measurements rather than
+      for looks. Changes apply as you make them and are kept for next time.
+    </div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Theme</span>
+      <select id="lqm-theme-preset" class="lqm-settings-select" onchange="themeApplyPreset(this.value)">
+        <option value="gwcfc">GWCFC Red (default)</option>
+        <option value="midnight">Midnight</option>
+        <option value="slate">Slate</option>
+        <option value="storm">Storm Green</option>
+      </select>
+    </div>
+
+    <div style="font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent2);padding:12px 0 2px;">Colors</div>
+    <div id="lqm-theme-tokens"></div>
+
+    <div style="font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent2);padding:12px 0 2px;">Surfaces</div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:0 0 6px;line-height:1.5;">
+      The slabs panels and buttons are cut from. Each can be a flat colour or a gradient of two to
+      four stops at any angle. The app is drawn lit from above by default, which is what gives the
+      buttons their depth; a flat colour removes that on purpose.
+    </div>
+    <div id="lqm-theme-surfaces"></div>
+
+    <div style="font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent2);padding:12px 0 2px;">Share</div>
+    <div class="lqm-settings-row">
+      <button class="lqm-settings-btn" onclick="themeExport()">Copy out</button>
+      <button class="lqm-settings-btn" onclick="themeImport()">Paste in</button>
+    </div>
+    <textarea id="lqm-theme-io" rows="2" spellcheck="false" placeholder="Copy out puts your theme here. Paste someone else's in and press Paste in."
+      style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:9px;padding:5px 7px;resize:vertical;"></textarea>
+    <div id="lqm-theme-io-status" style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:3px 0 6px;"></div>
+    <div class="lqm-settings-row">
+      <button class="lqm-settings-btn" onclick="themeReset()">Reset to the shipped colors</button>
+    </div>
+  </div>
+
   <!-- ─── AI ─── -->
   <div class="lqm-settings-group" data-cat="general">
     <div class="lqm-settings-category"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-robot></use></svg> AI Chat</div>
@@ -48227,6 +48344,259 @@ function selectProduct(p) {
 </div>
 
 <script>
+// ── APP COLOURS: the editor ──────────────────────────────────────────────
+// The pre-paint loader near the top of the file does the applying; this is
+// the panel that decides what to apply. Chrome only: radar, model and
+// satellite colours have their own editors, built around data VALUES rather
+// than looks, and folding them in here would mean one control meaning two
+// different things.
+//
+// Tokens are flat colours the whole app inherits. Surfaces are the lit slabs
+// panels and buttons are cut from, and they can be a solid or a gradient.
+const THEME_TOKENS = [
+  { v: '--bg',      l: 'Background',    d: '#5a0000' },
+  { v: '--surface', l: 'Surface',       d: '#720000' },
+  { v: '--panel',   l: 'Panel',         d: '#850000' },
+  { v: '--border',  l: 'Border',        d: '#aa0000' },
+  { v: '--border2', l: 'Border (alt)',  d: '#aa0000' },
+  { v: '--accent',  l: 'Accent',        d: '#e8b800' },
+  { v: '--accent2', l: 'Accent 2',      d: '#008cba' },
+  { v: '--text',    l: 'Text',          d: '#d4e8ff' },
+  { v: '--muted',   l: 'Muted text',    d: '#5c7a9a' },
+  { v: '--warn',    l: 'Warning',       d: '#cc2200' },
+  { v: '--danger',  l: 'Danger',        d: '#ff1a00' },
+  { v: '--success', l: 'Success',       d: '#1aff8f' },
+];
+
+// The shipped gradients, kept here as the thing Reset returns to and as what
+// the editor starts from when a surface has never been touched.
+const THEME_SURFACES = [
+  { v: '--grad-panel',   l: 'Panels',        d: { type: 'grad', angle: 180, stops: ['#7e1010', '#560303', '#2e0000'] } },
+  { v: '--grad-surface', l: 'Cards',         d: { type: 'grad', angle: 180, stops: ['#6b0c0c', '#3a0101'] } },
+  { v: '--grad-raise',   l: 'Buttons',       d: { type: 'grad', angle: 180, stops: ['#a81818', '#6d0404'] } },
+  { v: '--grad-raise-h', l: 'Buttons hover', d: { type: 'grad', angle: 180, stops: ['#c62020', '#8a0808'] } },
+  { v: '--grad-sunk',    l: 'Pressed',       d: { type: 'grad', angle: 180, stops: ['#2b0000', '#4d0404'] } },
+];
+
+// Whole looks, not just accents: a preset that only moved the accent would
+// leave a blue theme sitting on a red panel.
+const THEME_PRESETS = {
+  gwcfc:    { label: 'GWCFC Red (default)', tokens: {}, surfaces: {} },
+  midnight: { label: 'Midnight',
+    tokens: { '--bg': '#0b1220', '--surface': '#111a2e', '--panel': '#16203a',
+              '--border': '#2a3c66', '--border2': '#2a3c66', '--accent': '#5ec8ff',
+              '--accent2': '#8f7bff', '--text': '#dce7ff', '--muted': '#7387a8' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ['#1c2947', '#121b30', '#0a1120'] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ['#1a2540', '#101827'] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ['#2c4a86', '#1a2c52'] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#3a5ea6', '#22376a'] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#0b1120', '#18233c'] } } },
+  slate:    { label: 'Slate',
+    tokens: { '--bg': '#16181b', '--surface': '#1e2126', '--panel': '#262a30',
+              '--border': '#3b414a', '--border2': '#3b414a', '--accent': '#ffb300',
+              '--accent2': '#4fb6c8', '--text': '#e6eaef', '--muted': '#8892a0' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ['#2e333a', '#20242a', '#15181c'] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ['#2a2f36', '#1a1d22'] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ['#414852', '#2b3038'] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#525a66', '#363c45'] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#15181c', '#272c33'] } } },
+  storm:    { label: 'Storm Green',
+    tokens: { '--bg': '#04170f', '--surface': '#082217', '--panel': '#0c2e1f',
+              '--border': '#1d5c3e', '--border2': '#1d5c3e', '--accent': '#ffd166',
+              '--accent2': '#3fd6a0', '--text': '#dff5e9', '--muted': '#6d9483' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ['#12402c', '#0a2a1c', '#04160e'] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ['#103526', '#071e14'] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ['#1d6b48', '#0e3d29'] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#268a5c', '#145236'] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#04160e', '#0f3122'] } } },
+};
+
+let _theme = { tokens: {}, surfaces: {} };
+try {
+  const raw = JSON.parse(localStorage.getItem(THEME_KEY) || 'null');
+  if (raw && typeof raw === 'object') {
+    _theme = { tokens: raw.tokens || {}, surfaces: raw.surfaces || {} };
+  }
+} catch (e) { /* the pre-paint loader has already ignored it too */ }
+
+function _themeSave() {
+  try { localStorage.setItem(THEME_KEY, JSON.stringify(_theme)); } catch (e) {}
+  _themeApply(_theme);
+}
+
+function _themeSurfaceOf(v) {
+  const def = (THEME_SURFACES.find(x => x.v === v) || {}).d
+           || { type: 'grad', angle: 180, stops: ['#000000', '#000000'] };
+  const cur = _theme.surfaces[v];
+  if (!cur) return { type: def.type, angle: def.angle, stops: def.stops.slice(),
+                     color: def.stops[0] };
+  return { type: cur.type === 'solid' ? 'solid' : 'grad',
+           angle: cur.angle != null ? cur.angle : def.angle,
+           stops: (Array.isArray(cur.stops) && cur.stops.length >= 2)
+             ? cur.stops.slice() : def.stops.slice(),
+           color: _themeClean(cur.color) || def.stops[0] };
+}
+
+function themeSetToken(v, c) {
+  const clean = _themeClean(c);
+  if (!clean) return;
+  _theme.tokens[v] = clean;
+  _themeSave();
+}
+function themeSetSurface(v, patch) {
+  const sf = _themeSurfaceOf(v);
+  Object.assign(sf, patch);
+  _theme.surfaces[v] = sf;
+  _themeSave();
+  _themeRender();
+}
+function themeSetSurfaceStop(v, i, c) {
+  const clean = _themeClean(c);
+  if (!clean) return;
+  const sf = _themeSurfaceOf(v);
+  sf.stops[i] = clean;
+  _theme.surfaces[v] = sf;
+  _themeSave();
+  _themeRender();
+}
+// A gradient needs at least two stops and gets unreadable past four, so the
+// count is a control rather than a free-for-all.
+function themeSurfaceStops(v, n) {
+  const sf = _themeSurfaceOf(v);
+  n = Math.max(2, Math.min(4, parseInt(n, 10) || 2));
+  while (sf.stops.length < n) sf.stops.push(sf.stops[sf.stops.length - 1]);
+  sf.stops.length = n;
+  _theme.surfaces[v] = sf;
+  _themeSave();
+  _themeRender();
+}
+
+function themeApplyPreset(key) {
+  const p = THEME_PRESETS[key];
+  if (!p) return;
+  // Deep copied, or editing a colour afterwards would edit the preset.
+  _theme = {
+    tokens: Object.assign({}, p.tokens),
+    surfaces: Object.keys(p.surfaces || {}).reduce((o, k) => {
+      const sf = p.surfaces[k];
+      o[k] = { type: sf.type, angle: sf.angle, stops: sf.stops.slice() };
+      return o;
+    }, {}),
+  };
+  // The default preset is the ABSENCE of overrides, so switching to it has to
+  // clear the properties rather than write the shipped values back: written
+  // back, they would then stop following any future change to the stylesheet.
+  _themeClearProps();
+  _themeSave();
+  _themeRender();
+}
+function _themeClearProps() {
+  const r = document.documentElement;
+  THEME_TOKENS.forEach(t => r.style.removeProperty(t.v));
+  THEME_SURFACES.forEach(t => r.style.removeProperty(t.v));
+}
+function themeReset() {
+  _theme = { tokens: {}, surfaces: {} };
+  _themeClearProps();
+  try { localStorage.removeItem(THEME_KEY); } catch (e) {}
+  _themeRender();
+}
+
+// Import and export as text, the same way the radar colour tables move
+// between machines. A theme is small, so it travels as readable JSON rather
+// than an opaque blob.
+function themeExport() {
+  const box = document.getElementById('lqm-theme-io');
+  if (box) { box.value = JSON.stringify(_theme); box.focus(); box.select(); }
+}
+function themeImport() {
+  const box = document.getElementById('lqm-theme-io');
+  const st = document.getElementById('lqm-theme-io-status');
+  const say = (m) => { if (st) st.textContent = m; };
+  if (!box || !box.value.trim()) { say('Paste a theme into the box first.'); return; }
+  let raw;
+  try { raw = JSON.parse(box.value); } catch (e) { say('That is not a theme.'); return; }
+  if (!raw || typeof raw !== 'object') { say('That is not a theme.'); return; }
+  // Rebuilt field by field rather than trusted wholesale. This came off
+  // somebody's clipboard and ends up in CSS properties.
+  const out = { tokens: {}, surfaces: {} };
+  const known = new Set(THEME_TOKENS.map(t => t.v));
+  Object.keys(raw.tokens || {}).forEach(k => {
+    const c = _themeClean(raw.tokens[k]);
+    if (c && known.has(k)) out.tokens[k] = c;
+  });
+  const knownS = new Set(THEME_SURFACES.map(t => t.v));
+  Object.keys(raw.surfaces || {}).forEach(k => {
+    if (!knownS.has(k)) return;
+    const sf = raw.surfaces[k] || {};
+    const stops = (Array.isArray(sf.stops) ? sf.stops : []).map(_themeClean).filter(Boolean);
+    const color = _themeClean(sf.color);
+    if (sf.type === 'solid' && color) {
+      out.surfaces[k] = { type: 'solid', angle: +sf.angle || 180, color: color, stops: [color, color] };
+    } else if (stops.length >= 2) {
+      out.surfaces[k] = { type: 'grad', angle: +sf.angle || 180, stops: stops.slice(0, 4) };
+    }
+  });
+  const n = Object.keys(out.tokens).length + Object.keys(out.surfaces).length;
+  if (!n) { say('Nothing usable in that theme.'); return; }
+  _theme = out;
+  _themeClearProps();
+  _themeSave();
+  _themeRender();
+  say('Loaded ' + n + ' colour' + (n === 1 ? '' : 's') + '.');
+}
+
+function _themeRender() {
+  const tw = document.getElementById('lqm-theme-tokens');
+  if (tw) {
+    tw.innerHTML = THEME_TOKENS.map(t => {
+      const cur = _theme.tokens[t.v] || t.d;
+      return '<div class="lqm-settings-row"><span class="lqm-settings-lbl">'
+        + t.l + '</span><input type="color" class="lqm-theme-sw" value="' + cur
+        + '" oninput="themeSetToken(\'' + t.v + '\', this.value)"></div>';
+    }).join('');
+  }
+  const sw = document.getElementById('lqm-theme-surfaces');
+  if (!sw) return;
+  sw.innerHTML = THEME_SURFACES.map(t => {
+    const sf = _themeSurfaceOf(t.v);
+    const isSolid = sf.type === 'solid';
+    const preview = _themeSurfaceCss(sf) || 'none';
+    let body = '<div class="lqm-settings-row"><span class="lqm-settings-lbl">' + t.l
+      + '</span><select class="lqm-settings-select" onchange="themeSetSurface(\'' + t.v
+      + "', { type: this.value })\">"
+      + '<option value="grad"' + (isSolid ? '' : ' selected') + '>Gradient</option>'
+      + '<option value="solid"' + (isSolid ? ' selected' : '') + '>Solid</option>'
+      + '</select></div>';
+    body += '<div class="lqm-theme-prev" style="background-image:' + preview + '"></div>';
+    if (isSolid) {
+      body += '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Color</span>'
+        + '<input type="color" class="lqm-theme-sw" value="' + sf.color
+        + '" oninput="themeSetSurface(\'' + t.v + '\', { color: this.value })"></div>';
+    } else {
+      body += '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Stops</span>'
+        + '<div style="display:flex;gap:5px;align-items:center;">'
+        + sf.stops.map((c, i) => '<input type="color" class="lqm-theme-sw" value="' + c
+            + '" oninput="themeSetSurfaceStop(\'' + t.v + '\', ' + i + ', this.value)">').join('')
+        + '<select class="lqm-settings-select" style="width:52px;" onchange="themeSurfaceStops(\''
+        + t.v + "', this.value)\">"
+        + [2, 3, 4].map(n => '<option value="' + n + '"'
+            + (sf.stops.length === n ? ' selected' : '') + '>' + n + '</option>').join('')
+        + '</select></div></div>';
+      body += '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Angle</span>'
+        + '<div style="display:flex;align-items:center;gap:6px;">'
+        + '<input type="range" class="lqm-slider" min="0" max="360" step="15" value="' + sf.angle
+        + '" oninput="themeSetSurface(\'' + t.v + '\', { angle: this.value })">'
+        + '<span style="font-family:var(--mono);font-size:9px;color:var(--accent2);min-width:32px;">'
+        + sf.angle + 'deg</span></div></div>';
+    }
+    return '<div class="lqm-theme-block">' + body + '</div>';
+  }).join('');
+}
+
 // ── FULL SCREEN ──────────────────────────────────────────────────────────
 // On the animbar rather than the tool rail, because going full screen is
 // something you do when you settle in to watch a loop, which is exactly when
@@ -52497,6 +52867,7 @@ function lqmOpenSettings() {
   // rebound from the offer dialog, or a preset picked on another tab, has to
   // be what the panel shows when it next appears.
   if (typeof _kbdRenderSettings === 'function') { try { _kbdRenderSettings(); } catch (e) {} }
+  if (typeof _themeRender === 'function') { try { _themeRender(); } catch (e) {} }
   if (typeof _mbStyleSyncUi === 'function') { try { _mbStyleSyncUi(); } catch (e) {} }
   if (typeof _ssRuleUiInit === 'function') { try { _ssRuleUiInit(); } catch (e) {} }
   // Both order lists are rebuilt on every open rather than once at boot. They
@@ -55830,7 +56201,7 @@ function lqmOpenTutorial() {
 // summary instead of a raw commit log. Dismissing it is remembered per
 // message (keyed on the text itself, not a version number), so editing
 // this string is what makes a previously-dismissed bar reappear.
-const APP_LATEST_UPDATE = 'Three things. There is a star button on the left of the search bar: tap the star on any feature or place in the results to keep it, and the button brings your starred list back. The export tool has moved off the right-hand tool rail into Settings then Display, and it now works on model charts, which is why it used to say there was nothing to export while a chart filled the screen. And there is a full screen button on the animation bar, between the clock and the forward-one-frame button.';
+const APP_LATEST_UPDATE = 'You can now recolour the app itself, under Settings then App Colors. Twelve colours drive everything (background, panels, borders, accent, text, warnings), and five surfaces (panels, cards, buttons, button hover, pressed) can each be a flat colour or a gradient of two to four stops at any angle. Four themes ship to start from: GWCFC Red, Midnight, Slate and Storm Green. Your theme can be copied out as text and pasted in on another device, and Reset puts everything back. Radar, model and satellite colours are untouched and keep their own sections, since those colours stand for measurements rather than for looks.';
 
 function _initUpdateBar() {
   const bar = document.getElementById('update-bar');
