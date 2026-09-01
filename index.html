@@ -4074,12 +4074,16 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   box-shadow: 0 6px 22px rgba(0,0,0,0.45);
 }
 /* ── The time machine ────────────────────────────────────────────────────── */
-#tm-modal {
+#tm-modal, #htm-modal {
   position: fixed; inset: 0; z-index: 4000; display: none;
   background: rgba(0,0,0,0.55); backdrop-filter: blur(3px);
   align-items: center; justify-content: center; padding: 16px;
 }
-#tm-modal.open { display: flex; }
+#tm-modal.open, #htm-modal.open { display: flex; }
+/* The history machines' variable switcher: one lit chip decides what every
+   station dot is showing. */
+.htm-varchip.active { background: rgba(232,184,0,0.5); color: #fff; }
+.htm-varchip[disabled] { opacity: 0.35; cursor: default; }
 .tm-card {
   width: min(430px, 100%); max-height: 86vh; overflow: auto;
   background: linear-gradient(160deg, #2a0806, #140505);
@@ -23394,7 +23398,7 @@ function _tmPlaceBadge() {
   } catch (e) {}
   // Stacked, radar first: when both layers are in the past there are two
   // badges, and each has to be readable and clickable on its own.
-  ['tm-badge', 'tm-badge-sat'].forEach(id => {
+  ['tm-badge', 'tm-badge-sat', 'tm-badge-htm'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.style.top = top + 'px';
@@ -28501,6 +28505,21 @@ function toggleOverlayPill(id) {
     else {
       if (_wpcOutlookLayer) { try { map.removeLayer(_wpcOutlookLayer); } catch(e){} _wpcOutlookLayer = null; }
     }
+  } else if (id === 'ftm' || id === 'ctm') {
+    if (_htmMode === id) {
+      _htmOff();
+    } else {
+      // One machine at a time: both repurpose the same station dots.
+      if (_htmMode) _htmOff(true);
+      _htmMode = id;
+      if (!_htmDate) _htmDate = _htmDefaultDate();
+      const pill = document.getElementById('op-' + id);
+      if (pill) pill.classList.add('active');
+      map.on('moveend', _htmMoved);
+      _htmOpenModal();
+      _htmSyncBadge();
+      _htmLoad();
+    }
   } else if (id === 'atcf') {
     _atcfActive = !_atcfActive;
     const pill = document.getElementById('op-atcf');
@@ -29078,6 +29097,306 @@ async function _loadAtcf(firstLoad) {
       </div>`, { className: 'data-popup', maxWidth: 260 })
       .addTo(_atcfLayer);
   });
+}
+
+// ── THE HISTORY MACHINES - NOAA's climate archive on the map ──
+// Two overlays sharing one engine, the way the radar and satellite time
+// machines share one modal style. Forecast Time Machine (ftm): pick any
+// past date and every reporting station in view shows what the thermometer
+// really read that day. Climate Time Machine (ctm): the same stations show
+// what is NORMAL for that day of the year. Both color their dots by how
+// far the picked date ran above (red) or below (blue) normal, gray where
+// the station has no published normal, and a station with no report for
+// the date is simply not drawn. One at a time: they fight over the same
+// dots otherwise.
+const HTM_NCEI = 'https://www.ncei.noaa.gov/access/services/data/v1';
+const HTM_FLOOR = '1763-01-01';   // the oldest daily report GHCN holds
+const HTM_MAX_DOTS = 450;         // a DOM full of divIcons dies past this
+const HTM_VARS = {
+  high: { label: 'HIGH', act: 'TMAX', norm: 'DLY-TMAX-NORMAL', temp: true },
+  low:  { label: 'LOW',  act: 'TMIN', norm: 'DLY-TMIN-NORMAL', temp: true },
+  rain: { label: 'RAIN', act: 'PRCP', norm: null, temp: false },
+  snow: { label: 'SNOW', act: 'SNOW', norm: null, temp: false },
+};
+let _htmMode = null;              // 'ftm' | 'ctm' | null
+let _htmDate = null;              // 'YYYY-MM-DD'
+let _htmVar = 'high';
+let _htmLayer = null, _htmGen = 0, _htmRows = null, _htmMoveT = null;
+const _htmCache = new Map();      // full query -> parsed rows, LRU
+
+function _htmDefaultDate() {
+  // This day last year: instantly interesting, and certain to exist.
+  const d = new Date();
+  d.setUTCFullYear(d.getUTCFullYear() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+async function _htmFetch(qs) {
+  if (_htmCache.has(qs)) return _htmCache.get(qs);
+  const url = `${HTM_NCEI}?${qs}`;
+  // Old weather never changes, so every successful answer is kept. Direct
+  // first; the CORS proxies if NOAA will not talk to a browser origin; the
+  // Pi's scoped relay door last.
+  const tries = [url,
+    `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`];
+  if (typeof _hdBase !== 'undefined' && _hdBase) {
+    tries.push(`${_hdBase}/relay/ncei?${qs}`);
+  }
+  for (const t of tries) {
+    try {
+      const r = await fetchWithTimeout(t, 25000);
+      if (!r.ok) continue;
+      const j = await r.json();
+      if (Array.isArray(j)) {
+        _htmCache.set(qs, j);
+        while (_htmCache.size > 48) _htmCache.delete(_htmCache.keys().next().value);
+        return j;
+      }
+    } catch (e) {}
+  }
+  return null;
+}
+
+async function _htmLoad() {
+  if (!_htmMode) return;
+  const gen = ++_htmGen;
+  const b = map.getBounds();
+  let n = Math.min(b.getNorth(), 85), s = Math.max(b.getSouth(), -85);
+  let w = Math.max(b.getWest(), -180), e = Math.min(b.getEast(), 180);
+  // A whole-planet box would be tens of megabytes of stations. Rather than
+  // refuse, the ask is clamped to a window centered on the view: the middle
+  // loads now, and zooming in brings the edges with it.
+  if (n - s > 55) { const c = (n + s) / 2; n = c + 27.5; s = c - 27.5; }
+  if (e - w > 72) { const c = (e + w) / 2; e = c + 36; w = c - 36; }
+  const bbox = `${n.toFixed(2)},${w.toFixed(2)},${s.toFixed(2)},${e.toFixed(2)}`;
+  const md = _htmDate.slice(5);
+  // The normals dataset files every day of the year under 2010, which has
+  // no Feb 29, so a leap day borrows the 28th's normal.
+  const normDate = '2010-' + (md === '02-29' ? '02-28' : md);
+  const [act, norm] = await Promise.all([
+    _htmFetch(`dataset=daily-summaries&dataTypes=TMAX,TMIN,PRCP,SNOW`
+      + `&startDate=${_htmDate}&endDate=${_htmDate}&boundingBox=${bbox}`
+      + `&units=standard&format=json&includeStationName=true&includeStationLocation=1`),
+    _htmFetch(`dataset=normals-daily&dataTypes=DLY-TMAX-NORMAL,DLY-TMIN-NORMAL`
+      + `&startDate=${normDate}&endDate=${normDate}&boundingBox=${bbox}`
+      + `&units=standard&format=json&includeStationLocation=1`),
+  ]);
+  if (gen !== _htmGen || !_htmMode) return;
+  if (!act) {
+    if (typeof showToast === 'function') {
+      showToast('NOAA’s climate archive is not answering right now. Try again in a moment.', 5000);
+    }
+    return;
+  }
+  _htmRows = { act, norm: norm || [] };
+  _htmRender();
+}
+
+function _htmDepColor(dep) {
+  if (dep == null || !isFinite(dep)) return '#5a6572';        // no normal known
+  if (dep >= 10) return '#d40000';
+  if (dep >= 5)  return '#ff6a00';
+  if (dep >= 2)  return '#ffb300';
+  if (dep <= -10) return '#0050d4';
+  if (dep <= -5)  return '#2a7fff';
+  if (dep <= -2)  return '#66b3ff';
+  return '#8a94a4';                                            // near normal
+}
+
+function _htmShowTemp(f) {
+  const c = (typeof _units !== 'undefined' && _units
+             && String(_units.temp).toLowerCase() === 'c');
+  return c ? Math.round((f - 32) * 5 / 9) + '°' : Math.round(f) + '°';
+}
+
+function _htmRender() {
+  if (!_htmMode || !_htmRows) return;
+  const V = HTM_VARS[_htmVar] || HTM_VARS.high;
+  // In the climate machine the dot IS the normal, so a variable with no
+  // published daily normal (rain, snow) cannot be shown there.
+  if (_htmMode === 'ctm' && !V.norm) { _htmVar = 'high'; return _htmRender(); }
+  const normBy = {};
+  _htmRows.norm.forEach(r => { if (r && r.STATION) normBy[r.STATION] = r; });
+  if (!_htmLayer) _htmLayer = L.layerGroup().addTo(map);
+  else _htmLayer.clearLayers();
+  const rows = _htmRows.act.filter(r => r && r.STATION && r.LATITUDE != null
+    && r.LONGITUDE != null);
+  // Everything in view was asked for; more than the cap still cannot all be
+  // DOM nodes. A stride keeps the spread instead of favoring one corner.
+  const stride = Math.max(1, Math.ceil(rows.length / HTM_MAX_DOTS));
+  let drawn = 0;
+  rows.forEach((r, i) => {
+    if (i % stride !== 0) return;
+    const lat = +r.LATITUDE, lng = +r.LONGITUDE;
+    if (!isFinite(lat) || !isFinite(lng)) return;
+    const nr = normBy[r.STATION] || null;
+    const actV = parseFloat(r[V.act]);
+    const normV = nr && V.norm ? parseFloat(nr[V.norm]) : NaN;
+    const shown = _htmMode === 'ftm' ? actV : normV;
+    if (!isFinite(shown)) return;               // no report: no dot, by request
+    // Color is always "how did the real day compare to normal", both modes.
+    let dep = null;
+    if (V.temp && isFinite(actV) && isFinite(normV)) dep = actV - normV;
+    const color = V.temp ? _htmDepColor(dep) : '#5a7a8a';
+    const text = V.temp ? _htmShowTemp(shown) : shown.toFixed(2) + '"';
+    const name = _ccEsc(String(r.NAME || r.STATION));
+    const icon = L.divIcon({
+      className: '', iconSize: [38, 18], iconAnchor: [19, 9],
+      html: `<div style="min-width:34px;padding:1px 4px;border-radius:9px;background:${color};
+        border:1.5px solid rgba(255,255,255,0.85);box-shadow:0 1px 4px rgba(0,0,0,0.5);
+        font:700 10px system-ui;color:#fff;text-align:center;text-shadow:0 1px 2px rgba(0,0,0,0.5);
+        white-space:nowrap;">${text}</div>`,
+    });
+    const rep = (k, u) => {
+      const v = parseFloat(r[k]);
+      return isFinite(v) ? (u === 'F' ? _htmShowTemp(v) : v.toFixed(2) + '"') : 'no report';
+    };
+    L.marker([lat, lng], { icon, pane: _ovMarkerPane(_htmMode), zIndexOffset: 280 })
+      .bindPopup(`<div class="data-popup-inner" style="--dp-accent:${color}">
+        <div class="dp-header">
+          <span class="dp-header-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-clock></use></svg></span>
+          <span class="dp-header-label">${name}</span>
+        </div>
+        <div class="dp-body">
+          <div class="dp-row"><span>Date</span><b>${_ccEsc(_htmDate)}</b></div>
+          <div class="dp-row"><span>High</span><b>${rep('TMAX', 'F')}</b></div>
+          <div class="dp-row"><span>Low</span><b>${rep('TMIN', 'F')}</b></div>
+          <div class="dp-row"><span>Rain</span><b>${rep('PRCP')}</b></div>
+          <div class="dp-row"><span>Snow</span><b>${rep('SNOW')}</b></div>
+          ${dep != null ? `<div class="dp-row"><span>Vs normal</span><b>${dep > 0 ? '+' : ''}${Math.round(dep)}°F</b></div>` : ''}
+          <div class="dp-row"><span>Station</span><b>${_ccEsc(String(r.STATION))}</b></div>
+        </div>
+      </div>`, { className: 'data-popup', maxWidth: 250 })
+      .addTo(_htmLayer);
+    drawn++;
+  });
+  if (stride > 1 && typeof showToast === 'function' && !_htmRender._capSaid) {
+    _htmRender._capSaid = true;
+    showToast(`Showing ${drawn} of ${rows.length} stations in view. Zoom in and every one of them fits.`, 4500);
+  }
+  _htmSyncBadge();
+}
+
+function _htmMoved() {
+  clearTimeout(_htmMoveT);
+  _htmMoveT = setTimeout(() => { if (_htmMode) _htmLoad(); }, 700);
+}
+
+function _htmSyncBadge() {
+  let el = document.getElementById('tm-badge-htm');
+  if (!_htmMode) { if (el) el.remove(); try { _tmPlaceBadge(); } catch (e) {} return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'tm-badge-htm';
+    el.className = 'tm-badge';
+    el.onclick = () => _htmOpenModal();
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `<b>${_htmMode === 'ftm' ? 'PAST WEATHER' : 'CLIMATE'}</b> `
+    + _ccEsc(_htmDate) + '<span class="tm-live">CHANGE</span>';
+  try { _tmPlaceBadge(); } catch (e) {}
+}
+
+function _htmOpenModal() {
+  let m = document.getElementById('htm-modal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'htm-modal';
+    m.innerHTML = `
+      <div class="tm-card" role="dialog" aria-modal="true" aria-label="History time machine">
+        <div class="tm-head">
+          <span class="tm-title"></span>
+          <button type="button" class="tm-x" onclick="_htmCloseModal()" title="Close">&#10005;</button>
+        </div>
+        <div class="tm-note"></div>
+        <div class="tm-row">
+          <label for="htm-date">DATE</label>
+          <input type="date" id="htm-date">
+        </div>
+        <div class="tm-quick htm-vars"></div>
+        <div class="tm-quick htm-jumps"></div>
+        <div class="tm-go">
+          <button type="button" class="tm-btn tm-btn-go" onclick="_htmApply()">TRAVEL</button>
+          <button type="button" class="tm-btn" onclick="_htmOff()">TURN OFF</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    m.addEventListener('click', ev => { if (ev.target === m) _htmCloseModal(); });
+    const jumps = m.querySelector('.htm-jumps');
+    [1, 2, 5, 10, 20, 50].forEach(yrs => {
+      const bch = document.createElement('button');
+      bch.type = 'button';
+      bch.className = 'tm-chip';
+      bch.textContent = yrs + ' YR';
+      bch.onclick = () => {
+        const d = new Date();
+        d.setUTCFullYear(d.getUTCFullYear() - yrs);
+        m.querySelector('#htm-date').value = d.toISOString().slice(0, 10);
+        _htmApply();
+      };
+      jumps.appendChild(bch);
+    });
+  }
+  const vars = m.querySelector('.htm-vars');
+  vars.innerHTML = '';
+  Object.entries(HTM_VARS).forEach(([k, v]) => {
+    const bch = document.createElement('button');
+    bch.type = 'button';
+    bch.className = 'tm-chip htm-varchip' + (k === _htmVar ? ' active' : '');
+    bch.textContent = v.label;
+    // The climate machine shows normals, and rain and snow have no daily
+    // normal to show, so those chips sit this mode out.
+    if (_htmMode === 'ctm' && !v.norm) bch.disabled = true;
+    else bch.onclick = () => { _htmVar = k; _htmOpenModal(); _htmRender(); };
+    vars.appendChild(bch);
+  });
+  const d = m.querySelector('#htm-date');
+  d.min = HTM_FLOOR;
+  d.max = new Date(Date.now() - 86400e3).toISOString().slice(0, 10);
+  d.value = _htmDate || _htmDefaultDate();
+  m.querySelector('.tm-title').textContent = _htmMode === 'ctm'
+    ? 'CLIMATE TIME MACHINE' : 'FORECAST TIME MACHINE';
+  m.querySelector('.tm-note').innerHTML = _htmMode === 'ctm'
+    ? 'Every station in view shows what is <b>NORMAL</b> for the chosen day '
+      + '(the 30-year average), colored by how far that date really ran above '
+      + 'or below it. Gray means the station publishes no normal.'
+    : 'Every station in view shows what the thermometer <b>really read</b> on '
+      + 'the chosen date, straight from NOAA’s archive. Red ran hot for '
+      + 'the season, blue ran cold. The record reaches back to <b>1763</b> '
+      + 'where a station is that old; a station with no report that day is '
+      + 'not drawn.';
+  m.classList.add('open');
+}
+
+function _htmCloseModal() {
+  const m = document.getElementById('htm-modal');
+  if (m) m.classList.remove('open');
+}
+
+function _htmApply() {
+  const m = document.getElementById('htm-modal');
+  const v = m && m.querySelector('#htm-date').value;
+  if (!v) return;
+  _htmDate = v;
+  _htmCloseModal();
+  _htmSyncBadge();
+  _htmLoad();
+}
+
+function _htmOff(quiet) {
+  _htmGen++;
+  _htmMode = null;
+  _htmRows = null;
+  clearTimeout(_htmMoveT);
+  try { map.off('moveend', _htmMoved); } catch (e) {}
+  if (_htmLayer) { try { map.removeLayer(_htmLayer); } catch (e) {} _htmLayer = null; }
+  ['op-ftm', 'op-ctm'].forEach(id => {
+    const p = document.getElementById(id);
+    if (p) p.classList.remove('active');
+  });
+  if (!quiet) _htmCloseModal();
+  _htmSyncBadge();
 }
 
 // ── PRESSURE SUB-MENU ──
@@ -59663,6 +59982,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-01-l', date: 'Sep 1, 2026',
+    text: 'Two new machines in the Overlays menu. Forecast Time Machine: pick any past date, as far back as 1763 where stations reach, and every reporting station in view shows what the thermometer actually read, colored red or blue by how far the day ran above or below normal. Climate Time Machine: the same stations show what is NORMAL for that day of the year. Switch the dots between high, low, rain and snowfall, tap one for the full daily report, and use the year-jump chips to hop 1 to 50 years back. Powered by NOAA’s climate archive.' },
   { id: '2026-09-01-k', date: 'Sep 1, 2026',
     text: 'New in the Overlays menu: ATCF Updates. It draws every active tropical system in the world straight from the Automated Tropical Cyclone Forecast feed, hurricanes colored by category, tropical storms, depressions, and even invests (drawn dashed). Tap any storm for the full advisory: class, winds in knots and mph, pressure, movement, fix time, basin, and the raw ATCF line itself. It re-checks the feed every 10 minutes while it is on.' },
   { id: '2026-09-01-j', date: 'Sep 1, 2026',
@@ -61671,6 +61992,12 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
     <div class="ov-pill" id="op-atcf" data-ovid="atcf" title="ATCF Updates - live Automated Tropical Cyclone Forecast fixes for every active system and invest worldwide, via KnackWX">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('atcf')">ATCF Updates</span><span class="ov-drag" title="Drag to reorder">⠿</span>
+    </div>
+    <div class="ov-pill" id="op-ftm" data-ovid="ftm" title="Forecast Time Machine - pick any past date and every reporting station in view shows what the thermometer actually read, from NOAA's climate archive">
+      <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('ftm')">Forecast Time Machine</span><span class="ov-drag" title="Drag to reorder">⠿</span>
+    </div>
+    <div class="ov-pill" id="op-ctm" data-ovid="ctm" title="Climate Time Machine - what is NORMAL for the chosen day (1991-2020 averages), colored by how far that date really ran above or below it">
+      <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('ctm')">Climate Time Machine</span><span class="ov-drag" title="Drag to reorder">⠿</span>
     </div>
     <div class="ov-pill" id="op-gwcfc-outlook" data-ovid="gwcfc-outlook" title="GWCFC Outlook - the outlook our own forecasters publish from the Forecasting Portal">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('gwcfc-outlook')">GWCFC Outlook</span><span class="ov-drag" title="Drag to reorder">⠿</span>
