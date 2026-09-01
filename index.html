@@ -48728,8 +48728,8 @@ const WMO_ICONS = {
 };
 
 let cityMarkersLayer  = null;
-const _cityMarkerRefs = [];      // Leaflet marker per CITIES index
-const _cityTempCache  = [];      // °F temp per city (undefined=unfetched, null=no station nearby)
+const _cityMarkerRefs = new Map();  // coord key -> Leaflet marker on screen
+const _cityTempCache  = new Map();  // coord key -> °F (null = no station nearby)
 let   _cityRefreshTimer = null;
 
 // ── METAR station snapshot , one ArcGIS request feeds all city dots ──
@@ -48757,7 +48757,7 @@ async function _getMetarStations() {
   });
   _metarStations     = out;
   _metarStationsTime = now;
-  _cityTempCache.length = 0; // expire city cache so new station data is picked up
+  _cityTempCache.clear(); // expire city cache so new station data is picked up
   return out;
 }
 
@@ -48820,42 +48820,112 @@ function _scheduleCityTempRefresh() {
   _cityRefreshTimer = setTimeout(_refreshVisibleCityTemps, 600);
 }
 
+// ── The world gazetteer: every named town on Earth, tiled on the Pi ──
+// cities_pipeline.py cuts the full GeoNames dump (millions of populated
+// places) into 5 degree tiles under ~/wxdata/cities. The page loads only
+// the tiles under the current view and shows the biggest places that fit
+// the screen cap, so zooming in keeps revealing smaller towns all the way
+// down to villages. When the Pi (or its tiles) are away, the built-in
+// CITIES list below carries the dots exactly as it always has.
+const CITY_TILE_DEG = 5;
+const CITY_SCREEN_CAP = 170;      // fixed per screen, biggest places first
+const _cityTileCache = new Map(); // 'la_lo' -> rows | 'miss' | in-flight promise
+let _cityRefreshGen = 0;
+
+function _cityTileKeysFor(bounds) {
+  const keys = [];
+  const s = Math.max(-90, bounds.getSouth()), n = Math.min(89.99, bounds.getNorth());
+  const w = Math.max(-180, bounds.getWest()), e = Math.min(179.99, bounds.getEast());
+  for (let la = Math.floor((s + 90) / CITY_TILE_DEG);
+       la <= Math.floor((n + 90) / CITY_TILE_DEG); la++) {
+    for (let lo = Math.floor((w + 180) / CITY_TILE_DEG);
+         lo <= Math.floor((e + 180) / CITY_TILE_DEG); lo++) {
+      keys.push(la + '_' + lo);
+    }
+  }
+  return keys;
+}
+
+function _cityFetchTile(key) {
+  if (_cityTileCache.has(key)) return Promise.resolve(_cityTileCache.get(key));
+  const base = (typeof _hdBase !== 'undefined' && _hdBase) || null;
+  if (!base) return Promise.resolve(null);
+  const p = fetch(`${base}/cities/t_${key}.json`, { signal: _abortSignal(12000) })
+    .then(r => r.ok ? r.json() : 'miss')
+    .catch(() => 'miss')     // an ocean tile and a dead Pi both read as miss
+    .then(rows => { _cityTileCache.set(key, rows); return rows; });
+  _cityTileCache.set(key, p);
+  return p;
+}
+
+// The biggest places on this screen, from the Pi's tiles, or null when
+// nothing is available, which sends the caller to the built-in list.
+async function _cityGazetteerVisible(bounds) {
+  const keys = _cityTileKeysFor(bounds);
+  // A whole-world view is dozens of tiles for dots the screen cannot fit
+  // anyway; the built-in list of major cities is the right answer there.
+  if (!keys.length || keys.length > 40) return null;
+  const tiles = await Promise.all(keys.map(_cityFetchTile));
+  const rows = [];
+  tiles.forEach(t => {
+    if (!Array.isArray(t)) return;
+    t.forEach(r => {
+      if (r[1] >= bounds.getSouth() && r[1] <= bounds.getNorth()
+          && r[2] >= bounds.getWest() && r[2] <= bounds.getEast()) rows.push(r);
+    });
+  });
+  if (!rows.length) return null;
+  // Population first, then the feature rank GeoNames assigns (a capital
+  // with an unrecorded population still beats a hamlet).
+  rows.sort((a, b) => (b[3] - a[3]) || (a[4] - b[4]));
+  return rows.slice(0, CITY_SCREEN_CAP)
+    .map(r => ({ name: r[0], lat: r[1], lon: r[2] }));
+}
+
 async function _refreshVisibleCityTemps() {
   if (!activeLayers.forecasts || !cityMarkersLayer) return;
+  const gen = ++_cityRefreshGen;
+  const bounds = map.getBounds().pad(0.1);
 
-  // Determine visible cities
-  const bounds  = map.getBounds().pad(0.1);
-  const visible = [];
-  CITIES.forEach((city, i) => {
-    if (bounds.contains([city.lat, city.lon])) visible.push(i);
-  });
+  // The gazetteer first; the hand-typed list only when it cannot answer.
+  let list = null;
+  try { list = await _cityGazetteerVisible(bounds); } catch (e) {}
+  if (gen !== _cityRefreshGen || !activeLayers.forecasts || !cityMarkersLayer) return;
+  if (!list) {
+    list = CITIES.filter(city => bounds.contains([city.lat, city.lon]));
+  }
+  const ck = c => c.lat.toFixed(3) + ',' + c.lon.toFixed(3);
 
   // Phase 1 , render immediately from cache (grey dots if not yet loaded)
   cityMarkersLayer.clearLayers();
-  visible.forEach(i => {
-    if (!_ptInPolyUnion(CITIES[i].lat, CITIES[i].lon)) return;
-    const m = makeCityMarker(CITIES[i], _cityTempCache[i] !== undefined ? _cityTempCache[i] : null);
+  _cityMarkerRefs.clear();
+  list.forEach(city => {
+    if (!_ptInPolyUnion(city.lat, city.lon)) return;
+    const key = ck(city);
+    const m = makeCityMarker(city,
+      _cityTempCache.has(key) ? _cityTempCache.get(key) : null);
     m.addTo(cityMarkersLayer);
-    _cityMarkerRefs[i] = m;
+    _cityMarkerRefs.set(key, m);
   });
 
   // Phase 2 , if any city still needs a temp, fetch METAR stations (cached) and assign
-  const needTemp = visible.filter(i => _cityTempCache[i] === undefined);
+  const needTemp = list.filter(c => !_cityTempCache.has(ck(c)));
   if (!needTemp.length) return;
 
   try {
-    const stations = await _getMetarStations(); // single ArcGIS request, 15-min cached
-    needTemp.forEach(i => {
-      const city = CITIES[i];
+    await _getMetarStations(); // single ArcGIS request, 15-min cached
+    if (gen !== _cityRefreshGen) return;
+    needTemp.forEach(city => {
+      const key = ck(city);
       const temp = _nearestTemp(city.lat, city.lon);
-      _cityTempCache[i] = temp; // null = no station within range (still valid, don't retry)
+      _cityTempCache.set(key, temp); // null = no station in range (valid, don't retry)
       // Replace grey dot with colored one
-      const old = _cityMarkerRefs[i];
+      const old = _cityMarkerRefs.get(key);
       if (old && cityMarkersLayer.hasLayer(old)) {
         cityMarkersLayer.removeLayer(old);
         const m = makeCityMarker(city, temp);
         m.addTo(cityMarkersLayer);
-        _cityMarkerRefs[i] = m;
+        _cityMarkerRefs.set(key, m);
       }
     });
   } catch(e) {
@@ -59982,6 +60052,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-01-m', date: 'Sep 1, 2026',
+    text: 'The Weather Forecasts dots now know every named town on Earth. The Pi builds a tiled copy of the full GeoNames gazetteer, millions of populated places, well over 500,000 of them kept, and the map loads just the tiles under your view: zoomed out you see the big cities as always, and every zoom-in reveals the next tier of smaller towns, down to villages. Tap any of them for the full Open-Meteo forecast, exactly like the big cities. When the Pi is unreachable the original city list still carries the dots.' },
   { id: '2026-09-01-l', date: 'Sep 1, 2026',
     text: 'Two new machines in the Overlays menu. Forecast Time Machine: pick any past date, as far back as 1763 where stations reach, and every reporting station in view shows what the thermometer actually read, colored red or blue by how far the day ran above or below normal. Climate Time Machine: the same stations show what is NORMAL for that day of the year. Switch the dots between high, low, rain and snowfall, tap one for the full daily report, and use the year-jump chips to hop 1 to 50 years back. Powered by NOAA’s climate archive.' },
   { id: '2026-09-01-k', date: 'Sep 1, 2026',
@@ -64377,6 +64449,16 @@ function _ovOrderReset(){
           <div class="credit-desc">Built the base of the Satellite layer, the Inspector and the Storm Cone tool, and helped power several overlays.</div>
           <div class="credit-uses"><span class="credit-use">Satellite</span><span class="credit-use">Inspector</span><span class="credit-use">Storm Cone</span><span class="credit-use">Surface Analysis</span><span class="credit-use">Lightning</span><span class="credit-use">Traffic Cameras</span><span class="credit-use">Storm Centers</span></div>
           <a class="credit-link" href="https://github.com/BusyBird15" target="_blank" rel="noopener">github.com/BusyBird15</a>
+        </div>
+      </div>
+      <div class="credit-row">
+        <img class="credit-logo" src="https://www.google.com/s2/favicons?domain=geonames.org&amp;sz=64" alt="GeoNames logo" loading="lazy">
+        <div class="credit-info">
+          <div class="credit-name">GeoNames</div>
+          <div class="credit-full">The world gazetteer, CC BY 4.0</div>
+          <div class="credit-desc">Every named populated place on Earth, millions of them, which is what lets the forecast dots keep revealing smaller towns the further you zoom in. Licensed CC BY 4.0.</div>
+          <div class="credit-uses"><span class="credit-use">Weather Forecasts</span></div>
+          <a class="credit-link" href="https://www.geonames.org/" target="_blank" rel="noopener">geonames.org</a>
         </div>
       </div>
       <div class="credit-row">

@@ -518,6 +518,34 @@ Persistent=true
 WantedBy=timers.target
 EOF
 
+cat > "$UNITS/gwcfc-cities.service" <<EOF
+[Unit]
+Description=Build the tiled world-city gazetteer for the forecast dots
+
+[Service]
+Type=oneshot
+ExecStart=-$VENV/bin/python $REPO/pi/cities_pipeline.py
+# The first run downloads a ~400 MB dump and streams 1.6 GB of text
+# through the tiler, which on a Pi takes a while. Every later run sees a
+# fresh index and exits in a second.
+TimeoutStartSec=7200
+Nice=19
+EOF
+
+cat > "$UNITS/gwcfc-cities.timer" <<'EOF'
+[Unit]
+Description=World cities, weekly
+
+[Timer]
+# Towns move about as often as continents. Weekly keeps new GeoNames
+# corrections flowing without ever competing with the weather builds.
+OnCalendar=Sun *-*-* 03:40:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
 cat > "$UNITS/gwcfc-cyclones.service" <<EOF
 [Unit]
 Description=Fetch DeepMind cyclone tracks and genesis fields
@@ -797,6 +825,7 @@ systemctl --user enable --now gwcfc-radar.timer    >/dev/null 2>&1
 systemctl --user enable --now gwcfc-sat.timer      >/dev/null 2>&1
 systemctl --user enable --now gwcfc-snd.timer      >/dev/null 2>&1
 systemctl --user enable --now gwcfc-sst.timer      >/dev/null 2>&1
+systemctl --user enable --now gwcfc-cities.timer   >/dev/null 2>&1
 systemctl --user enable --now gwcfc-cyclones.timer >/dev/null 2>&1
 systemctl --user enable --now gwcfc-ens.timer      >/dev/null 2>&1
 systemctl --user enable --now gwcfc-spag.timer     >/dev/null 2>&1
