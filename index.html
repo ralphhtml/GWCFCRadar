@@ -29228,6 +29228,12 @@ const NDFD_LAYERS = {
   td:    'ndfd.conus.td',
   waveheight: 'ndfd.conus.waveheight',
 };
+// Second spellings for names that could not be checked against the live
+// capabilities. The NDFD publishes its grids under short element codes
+// (ds.waveh.bin), so when the long name draws nothing the short code is
+// tried before the button gives up. A name that works is kept for the rest
+// of the session.
+const NDFD_LAYER_ALTS = { waveheight: ['ndfd.conus.waveh'] };
 
 function _sevRenderNDFD(body) {
   const layerName = NDFD_LAYERS[_sevVar];
@@ -33696,9 +33702,9 @@ async function _nwsEnable(bubble, v, src) {
   } catch (e) {
     console.warn('[nws] layer failed:', e);
     if (typeof showToast === 'function') {
-      showToast(src === 'rtma'
+      showToast((e && e.userMsg) || (src === 'rtma'
         ? 'RTMA is not answering right now (the Pi may be busy or away). Try again in a minute.'
-        : 'The NWS forecast server is not answering right now.', 5000);
+        : 'The NWS forecast server is not answering right now.'), 5000);
     }
     if (gen === _nwsGen) _nwsDisable();
     _nwsRefreshMenu();
@@ -33736,8 +33742,14 @@ async function _nwsBuildRtma(field, gen) {
   if (gen !== _nwsGen) return;
   let runs = null;
   const regs = [];
+  let sawRegion = false;
   mans.forEach(x => {
     if (!x || !x.man || !x.man.bounds) return;
+    sawRegion = true;
+    // A domain that never built this field would 404 every frame and paint
+    // nothing, silently. The manifest says what was really rendered, so a
+    // domain without the field just sits this variable out.
+    if (x.man.fields && !x.man.fields[field]) return;
     // The first region with an archive names the clock every region follows.
     if (!runs) {
       runs = (Array.isArray(x.entry.runs) && x.entry.runs.length
@@ -33745,6 +33757,12 @@ async function _nwsBuildRtma(field, gen) {
     }
     regs.push({ name: x.rn, entry: x.entry, bounds: x.man.bounds });
   });
+  if (sawRegion && !regs.length) {
+    const err = new Error('field not built');
+    err.userMsg = 'The Pi has not built this RTMA product yet. '
+      + 'It usually appears within an hour of an update.';
+    throw err;
+  }
   if (!regs.length || !runs || !runs.length) throw new Error('no RTMA regions');
   const urlFor = (entry, run) =>
     `${base}/models/${entry.path.replace(/[^/]+\/manifest\.json$/, run)}`
@@ -33785,6 +33803,37 @@ function _nwsBuildNdfd(field, gen) {
       version: '1.3.0', VTIT: vtit, opacity: 0, tileSize: 256,
       noWrap: true, pane,
     });
+    // A wrong layer name or a down WMS answers with error tiles and the map
+    // just stays empty, which reads as a broken button. The first frame
+    // watches for that: an error with not one tile painted means the whole
+    // product is missing, so it says so once and takes the row back off, so
+    // lit always means showing. One flaky tile among painted ones is left
+    // alone.
+    if (i === 0) {
+      let painted = false;
+      l.once('tileload', () => { painted = true; });
+      l.once('tileerror', () => {
+        setTimeout(() => {
+          if (gen !== _nwsGen || painted) return;
+          const alts = NDFD_LAYER_ALTS[field];
+          if (alts && alts.length) {
+            // The server rejected this spelling outright. Swap in the next
+            // known spelling and rebuild before bothering anyone.
+            NDFD_LAYERS[field] = alts.shift();
+            _nwsLayers.forEach(x => { try { map.removeLayer(x); } catch (e) {} });
+            _nwsBuildNdfd(field, gen);
+            if (gen === _nwsGen) { _nwsLoopShow(0); }
+            return;
+          }
+          if (typeof showToast === 'function') {
+            showToast('The NWS forecast server has no tiles for this product '
+              + 'right now. Try again in a few minutes.', 5000);
+          }
+          _nwsDisable();
+          _nwsRefreshMenu();
+        }, 2500);
+      });
+    }
     // Only the frame being shown joins the map now. Sixteen layers added at
     // once meant sixteen frames' tiles racing the one on screen for the
     // same connections, and the visible picture arriving last. The rest are
@@ -33905,6 +33954,9 @@ function _nwsWarm() {
     if (typeof _hdResolveBase !== 'function') return;
     _hdResolveBase().then(b => {
       if (b && typeof _hdBase !== 'undefined' && !_hdBase) _hdBase = b;
+      // The sea surface temperature index rides the same warm-up, so a
+      // click on any SST source skips its own round trip and just draws.
+      try { if (typeof _sstFetchIndex === 'function') _sstFetchIndex(); } catch (e) {}
       if (typeof _hdFreshIndex === 'function') return _hdFreshIndex();
     }).catch(() => {});
   } catch (e) {}
@@ -59448,6 +59500,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-01-i', date: 'Sep 1, 2026',
+    text: 'Every product should actually load now. The Pi bug that quietly deleted freshly built sea surface temperature maps (the reason OISST, Coral Reef Watch and the ocean heat maps came up empty) is fixed: cleanup can no longer touch the newest days of any product. RTMA gains the Relative Humidity chart it could never make before (the Weather Service publishes no RH field, so the Pi now works it out from temperature and dew point). And nothing fails silently anymore: an RTMA product the Pi has not built yet says so, an NDFD product the forecast server will not draw turns itself back off with a message, and wave height tries a second known name first. SST also joins the early warm-up, so those maps start loading the moment you open a menu.' },
   { id: '2026-09-01-h', date: 'Sep 1, 2026',
     text: 'Faster, and fewer taps: a variable with only one source (Precip Chance, Max Temp, Wind Gusts, Visibility...) skips the source screen and turns on the instant you tap its row. Loads got quicker too: the Pi handshake now starts as soon as a menu opens instead of when you click, the four RTMA domains are asked for together instead of one after another, and an NDFD forecast paints its visible frame first before quietly loading the other fifteen for scrubbing.' },
   { id: '2026-09-01-g', date: 'Sep 1, 2026',
