@@ -33630,7 +33630,9 @@ function _nwsLoopShow(idx) {
   _nwsLoop.idx = idx;
   fr.forEach((f, i) => (f.layers || []).forEach(pair => {
     // RTMA repaints by URL swap on shared per-region overlays; NDFD swaps
-    // opacity across its pooled WMS layers. Both shapes land here.
+    // opacity across its pooled WMS layers. Both shapes land here. A frame
+    // scrubbed to before the lazy add has caught up joins the map here.
+    if (i === idx && pair.addTo) { try { if (!map.hasLayer(pair)) pair.addTo(map); } catch (e) {} }
     if (pair.setOpacity) pair.setOpacity(i === idx ? NWS_OPACITY : 0);
   }));
   const f = fr[idx];
@@ -33690,7 +33692,7 @@ async function _nwsEnable(bubble, v, src) {
   _nwsRefreshMenu();
   try {
     if (src === 'rtma') await _nwsBuildRtma(def.rtma, gen);
-    else _nwsBuildNdfd(def.ndfd);
+    else _nwsBuildNdfd(def.ndfd, gen);
   } catch (e) {
     console.warn('[nws] layer failed:', e);
     if (typeof showToast === 'function') {
@@ -33722,22 +33724,27 @@ async function _nwsBuildRtma(field, gen) {
   if (!model || !model.regions) throw new Error('Pi has no RTMA');
   const pane = _nwsPane();
   const regionNames = Object.keys(model.regions);
+  // All four domains asked at once: waited on in turn, Puerto Rico's
+  // manifest was queued behind Alaska's and the first paint paid for it.
+  const mans = await Promise.all(regionNames.map(rn => {
+    const entry = model.regions[rn];
+    if (!entry || !entry.path) return null;
+    return fetch(`${base}/models/${entry.path}`, { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null).catch(() => null)
+      .then(man => ({ rn, entry, man }));
+  }));
+  if (gen !== _nwsGen) return;
   let runs = null;
   const regs = [];
-  for (const rn of regionNames) {
-    const entry = model.regions[rn];
-    if (!entry || !entry.path) continue;
-    const man = await fetch(`${base}/models/${entry.path}`, { cache: 'no-store' })
-      .then(r => r.ok ? r.json() : null).catch(() => null);
-    if (gen !== _nwsGen) return;
-    if (!man || !man.bounds) continue;
+  mans.forEach(x => {
+    if (!x || !x.man || !x.man.bounds) return;
     // The first region with an archive names the clock every region follows.
     if (!runs) {
-      runs = (Array.isArray(entry.runs) && entry.runs.length
-        ? entry.runs.slice(0, NWS_RTMA_RUNS) : [man.run]).slice().reverse();
+      runs = (Array.isArray(x.entry.runs) && x.entry.runs.length
+        ? x.entry.runs.slice(0, NWS_RTMA_RUNS) : [x.man.run]).slice().reverse();
     }
-    regs.push({ name: rn, entry, bounds: man.bounds });
-  }
+    regs.push({ name: x.rn, entry: x.entry, bounds: x.man.bounds });
+  });
   if (!regs.length || !runs || !runs.length) throw new Error('no RTMA regions');
   const urlFor = (entry, run) =>
     `${base}/models/${entry.path.replace(/[^/]+\/manifest\.json$/, run)}`
@@ -33759,7 +33766,7 @@ function _nwsRunMs(run) {
 
 // NDFD: a pool of WMS layers, one per valid time on the model's own step,
 // from the next step boundary out two days. Opacity swap is the playback.
-function _nwsBuildNdfd(field) {
+function _nwsBuildNdfd(field, gen) {
   const layerName = NDFD_LAYERS[field];
   if (!layerName) throw new Error('unknown NDFD field ' + field);
   const pane = _nwsPane();
@@ -33777,10 +33784,20 @@ function _nwsBuildNdfd(field) {
       layers: layerName, format: 'image/png', transparent: true,
       version: '1.3.0', VTIT: vtit, opacity: 0, tileSize: 256,
       noWrap: true, pane,
-    }).addTo(map);
+    });
+    // Only the frame being shown joins the map now. Sixteen layers added at
+    // once meant sixteen frames' tiles racing the one on screen for the
+    // same connections, and the visible picture arriving last. The rest are
+    // added a moment later (below) so scrubbing is still instant, or on
+    // demand by _nwsLoopShow if someone scrubs sooner.
+    if (i === 0) l.addTo(map);
     _nwsLayers.push(l);
     _nwsLoop.frames.push({ time: ms, layers: [l] });
   }
+  setTimeout(() => {
+    if (gen !== _nwsGen) return;
+    _nwsLayers.forEach(l => { try { if (!map.hasLayer(l)) l.addTo(map); } catch (e) {} });
+  }, 1500);
 }
 
 // The menus, in the exact Sea Surface Temperature shape - one level deeper
@@ -33842,6 +33859,10 @@ function _nwsFamilyOn(bubble, omId) {
 function _nwsAppendRows(wrap, bubble) {
   const defs = NWS_SRC_VARS[bubble];
   if (!defs || !wrap) return;
+  // A bubble menu on screen means no source screen is: without this, a
+  // screen left behind by an earlier visit hijacked the next repaint.
+  _nwsScreen = null;
+  _nwsWarm();   // the Pi handshake starts NOW, not on the click
   defs.forEach(d => {
     if (d.om) return;      // the bubble's own row opens the screen for this
     const on = _nwsOn && _nwsOn.bubble === bubble && _nwsOn.v === d.v;
@@ -33849,9 +33870,44 @@ function _nwsAppendRows(wrap, bubble) {
     el.className = 'sub-bubble' + (on ? ' active' : '');
     el.id = 'sub-nws-' + bubble + '-' + d.v;
     el.innerHTML = `<span class="sb-icon">${SB_ICON_NWS}</span><span class="sb-label">${d.label}</span>`;
-    el.onclick = () => toggleNwsSourceSub(bubble, d.v);
+    const srcs = ['rtma', 'ndfd'].filter(k => d[k]);
+    el.onclick = () => {
+      // One source is not a choice: the row IS the switch, and the layer
+      // goes on the moment it is tapped. Two sources open the screen.
+      if (srcs.length === 1) {
+        if (on) { _nwsDisable(); }
+        else _nwsEnable(bubble, d.v, srcs[0]).then(() => _nwsRepaintBubble(bubble));
+        _nwsRepaintBubble(bubble);
+        return;
+      }
+      toggleNwsSourceSub(bubble, d.v);
+    };
     wrap.appendChild(el);
   });
+}
+// Repaint the hosting bubble's menu so active states track the layer, but
+// only while that menu is still the one on screen.
+function _nwsRepaintBubble(bubble) {
+  if (_nwsScreen) { _nwsRefreshMenu(); return; }
+  if (document.querySelector('#sub-bubbles [id^="sub-nws-' + bubble + '-"]')) {
+    try { _NWS_MENU_FNS[bubble] && _NWS_MENU_FNS[bubble](); } catch (e) {}
+  }
+}
+// The slow half of a first RTMA click was never the picture: it was finding
+// the Pi (a probe race) and reading its index. Both start the moment any
+// menu that carries these rows opens, so by the time a row is tapped the
+// answers are already in hand and the click only has to draw.
+let _nwsWarmed = false;
+function _nwsWarm() {
+  if (_nwsWarmed) return;
+  _nwsWarmed = true;
+  try {
+    if (typeof _hdResolveBase !== 'function') return;
+    _hdResolveBase().then(b => {
+      if (b && typeof _hdBase !== 'undefined' && !_hdBase) _hdBase = b;
+      if (typeof _hdFreshIndex === 'function') return _hdFreshIndex();
+    }).catch(() => {});
+  } catch (e) {}
 }
 
 // The screen itself: just the sources for one variable.
@@ -59392,6 +59448,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-01-h', date: 'Sep 1, 2026',
+    text: 'Faster, and fewer taps: a variable with only one source (Precip Chance, Max Temp, Wind Gusts, Visibility...) skips the source screen and turns on the instant you tap its row. Loads got quicker too: the Pi handshake now starts as soon as a menu opens instead of when you click, the four RTMA domains are asked for together instead of one after another, and an NDFD forecast paints its visible frame first before quietly loading the other fifteen for scrubbing.' },
   { id: '2026-09-01-g', date: 'Sep 1, 2026',
     text: 'Source picking now works the way it should: tap a variable itself (Wave Height, Air Temp, Dew Point, Surface Winds, Surface Pressure...) and you get just its sources: Open-Meteo, RTMA and NDFD, whichever actually offer it. Tap one, it draws; tap the lit one, it turns off; sources swap instead of stacking. New variables the bubbles never had (Max Temp, Wind Gusts, Wind Direction, the precip forecasts, visibility, sky cover, ceiling) got their own rows opening the same screen.' },
   { id: '2026-09-01-f', date: 'Sep 1, 2026',
