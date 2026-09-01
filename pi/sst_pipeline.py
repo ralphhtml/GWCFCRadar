@@ -140,7 +140,7 @@ AOML_VARIANTS = {
 OISST_BASE = ("https://www.ncei.noaa.gov/data/"
               "sea-surface-temperature-optimum-interpolation/v2.1/access/avhrr")
 CRW_BASE = ("https://www.star.nesdis.noaa.gov/pub/sod/mecb/crw/data/"
-            "5km/v3.1/nc/v1.0/daily")
+            "5km/v3.1_op/nc/v1.0/daily")
 AOML_URL = "https://cwcgom.aoml.noaa.gov/thredds/dodsC/TCHP/TCHP.nc"
 
 
@@ -445,7 +445,14 @@ def build_aoml(variant):
                 raise RuntimeError(f"AOML has no variable for {variant}")
             key = match[0]
         var = nc.variables[key]
-        arr = np.asarray(var[:], dtype=np.float32)
+        # Ask for the newest time step rather than the whole record. var[:]
+        # fetched all 1695 steps -- 1695 x 721 x 1441 x 4 = 7.0 GB -- and then
+        # threw away all but the last one, which is what the comment above was
+        # already promising not to do. THREDDS refuses a response that size and
+        # libnetcdf reports the refusal as "NetCDF: Authorization failure", so
+        # it reads as a credentials problem rather than an oversized request.
+        # Measured against the live server: 7.04 GB fails, 4.2 MB succeeds.
+        arr = np.asarray(var[-1] if var.ndim > 2 else var[:], dtype=np.float32)
         while arr.ndim > 2:
             arr = arr[-1]
         latk = names.get("latitude", names.get("lat"))
