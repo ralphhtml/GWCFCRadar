@@ -25489,6 +25489,8 @@ function toggleWavesSub() {
     if (LAYER_DESCRIPTIONS[b.id]) el.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS[b.id]));
     wrap.appendChild(el);
   });
+    // The Weather Service's own read of this subject, as extra sources.
+  if (typeof _nwsAppendRows === 'function') _nwsAppendRows(wrap, 'waves');
   wrap.style.display = 'flex';
 }
 
@@ -25722,6 +25724,8 @@ function toggleAirSub() {
     if (LAYER_DESCRIPTIONS[b.id]) el.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS[b.id]));
     wrap.appendChild(el);
   });
+    // The Weather Service's own read of this subject, as extra sources.
+  if (typeof _nwsAppendRows === 'function') _nwsAppendRows(wrap, 'air');
   wrap.style.display = 'flex';
 }
 
@@ -25832,6 +25836,8 @@ function toggleTemperatureSub() {
     if (LAYER_DESCRIPTIONS[b.id]) el.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS[b.id]));
     wrap.appendChild(el);
   });
+    // The Weather Service's own read of this subject, as extra sources.
+  if (typeof _nwsAppendRows === 'function') _nwsAppendRows(wrap, 'temperature');
   wrap.style.display = 'flex';
 }
 
@@ -25941,6 +25947,8 @@ function togglePressureSub() {
     if (LAYER_DESCRIPTIONS[b.id]) el.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS[b.id]));
     wrap.appendChild(el);
   });
+    // The Weather Service's own read of this subject, as extra sources.
+  if (typeof _nwsAppendRows === 'function') _nwsAppendRows(wrap, 'pressure');
   wrap.style.display = 'flex';
 }
 
@@ -26087,6 +26095,8 @@ function toggleWindSub() {
     if (LAYER_DESCRIPTIONS[b.id]) el.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS[b.id]));
     wrap.appendChild(el);
   });
+    // The Weather Service's own read of this subject, as extra sources.
+  if (typeof _nwsAppendRows === 'function') _nwsAppendRows(wrap, 'wind');
   wrap.style.display = 'flex';
 }
 
@@ -28126,9 +28136,8 @@ const LAYER_DESCRIPTIONS = {
   wind:           'Wind speed shown as a smooth color map, just like Waves and Air, powered by Open-Meteo. Tap a product below to pick Surface Winds or the Jet Stream. For an animated flow effect instead, see the Wind Particles overlay pill.',
   'wind-surface': 'Surface-level (10m) wind speed from Open-Meteo\'s Forecast API, blue/green for calm through yellow/orange/red/purple for very strong wind.',
   'wind-jet':     'Wind speed at the 250 hPa pressure level (roughly 34,000 ft) - the jet stream, the fast-moving upper-air river of wind that steers most weather systems.',
-  nws:            'The National Weather Service, straight from the source: RTMA, its 2.5 km analysis of conditions right now, and NDFD, the official forecast grid its meteorologists publish. Pick a source below, then a variable.',
-  'nws-rtma':     'RTMA (Real-Time Mesoscale Analysis): the Weather Service\'s best estimate of what is actually happening at this moment, built from observations at 2.5 km resolution. Not a forecast - the thing to check a forecast against. Rendered by the Pi.',
-  'nws-ndfd':     'NDFD (National Digital Forecast Database): the official NWS forecast, the same grids behind forecast.weather.gov, out to several days. Human forecasters made these numbers, not just a model.',
+  'nws-rtma':     'RTMA (Real-Time Mesoscale Analysis): the Weather Service\'s best estimate of what is actually happening at this moment, built from observations at 2.5 km over CONUS, Alaska, Hawaii and Puerto Rico at once. Not a forecast - the thing to check a forecast against. Rendered by the Pi; the animation bar scrubs back through recent hourly analyses.',
+  'nws-ndfd':     'NDFD (National Digital Forecast Database): the official NWS forecast, the same grids behind forecast.weather.gov. Human forecasters made these numbers, not just a model. The animation bar plays forward through the next two days.',
   // ── The bubbles that are a way in rather than a layer ──────────────────
   // Nesting the menus meant new bubbles that turn nothing on by themselves,
   // and a bubble whose info button had nothing to say would be a button that
@@ -28293,7 +28302,6 @@ const BASE_BUBBLES = [
   { id: 'wind',        icon: SB_ICON_WIND,      label: 'Wind',        action: () => toggleWindSub() },
   { id: 'temperature', icon: SB_ICON_TEMP,      label: 'Temperature', action: () => toggleTemperatureSub() },
   { id: 'pressure',    icon: SB_ICON_PRESSURE,  label: 'Pressure',    action: () => togglePressureSub() },
-  { id: 'nws',         icon: SB_ICON_NWS,       label: 'NWS',         action: () => toggleNwsSub() },
   { id: 'models',      icon: SB_ICON_MODELS,    label: 'Models',      action: () => toggleModelsSub() },
 ];
 
@@ -29165,6 +29173,7 @@ const NDFD_LAYERS = {
   snow:  'ndfd.conus.snow',
   wx:    'ndfd.conus.wx',
   td:    'ndfd.conus.td',
+  waveheight: 'ndfd.conus.waveheight',
 };
 
 function _sevRenderNDFD(body) {
@@ -30851,6 +30860,8 @@ function toggleRadarSub() {
     }
     wrap.appendChild(tm);
   }
+    // The official precip forecast rows (NDFD) ride in the radar menu.
+  if (typeof _nwsAppendRows === 'function') _nwsAppendRows(wrap, 'radar');
   wrap.style.display = 'flex';
 }
 
@@ -33492,79 +33503,308 @@ const _MODELS_PANELS = {
                         close: () => closeAiCyclonesPanel() },
 };
 
-// ── THE NWS BUBBLE: RTMA AND NDFD, OUT OF THE MODELS LIST ───────────────────
-// These two are not models in the sense the Models menu means: RTMA is the
-// Weather Service's 2.5 km analysis of what is happening RIGHT NOW, built
-// from observations, and NDFD is the official human-made forecast grid. In a
-// list of computer forecasts they read as two more computers. So they get
-// their own bubble, laid out the way SST is: pick the source, then pick the
-// variable, and the map shows it. Both still render through the Run Models
-// engine underneath (the Pi for RTMA, digital.weather.gov WMS for NDFD), so
-// runs, forecast hours and playback all keep working in the panel that opens.
-const NWS_SUB_SOURCES = [
-  { id: 'rtma', icon: '\u{1F321}', label: 'Right Now', desc: 'nws-rtma' },
-  { id: 'ndfd', icon: '\u{1F4C5}', label: 'Forecast',  desc: 'nws-ndfd' },
-];
-// RTMA's variable list comes from the Pi's manifest once it has answered
-// (SEV_PRODUCTS['pi:rtma'] is filled in by the model engine). Before that,
-// this is what the 2dvaranl file actually carries, so the row is never blank;
-// a stale id here is clamped to the manifest's default by _sevUpdateProducts.
-const NWS_RTMA_FALLBACK = [
-  { v: 't2m', l: 'Temperature' }, { v: 'd2m', l: 'Dew Point' },
-  { v: 'rh2m', l: 'Humidity' }, { v: 'gust', l: 'Wind Gusts' },
-  { v: 'pres', l: 'Pressure' }, { v: 'vis', l: 'Visibility' },
-  { v: 'tcc', l: 'Cloud Cover' }, { v: 'ceil', l: 'Cloud Ceiling' },
-];
-function _nwsSection(src) { return src === 'rtma' ? 'pi:rtma' : 'ndfd'; }
-function _nwsProducts(src) {
-  if (src === 'ndfd') return SEV_PRODUCTS.ndfd;
-  return SEV_PRODUCTS['pi:rtma'] || NWS_RTMA_FALLBACK;
+// ── NWS SOURCE ROWS: RTMA AND NDFD INSIDE THE LAYER BUBBLES ───────────────
+// The Weather Service's own gridded products, woven into the bubbles that
+// already own their subject, the way Sea Surface Temperature lives inside
+// Waves with a source picker. Each bubble below gains variable rows; opening
+// a variable offers its sources: RTMA (the 2.5 km analysis of right now,
+// rendered by the Pi over all four of its domains at once) and NDFD (the
+// official human-made forecast, from digital.weather.gov). Picking one draws
+// straight on the map, one source per bubble at a time, and the layer joins
+// the bottom animation bar: RTMA scrubs back through recent hourly analyses,
+// NDFD plays forward through the forecast.
+const NWS_SRC_VARS = {
+  temperature: [
+    { v: 'temp', label: 'Temperature',    rtma: 't2m',  ndfd: 'temp' },
+    { v: 'dew',  label: 'Dew Point',      rtma: 'd2m',  ndfd: 'td' },
+    { v: 'maxt', label: 'Max Temp',                     ndfd: 'maxt' },
+    { v: 'rh',   label: 'Humidity',       rtma: 'rh2m' },
+  ],
+  wind: [
+    { v: 'wind', label: 'Wind Speed',     rtma: 'wind', ndfd: 'wind' },
+    { v: 'gust', label: 'Wind Gusts',     rtma: 'gust' },
+    { v: 'wdir', label: 'Wind Direction',               ndfd: 'wdir' },
+  ],
+  pressure: [
+    { v: 'pres', label: 'Surface Pressure', rtma: 'pres' },
+  ],
+  radar: [
+    { v: 'pop12', label: 'Precip Chance',  ndfd: 'pop12' },
+    { v: 'qpf',   label: 'Precip Amount',  ndfd: 'qpf' },
+    { v: 'snow',  label: 'Snow Amount',    ndfd: 'snow' },
+    { v: 'wx',    label: 'Weather Type',   ndfd: 'wx' },
+  ],
+  waves: [
+    { v: 'waveh', label: 'Wave Height',    ndfd: 'waveheight' },
+  ],
+  air: [
+    { v: 'vis',  label: 'Visibility',      rtma: 'vis' },
+    { v: 'sky',  label: 'Sky Cover',       rtma: 'tcc', ndfd: 'sky' },
+    { v: 'ceil', label: 'Cloud Ceiling',   rtma: 'ceil' },
+  ],
+};
+const NWS_OPACITY = 0.78;          // matches the bubbles' Open-Meteo maps
+const NWS_RTMA_RUNS = 6;           // recent hourly analyses in the loop
+const NWS_NDFD_STEP_H = 3;         // NDFD frame cadence
+const NWS_NDFD_FRAMES = 16;        // 16 x 3h = two days of forecast
+
+let _nwsOn = null;                 // { bubble, v, src, label, field }
+let _nwsLoop = { frames: [], idx: -1 };
+let _nwsLayers = [];               // the Leaflet layers currently up
+let _nwsVarOpen = null;            // which variable row is unfolded
+let _nwsGen = 0;                   // stale async builds bail
+
+function _nwsPane() {
+  if (typeof map === 'undefined' || !map) return undefined;
+  if (!map.getPane('nwsPane')) {
+    const p = map.createPane('nwsPane');
+    p.style.zIndex = 399;          // beside sstPane (398), under radar
+    p.style.pointerEvents = 'none';
+  }
+  return 'nwsPane';
 }
-let _nwsSrcOpen = null;
-function toggleNwsSub() {
-  const wrap = document.getElementById('sub-bubbles');
-  if (!wrap) return;
-  wrap.innerHTML = '';
-  const back = document.createElement('div');
-  back.className = 'sub-bubble';
-  back.innerHTML = `<span class="sb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(180deg)><use href=#ic-arrow></use></svg></span><span class="sb-label">Back</span>`;
-  back.onclick = () => { _syncParentBubble('nws'); renderSubBubbles(TAB_BUBBLES[currentTab] ? currentTab : 'regular'); };
-  wrap.appendChild(back);
-  NWS_SUB_SOURCES.forEach(s => {
+
+// One playback source, same contract as the MRMS loop: Active gates the
+// animation bar's dispatch, Show paints one frame. The bar belongs to the
+// radar whenever the radar is up, so this only answers when it is not.
+function _nwsLoopActive() {
+  return !!_nwsOn && _nwsLoop.frames.length > 1
+      && !(typeof activeLayers !== 'undefined' && activeLayers.nexrad);
+}
+function _nwsLoopShow(idx) {
+  const fr = _nwsLoop.frames;
+  if (!fr.length) return;
+  idx = Math.max(0, Math.min(fr.length - 1, idx));
+  _nwsLoop.idx = idx;
+  fr.forEach((f, i) => (f.layers || []).forEach(pair => {
+    // RTMA repaints by URL swap on shared per-region overlays; NDFD swaps
+    // opacity across its pooled WMS layers. Both shapes land here.
+    if (pair.setOpacity) pair.setOpacity(i === idx ? NWS_OPACITY : 0);
+  }));
+  const f = fr[idx];
+  if (f.urls) {
+    _nwsLayers.forEach((l, k) => {
+      if (!f.urls[k]) return;
+      if (l._gwUrl !== f.urls[k]) { l.setUrl(f.urls[k]); l._gwUrl = f.urls[k]; }
+      l.setOpacity(NWS_OPACITY);
+    });
+  }
+  const at = document.getElementById('anim-time');
+  if (at && _nwsOn) {
+    const d = new Date(f.time);
+    const hh = String(d.getUTCHours()).padStart(2, '0');
+    const mm = String(d.getUTCMinutes()).padStart(2, '0');
+    if (_nwsOn.src === 'ndfd') {
+      at.textContent = `NDFD · valid ${hh}:${mm} UTC`;
+      at.style.color = '#e8b800';  // a forecast, and the bar says so
+    } else {
+      at.textContent = `RTMA · ${hh}:${mm} UTC analysis`;
+      at.style.color = '';
+    }
+  }
+  if (typeof _refreshPlayButtonsEnabled === 'function') _refreshPlayButtonsEnabled();
+}
+
+function _nwsDisable(quiet) {
+  _nwsGen++;
+  _nwsLayers.forEach(l => { try { map.removeLayer(l); } catch (e) {} });
+  _nwsLayers = [];
+  _nwsLoop = { frames: [], idx: -1 };
+  _nwsOn = null;
+  const at = document.getElementById('anim-time');
+  if (at) at.style.color = '';
+  if (!quiet) {
+    try { _syncAnimbarTrack(); } catch (e) {}
+    try { _refreshPlayButtonsEnabled(); } catch (e) {}
+  }
+}
+
+// One source per bubble (see the Q&A that shaped this): switching an NWS
+// layer on takes the bubble's Open-Meteo color map off, and – via the
+// wrappers below – picking an Open-Meteo product takes the NWS layer off.
+function _nwsSwapOffFamily(bubble) {
+  try {
+    const fam = (typeof _PRODUCT_FAMILIES !== 'undefined')
+      && _PRODUCT_FAMILIES.find && _PRODUCT_FAMILIES.find(f => f.id === bubble);
+    if (!fam || !fam.isOn()) return;
+    // Every family's own menu row turns itself off by calling its loader's
+    // disable path; the cheapest faithful equivalent is the shared teardown
+    // each _load*Layer runs when its flag is false. Flip the flag and reload.
+    if (bubble === 'waves')       { wavesActive = false;       _loadWavesLayer(); }
+    if (bubble === 'air')         { airActive = false;         _loadAirLayer(); }
+    if (bubble === 'temperature') { temperatureActive = false; _loadTemperatureLayer(); }
+    if (bubble === 'pressure')    { pressureActive = false;    _loadPressureLayer(); }
+    if (bubble === 'wind')        { windActive = false;        _loadWindLayer(); }
+  } catch (e) {}
+}
+
+async function _nwsEnable(bubble, v, src) {
+  const def = (NWS_SRC_VARS[bubble] || []).find(x => x.v === v);
+  if (!def || !def[src]) return;
+  _nwsDisable(true);
+  if (bubble !== 'radar') _nwsSwapOffFamily(bubble);
+  const gen = ++_nwsGen;
+  _nwsOn = { bubble, v, src, label: def.label, field: def[src] };
+  _nwsRefreshMenu();
+  try {
+    if (src === 'rtma') await _nwsBuildRtma(def.rtma, gen);
+    else _nwsBuildNdfd(def.ndfd);
+  } catch (e) {
+    console.warn('[nws] layer failed:', e);
+    if (typeof showToast === 'function') {
+      showToast(src === 'rtma'
+        ? 'RTMA is not answering right now (the Pi may be busy or away). Try again in a minute.'
+        : 'The NWS forecast server is not answering right now.', 5000);
+    }
+    if (gen === _nwsGen) _nwsDisable();
+    _nwsRefreshMenu();
+    return;
+  }
+  if (gen !== _nwsGen) return;
+  _nwsLoopShow(_nwsOn.src === 'rtma' ? _nwsLoop.frames.length - 1 : 0);
+  try { _syncAnimbarTrack(); } catch (e) {}
+  _nwsRefreshMenu();
+}
+
+// RTMA: every domain the Pi builds (CONUS, Alaska, Hawaii, Puerto Rico),
+// each as one image overlay whose URL swaps per frame, over the last few
+// hourly runs. F+000 always: an analysis has no forecast hours.
+async function _nwsBuildRtma(field, gen) {
+  if (typeof _hdResolveBase !== 'function') throw new Error('no Pi engine');
+  const base = (typeof _hdBase !== 'undefined' && _hdBase) || await _hdResolveBase();
+  if (!base) throw new Error('no Pi address');
+  if (typeof _hdBase !== 'undefined' && !_hdBase) _hdBase = base;
+  const index = await _hdFreshIndex();
+  if (gen !== _nwsGen) return;
+  const model = index && index.models && index.models.rtma;
+  if (!model || !model.regions) throw new Error('Pi has no RTMA');
+  const pane = _nwsPane();
+  const regionNames = Object.keys(model.regions);
+  let runs = null;
+  const regs = [];
+  for (const rn of regionNames) {
+    const entry = model.regions[rn];
+    if (!entry || !entry.path) continue;
+    const man = await fetch(`${base}/models/${entry.path}`, { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null).catch(() => null);
+    if (gen !== _nwsGen) return;
+    if (!man || !man.bounds) continue;
+    // The first region with an archive names the clock every region follows.
+    if (!runs) {
+      runs = (Array.isArray(entry.runs) && entry.runs.length
+        ? entry.runs.slice(0, NWS_RTMA_RUNS) : [man.run]).slice().reverse();
+    }
+    regs.push({ name: rn, entry, bounds: man.bounds });
+  }
+  if (!regs.length || !runs || !runs.length) throw new Error('no RTMA regions');
+  const urlFor = (entry, run) =>
+    `${base}/models/${entry.path.replace(/[^/]+\/manifest\.json$/, run)}`
+    + `/${field}_f000.png`;
+  _nwsLayers = regs.map(r =>
+    L.imageOverlay(urlFor(r.entry, runs[runs.length - 1]), r.bounds,
+      { opacity: 0, interactive: false, pane }).addTo(map));
+  _nwsLoop.frames = runs.map(run => ({
+    time: _nwsRunMs(run),
+    urls: regs.map(r => urlFor(r.entry, run)),
+  }));
+  // Warm the cache so scrubbing repaints instead of refetching.
+  _nwsLoop.frames.forEach(f => f.urls.forEach(u => { const i = new Image(); i.src = u; }));
+}
+function _nwsRunMs(run) {
+  const m = /^(\d{4})(\d{2})(\d{2})_(\d{2})$/.exec(String(run || ''));
+  return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4]) : Date.now();
+}
+
+// NDFD: a pool of WMS layers, one per valid time on the model's own step,
+// from the next step boundary out two days. Opacity swap is the playback.
+function _nwsBuildNdfd(field) {
+  const layerName = NDFD_LAYERS[field];
+  if (!layerName) throw new Error('unknown NDFD field ' + field);
+  const pane = _nwsPane();
+  const stepMs = NWS_NDFD_STEP_H * 3600000;
+  const first = Math.ceil(Date.now() / stepMs) * stepMs;
+  const p2 = n => String(n).padStart(2, '0');
+  _nwsLoop.frames = [];
+  _nwsLayers = [];
+  for (let i = 0; i < NWS_NDFD_FRAMES; i++) {
+    const ms = first + i * stepMs;
+    const d = new Date(ms);
+    const vtit = `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}`
+               + `T${p2(d.getUTCHours())}:00`;
+    const l = L.tileLayer.wms(NDFD_WMS, {
+      layers: layerName, format: 'image/png', transparent: true,
+      version: '1.3.0', VTIT: vtit, opacity: 0, tileSize: 256,
+      noWrap: true, pane,
+    }).addTo(map);
+    _nwsLayers.push(l);
+    _nwsLoop.frames.push({ time: ms, layers: [l] });
+  }
+}
+
+// The rows themselves, appended by every hosting bubble's menu builder.
+function _nwsAppendRows(wrap, bubble) {
+  const defs = NWS_SRC_VARS[bubble];
+  if (!defs || !wrap) return;
+  defs.forEach(d => {
+    const key = bubble + ':' + d.v;
+    const isOn = _nwsOn && _nwsOn.bubble === bubble && _nwsOn.v === d.v;
     const el = document.createElement('div');
-    el.className = 'sub-bubble' + (_nwsSrcOpen === s.id ? ' active' : '');
-    el.id = 'sub-nws-' + s.id;
-    el.innerHTML = `<span class="sb-icon">${_eicon(s.icon)}</span><span class="sb-label">${s.label}</span>`;
-    el.onclick = () => { _nwsSrcOpen = _nwsSrcOpen === s.id ? null : s.id; toggleNwsSub(); };
-    if (LAYER_DESCRIPTIONS[s.desc]) el.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS[s.desc]));
+    el.className = 'sub-bubble' + (isOn ? ' active' : '');
+    el.id = 'sub-nws-' + bubble + '-' + d.v;
+    el.innerHTML = `<span class="sb-icon">${SB_ICON_NWS}</span><span class="sb-label">${d.label}</span>`;
+    el.onclick = () => { _nwsVarOpen = _nwsVarOpen === key ? null : key; _nwsRefreshMenu(bubble); };
     wrap.appendChild(el);
-    if (_nwsSrcOpen !== s.id) return;
-    const sect = _nwsSection(s.id);
-    _nwsProducts(s.id).forEach(p => {
+    if (_nwsVarOpen !== key) return;
+    ['rtma', 'ndfd'].forEach(src => {
+      if (!d[src]) return;
+      const on = _nwsOn && _nwsOn.bubble === bubble && _nwsOn.v === d.v && _nwsOn.src === src;
       const pe = document.createElement('div');
-      pe.className = 'sub-bubble'
-        + (_sevSection === sect && _sevVar === p.v ? ' active' : '');
+      pe.className = 'sub-bubble' + (on ? ' active' : '');
+      pe.id = 'sub-nws-' + bubble + '-' + d.v + '-' + src;
       pe.style.marginLeft = '14px';
-      pe.innerHTML = `<span class="sb-label">${p.l}</span>`;
-      pe.onclick = () => _nwsPick(s.id, p.v);
+      pe.innerHTML = `<span class="sb-label">${src.toUpperCase()}</span>`;
+      if (LAYER_DESCRIPTIONS['nws-' + src]) pe.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS['nws-' + src]));
+      pe.onclick = () => {
+        if (on) { _nwsDisable(); _nwsRefreshMenu(bubble); }
+        else _nwsEnable(bubble, d.v, src);
+      };
       wrap.appendChild(pe);
     });
   });
-  wrap.style.display = 'flex';
 }
-async function _nwsPick(src, v) {
-  try {
-    if (typeof openRunModelsPanel === 'function'
-        && typeof _runModelsPanelIsOpen === 'function'
-        && !_runModelsPanelIsOpen()) openRunModelsPanel();
-  } catch (e) {}
-  // The pi: path of _sevSetSection is async (it may have to wake the Pi
-  // engine up); awaiting it means _sevSetVar lands on a product list that
-  // exists rather than the previous model's.
-  try { await _sevSetSection(_nwsSection(src)); } catch (e) { console.warn('nws pick:', e); }
-  try { _sevSetVar(v); } catch (e) {}
-  toggleNwsSub();
+const _NWS_MENU_FNS = {
+  temperature: () => toggleTemperatureSub(), wind: () => toggleWindSub(),
+  pressure: () => togglePressureSub(),       radar: () => toggleRadarSub(),
+  waves: () => toggleWavesSub(),             air: () => toggleAirSub(),
+};
+let _nwsMenuBubble = null;
+function _nwsRefreshMenu(bubble) {
+  const b = bubble || (_nwsOn && _nwsOn.bubble) || _nwsMenuBubble;
+  // Only repaint when that bubble's menu is actually the one open, which is
+  // true exactly when one of its rows is in the DOM.
+  if (!b || !document.querySelector('#sub-bubbles [id^="sub-nws-' + b + '-"]')) return;
+  try { _NWS_MENU_FNS[b] && _NWS_MENU_FNS[b](); } catch (e) {}
 }
+
+// The other half of "one source per bubble": choosing an Open-Meteo product
+// clears the bubble's NWS layer. Wrapped rather than edited in place, so the
+// five loaders stay exactly what they were; the quiet refresh (arg true) is
+// let through untouched or a timer would take the layer down ten minutes in.
+[['_loadWavesLayer', 'waves'], ['_loadAirLayer', 'air'],
+ ['_loadTemperatureLayer', 'temperature'], ['_loadPressureLayer', 'pressure'],
+ ['_loadWindLayer', 'wind']].forEach(([fn, bubble]) => {
+  const orig = window[fn];
+  if (typeof orig !== 'function') return;
+  window[fn] = function (...args) {
+    if (!args[0] && _nwsOn && _nwsOn.bubble === bubble
+        && (typeof this === 'undefined' || true)) {
+      const famOn = (typeof _PRODUCT_FAMILIES !== 'undefined')
+        && _PRODUCT_FAMILIES.find(f => f.id === bubble);
+      if (famOn && famOn.isOn()) _nwsDisable();
+    }
+    return orig.apply(this, args);
+  };
+});
 
 function toggleModelsSub() {
   const wrap = document.getElementById('sub-bubbles');
@@ -37405,6 +37645,26 @@ function _inspSampleColorFrom(container, cx, cy) {
   }
 }
 
+// The NWS rows (RTMA / NDFD) are colorized imagery like Run Models: there is
+// no client-side table to turn a pixel back into a calibrated number, so
+// this reports what is on screen - which source, which variable, which
+// moment, and the shade under the crosshair - and never pretends otherwise.
+function _inspNwsRow(cx, cy) {
+  if (typeof _nwsOn === 'undefined' || !_nwsOn) return null;
+  const label = _nwsOn.src.toUpperCase() + ' ' + _nwsOn.label;
+  const f = _nwsLoop.frames[_nwsLoop.idx];
+  const when = f ? (() => {
+    const d = new Date(f.time);
+    return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}Z`;
+  })() : '';
+  const s = _inspSampleColorFrom(map.getPane('nwsPane'), cx, cy);
+  if (!s) return { label, value: 'No data', unit: when, color: 'rgba(120,120,120,0.5)' };
+  if (s.tainted) return { label, value: 'reading…', unit: when, color: 'rgba(120,120,120,0.5)' };
+  if (s.transparent) return { label, value: 'Nothing here', unit: when, color: 'rgba(120,120,120,0.35)' };
+  return { label, value: when || '~ shade', unit: `rgb(${s.r},${s.g},${s.b})`,
+           color: `rgb(${s.r},${s.g},${s.b})` };
+}
+
 function _inspRadarRow(center, cx, cy) {
   // 1) Exact values from the raw mesh: every product this page decodes
   // itself, Level 2 or Level 3, whatever code delivered it. If the mesh
@@ -37970,6 +38230,7 @@ function _inspRowsAt(center, cx, cy, light) {
   // The layers it used to walk past. Each is guarded on its own state, so a
   // layer that is off contributes nothing rather than a row saying so.
   if (typeof _sstOn !== 'undefined' && _sstOn)                        rows.push(_inspSstRow(center));
+  if (typeof _nwsOn !== 'undefined' && _nwsOn)                        rows.push(_inspNwsRow(cx, cy));
   if (!light && typeof _mrmsAnyOn === 'function' && _mrmsAnyOn())     rows.push(..._inspMrmsRows(cx, cy));
   if (typeof activeLayers !== 'undefined' && activeLayers.lightning)  rows.push(_inspLightningRow(center));
   if (typeof spcOutlookLayer !== 'undefined' && spcOutlookLayer) {
@@ -40123,6 +40384,7 @@ function _animationReady() {
   if (currentProduct === 'hc' || currentProduct === 'accum' || currentProduct === 'boha') return _dpFrames.length > 0;
   if (currentProduct === 'cc' || currentProduct === 'zdr' || currentProduct === 'kdp' || currentProduct === 'sw') return _dpFrames.length > 0;
   if (currentProduct === 'ref' && _refStation) return true;
+  if (typeof _nwsLoopActive === 'function' && _nwsLoopActive()) return true;
   if (!radarFrames.length) return false;
   // Need at least 2 frames so animation has somewhere to step
   return _radarFramesReady >= Math.min(2, radarFrames.length);
@@ -40170,6 +40432,10 @@ function _animSource() {
       return mk('vel', velFrames.map(f => new Date(f.time * 1000)), velCurrentFrame);
     if (currentProduct === 'ref' && _refStation && _refSiteFrames.length)
       return mk('refsite', _refSiteFrames.map(f => new Date(f.time * 1000)), currentFrame);
+    // The Weather Service rows (RTMA hours / NDFD forecast) own the bar only
+    // when no radar is up to claim it; see _nwsLoopActive.
+    if (typeof _nwsLoopActive === 'function' && _nwsLoopActive())
+      return mk('nws', _nwsLoop.frames.map(f => new Date(f.time)), _nwsLoop.idx);
     if (radarFrames.length)
       return mk('radar', radarFrames.map(f => new Date(f.time * 1000)),
                 currentFrame, _firstValidFrame || 0);
@@ -40521,6 +40787,9 @@ function stepFrame(dir, quiet) {
   } else if (currentProduct === 'ref' && _refStation && _refSiteFrames.length) {
     currentFrame = (currentFrame + dir + _refSiteFrames.length) % _refSiteFrames.length;
     _showSingleSiteRefFrame(currentFrame);
+  } else if (typeof _nwsLoopActive === 'function' && _nwsLoopActive()) {
+    const n = _nwsLoop.frames.length;
+    _nwsLoopShow((_nwsLoop.idx + dir + n) % n);
   } else {
     const _n = radarFrames.length, _last = _n - 1;
     let _next = currentFrame + dir;
@@ -40542,6 +40811,7 @@ function seekFrame(idx) {
   else if (currentProduct === 'vel') showVelFrame(idx);
   else if (currentProduct === 'hc' || currentProduct === 'accum' || currentProduct === 'boha' || currentProduct === 'cc' || currentProduct === 'zdr' || currentProduct === 'kdp' || currentProduct === 'sw') showDpFrame(idx);
   else if (currentProduct === 'ref' && _refStation && _refSiteFrames.length) _showSingleSiteRefFrame(idx);
+  else if (typeof _nwsLoopActive === 'function' && _nwsLoopActive()) _nwsLoopShow(idx);
   else showFrame(idx);
 }
 
@@ -59001,6 +59271,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-01-e', date: 'Sep 1, 2026',
+    text: 'The Weather Service moved INTO the layer bubbles, the way Sea Surface Temperature lives inside Waves: Temperature, Wind, Pressure, Radar, Waves and Air each gained rows powered by RTMA (the 2.5 km analysis of right now, all four domains at once) and NDFD (the official forecast). Pick a variable, pick the source, and it draws on the map and plays in the animation bar. The short-lived NWS bubble is gone; the sources live where their subjects do.' },
   { id: '2026-09-01-d', date: 'Sep 1, 2026',
     text: 'New NWS bubble in the left menu: RTMA (the Weather Service’s 2.5 km picture of conditions right now) and NDFD (its official human-made forecast) moved out of the Models list into their own bubble, laid out like Sea Surface Temperature: pick the source, then the variable. Every variable both publish is offered.' },
   { id: '2026-09-01-c', date: 'Sep 1, 2026',
