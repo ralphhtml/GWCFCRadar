@@ -122,6 +122,28 @@ check("0C over a -10C dewpoint reads about 47", abs(rh[2] - 46.9) < 0.5, rh[2])
 check("the pipeline clips, so RH can never exceed 100",
       "np.clip(100.0 * e / np.maximum(es, 1e-12), 0.0, 100.0)" in src)
 
+print("\n3. Greenwich-first grids are rolled into the map's world")
+# OISST counts longitude 0 to 360, so unrolled its picture starts at
+# Greenwich and the site's -180..180 rectangle cannot describe it: the
+# eastern hemisphere rendered over the Pacific. normalize_lons must roll
+# such a grid to dateline-first, and leave a -180..180 grid alone.
+lons360 = np.arange(0.125, 360.0, 0.25)
+vals360 = np.tile(lons360, (3, 1))          # each cell remembers its lon
+v2, l2 = sp.normalize_lons(vals360, lons360)
+check("longitudes come out ascending from the dateline",
+      l2[0] < -179.0 and np.all(np.diff(l2) > 0), l2[0])
+check("the values rolled with them, cell for cell",
+      float(v2[0, 0]) == 180.125 and float(v2[0, -1]) == 179.875,
+      (float(v2[0, 0]), float(v2[0, -1])))
+lats3 = np.array([-89.875, 0.0, 89.875])
+b = gp.bounds_from(lats3, l2)
+check("and bounds_from finally yields a right-side-out rectangle",
+      b[0][1] < b[1][1] and b[0][1] < -179.0 and b[1][1] > 179.0, b)
+lons180 = np.arange(-179.875, 180.0, 0.25)
+v3, l3 = sp.normalize_lons(vals360, lons180)
+check("a grid already dateline-first passes through untouched",
+      v3 is vals360 and np.array_equal(l3, lons180))
+
 EM = chr(0x2014)
 here = open(os.path.abspath(__file__)).read()
 check("no em dashes in this test, the sst pipeline, or the model pipeline",

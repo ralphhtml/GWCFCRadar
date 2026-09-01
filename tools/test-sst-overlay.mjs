@@ -580,7 +580,49 @@ console.log('\n16. the picture is bent into Mercator before land is cut');
      /_sstMercReproject\(_sstColorize\(frame\), frame\.bounds\);\s*await _sstCutLand\(cv, _sstDisplayBounds\(frame\.bounds\)\)/.test(PAGE));
 }
 
-console.log('\n17. still no page errors after all of that');
+console.log('\n17. Greenwich-first grids are rolled into the map\'s world');
+{
+  // OISST and AOML count longitude 0 to 360, so the Pi rectangle came
+  // out inside-out (east at -0.125, west at 0.125) and the whole eastern
+  // hemisphere rendered over the Pacific: Africa and India land gaps
+  // punched into the user ocean. The client heals such frames: columns
+  // roll to dateline-first and the rectangle squares up.
+  const r = await page.evaluate(() => {
+    const out = {};
+    // Four columns whose centres sit at 45, 135, 225 (-135), 315 (-45):
+    // a wrapped frame starting at Greenwich. After the roll the western
+    // hemisphere columns must lead.
+    const wrapped = [[-89, 0], [89, -0.1]];
+    const g = _sstUnwrapGrid(new Float32Array([45, 135, 225, 315,
+                                               45, 135, 225, 315]), 4, 2, wrapped);
+    out.rolled = Array.from(g.vals.slice(0, 4));
+    out.bounds = JSON.stringify(g.bounds);
+    out.boundsOnly = JSON.stringify(_sstUnwrapBounds(wrapped));
+    // A healthy frame passes through untouched, same array and all.
+    const fine = [[-89, -180], [89, 180]];
+    const keep = new Float32Array([1, 2, 3, 4]);
+    const h = _sstUnwrapGrid(keep, 4, 1, fine);
+    out.untouched = h.vals === keep && h.bounds === fine
+      && _sstUnwrapBounds(fine) === fine;
+    return out;
+  });
+  ok('the eastern-hemisphere columns move behind the dateline ones',
+     JSON.stringify(r.rolled) === '[225,315,45,135]', JSON.stringify(r.rolled));
+  ok('and the rectangle squares up to -180..180',
+     r.bounds === '[[-89,-180],[89,180]]' && r.boundsOnly === r.bounds,
+     r.bounds);
+  ok('a frame already dateline-first passes through untouched', r.untouched);
+  const PAGE17 = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  ok('the loader unwraps before anything downstream sees the frame',
+     /const \{ vals, bounds \} = _sstUnwrapGrid\(raw, w, h, meta\.bounds\);/.test(PAGE17));
+  ok('and the overlay rectangle unwraps the manifest bounds the same way',
+     /_sstDisplayBounds\(_sstUnwrapBounds\(/.test(PAGE17));
+  ok('the Pi rolls its own grids too, so new builds arrive already sane',
+     /def normalize_lons\(values, lons\):/.test(
+       readFileSync(join(ROOT, 'pi/sst_pipeline.py'), 'utf8')));
+}
+
+console.log('\n18. still no page errors after all of that');
 ok('the whole run stayed clean', errors.length === 0, errors.join(' | '));
 
 await browser.close();
