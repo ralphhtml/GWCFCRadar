@@ -81,6 +81,21 @@ AMBIENT_FILE = os.path.expanduser("~/.gwcfc_ambient.json")
 AMBIENT_CACHE_S = 30.0
 _ambient_cache = {"at": -AMBIENT_CACHE_S, "body": None}
 
+# GET /relay/ncei: the fallback door for the site's two history machines.
+# The browser asks NOAA's climate archive directly first; when NOAA will not
+# talk to a browser origin, this door asks on its behalf. It is NOT a
+# general proxy: the upstream URL is BUILT here from a handful of validated
+# fields, so the door can only ever ask this one NOAA service one kind of
+# question. Old weather never changes, so answers are cached hard.
+NCEI_BASE = "https://www.ncei.noaa.gov/access/services/data/v1"
+NCEI_DATASETS = {"daily-summaries", "normals-daily"}
+NCEI_TYPES_RE = re.compile(r"^[A-Z0-9,-]{1,120}$")
+NCEI_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+NCEI_BBOX_RE = re.compile(r"^-?\d{1,3}(\.\d+)?(,-?\d{1,3}(\.\d+)?){3}$")
+NCEI_MAX_BYTES = 24 * 1024 * 1024
+NCEI_CACHE_MAX = 48
+_ncei_cache = {}   # upstream url -> body; insertion order is the LRU order
+
 # GET /sounding is the one door that makes the Pi do real work: SounderPy
 # downloads a model file and SHARPpy chews through every level of it, which on
 # a Pi 4 is seconds, not milliseconds. So it gets a queue of its own.
@@ -240,6 +255,9 @@ class CORSHandler(SimpleHTTPRequestHandler):
         if head == "/relay/ambient":
             self._relay_ambient()
             return
+        if head == "/relay/ncei":
+            self._relay_ncei()
+            return
         if head == "/sounding/sources":
             self._sounding_sources()
             return
@@ -247,6 +265,61 @@ class CORSHandler(SimpleHTTPRequestHandler):
             self._sounding()
             return
         super().do_GET()
+
+    def _relay_ncei(self):
+        """GET /relay/ncei?dataset=&dataTypes=&startDate=&endDate=&boundingBox=
+
+        The upstream URL is rebuilt from these five validated fields and
+        nothing else, so this door can only ask NOAA's data service the two
+        questions the history machines ask. Every field is checked against
+        a shape, never forwarded raw.
+        """
+        from urllib.parse import parse_qs, urlencode, urlparse
+        q = parse_qs(urlparse(self.path).query)
+
+        def one(name):
+            v = q.get(name, [""])
+            return (v[0] if v else "").strip()
+
+        dataset = one("dataset")
+        types = one("dataTypes")
+        start, end = one("startDate"), one("endDate")
+        bbox = one("boundingBox")
+        if dataset not in NCEI_DATASETS:
+            self._reply_json(400, {"error": "dataset must be one of "
+                                            + ", ".join(sorted(NCEI_DATASETS))})
+            return
+        if not NCEI_TYPES_RE.match(types):
+            self._reply_json(400, {"error": "dataTypes looks wrong"})
+            return
+        if not (NCEI_DATE_RE.match(start) and NCEI_DATE_RE.match(end)):
+            self._reply_json(400, {"error": "dates must be YYYY-MM-DD"})
+            return
+        if not NCEI_BBOX_RE.match(bbox):
+            self._reply_json(400, {"error": "boundingBox must be N,W,S,E"})
+            return
+        url = NCEI_BASE + "?" + urlencode({
+            "dataset": dataset, "dataTypes": types,
+            "startDate": start, "endDate": end, "boundingBox": bbox,
+            "units": "standard", "format": "json",
+            "includeStationName": "true", "includeStationLocation": "1",
+        })
+        body = _ncei_cache.get(url)
+        if body is None:
+            req = urllib.request.Request(url, headers={"User-Agent": "gwcfc-relay"})
+            try:
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    body = r.read(NCEI_MAX_BYTES)
+            except urllib.error.HTTPError as e:
+                self._reply_json(502, {"error": f"NCEI answered HTTP {e.code}"})
+                return
+            except Exception:
+                self._reply_json(502, {"error": "could not reach NCEI"})
+                return
+            _ncei_cache[url] = body
+            while len(_ncei_cache) > NCEI_CACHE_MAX:
+                _ncei_cache.pop(next(iter(_ncei_cache)))
+        self._reply_raw(200, body)
 
     def _sounding_sources(self):
         """GET /sounding/sources -> what this Pi can build a sounding from.
