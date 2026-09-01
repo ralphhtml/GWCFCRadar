@@ -178,8 +178,33 @@ console.log('\n2. a brand-new visitor is asked, and Lite-ning answers for them')
   ok('all eight bubbles return', back.bubbles === 8, String(back.bubbles));
   ok('and so do the tools', back.railBack);
   // The pill tag is retired everywhere (it was already hidden on phones):
-  // the mode now lives only in Settings under Display.
+  // the mode lives in Settings under Display and in the account panel.
   ok('the mode tag is gone from the account pill', back.tagGone);
+
+  // The account panel carries the switch itself: two buttons under the
+  // menu strip, the current mode lit, and tapping the other one flips the
+  // whole app plus the Settings dropdown it must agree with.
+  const sw = await p.evaluate(() => {
+    const btns = [...document.querySelectorAll('.lqm-pm-mode-btn')];
+    const btn = m => btns.find(b => b.dataset.mode === m);
+    const out = { count: btns.length,
+                  expertLit: btn('expert').classList.contains('on')
+                          && !btn('lite').classList.contains('on') };
+    btn('lite').click();
+    out.liteBody = document.body.classList.contains('lite-mode');
+    out.liteLit = btn('lite').classList.contains('on')
+               && !btn('expert').classList.contains('on');
+    out.dropdown = document.getElementById('lqm-set-mode').value;
+    btn('expert').click();
+    out.backBody = !document.body.classList.contains('lite-mode');
+    return out;
+  });
+  ok('the panel offers both modes', sw.count === 2, String(sw.count));
+  ok('with the current one lit', sw.expertLit);
+  ok('tapping LITE-NING switches the app on the spot',
+     sw.liteBody && sw.liteLit);
+  ok('and the Settings dropdown agrees', sw.dropdown === 'lite', sw.dropdown);
+  ok('tapping WX-PERT switches straight back', sw.backBody);
 
   // The app menu's seat inside the account panel follows the sign-in
   // state: below the avatar and name for an account, above the sign-in

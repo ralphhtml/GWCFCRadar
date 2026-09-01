@@ -6087,9 +6087,26 @@ body.shot-mode > button {
   pointer-events: none;
   transition: opacity 0.22s ease, transform 0.22s ease;
 }
-/* The five app buttons, as a tidy strip at the top of the account panel. */
+/* The app buttons as a tidy strip at the top of the account panel, with the
+   Lite-ning / Wx-pert switch on its own line underneath. */
 #lqm-panel-menu {
-  display: flex; gap: 6px; margin: 2px 24px 12px 0;
+  display: flex; flex-direction: column; gap: 8px; margin: 2px 24px 12px 0;
+}
+/* Three across, two rows: six buttons in one flex row clipped the last one
+   off the panel's edge, and 6.5px labels were already at the floor. */
+.lqm-pm-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+#lqm-pm-mode { display: flex; gap: 6px; }
+.lqm-pm-mode-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+  background: rgba(50,0,0,0.6); border: 1px solid rgba(232,184,0,0.3);
+  border-radius: 10px; padding: 7px 4px; cursor: pointer;
+  color: #d4e8ff; font-family: var(--mono); font-size: 8px;
+  letter-spacing: 0.5px; white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.lqm-pm-mode-btn:hover { border-color: #e8b800; }
+.lqm-pm-mode-btn.on {
+  background: rgba(232,184,0,0.16); border-color: #e8b800; color: #ffd478;
 }
 .lqm-pm-btn {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
@@ -55097,7 +55114,7 @@ function lqmSetTZ(tz) {
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg></div>
       <div class="fc-title">ACCOUNT MENU</div>
-      <p class="fc-body">Tap the <strong>account pill</strong>, top left (or the <strong>GWCFC logo</strong>, top center) to open the account panel. A strip of five buttons sits at its top: <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg> Settings</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-compass></use></svg> Navigation</strong>, <strong>Tutorial</strong> (this page), <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-star></use></svg> Credits</strong> and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-mail></use></svg> Feedback</strong> and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-sparkle></use></svg> Updates</strong> (the changelog), there whether or not you are signed in. The app also comes in two modes, <strong>Wx-pert</strong> (everything) and <strong>Lite-ning</strong> (just radar, warnings and forecasts); switch any time in Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Display.</p>
+      <p class="fc-body">Tap the <strong>account pill</strong>, top left (or the <strong>GWCFC logo</strong>, top center) to open the account panel. A strip of five buttons sits at its top: <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg> Settings</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-compass></use></svg> Navigation</strong>, <strong>Tutorial</strong> (this page), <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-star></use></svg> Credits</strong> and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-mail></use></svg> Feedback</strong> and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-sparkle></use></svg> Updates</strong> (the changelog), there whether or not you are signed in. The app also comes in two modes, <strong>Wx-pert</strong> (everything) and <strong>Lite-ning</strong> (just radar, warnings and forecasts); switch with the two mode buttons right under that strip, or in Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Display.</p>
     </div>
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-search></use></svg></div>
@@ -56258,6 +56275,10 @@ function _modeApply() {
   document.body.classList.toggle('lite-mode', lite);
   const sel = document.getElementById('lqm-set-mode');
   if (sel) sel.value = lite ? 'lite' : 'expert';
+  // The account panel's switch shows the same answer as the dropdown: both
+  // are painted here, from the one saved value, so they cannot disagree.
+  document.querySelectorAll('.lqm-pm-mode-btn').forEach(b =>
+    b.classList.toggle('on', (b.dataset.mode === 'lite') === lite));
   try {
     if (typeof renderSubBubbles === 'function' && document.getElementById('sub-bubbles')) {
       renderSubBubbles(TAB_BUBBLES[currentTab] ? currentTab : 'regular');
@@ -56280,7 +56301,7 @@ function _modeOpenPicker() {
     m.innerHTML = `
       <div class="mode-card-wrap" role="dialog" aria-modal="true" aria-label="Choose how much weather you want">
         <div class="mode-head">HOW DO YOU WANT YOUR WEATHER?</div>
-        <div class="mode-sub">You can switch any time in Settings. The tag on your account pill, top left, always says which mode you are in.</div>
+        <div class="mode-sub">You can switch any time: the choice lives in your account panel, top left, and in Settings under Display.</div>
         <div class="mode-cards">
           <button type="button" class="mode-card" id="mode-pick-lite" onclick="_modePick('lite')">
             <span class="mode-ic"><svg class=svgi width=34 height=34><use href=#ic-bolt></use></svg></span>
@@ -56332,7 +56353,7 @@ function _liteIntroOpen() {
           <div class="lite-step"><b>1</b>The live radar is coming on. Green is rain, yellow is heavy rain, red is storms.</div>
           <div class="lite-step"><b>2</b>Warnings draw themselves on the map automatically. Tap one to read it.</div>
           <div class="lite-step"><b>3</b>Tap anywhere on the map, or search a town up top, for its forecast.</div>
-          <div class="lite-step"><b>4</b>Want more power later? Open the account panel, top left, then Settings, and switch to Wx-pert under Display.</div>
+          <div class="lite-step"><b>4</b>Want more power later? Open the account panel, top left, and tap the WX-PERT button.</div>
         </div>
         <div class="mode-go"><button type="button" class="tm-btn tm-btn-go" onclick="_liteIntroClose()">SHOW MY WEATHER</button></div>
       </div>`;
@@ -58738,6 +58759,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-08-31-l', date: 'Aug 31, 2026',
+    text: 'The beginner / expert choice now lives in the account panel too: two buttons right under the menu, LITE-NING and WX-PERT, with the current one lit. Tap the other one to switch on the spot; Settings under Display still works the same.' },
   { id: '2026-08-31-k', date: 'Aug 31, 2026',
     text: 'NWRchive, the weather radio archive, got bigger everywhere: a wider page, larger titles, and roomier region, state and station cards, so it fills a desktop screen instead of huddling in the middle.' },
   { id: '2026-08-31-j', date: 'Aug 31, 2026',
@@ -58873,6 +58896,10 @@ document.addEventListener('keydown', e => {
 // ── INIT ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   _fbInit();
+  // Re-paint the mode onto the account panel's switch: the boot-time
+  // _modeApply ran before this part of the page existed, so the buttons
+  // would otherwise sit unlit until the first manual switch.
+  try { if (typeof _modeApply === 'function') _modeApply(); } catch (e) {}
   // Close profile panel on outside click
   document.addEventListener('click', e => {
     if (_profileOpen && !e.target.closest('#lqm-profile-overlay') && !e.target.closest('#lqm-profile-btn')) {
@@ -60392,12 +60419,22 @@ document.addEventListener('DOMContentLoaded', () => {
        Tutorial belong to everybody, signed in or not. Each button closes
        this panel first, so the thing it opens is not fighting it. -->
   <div id="lqm-panel-menu">
-    <button class="lqm-pm-btn" onclick="lqmCloseProfile();lqmToggleSettingsPanel()"><svg class=svgi width=18 height=18><use href=#ic-gear></use></svg><span>Settings</span></button>
-    <button class="lqm-pm-btn" onclick="lqmCloseProfile();_navOpen()"><svg class=svgi width=18 height=18><use href=#ic-compass></use></svg><span>Navigation</span></button>
-    <button class="lqm-pm-btn" onclick="lqmCloseProfile();lqmOpenTutorial()"><svg class=svgi width=18 height=18><use href=#ic-book></use></svg><span>Tutorial</span></button>
-    <button class="lqm-pm-btn" onclick="lqmCloseProfile();openCredits()"><svg class=svgi width=18 height=18><use href=#ic-star></use></svg><span>Credits</span></button>
-    <button class="lqm-pm-btn" onclick="lqmCloseProfile();openFeedback()"><svg class=svgi width=18 height=18><use href=#ic-mail></use></svg><span>Feedback</span></button>
-    <button class="lqm-pm-btn" onclick="lqmCloseProfile();_clOpen()"><svg class=svgi width=18 height=18><use href=#ic-sparkle></use></svg><span>Updates</span></button>
+    <div class="lqm-pm-row">
+      <button class="lqm-pm-btn" onclick="lqmCloseProfile();lqmToggleSettingsPanel()"><svg class=svgi width=18 height=18><use href=#ic-gear></use></svg><span>Settings</span></button>
+      <button class="lqm-pm-btn" onclick="lqmCloseProfile();_navOpen()"><svg class=svgi width=18 height=18><use href=#ic-compass></use></svg><span>Navigation</span></button>
+      <button class="lqm-pm-btn" onclick="lqmCloseProfile();lqmOpenTutorial()"><svg class=svgi width=18 height=18><use href=#ic-book></use></svg><span>Tutorial</span></button>
+      <button class="lqm-pm-btn" onclick="lqmCloseProfile();openCredits()"><svg class=svgi width=18 height=18><use href=#ic-star></use></svg><span>Credits</span></button>
+      <button class="lqm-pm-btn" onclick="lqmCloseProfile();openFeedback()"><svg class=svgi width=18 height=18><use href=#ic-mail></use></svg><span>Feedback</span></button>
+      <button class="lqm-pm-btn" onclick="lqmCloseProfile();_clOpen()"><svg class=svgi width=18 height=18><use href=#ic-sparkle></use></svg><span>Updates</span></button>
+    </div>
+    <!-- The mode switch, right where the person is: the panel stays open so
+         the highlight flips in front of them and the map changes behind it.
+         Same _setMode the Settings dropdown drives; _modeApply keeps the
+         two showing the same answer. -->
+    <div id="lqm-pm-mode">
+      <button class="lqm-pm-mode-btn" data-mode="lite" onclick="_setMode('lite')"><svg class=svgi width=13 height=13><use href=#ic-bolt></use></svg> LITE-NING &#183; BEGINNER</button>
+      <button class="lqm-pm-mode-btn" data-mode="expert" onclick="_setMode('expert')"><svg class=svgi width=13 height=13><use href=#ic-sliders></use></svg> WX-PERT &#183; EXPERT</button>
+    </div>
   </div>
 
   <!-- Guest / logged-out state -->
