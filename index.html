@@ -31147,11 +31147,13 @@ function renderSubBubbles(tab) {
   const wrap = document.getElementById('sub-bubbles');
   wrap.innerHTML = '';
   let bubbles = _sbApplyOrder(TAB_BUBBLES[tab] || []);
-  // Lite-ning trims the column to Radar. The other seven still exist and
+  // Lite-ning has no bubble column at all. Its radar and forecast dots turn
+  // themselves on (_liteEnsureBasics), so a Radar button would be a switch
+  // for something that is already, and should stay, on. All eight bubbles
   // come straight back when the mode does; typeof, because the mode helpers
   // live in a later script block than this early first render.
   if (typeof _isLite === 'function' && _isLite()) {
-    bubbles = bubbles.filter(b => b.id === 'radar');
+    bubbles = [];
   }
   bubbles.forEach(b => {
     const el = document.createElement('div');
@@ -43968,6 +43970,46 @@ const MRMS_WMS   = 'https://opengeo.ncep.noaa.gov/geoserver/conus/ows';
 const MRMS_LAYER = 'conus_bref_qcd';   // MRMS QC'd base reflectivity, CONUS 1 km
 let _mrmsActive  = false;
 
+// ── FUTURE RADAR ────────────────────────────────────────────────────────────
+// The MRMS loop no longer stops at "now": the animation bar continues into
+// HRRR simulated reflectivity, the model's picture of where the real radar
+// is headed. Served by the same IEM WMS the Severe panel already uses
+// (refd_MMMM layers, MMMM = minutes into the forecast), so a future frame is
+// just one more layer in the same pool and the timeline, scrubbing and play
+// button need no new machinery.
+const FUT_RADAR_SPAN_MIN = 180;   // how far past "now" the bar reaches
+const FUT_RADAR_STEP_MIN = 15;    // HRRR subhourly output cadence
+// The run is assumed rather than negotiated: HRRR runs every hour and a run
+// is fully published well within two hours, so "top of the hour, two hours
+// ago" always exists. Asking the server (GetCapabilities) would be one more
+// request on the radar's critical path for an answer this predictable.
+function _futRadarRunMs(nowMs) {
+  const d = new Date(nowMs);
+  d.setUTCMinutes(0, 0, 0);
+  return d.getTime() - 2 * 3600000;
+}
+// The pure planner, kept separate so a test can hold it down offline: which
+// forecast minutes of that run cover "now" through "now + span", on the
+// model's own step, never past HRRR's 1080-minute reach.
+function _futRadarPlan(runMs, nowMs) {
+  const aheadOfRun = (nowMs - runMs) / 60000;
+  const first = Math.ceil(aheadOfRun / FUT_RADAR_STEP_MIN) * FUT_RADAR_STEP_MIN;
+  const last = Math.min(aheadOfRun + FUT_RADAR_SPAN_MIN, 1080);
+  const out = [];
+  for (let m = first; m <= last; m += FUT_RADAR_STEP_MIN) out.push(m);
+  return out;
+}
+// Future frames in the same shape _refSiteFrames already uses, marked so the
+// pool builder fetches them from HRRR and the time label says so.
+function _futRadarFrames(nowMs) {
+  const runMs = _futRadarRunMs(nowMs || Date.now());
+  const runIso = new Date(runMs).toISOString().replace('.000Z', 'Z');
+  return _futRadarPlan(runMs, nowMs || Date.now()).map(m => ({
+    iso: runIso, time: (runMs + m * 60000) / 1000,
+    date: new Date(runMs + m * 60000), future: true, min: m,
+  }));
+}
+
 // Reads the real scan times off GetCapabilities. This doubles as the check that
 // the layer exists at all: a renamed or withdrawn layer throws here with a clear
 // message instead of quietly painting empty tiles.
@@ -43995,7 +44037,20 @@ function _buildMrmsPool() {
   _refSitePool.forEach(l => { try { map.removeLayer(l); } catch(e){} });
   _refSitePool = []; _refSiteLoaded = [];
   _refSiteFrames.forEach((frame, i) => {
-    const l = L.tileLayer.wms(MRMS_WMS, {
+    // A future frame comes from HRRR via IEM, everything else from MRMS.
+    // Same pool, same opacity dance, so the timeline cannot tell them apart
+    // mechanically - only the label does.
+    const l = frame.future
+      ? L.tileLayer.wms(IEM_HRRR_REFD_WMS, {
+          layers: 'refd_' + String(frame.min).padStart(4, '0'),
+          format: 'image/png', transparent: true,
+          version: '1.1.1', TIME: frame.iso,
+          opacity: 0, zIndex: 12, pane: 'radarPane',
+          noWrap: true,
+          keepBuffer: _isIOS ? 1 : 4, updateWhenIdle: _isIOS, updateWhenZooming: false,
+          attribution: 'HRRR &copy; NOAA via IEM',
+        })
+      : L.tileLayer.wms(MRMS_WMS, {
       layers: MRMS_LAYER, format: 'image/png', transparent: true,
       version: '1.3.0', TIME: frame.iso,
       opacity: 0, zIndex: 12, pane: 'radarPane',
@@ -44039,15 +44094,26 @@ async function _loadMrmsComposite() {
   }
   if (gen !== _refSiteGen) return;    // a newer request superseded this one
 
+  // The past, then the future: HRRR frames continue where the scans end, so
+  // the one timeline runs from three hours ago to three hours from now.
+  const lastPast = _refSiteFrames.length - 1;
+  try { _refSiteFrames = _refSiteFrames.concat(_futRadarFrames(Date.now())); }
+  catch (e) { console.warn('future radar unavailable:', e); }
+
   _buildMrmsPool();
   const tl = document.getElementById('timeline');
   if (tl) tl.max = Math.max(0, _refSiteFrames.length - 1);
-  _showSingleSiteRefFrame(_refSiteFrames.length - 1);
+  // Land on "now" (the newest real scan), not on the far future: the future
+  // is there to be played into, not to be the first thing on screen.
+  _showSingleSiteRefFrame(Math.max(0, lastPast));
 }
 
 function _clearMrms() {
   if (!_mrmsActive) return;
   _mrmsActive = false;
+  // Whatever frame was up, the next product's label is not a forecast.
+  const at = document.getElementById('anim-time');
+  if (at) at.style.color = '';
   _refSiteGen++;
   _refSitePool.forEach(l => { try { map.removeLayer(l); } catch(e){} });
   _refSitePool = []; _refSiteLoaded = []; _refSiteFrames = [];
@@ -44304,11 +44370,23 @@ function _showSingleSiteRefFrame(idx) {
     }, 50);
   }
 
-  const d = new Date(_refSiteFrames[idx].time * 1000);
+  const fr = _refSiteFrames[idx];
+  const d = new Date(fr.time * 1000);
+  const hhmm = `${d.getUTCHours().toString().padStart(2,'0')}:${d.getUTCMinutes().toString().padStart(2,'0')}`;
   const stLabel = (_refStation || '').toUpperCase();
   const animTimeEl = document.getElementById('anim-time');
-  if (animTimeEl)
-    animTimeEl.textContent = `${d.getUTCHours().toString().padStart(2,'0')}:${d.getUTCMinutes().toString().padStart(2,'0')} UTC · ${stLabel} REF`;
+  if (animTimeEl) {
+    if (fr.future) {
+      // Past "now", the picture is a forecast and the bar must say so: gold
+      // text, the word FUTURE, and how far ahead this frame looks.
+      const ahead = Math.max(0, Math.round((fr.time * 1000 - Date.now()) / 60000));
+      animTimeEl.textContent = `FUTURE +${ahead} MIN · ${hhmm} UTC · HRRR`;
+      animTimeEl.style.color = '#e8b800';
+    } else {
+      animTimeEl.textContent = `${hhmm} UTC · ${stLabel} REF`;
+      animTimeEl.style.color = '';
+    }
+  }
 }
 
 function _clearSingleSiteRef() {
@@ -56248,6 +56326,33 @@ function _modeChosen() {
   try { return !!localStorage.getItem(MODE_KEY); } catch (e) { return true; }
 }
 
+// What Lite-ning promises is already on the screen: the 1 km MRMS composite
+// playing (with its HRRR future tail) and the forecast dots. No buttons to
+// find, because the buttons were removed; this is what turns the layers on
+// in their place. Safe to call any time: everything is guarded and anything
+// already on is left alone.
+function _liteEnsureBasics() {
+  if (!_isLite()) return;
+  if (document.body.classList.contains('shot-mode')) return;
+  try {
+    if (typeof activeLayers !== 'undefined' && !activeLayers.forecasts
+        && typeof toggleForecastDots === 'function') toggleForecastDots();
+  } catch (e) {}
+  try {
+    if (typeof activeLayers === 'undefined' || typeof _loadMrmsComposite !== 'function') return;
+    if (!activeLayers.nexrad || currentProduct !== 'mrms') {
+      // The same enable the welcome flow uses: the national 1 km composite.
+      _radarSource = 'normal';
+      if (typeof _prDisable === 'function') _prDisable();
+      if (typeof _clearSingleSiteRef === 'function') _clearSingleSiteRef();
+      activeLayers.nexrad = true;
+      currentProduct = 'mrms';
+      _loadMrmsComposite();
+      if (typeof _syncParentBubble === 'function') _syncParentBubble('radar');
+    }
+  } catch (e) {}
+}
+
 function _setMode(m, opts) {
   m = m === 'lite' ? 'lite' : 'expert';
   try { localStorage.setItem(MODE_KEY, m); } catch (e) {}
@@ -56258,6 +56363,9 @@ function _setMode(m, opts) {
     try { if (activeLayers.satellite) _disableSatellite(); } catch (e) {}
     try { if (typeof _hdOn !== 'undefined' && _hdOn && typeof _hdDisable === 'function') _hdDisable(); } catch (e) {}
     try { if (typeof _sevCompareOn !== 'undefined' && _sevCompareOn && typeof _sevToggleCompare === 'function') _sevToggleCompare(); } catch (e) {}
+    // And what Lite-ning DOES offer comes on by itself: the 1 km composite
+    // and the forecast dots, since their buttons are gone in this mode.
+    try { _liteEnsureBasics(); } catch (e) {}
   }
   _modeApply();
   if (!(opts && opts.quiet) && typeof showToast === 'function') {
@@ -56419,6 +56527,14 @@ function _liteRadarSub() {
 // Applied at parse time so a returning Lite-ning visitor never sees the full
 // chrome flash before it is taken away.
 try { _modeApply(); } catch (e) {}
+// And once the map exists, a Lite-ning visitor's two layers come on without
+// being asked: their buttons are gone, so nothing else would turn them on
+// for a returning visitor whose saved preset skips the welcome flight.
+try {
+  if (_isLite() && typeof _whenMapReady === 'function') {
+    _whenMapReady(() => { try { _liteEnsureBasics(); } catch (e) {} });
+  }
+} catch (e) {}
 
 /* ══════════════════════════════════════════════════════════════════════════
    THE WELCOME
@@ -58759,6 +58875,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-01-a', date: 'Sep 1, 2026',
+    text: 'The radar now shows the future: when the 1 km MRMS composite is playing, the animation bar keeps going past "now" into HRRR simulated reflectivity, three hours ahead in 15-minute steps, labeled FUTURE in gold. Lite-ning mode also got simpler: the radar and the forecast dots turn themselves on, and the Radar button is gone because there is nothing left to press.' },
   { id: '2026-08-31-l', date: 'Aug 31, 2026',
     text: 'The beginner / expert choice now lives in the account panel too: two buttons right under the menu, LITE-NING and WX-PERT, with the current one lit. Tap the other one to switch on the spot; Settings under Display still works the same.' },
   { id: '2026-08-31-k', date: 'Aug 31, 2026',

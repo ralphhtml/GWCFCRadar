@@ -43,10 +43,14 @@ console.log('\n1. the source keeps the shape of the feature');
   ok('the mode is changed in Settings, with no tag or button of its own',
      /id="lqm-set-mode"/.test(PAGE)
      && !/id="profile-mode-tag"/.test(PAGE) && !/id="lqm-mode-btn"/.test(PAGE));
-  ok('Lite-ning trims the bubble column in the renderer',
-     /renderSubBubbles[\s\S]{0,900}_isLite\(\)[\s\S]{0,200}b\.id === 'radar'/.test(PAGE));
-  ok('and gives radar a plain-words menu',
-     /function _liteRadarSub/.test(PAGE) && /Live Radar/.test(PAGE));
+  ok('Lite-ning empties the bubble column in the renderer',
+     /renderSubBubbles[\s\S]{0,1200}_isLite\(\)[\s\S]{0,120}bubbles = \[\]/.test(PAGE));
+  ok('and turns its two layers on by itself instead',
+     /function _liteEnsureBasics/.test(PAGE)
+     && /_liteEnsureBasics[\s\S]{0,700}toggleForecastDots/.test(PAGE)
+     && /_liteEnsureBasics[\s\S]{0,1400}_loadMrmsComposite/.test(PAGE));
+  ok('at boot too, once the map exists',
+     /_whenMapReady\(\(\) => \{ try \{ _liteEnsureBasics\(\); \}/.test(PAGE));
   const EM = String.fromCharCode(0x2014);
   ok('no em dashes here or in the page',
      !PAGE.includes(EM)
@@ -115,24 +119,30 @@ console.log('\n2. a brand-new visitor is asked, and Lite-ning answers for them')
     intro: !!document.querySelector('#lite-intro.open'),
     tutSeen: localStorage.getItem('gwcfc_tutorial_seen'),
     bubbles: [...document.querySelectorAll('#sub-bubbles .sb-label')].map(x => x.textContent),
+    colGone: getComputedStyle(document.getElementById('sub-bubbles')).display === 'none',
     railGone: getComputedStyle(document.getElementById('right-menu')).display === 'none',
     launcherGone: getComputedStyle(document.getElementById('overlay-toggle-btn')).display === 'none',
+    radarOn: activeLayers.nexrad === true,
+    product: currentProduct,
+    dotsOn: activeLayers.forecasts === true,
   }));
   ok('the choice is saved', lite.saved === 'lite', String(lite.saved));
   ok('the page wears the mode', lite.body === true);
   ok('a four-line intro opens instead of eighteen sections', lite.intro);
   ok('so the full tutorial will not ambush the next visit',
      lite.tutSeen === '1', String(lite.tutSeen));
-  ok('the bubble column is just Radar',
-     JSON.stringify(lite.bubbles) === JSON.stringify(['Radar']),
-     JSON.stringify(lite.bubbles));
+  ok('the bubble column is gone entirely, Radar button included',
+     lite.bubbles.length === 0 && lite.colGone, JSON.stringify(lite.bubbles));
+  ok('because the radar turned itself on instead',
+     lite.radarOn && lite.product === 'mrms', lite.product);
+  ok('with the 1 km composite as the product', lite.product === 'mrms');
+  ok('and the forecast dots are on', lite.dotsOn);
   ok('the drawing and measuring rail is gone', lite.railGone);
   ok('so is the overlay launcher', lite.launcherGone);
 
   // Closing the intro no longer jumps straight to the welcome: the rest of
   // the first-visit greeting line comes first. Sign-up panel (skippable),
-  // then the changelog, and only then the welcome flight. The radar menu
-  // check rides along at the end.
+  // then the changelog, and only then the welcome flight.
   const radar = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
     _liteIntroClose();
@@ -144,13 +154,11 @@ console.log('\n2. a brand-new visitor is asked, and Lite-ning answers for them')
     const clOpen = !!document.querySelector('#changelog-modal.open');
     _clClose();
     await wait(900);
-    toggleRadarSub();
     return {
       signupOpen, clOpen,
       clSeen: localStorage.getItem('gwcfc_changelog_seen'),
       newestId: APP_CHANGELOG[0].id,
       welcomeRan: _welcomeRan === true,
-      labels: [...document.querySelectorAll('#sub-bubbles .sb-label')].map(x => x.textContent),
     };
   });
   ok('closing the intro opens the sign-up panel', radar.signupOpen);
@@ -158,10 +166,6 @@ console.log('\n2. a brand-new visitor is asked, and Lite-ning answers for them')
   ok('which starts their history at today',
      radar.clSeen === radar.newestId, `${radar.clSeen} vs ${radar.newestId}`);
   ok('and dismissing the changelog starts the welcome', radar.welcomeRan);
-  ok('the radar menu says Live Radar and Time Machine, nothing cryptic',
-     radar.labels.includes('Live Radar') && radar.labels.includes('Time Machine')
-     && !radar.labels.includes('Level 2') && !radar.labels.includes('Level 3'),
-     JSON.stringify(radar.labels));
 
   // And the way back up: one tap in the logo menu restores everything.
   const back = await p.evaluate(() => {
@@ -308,11 +312,14 @@ console.log('\n3. the choice is remembered, and old friends are never quizzed');
     picker: !!document.querySelector('#mode-modal.open'),
     body: document.body.classList.contains('lite-mode'),
     bubbles: [...document.querySelectorAll('#sub-bubbles .sb-label')].map(x => x.textContent),
+    radarOn: activeLayers.nexrad === true && currentProduct === 'mrms',
+    dotsOn: activeLayers.forecasts === true,
   }));
   ok('a returning Lite-ning visitor is not asked again', !r1.picker);
-  ok('and lands in their own mode', r1.body === true
-     && JSON.stringify(r1.bubbles) === JSON.stringify(['Radar']),
-     JSON.stringify(r1.bubbles));
+  ok('and lands in their own mode, no bubbles', r1.body === true
+     && r1.bubbles.length === 0, JSON.stringify(r1.bubbles));
+  ok('with the radar and forecast dots already on',
+     r1.radarOn && r1.dotsOn, JSON.stringify(r1));
   await p1.close();
 
   // An existing user from before modes existed: tutorial seen, mode unset.
