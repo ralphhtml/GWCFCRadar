@@ -63,6 +63,21 @@ for (let i = 0; i < CAP + 60; i++) {
 tileRows.push(['Megalopolis', 33.7, -84.4, 9000000, 0]);
 const TILE = JSON.stringify(tileRows);
 
+// The web tier's fixture, in the cities.json shape: lat/lng as STRINGS and
+// no population field, which is exactly what the second mirror serves. A
+// thousand filler towns far away make it big enough to pass the sanity
+// floor, plus Tokyo-area targets and two broken rows that must be skipped.
+const webRows = [];
+for (let i = 0; i < 1100; i++) {
+  webRows.push({ name: `Filler ${i}`, lat: String(-44 - (i % 30) * 0.1),
+                 lng: String(160 + Math.floor(i / 30) * 0.1), country: 'NZ' });
+}
+webRows.push({ name: 'Tokyo', lat: '35.6895', lng: '139.6917', country: 'JP' });
+webRows.push({ name: 'Kawasaki', lat: '35.5206', lng: '139.7172', country: 'JP' });
+webRows.push({ name: 'Broken Town', lat: 'not-a-lat', lng: '139.0', country: 'JP' });
+webRows.push({ lat: '35.0', lng: '139.0', country: 'JP' });
+const WEBCITIES = JSON.stringify(webRows);
+
 const LEAFLET = process.env.LEAFLET_DIST || '/tmp/node_modules/leaflet/dist';
 const b = await chromium.launch({
   executablePath: process.env.CHROME_PATH
@@ -78,6 +93,10 @@ let tileHits = 0;
 await p.route('**://**', route => {
   const url = route.request().url();
   if (url.startsWith('file://')) return route.continue();
+  if (url.includes('all-the-cities'))
+    return route.fulfill({ status: 404, body: 'gone' });   // first mirror down
+  if (url.includes('cities.json@1.1.20'))
+    return route.fulfill({ contentType: 'application/json', body: WEBCITIES });
   if (url.includes('fakepi.invalid/cities/')) {
     tileHits++;
     // Only the Atlanta-area tile answers; ocean tiles are honest 404s.
@@ -127,7 +146,33 @@ console.log('\n2. the gazetteer feeds the dots, capped, biggest first');
   ok('tiles were actually asked of the Pi', tileHits > 0, String(tileHits));
 }
 
-console.log('\n3. no Pi, no problem: the built-in list carries the dots');
+console.log('\n3. no Pi yet: the web mirror carries towns right now');
+{
+  const r = await p.evaluate(async () => {
+    const out = {};
+    // Tokyo: the fake Pi has no tile there, so the loader must fall
+    // through to the web mirror, surviving the dead first mirror and the
+    // string lat/lng shape of the second.
+    map.setView([35.62, 139.7], 9, { animate: false });
+    await new Promise(res => setTimeout(res, 150));
+    await _refreshVisibleCityTemps();
+    out.tips = [];
+    cityMarkersLayer.eachLayer(m => {
+      const t = m.getTooltip();
+      if (t) out.tips.push(String(t.getContent()));
+    });
+    out.webReady = _cityWebTiles instanceof Map;
+    return out;
+  });
+  ok('the web list parsed, string coordinates and all', r.webReady);
+  ok('Tokyo and Kawasaki appear from the mirror',
+     r.tips.some(t => t.includes('Tokyo')) && r.tips.some(t => t.includes('Kawasaki')),
+     r.tips.slice(0, 4).join(' | '));
+  ok('the broken rows never became dots',
+     !r.tips.some(t => t.includes('Broken Town')));
+}
+
+console.log('\n4. no Pi, no mirror: the built-in list carries the dots');
 {
   const r = await p.evaluate(async () => {
     const out = {};

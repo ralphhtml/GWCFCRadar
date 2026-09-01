@@ -48858,8 +48858,64 @@ function _cityFetchTile(key) {
   return p;
 }
 
-// The biggest places on this screen, from the Pi's tiles, or null when
-// nothing is available, which sends the caller to the built-in list.
+// ── Tier two: a web-hosted city list that needs no Pi at all ──
+// The Pi's tiles are the full millions-of-places answer, but they exist
+// only after its first weekly build. This tier fills that gap the moment
+// the page ships: about 150,000 towns (GeoNames cities1000, mirrored on
+// the same CDN the page already loads from), fetched once per session,
+// cut into the same tile buckets and ranked the same way. Two mirrors,
+// two shapes, one defensive parser.
+const CITY_WEB_URLS = [
+  'https://cdn.jsdelivr.net/npm/all-the-cities@3.1.0/cities.json',
+  'https://cdn.jsdelivr.net/npm/cities.json@1.1.20/cities.json',
+];
+let _cityWebTiles = null;   // Map key -> rows, 'failed', or in-flight promise
+
+function _cityWebKey(lat, lon) {
+  return Math.floor((lat + 90) / CITY_TILE_DEG) + '_'
+       + Math.floor((lon + 180) / CITY_TILE_DEG);
+}
+
+function _cityWebLoad() {
+  if (_cityWebTiles) return _cityWebTiles;
+  // A 14 MB JSON parse peaks well past 100 MB of heap. A phone that told
+  // us it has 2 GB, or a connection asking to save data, keeps the
+  // built-in list instead of a crash.
+  const mem = navigator.deviceMemory || 0;
+  const conn = navigator.connection || {};
+  if ((mem && mem <= 2) || conn.saveData) { _cityWebTiles = 'failed'; return _cityWebTiles; }
+  _cityWebTiles = (async () => {
+    for (const url of CITY_WEB_URLS) {
+      try {
+        const r = await fetch(url, { signal: _abortSignal(45000) });
+        if (!r.ok) continue;
+        const arr = await r.json();
+        if (!Array.isArray(arr) || arr.length < 1000) continue;
+        const tiles = new Map();
+        arr.forEach(x => {
+          if (!x || !x.name) return;
+          let lat = parseFloat(x.lat), lon = parseFloat(x.lng != null ? x.lng : x.lon);
+          if (!isFinite(lat) && x.loc && Array.isArray(x.loc.coordinates)) {
+            lon = +x.loc.coordinates[0]; lat = +x.loc.coordinates[1];
+          }
+          if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90) return;
+          const key = _cityWebKey(lat, lon);
+          let bucket = tiles.get(key);
+          if (!bucket) { bucket = []; tiles.set(key, bucket); }
+          bucket.push([String(x.name), lat, lon, +x.population || 0, 4]);
+        });
+        if (tiles.size) { _cityWebTiles = tiles; return tiles; }
+      } catch (e) {}
+    }
+    _cityWebTiles = 'failed';
+    return 'failed';
+  })();
+  return _cityWebTiles;
+}
+
+// The biggest places on this screen: the Pi's tiles first, the web list
+// where the Pi has nothing, and null when neither can answer, which
+// sends the caller to the built-in list.
 async function _cityGazetteerVisible(bounds) {
   const keys = _cityTileKeysFor(bounds);
   // A whole-world view is dozens of tiles for dots the screen cannot fit
@@ -48867,13 +48923,15 @@ async function _cityGazetteerVisible(bounds) {
   if (!keys.length || keys.length > 40) return null;
   const tiles = await Promise.all(keys.map(_cityFetchTile));
   const rows = [];
-  tiles.forEach(t => {
-    if (!Array.isArray(t)) return;
-    t.forEach(r => {
-      if (r[1] >= bounds.getSouth() && r[1] <= bounds.getNorth()
-          && r[2] >= bounds.getWest() && r[2] <= bounds.getEast()) rows.push(r);
-    });
+  const take = t => t.forEach(r => {
+    if (r[1] >= bounds.getSouth() && r[1] <= bounds.getNorth()
+        && r[2] >= bounds.getWest() && r[2] <= bounds.getEast()) rows.push(r);
   });
+  tiles.forEach(t => { if (Array.isArray(t)) take(t); });
+  if (!rows.length) {
+    const web = await _cityWebLoad();
+    if (web instanceof Map) keys.forEach(k => { const t = web.get(k); if (t) take(t); });
+  }
   if (!rows.length) return null;
   // Population first, then the feature rank GeoNames assigns (a capital
   // with an unrecorded population still beats a hamlet).
@@ -60052,6 +60110,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-01-n', date: 'Sep 1, 2026',
+    text: 'The huge city expansion now works immediately, not just after the Pi rebuilds: while the Pi prepares its millions-of-places tiles, the map pulls about 150,000 towns from a web mirror of the same GeoNames data, so zooming in already reveals far more places today. Tap any town, big or tiny, for its full Open-Meteo forecast. Phones asked to save data, and devices with very little memory, skip the big download and keep the classic list.' },
   { id: '2026-09-01-m', date: 'Sep 1, 2026',
     text: 'The Weather Forecasts dots now know every named town on Earth. The Pi builds a tiled copy of the full GeoNames gazetteer, millions of populated places, well over 500,000 of them kept, and the map loads just the tiles under your view: zoomed out you see the big cities as always, and every zoom-in reveals the next tier of smaller towns, down to villages. Tap any of them for the full Open-Meteo forecast, exactly like the big cities. When the Pi is unreachable the original city list still carries the dots.' },
   { id: '2026-09-01-l', date: 'Sep 1, 2026',
