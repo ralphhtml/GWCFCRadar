@@ -88,45 +88,60 @@ await p.goto('file://' + join(ROOT, 'index.html'),
              { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(4200);
 
-console.log('\n2. the rows live in their bubbles, variable then source');
+console.log('\n2. one row per bubble, then the SST-style drill-down');
 {
   const r = await p.evaluate(() => {
     const out = {};
     toggleTemperatureSub();
-    out.tempRow = !!document.getElementById('sub-nws-temperature-temp');
-    out.noSrcYet = !document.getElementById('sub-nws-temperature-temp-rtma');
-    document.getElementById('sub-nws-temperature-temp').click();
-    out.rtmaPill = !!document.getElementById('sub-nws-temperature-temp-rtma');
-    out.ndfdPill = !!document.getElementById('sub-nws-temperature-temp-ndfd');
-    // Max Temp is NDFD-only; unfolding it must not invent an RTMA pill.
-    document.getElementById('sub-nws-temperature-maxt').click();
-    out.maxtNdfdOnly = !!document.getElementById('sub-nws-temperature-maxt-ndfd')
-      && !document.getElementById('sub-nws-temperature-maxt-rtma');
-    toggleRadarSub();
-    out.radarRows = ['pop12', 'qpf', 'snow', 'wx']
-      .every(v => !!document.getElementById('sub-nws-radar-' + v));
-    toggleWavesSub();
-    out.waveRow = !!document.getElementById('sub-nws-waves-waveh');
-    toggleAirSub();
-    out.airRows = ['vis', 'sky', 'ceil']
-      .every(v => !!document.getElementById('sub-nws-air-' + v));
+    out.entryRow = !!document.getElementById('sub-nws-temperature');
+    document.getElementById('sub-nws-temperature').click();
+    out.srcScreen = !!document.getElementById('sub-nwssrc-rtma')
+                 && !!document.getElementById('sub-nwssrc-ndfd');
+    out.leftTheMenu = !document.getElementById('sub-nws-temperature');
+    // The Back bubble walks up to the hosting bubble's own menu.
+    document.querySelector('#sub-bubbles .sub-bubble').click();
+    out.backHome = !!document.getElementById('sub-nws-temperature');
+    // Sources appear only where they publish something.
+    toggleNwsSourceSub('pressure');
+    out.pressureRtmaOnly = !!document.getElementById('sub-nwssrc-rtma')
+                        && !document.getElementById('sub-nwssrc-ndfd');
+    toggleNwsSourceSub('radar');
+    out.radarNdfdOnly = !document.getElementById('sub-nwssrc-rtma')
+                     && !!document.getElementById('sub-nwssrc-ndfd');
+    // And each source's variant screen lists that source's fields.
+    toggleNwsVariantSub('radar', 'ndfd');
+    out.radarVars = ['pop12', 'qpf', 'snow', 'wx']
+      .every(v => !!document.getElementById('sub-nwsvar-' + v));
+    toggleNwsVariantSub('air', 'rtma');
+    out.airVars = ['vis', 'sky', 'ceil']
+      .every(v => !!document.getElementById('sub-nwsvar-' + v));
+    toggleNwsVariantSub('waves', 'ndfd');
+    out.waveVar = !!document.getElementById('sub-nwsvar-waveh');
     return out;
   });
-  ok('Temperature carries an NWS Temperature row', r.tempRow);
-  ok('sources stay folded until the variable is tapped', r.noSrcYet);
-  ok('tapping it unfolds RTMA and NDFD', r.rtmaPill && r.ndfdPill);
-  ok('an NDFD-only variable offers only NDFD', r.maxtNdfdOnly);
-  ok('Radar gains all four precip forecast rows', r.radarRows);
-  ok('Waves gains the NDFD wave height row', r.waveRow);
-  ok('Air gains visibility, sky cover and ceiling', r.airRows);
+  ok('Temperature carries one National Weather Service row', r.entryRow);
+  ok('tapping it opens the source screen, like SST\'s',
+     r.srcScreen && r.leftTheMenu);
+  ok('Back walks up to the bubble\'s own menu', r.backHome);
+  ok('Pressure offers only RTMA', r.pressureRtmaOnly);
+  ok('Radar offers only NDFD', r.radarNdfdOnly);
+  ok('Radar\'s variant screen lists all four precip fields', r.radarVars);
+  ok('Air\'s RTMA screen lists visibility, sky and ceiling', r.airVars);
+  ok('Waves\' NDFD screen lists wave height', r.waveVar);
 }
 
 console.log('\n3. NDFD draws, loops, and owns the quiet animation bar');
 {
   const r = await p.evaluate(async () => {
+    const wait = ms => new Promise(res => setTimeout(res, ms));
     const out = {};
-    // No radar in this boot, so the bar is free for the forecast to claim.
-    await _nwsEnable('radar', 'pop12', 'ndfd');
+    // Through the UI, the way SST enables: tap the source, land on variants.
+    toggleNwsSourceSub('radar');
+    document.getElementById('sub-nwssrc-ndfd').click();
+    await wait(400);
+    out.landedOnVariants = !!document.getElementById('sub-nwsvar-pop12');
+    out.firstVariantLit = document.getElementById('sub-nwsvar-pop12')
+      && document.getElementById('sub-nwsvar-pop12').classList.contains('active');
     out.on = _nwsOn && _nwsOn.src === 'ndfd' && _nwsOn.field === 'pop12';
     out.frames = _nwsLoop.frames.length;
     out.stepH = (_nwsLoop.frames[1].time - _nwsLoop.frames[0].time) / 3600000;
@@ -146,7 +161,8 @@ console.log('\n3. NDFD draws, loops, and owns the quiet animation bar');
     out.gold = at ? at.style.color : '';
     return out;
   });
-  ok('the layer comes on with its field', r.on);
+  ok('tapping the source turns the layer on and opens its variants',
+     r.on && r.landedOnVariants && r.firstVariantLit);
   ok('sixteen frames, three hours apart', r.frames === 16 && r.stepH === 3,
      `${r.frames} x ${r.stepH}h`);
   ok('every frame is a future moment', r.allFuture);
@@ -176,6 +192,11 @@ console.log('\n4. the Inspector reads it, swaps clear it, off means off');
 
   const sw = await p.evaluate(async () => {
     const out = {};
+    // Tapping the lit source row on its screen turns the layer off,
+    // exactly the SST source row's rhythm.
+    toggleNwsSourceSub('radar');
+    document.getElementById('sub-nwssrc-ndfd').click();
+    out.srcTapOff = _nwsOn === null;
     await _nwsEnable('temperature', 'temp', 'ndfd');
     out.movedBubbles = _nwsOn.bubble === 'temperature';
     temperatureActive = true;
@@ -189,6 +210,7 @@ console.log('\n4. the Inspector reads it, swaps clear it, off means off');
       && !_nwsLoopActive() && _animSource().id !== 'nws';
     return out;
   });
+  ok('tapping the lit source row turns it off', sw.srcTapOff);
   ok('enabling in another bubble replaces the old layer', sw.movedBubbles);
   ok('picking the bubble\'s Open-Meteo map clears the NWS layer',
      sw.omPickCleared);

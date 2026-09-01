@@ -545,7 +545,42 @@ console.log('\n15. turning the layer off lets go of its memory');
      r.grid === null, JSON.stringify(r.grid));
 }
 
-console.log('\n16. still no page errors after all of that');
+console.log('\n16. the picture is bent into Mercator before land is cut');
+{
+  // The grid has rows at even LATITUDE; the map stretches overlays in
+  // MERCATOR. Without the reprojection, ocean colour sat on the coasts and
+  // the land cut-outs opened gaps beside their own land.
+  const r = await page.evaluate(() => {
+    const out = {};
+    // A 200-row canvas over -80..80: a stripe at rows 20-29 is latitude
+    // ~56-64 N. In Mercator that band belongs noticeably FARTHER from the
+    // top edge than its linear 10-15%.
+    const cv = document.createElement('canvas');
+    cv.width = 10; cv.height = 200;
+    const g = cv.getContext('2d');
+    g.fillStyle = '#f00'; g.fillRect(0, 20, 10, 10);
+    const outCv = _sstMercReproject(cv, [[-80, -180], [80, 180]]);
+    out.sameSize = outCv.width === 10 && outCv.height === 200;
+    const px = outCv.getContext('2d').getImageData(0, 0, 1, 200).data;
+    const reds = [];
+    for (let j = 0; j < 200; j++) if (px[j * 4] > 200 && px[j * 4 + 3] > 0) reds.push(j);
+    out.center = reds.length ? reds.reduce((a, b) => a + b, 0) / reds.length : -1;
+    // The display rectangle is clamped to Web-Mercator's own edge, so a
+    // pole-to-pole grid never asks Leaflet for an infinite stretch.
+    out.clamped = JSON.stringify(_sstDisplayBounds([[-90, -180], [90, 180]]));
+    return out;
+  });
+  const PAGE = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  ok('the canvas keeps its size', r.sameSize);
+  ok('a high-latitude band moves toward the equator edge, as Mercator says',
+     r.center > 38 && r.center < 62, String(r.center));
+  ok('pole-to-pole bounds clamp to the Mercator edge',
+     r.clamped === '[[-85.05112878,-180],[85.05112878,180]]', r.clamped);
+  ok('the reprojection runs before the land cut, on display bounds',
+     /_sstMercReproject\(_sstColorize\(frame\), frame\.bounds\);\s*await _sstCutLand\(cv, _sstDisplayBounds\(frame\.bounds\)\)/.test(PAGE));
+}
+
+console.log('\n17. still no page errors after all of that');
 ok('the whole run stayed clean', errors.length === 0, errors.join(' | '));
 
 await browser.close();

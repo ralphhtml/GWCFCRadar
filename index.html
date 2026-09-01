@@ -25045,6 +25045,39 @@ function _sstColorize(frame) {
   return cv;
 }
 
+// The Pi's grid has rows at even LATITUDE steps; the map stretches an
+// overlay linearly in MERCATOR-Y. Painted as-is, everything away from the
+// equator slid toward it: sea colour parked on top of coastlines, and the
+// land cut-outs (which _projectLngLat draws in proper Mercator) punched
+// holes that no longer sat over their own land. This resamples the coloured
+// canvas so each output ROW is the latitude Mercator actually puts there,
+// which is exactly what the Waves painter already does for its own canvas,
+// and clamps to Web-Mercator's own +-85.05 edge, past which nothing can be
+// drawn on this map anyway.
+const SST_MERC_LAT = 85.05112878;
+function _sstDisplayBounds(bounds) {
+  return [[Math.max(bounds[0][0], -SST_MERC_LAT), bounds[0][1]],
+          [Math.min(bounds[1][0], SST_MERC_LAT), bounds[1][1]]];
+}
+function _sstMercReproject(cv, bounds) {
+  const disp = _sstDisplayBounds(bounds);
+  const south = disp[0][0], north = disp[1][0];
+  const gS = bounds[0][0], gN = bounds[1][0];
+  if (!(north > south) || !(gN > gS)) return cv;
+  const w = cv.width, h = cv.height;
+  const out = document.createElement('canvas');
+  out.width = w; out.height = h;
+  const ctx = out.getContext('2d');
+  const yN = _latToMercY(north), yS = _latToMercY(south);
+  for (let j = 0; j < h; j++) {
+    const lat = _mercYToLat(yN - (j + 0.5) / h * (yN - yS));
+    let src = Math.round((gN - lat) / (gN - gS) * h - 0.5);
+    src = Math.max(0, Math.min(h - 1, src));
+    ctx.drawImage(cv, 0, src, w, 1, 0, j, w, 1);
+  }
+  return out;
+}
+
 // Punch the land out, the same way the Waves layer does, so colour never
 // bleeds across a coast. Reused rather than reinvented: it is the same
 // problem and the same geometry.
@@ -25077,8 +25110,11 @@ async function _sstShow(idx) {
     try { frame = await _sstLoadFrame(stamp); } catch (e) { frame = null; }
     if (!frame) return;
     _sstGrid = frame;
-    const cv = _sstColorize(frame);
-    await _sstCutLand(cv, frame.bounds);
+    // Colour in grid space, then bend the rows into Mercator BEFORE the
+    // land is cut, so data, cut-outs and coastlines all agree on where the
+    // world is.
+    const cv = _sstMercReproject(_sstColorize(frame), frame.bounds);
+    await _sstCutLand(cv, _sstDisplayBounds(frame.bounds));
     url = _pbBlob(cv.toDataURL('image/png'));
     _sstBlobs.set(stamp, url);
     // A day is about a megabyte coloured. Holding a season of them is not
@@ -25094,7 +25130,8 @@ async function _sstShow(idx) {
     _sstLoadFrame(stamp).then(f => { if (f) { f.stamp = stamp; _sstGrid = f; } })
       .catch(() => {});
   }
-  const bounds = (_sstMeta && _sstMeta.bounds) || [[-90, -180], [90, 180]];
+  const bounds = _sstDisplayBounds((_sstMeta && _sstMeta.bounds)
+                                   || [[-90, -180], [90, 180]]);
   if (!_sstLayer) {
     _sstLayer = L.imageOverlay(url, bounds, {
       opacity: 0.85, interactive: false, pane: 'sstPane',
@@ -25102,6 +25139,9 @@ async function _sstShow(idx) {
     }).addTo(map);
   } else {
     _sstLayer.setUrl(url);
+    // Switching sources reuses the layer, and AOML's Atlantic box is not
+    // OISST's globe: the rectangle must follow the source.
+    try { _sstLayer.setBounds(L.latLngBounds(bounds)); } catch (e) {}
   }
   _sstSyncReadout(stamp);
 }
@@ -28136,6 +28176,7 @@ const LAYER_DESCRIPTIONS = {
   wind:           'Wind speed shown as a smooth color map, just like Waves and Air, powered by Open-Meteo. Tap a product below to pick Surface Winds or the Jet Stream. For an animated flow effect instead, see the Wind Particles overlay pill.',
   'wind-surface': 'Surface-level (10m) wind speed from Open-Meteo\'s Forecast API, blue/green for calm through yellow/orange/red/purple for very strong wind.',
   'wind-jet':     'Wind speed at the 250 hPa pressure level (roughly 34,000 ft) - the jet stream, the fast-moving upper-air river of wind that steers most weather systems.',
+  'nws-row':      'The National Weather Service\'s own read of this subject. Opens a source screen: RTMA, the 2.5 km analysis of right now, and NDFD, the official forecast - then that source\'s fields.',
   'nws-rtma':     'RTMA (Real-Time Mesoscale Analysis): the Weather Service\'s best estimate of what is actually happening at this moment, built from observations at 2.5 km over CONUS, Alaska, Hawaii and Puerto Rico at once. Not a forecast - the thing to check a forecast against. Rendered by the Pi; the animation bar scrubs back through recent hourly analyses.',
   'nws-ndfd':     'NDFD (National Digital Forecast Database): the official NWS forecast, the same grids behind forecast.weather.gov. Human forecasters made these numbers, not just a model. The animation bar plays forward through the next two days.',
   // ── The bubbles that are a way in rather than a layer ──────────────────
@@ -33551,7 +33592,6 @@ const NWS_NDFD_FRAMES = 16;        // 16 x 3h = two days of forecast
 let _nwsOn = null;                 // { bubble, v, src, label, field }
 let _nwsLoop = { frames: [], idx: -1 };
 let _nwsLayers = [];               // the Leaflet layers currently up
-let _nwsVarOpen = null;            // which variable row is unfolded
 let _nwsGen = 0;                   // stale async builds bail
 
 function _nwsPane() {
@@ -33741,49 +33781,95 @@ function _nwsBuildNdfd(field) {
   }
 }
 
-// The rows themselves, appended by every hosting bubble's menu builder.
+// The menus, in the exact Sea Surface Temperature shape: ONE row in the
+// hosting bubble ("National Weather Service", the way "Sea Surface
+// Temperature" sits in Waves), which opens a source screen (RTMA / NDFD,
+// only the sources that publish anything for this bubble), and picking a
+// source turns the layer on at once and lands on the variant screen for
+// that source's fields. Every screen has a Back that walks up one level.
+let _nwsScreen = null;   // which NWS screen is open, so repaints land right
 function _nwsAppendRows(wrap, bubble) {
   const defs = NWS_SRC_VARS[bubble];
   if (!defs || !wrap) return;
-  defs.forEach(d => {
-    const key = bubble + ':' + d.v;
-    const isOn = _nwsOn && _nwsOn.bubble === bubble && _nwsOn.v === d.v;
-    const el = document.createElement('div');
-    el.className = 'sub-bubble' + (isOn ? ' active' : '');
-    el.id = 'sub-nws-' + bubble + '-' + d.v;
-    el.innerHTML = `<span class="sb-icon">${SB_ICON_NWS}</span><span class="sb-label">${d.label}</span>`;
-    el.onclick = () => { _nwsVarOpen = _nwsVarOpen === key ? null : key; _nwsRefreshMenu(bubble); };
-    wrap.appendChild(el);
-    if (_nwsVarOpen !== key) return;
-    ['rtma', 'ndfd'].forEach(src => {
-      if (!d[src]) return;
-      const on = _nwsOn && _nwsOn.bubble === bubble && _nwsOn.v === d.v && _nwsOn.src === src;
-      const pe = document.createElement('div');
-      pe.className = 'sub-bubble' + (on ? ' active' : '');
-      pe.id = 'sub-nws-' + bubble + '-' + d.v + '-' + src;
-      pe.style.marginLeft = '14px';
-      pe.innerHTML = `<span class="sb-label">${src.toUpperCase()}</span>`;
-      if (LAYER_DESCRIPTIONS['nws-' + src]) pe.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS['nws-' + src]));
-      pe.onclick = () => {
-        if (on) { _nwsDisable(); _nwsRefreshMenu(bubble); }
-        else _nwsEnable(bubble, d.v, src);
-      };
-      wrap.appendChild(pe);
-    });
+  const on = _nwsOn && _nwsOn.bubble === bubble;
+  const el = document.createElement('div');
+  el.className = 'sub-bubble' + (on ? ' active' : '');
+  el.id = 'sub-nws-' + bubble;
+  el.innerHTML = `<span class="sb-icon">${SB_ICON_NWS}</span><span class="sb-label">National Weather Service</span>`;
+  el.onclick = () => toggleNwsSourceSub(bubble);
+  if (LAYER_DESCRIPTIONS['nws-row']) el.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS['nws-row']));
+  wrap.appendChild(el);
+}
+function _nwsSrcList(bubble) {
+  const defs = NWS_SRC_VARS[bubble] || [];
+  return ['rtma', 'ndfd'].filter(src => defs.some(d => d[src]));
+}
+function _nwsVarList(bubble, src) {
+  return (NWS_SRC_VARS[bubble] || []).filter(d => d[src]);
+}
+function toggleNwsSourceSub(bubble) {
+  const wrap = document.getElementById('sub-bubbles');
+  if (!wrap) return;
+  _nwsScreen = { kind: 'src', bubble };
+  wrap.innerHTML = '';
+  _radarBackBubble(wrap, () => {
+    _nwsScreen = null;
+    try { _NWS_MENU_FNS[bubble] && _NWS_MENU_FNS[bubble](); } catch (e) {}
   });
+  _nwsSrcList(bubble).forEach(src => {
+    const on = _nwsOn && _nwsOn.bubble === bubble && _nwsOn.src === src;
+    const el = document.createElement('div');
+    el.className = 'sub-bubble' + (on ? ' active' : '');
+    el.id = 'sub-nwssrc-' + src;
+    el.innerHTML = `<span class="sb-icon">${SB_ICON_NWS}</span><span class="sb-label">${src.toUpperCase()}</span>`;
+    el.onclick = () => {
+      // Mirrors the SST source row exactly: tapping the source that is on
+      // turns it off; tapping another turns it on with the variant kept
+      // where it still applies, and walks into that source's variant list.
+      if (on) { _nwsDisable(); toggleNwsSourceSub(bubble); return; }
+      const vs = _nwsVarList(bubble, src);
+      const keep = (_nwsOn && _nwsOn.bubble === bubble
+                    && vs.some(d => d.v === _nwsOn.v)) ? _nwsOn.v
+                   : (vs[0] && vs[0].v);
+      if (!keep) return;
+      _nwsEnable(bubble, keep, src).then(() => toggleNwsVariantSub(bubble, src));
+    };
+    if (LAYER_DESCRIPTIONS['nws-' + src]) el.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS['nws-' + src]));
+    wrap.appendChild(el);
+  });
+  wrap.style.display = 'flex';
+}
+function toggleNwsVariantSub(bubble, src) {
+  const wrap = document.getElementById('sub-bubbles');
+  if (!wrap) return;
+  _nwsScreen = { kind: 'var', bubble, src };
+  wrap.innerHTML = '';
+  _radarBackBubble(wrap, () => toggleNwsSourceSub(bubble));
+  _nwsVarList(bubble, src).forEach(d => {
+    const on = _nwsOn && _nwsOn.bubble === bubble && _nwsOn.src === src && _nwsOn.v === d.v;
+    const el = document.createElement('div');
+    el.className = 'sub-bubble' + (on ? ' active' : '');
+    el.id = 'sub-nwsvar-' + d.v;
+    el.innerHTML = `<span class="sb-icon">${SB_ICON_NWS}</span><span class="sb-label">${d.label}</span>`;
+    el.onclick = () => {
+      _nwsEnable(bubble, d.v, src).then(() => {
+        wrap.querySelectorAll('.sub-bubble').forEach(x =>
+          x.classList.toggle('active', x.id === 'sub-nwsvar-' + d.v));
+      });
+    };
+    wrap.appendChild(el);
+  });
+  wrap.style.display = 'flex';
 }
 const _NWS_MENU_FNS = {
   temperature: () => toggleTemperatureSub(), wind: () => toggleWindSub(),
   pressure: () => togglePressureSub(),       radar: () => toggleRadarSub(),
   waves: () => toggleWavesSub(),             air: () => toggleAirSub(),
 };
-let _nwsMenuBubble = null;
-function _nwsRefreshMenu(bubble) {
-  const b = bubble || (_nwsOn && _nwsOn.bubble) || _nwsMenuBubble;
-  // Only repaint when that bubble's menu is actually the one open, which is
-  // true exactly when one of its rows is in the DOM.
-  if (!b || !document.querySelector('#sub-bubbles [id^="sub-nws-' + b + '-"]')) return;
-  try { _NWS_MENU_FNS[b] && _NWS_MENU_FNS[b](); } catch (e) {}
+function _nwsRefreshMenu() {
+  if (!_nwsScreen) return;
+  if (_nwsScreen.kind === 'src') toggleNwsSourceSub(_nwsScreen.bubble);
+  else toggleNwsVariantSub(_nwsScreen.bubble, _nwsScreen.src);
 }
 
 // The other half of "one source per bubble": choosing an Open-Meteo product
@@ -59271,6 +59357,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-01-f', date: 'Sep 1, 2026',
+    text: 'The Weather Service rows now work exactly like Sea Surface Temperature: one National Weather Service row in each of the six bubbles, opening a source screen (RTMA / NDFD) and then that source’s fields, with Back buttons all the way up. Also fixed the Pi’s ocean temperature maps sitting slightly off the coastlines: the picture is now bent into the map’s own projection before the land is cut out, so sea colour stays in the sea and the land holes sit over their own land.' },
   { id: '2026-09-01-e', date: 'Sep 1, 2026',
     text: 'The Weather Service moved INTO the layer bubbles, the way Sea Surface Temperature lives inside Waves: Temperature, Wind, Pressure, Radar, Waves and Air each gained rows powered by RTMA (the 2.5 km analysis of right now, all four domains at once) and NDFD (the official forecast). Pick a variable, pick the source, and it draws on the map and plays in the animation bar. The short-lived NWS bubble is gone; the sources live where their subjects do.' },
   { id: '2026-09-01-d', date: 'Sep 1, 2026',
