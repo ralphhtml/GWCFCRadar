@@ -25012,13 +25012,16 @@ async function _sstLoadFrame(stamp) {
   const d = px.data;
   const [lo, hi] = meta.range || [-8, 8];
   const span = (hi - lo) || 1;
-  const vals = new Float32Array(w * h);
-  for (let i = 0, p = 0; i < vals.length; i++, p += 4) {
+  const raw = new Float32Array(w * h);
+  for (let i = 0, p = 0; i < raw.length; i++, p += 4) {
     // Alpha 0 is water the analysis has nothing for, and land. NaN rather
     // than a number, so nothing downstream reports a temperature for Kansas.
-    vals[i] = d[p + 3] === 0 ? NaN : lo + ((d[p] * 256 + d[p + 1]) / 65535) * span;
+    raw[i] = d[p + 3] === 0 ? NaN : lo + ((d[p] * 256 + d[p + 1]) / 65535) * span;
   }
-  return { vals, w, h, lo, hi, bounds: meta.bounds };
+  // A 0-to-360 grid is rolled to dateline-first here, once, so the numbers,
+  // the picture, the land cut and the Inspector all live in the same world.
+  const { vals, bounds } = _sstUnwrapGrid(raw, w, h, meta.bounds);
+  return { vals, w, h, lo, hi, bounds };
 }
 
 function _sstColorize(frame) {
@@ -25058,6 +25061,33 @@ const SST_MERC_LAT = 85.05112878;
 function _sstDisplayBounds(bounds) {
   return [[Math.max(bounds[0][0], -SST_MERC_LAT), bounds[0][1]],
           [Math.min(bounds[1][0], SST_MERC_LAT), bounds[1][1]]];
+}
+// Some upstream grids (OISST, AOML) count longitude 0 to 360, so their
+// picture starts at Greenwich and the Pi's manifest rectangle comes out
+// inside-out (east at -0.125, west at 0.125). Drawn as-is, the whole
+// eastern hemisphere lands over the Pacific: Africa and India punched
+// their sea-less holes where the user's ocean should be. An inside-out
+// rectangle is the tell, and the cure is to roll the columns so the world
+// starts at the dateline like every other layer on this map.
+function _sstBoundsWrapped(bounds) {
+  return bounds && bounds[1][1] <= bounds[0][1];
+}
+function _sstUnwrapBounds(bounds) {
+  if (!_sstBoundsWrapped(bounds)) return bounds;
+  return [[bounds[0][0], -180], [bounds[1][0], 180]];
+}
+function _sstUnwrapGrid(vals, w, h, bounds) {
+  if (!_sstBoundsWrapped(bounds)) return { vals, bounds };
+  const west = ((bounds[0][1] % 360) + 360) % 360;   // 0..360 of the left edge
+  const split = Math.round((180 - west) / 360 * w);  // first column past 180
+  if (split <= 0 || split >= w) return { vals, bounds: _sstUnwrapBounds(bounds) };
+  const rolled = new Float32Array(w * h);
+  for (let row = 0; row < h; row++) {
+    const off = row * w;
+    rolled.set(vals.subarray(off + split, off + w), off);
+    rolled.set(vals.subarray(off, off + split), off + (w - split));
+  }
+  return { vals: rolled, bounds: _sstUnwrapBounds(bounds) };
 }
 function _sstMercReproject(cv, bounds) {
   const disp = _sstDisplayBounds(bounds);
@@ -25130,8 +25160,8 @@ async function _sstShow(idx) {
     _sstLoadFrame(stamp).then(f => { if (f) { f.stamp = stamp; _sstGrid = f; } })
       .catch(() => {});
   }
-  const bounds = _sstDisplayBounds((_sstMeta && _sstMeta.bounds)
-                                   || [[-90, -180], [90, 180]]);
+  const bounds = _sstDisplayBounds(_sstUnwrapBounds(
+    (_sstMeta && _sstMeta.bounds) || [[-90, -180], [90, 180]]));
   if (!_sstLayer) {
     _sstLayer = L.imageOverlay(url, bounds, {
       opacity: 0.85, interactive: false, pane: 'sstPane',
@@ -59500,6 +59530,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-01-j', date: 'Sep 1, 2026',
+    text: 'Fixed the giant dark continent floating in the Pacific on some sea surface temperature maps. OISST and the Ocean Heat maps count longitude from Greenwich instead of the dateline, so the whole eastern hemisphere was being drawn on the wrong side of the world, Africa and India were literally parked over the Pacific. The site now detects those maps and rolls them into place itself, and the Pi renders future days correctly from the start.' },
   { id: '2026-09-01-i', date: 'Sep 1, 2026',
     text: 'Every product should actually load now. The Pi bug that quietly deleted freshly built sea surface temperature maps (the reason OISST, Coral Reef Watch and the ocean heat maps came up empty) is fixed: cleanup can no longer touch the newest days of any product. RTMA gains the Relative Humidity chart it could never make before (the Weather Service publishes no RH field, so the Pi now works it out from temperature and dew point). And nothing fails silently anymore: an RTMA product the Pi has not built yet says so, an NDFD product the forecast server will not draw turns itself back off with a message, and wave height tries a second known name first. SST also joins the early warm-up, so those maps start loading the moment you open a menu.' },
   { id: '2026-09-01-h', date: 'Sep 1, 2026',

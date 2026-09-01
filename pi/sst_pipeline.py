@@ -482,9 +482,30 @@ def out_path(source, variant, day):
     return os.path.join(OUT_DIR, source, variant, f"{day:%Y%m%d}.png")
 
 
+def normalize_lons(values, lons):
+    """Roll a 0-to-360 grid so it runs dateline to dateline.
+
+    OISST and AOML count longitude from Greenwich, so their first column is
+    at 0 E and the map's -180..180 rectangle cannot describe them:
+    bounds_from turned that into an inside-out box (west 0.125, east
+    -0.125) and the whole eastern hemisphere rendered over the Pacific,
+    with Africa's and India's land gaps punched into the user's ocean.
+    Rolling the columns here, once, before anything is rendered, puts every
+    product in the same -180..180 world as the rest of the site. A grid
+    already in that convention passes through untouched.
+    """
+    lons = np.asarray(lons, dtype=np.float64)
+    if lons.size < 2 or float(np.nanmax(lons)) <= 180.0:
+        return values, lons
+    wrapped = ((lons + 180.0) % 360.0) - 180.0
+    shift = int(np.argmin(wrapped))
+    return np.roll(values, -shift, axis=-1), np.roll(wrapped, -shift)
+
+
 def write_field(source, variant, day, values, lats, lons):
     spec = variant_spec(source, variant)
     lo, hi = spec["range"]
+    values, lons = normalize_lons(values, lons)
     p = out_path(source, variant, day)
     os.makedirs(os.path.dirname(p), exist_ok=True)
     tmp = p + ".tmp.png"
