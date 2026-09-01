@@ -25509,6 +25509,9 @@ function toggleWavesSub() {
       // the live grid this button has always drawn and behaves exactly as it
       // did; the rest are the Pi's own ocean fields.
       if (b.id === 'sst') { toggleSstSourceSub(); return; }
+      // Wave height has more than one source now, same as SST: the row
+      // opens the source screen instead of going straight to a layer.
+      if (b.id === 'wave-height') { toggleNwsSourceSub('waves', 'waveh'); return; }
       if (wavesActive && _wavesProduct === b.id) {
         wavesActive = false;
         clearInterval(_wavesRefreshTimer); _wavesRefreshTimer = null;
@@ -25856,6 +25859,10 @@ function toggleTemperatureSub() {
     el.id = 'sub-' + b.id;
     el.innerHTML = `<span class="sb-icon">${_eicon(b.icon)}</span><span class="sb-label">${b.label}</span>`;
     el.onclick = () => {
+      // These two have more than one source now (Open-Meteo / RTMA / NDFD):
+      // the row opens the source screen, the way SST's row does in Waves.
+      if (b.id === 'air-temp') { toggleNwsSourceSub('temperature', 'temp'); return; }
+      if (b.id === 'dew-point') { toggleNwsSourceSub('temperature', 'dew'); return; }
       if (temperatureActive && _temperatureProduct === b.id) {
         temperatureActive = false;
         clearInterval(_temperatureRefreshTimer); _temperatureRefreshTimer = null;
@@ -25967,6 +25974,9 @@ function togglePressureSub() {
     el.id = 'sub-' + b.id;
     el.innerHTML = `<span class="sb-icon">${_eicon(b.icon)}</span><span class="sb-label">${b.label}</span>`;
     el.onclick = () => {
+      // Surface pressure has more than one source now; the row opens the
+      // source screen, the way SST's row does in Waves.
+      if (b.id === 'surface') { toggleNwsSourceSub('pressure', 'pres'); return; }
       if (pressureActive && _pressureProduct === b.id) {
         pressureActive = false;
         clearInterval(_pressureRefreshTimer); _pressureRefreshTimer = null;
@@ -26115,6 +26125,9 @@ function toggleWindSub() {
     el.id = 'sub-' + b.id;
     el.innerHTML = `<span class="sb-icon">${_eicon(b.icon)}</span><span class="sb-label">${b.label}</span>`;
     el.onclick = () => {
+      // Surface wind has more than one source now; the row opens the
+      // source screen, the way SST's row does in Waves.
+      if (b.id === 'wind-surface') { toggleNwsSourceSub('wind', 'wind'); return; }
       if (windActive && _windProduct === b.id) {
         windActive = false;
         clearInterval(_windRefreshTimer); _windRefreshTimer = null;
@@ -28176,7 +28189,6 @@ const LAYER_DESCRIPTIONS = {
   wind:           'Wind speed shown as a smooth color map, just like Waves and Air, powered by Open-Meteo. Tap a product below to pick Surface Winds or the Jet Stream. For an animated flow effect instead, see the Wind Particles overlay pill.',
   'wind-surface': 'Surface-level (10m) wind speed from Open-Meteo\'s Forecast API, blue/green for calm through yellow/orange/red/purple for very strong wind.',
   'wind-jet':     'Wind speed at the 250 hPa pressure level (roughly 34,000 ft) - the jet stream, the fast-moving upper-air river of wind that steers most weather systems.',
-  'nws-row':      'The National Weather Service\'s own read of this subject. Opens a source screen: RTMA, the 2.5 km analysis of right now, and NDFD, the official forecast - then that source\'s fields.',
   'nws-rtma':     'RTMA (Real-Time Mesoscale Analysis): the Weather Service\'s best estimate of what is actually happening at this moment, built from observations at 2.5 km over CONUS, Alaska, Hawaii and Puerto Rico at once. Not a forecast - the thing to check a forecast against. Rendered by the Pi; the animation bar scrubs back through recent hourly analyses.',
   'nws-ndfd':     'NDFD (National Digital Forecast Database): the official NWS forecast, the same grids behind forecast.weather.gov. Human forecasters made these numbers, not just a model. The animation bar plays forward through the next two days.',
   // ── The bubbles that are a way in rather than a layer ──────────────────
@@ -33556,18 +33568,18 @@ const _MODELS_PANELS = {
 // NDFD plays forward through the forecast.
 const NWS_SRC_VARS = {
   temperature: [
-    { v: 'temp', label: 'Temperature',    rtma: 't2m',  ndfd: 'temp' },
-    { v: 'dew',  label: 'Dew Point',      rtma: 'd2m',  ndfd: 'td' },
+    { v: 'temp', label: 'Temperature',    om: 'air-temp',  rtma: 't2m',  ndfd: 'temp' },
+    { v: 'dew',  label: 'Dew Point',      om: 'dew-point', rtma: 'd2m',  ndfd: 'td' },
     { v: 'maxt', label: 'Max Temp',                     ndfd: 'maxt' },
     { v: 'rh',   label: 'Humidity',       rtma: 'rh2m' },
   ],
   wind: [
-    { v: 'wind', label: 'Wind Speed',     rtma: 'wind', ndfd: 'wind' },
+    { v: 'wind', label: 'Wind Speed',     om: 'wind-surface', rtma: 'wind', ndfd: 'wind' },
     { v: 'gust', label: 'Wind Gusts',     rtma: 'gust' },
     { v: 'wdir', label: 'Wind Direction',               ndfd: 'wdir' },
   ],
   pressure: [
-    { v: 'pres', label: 'Surface Pressure', rtma: 'pres' },
+    { v: 'pres', label: 'Surface Pressure', om: 'surface', rtma: 'pres' },
   ],
   radar: [
     { v: 'pop12', label: 'Precip Chance',  ndfd: 'pop12' },
@@ -33576,7 +33588,7 @@ const NWS_SRC_VARS = {
     { v: 'wx',    label: 'Weather Type',   ndfd: 'wx' },
   ],
   waves: [
-    { v: 'waveh', label: 'Wave Height',    ndfd: 'waveheight' },
+    { v: 'waveh', label: 'Wave Height',    om: 'wave-height', ndfd: 'waveheight' },
   ],
   air: [
     { v: 'vis',  label: 'Visibility',      rtma: 'vis' },
@@ -33663,19 +33675,9 @@ function _nwsDisable(quiet) {
 // layer on takes the bubble's Open-Meteo color map off, and – via the
 // wrappers below – picking an Open-Meteo product takes the NWS layer off.
 function _nwsSwapOffFamily(bubble) {
-  try {
-    const fam = (typeof _PRODUCT_FAMILIES !== 'undefined')
-      && _PRODUCT_FAMILIES.find && _PRODUCT_FAMILIES.find(f => f.id === bubble);
-    if (!fam || !fam.isOn()) return;
-    // Every family's own menu row turns itself off by calling its loader's
-    // disable path; the cheapest faithful equivalent is the shared teardown
-    // each _load*Layer runs when its flag is false. Flip the flag and reload.
-    if (bubble === 'waves')       { wavesActive = false;       _loadWavesLayer(); }
-    if (bubble === 'air')         { airActive = false;         _loadAirLayer(); }
-    if (bubble === 'temperature') { temperatureActive = false; _loadTemperatureLayer(); }
-    if (bubble === 'pressure')    { pressureActive = false;    _loadPressureLayer(); }
-    if (bubble === 'wind')        { windActive = false;        _loadWindLayer(); }
-  } catch (e) {}
+  // The loaders bail out early when the flag is false, so flipping the flag
+  // alone left the picture painted; _nwsFamilyOff really takes it down.
+  try { _nwsFamilyOff(bubble); } catch (e) {}
 }
 
 async function _nwsEnable(bubble, v, src) {
@@ -33781,82 +33783,117 @@ function _nwsBuildNdfd(field) {
   }
 }
 
-// The menus, in the exact Sea Surface Temperature shape: ONE row in the
-// hosting bubble ("National Weather Service", the way "Sea Surface
-// Temperature" sits in Waves), which opens a source screen (RTMA / NDFD,
-// only the sources that publish anything for this bubble), and picking a
-// source turns the layer on at once and lands on the variant screen for
-// that source's fields. Every screen has a Back that walks up one level.
-let _nwsScreen = null;   // which NWS screen is open, so repaints land right
+// The menus, in the exact Sea Surface Temperature shape - one level deeper
+// than before, by request: you tap the VARIABLE itself (Wave Height, Air
+// Temp, Precip Chance...) in the bubble's own menu, and what opens is JUST
+// THE SOURCES for that variable: Open-Meteo where the bubble already had a
+// live grid, RTMA where the Weather Service analyses it, NDFD where it
+// forecasts it. Tap a source, the layer is on; tap the lit one, it is off;
+// Back returns to the bubble. Variables the bubbles never had (Max Temp,
+// Wind Gusts, the precip forecasts...) appear as new rows that open the
+// same kind of screen.
+let _nwsScreen = null;   // { bubble, v } while a source screen is open
+function _nwsDef(bubble, v) {
+  return (NWS_SRC_VARS[bubble] || []).find(d => d.v === v) || null;
+}
+// The Open-Meteo half of a source screen: turning the bubble's own live
+// grid product on and off, exactly what the old product row's click did,
+// with the layer really taken down on off (the flag alone leaves the
+// picture painted - the load functions bail out early when the flag is
+// false rather than cleaning up).
+const _NWS_FAMILIES = {
+  waves:       { flag: () => wavesActive,       set: b => { wavesActive = b; },
+                 prod: () => _wavesProduct,
+                 off: () => { clearInterval(_wavesRefreshTimer); _wavesRefreshTimer = null;
+                              if (_wavesLayer) { try { map.removeLayer(_wavesLayer); } catch (e) {} _wavesLayer = null; } } },
+  temperature: { flag: () => temperatureActive, set: b => { temperatureActive = b; },
+                 prod: () => _temperatureProduct,
+                 off: () => { clearInterval(_temperatureRefreshTimer); _temperatureRefreshTimer = null;
+                              if (_temperatureLayer) { try { map.removeLayer(_temperatureLayer); } catch (e) {} _temperatureLayer = null; } } },
+  pressure:    { flag: () => pressureActive,    set: b => { pressureActive = b; },
+                 prod: () => _pressureProduct,
+                 off: () => { clearInterval(_pressureRefreshTimer); _pressureRefreshTimer = null;
+                              if (_pressureLayer) { try { map.removeLayer(_pressureLayer); } catch (e) {} _pressureLayer = null; } } },
+  air:         { flag: () => airActive,         set: b => { airActive = b; },
+                 prod: () => _airProduct,
+                 off: () => { clearInterval(_airRefreshTimer); _airRefreshTimer = null;
+                              if (_airLayer) { try { map.removeLayer(_airLayer); } catch (e) {} _airLayer = null; } } },
+  wind:        { flag: () => windActive,        set: b => { windActive = b; },
+                 prod: () => _windProduct,
+                 off: () => { clearInterval(_windRefreshTimer); _windRefreshTimer = null;
+                              if (_windLayer) { try { map.removeLayer(_windLayer); } catch (e) {} _windLayer = null; } } },
+};
+function _nwsFamilyOff(bubble) {
+  const f = _NWS_FAMILIES[bubble];
+  if (!f || !f.flag()) return;
+  f.set(false);
+  f.off();
+  try { _syncParentBubble(bubble); } catch (e) {}
+}
+function _nwsFamilyOn(bubble, omId) {
+  const fam = (typeof _PRODUCT_FAMILIES !== 'undefined')
+    && _PRODUCT_FAMILIES.find(x => x.id === bubble);
+  if (!fam) return;
+  try { fam.apply(omId); _syncParentBubble(bubble); } catch (e) {}
+}
+
+// One row per NWS-only variable; the variables the bubble already offered
+// keep their own rows and are intercepted in their menus instead.
 function _nwsAppendRows(wrap, bubble) {
   const defs = NWS_SRC_VARS[bubble];
   if (!defs || !wrap) return;
-  const on = _nwsOn && _nwsOn.bubble === bubble;
-  const el = document.createElement('div');
-  el.className = 'sub-bubble' + (on ? ' active' : '');
-  el.id = 'sub-nws-' + bubble;
-  el.innerHTML = `<span class="sb-icon">${SB_ICON_NWS}</span><span class="sb-label">National Weather Service</span>`;
-  el.onclick = () => toggleNwsSourceSub(bubble);
-  if (LAYER_DESCRIPTIONS['nws-row']) el.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS['nws-row']));
-  wrap.appendChild(el);
+  defs.forEach(d => {
+    if (d.om) return;      // the bubble's own row opens the screen for this
+    const on = _nwsOn && _nwsOn.bubble === bubble && _nwsOn.v === d.v;
+    const el = document.createElement('div');
+    el.className = 'sub-bubble' + (on ? ' active' : '');
+    el.id = 'sub-nws-' + bubble + '-' + d.v;
+    el.innerHTML = `<span class="sb-icon">${SB_ICON_NWS}</span><span class="sb-label">${d.label}</span>`;
+    el.onclick = () => toggleNwsSourceSub(bubble, d.v);
+    wrap.appendChild(el);
+  });
 }
-function _nwsSrcList(bubble) {
-  const defs = NWS_SRC_VARS[bubble] || [];
-  return ['rtma', 'ndfd'].filter(src => defs.some(d => d[src]));
-}
-function _nwsVarList(bubble, src) {
-  return (NWS_SRC_VARS[bubble] || []).filter(d => d[src]);
-}
-function toggleNwsSourceSub(bubble) {
+
+// The screen itself: just the sources for one variable.
+function toggleNwsSourceSub(bubble, v) {
   const wrap = document.getElementById('sub-bubbles');
-  if (!wrap) return;
-  _nwsScreen = { kind: 'src', bubble };
+  const def = _nwsDef(bubble, v);
+  if (!wrap || !def) return;
+  _nwsScreen = { bubble, v };
   wrap.innerHTML = '';
   _radarBackBubble(wrap, () => {
     _nwsScreen = null;
     try { _NWS_MENU_FNS[bubble] && _NWS_MENU_FNS[bubble](); } catch (e) {}
   });
-  _nwsSrcList(bubble).forEach(src => {
-    const on = _nwsOn && _nwsOn.bubble === bubble && _nwsOn.src === src;
+  if (def.om && _NWS_FAMILIES[bubble]) {
+    const f = _NWS_FAMILIES[bubble];
+    const on = f.flag() && f.prod() === def.om;
+    const el = document.createElement('div');
+    el.className = 'sub-bubble' + (on ? ' active' : '');
+    el.id = 'sub-nwssrc-openmeteo';
+    el.innerHTML = `<span class="sb-icon">${SB_ICON_NWS}</span><span class="sb-label">Open-Meteo</span>`;
+    el.title = 'Live global grid, no Pi needed.';
+    el.onclick = () => {
+      if (on) { _nwsFamilyOff(bubble); toggleNwsSourceSub(bubble, v); return; }
+      if (_nwsOn && _nwsOn.bubble === bubble) _nwsDisable();
+      _nwsFamilyOn(bubble, def.om);
+      toggleNwsSourceSub(bubble, v);
+    };
+    wrap.appendChild(el);
+  }
+  ['rtma', 'ndfd'].forEach(src => {
+    if (!def[src]) return;
+    const on = _nwsOn && _nwsOn.bubble === bubble && _nwsOn.v === v && _nwsOn.src === src;
     const el = document.createElement('div');
     el.className = 'sub-bubble' + (on ? ' active' : '');
     el.id = 'sub-nwssrc-' + src;
     el.innerHTML = `<span class="sb-icon">${SB_ICON_NWS}</span><span class="sb-label">${src.toUpperCase()}</span>`;
     el.onclick = () => {
-      // Mirrors the SST source row exactly: tapping the source that is on
-      // turns it off; tapping another turns it on with the variant kept
-      // where it still applies, and walks into that source's variant list.
-      if (on) { _nwsDisable(); toggleNwsSourceSub(bubble); return; }
-      const vs = _nwsVarList(bubble, src);
-      const keep = (_nwsOn && _nwsOn.bubble === bubble
-                    && vs.some(d => d.v === _nwsOn.v)) ? _nwsOn.v
-                   : (vs[0] && vs[0].v);
-      if (!keep) return;
-      _nwsEnable(bubble, keep, src).then(() => toggleNwsVariantSub(bubble, src));
+      if (on) { _nwsDisable(); toggleNwsSourceSub(bubble, v); return; }
+      if (def.om) _nwsFamilyOff(bubble);
+      _nwsEnable(bubble, v, src).then(() => toggleNwsSourceSub(bubble, v));
     };
     if (LAYER_DESCRIPTIONS['nws-' + src]) el.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS['nws-' + src]));
-    wrap.appendChild(el);
-  });
-  wrap.style.display = 'flex';
-}
-function toggleNwsVariantSub(bubble, src) {
-  const wrap = document.getElementById('sub-bubbles');
-  if (!wrap) return;
-  _nwsScreen = { kind: 'var', bubble, src };
-  wrap.innerHTML = '';
-  _radarBackBubble(wrap, () => toggleNwsSourceSub(bubble));
-  _nwsVarList(bubble, src).forEach(d => {
-    const on = _nwsOn && _nwsOn.bubble === bubble && _nwsOn.src === src && _nwsOn.v === d.v;
-    const el = document.createElement('div');
-    el.className = 'sub-bubble' + (on ? ' active' : '');
-    el.id = 'sub-nwsvar-' + d.v;
-    el.innerHTML = `<span class="sb-icon">${SB_ICON_NWS}</span><span class="sb-label">${d.label}</span>`;
-    el.onclick = () => {
-      _nwsEnable(bubble, d.v, src).then(() => {
-        wrap.querySelectorAll('.sub-bubble').forEach(x =>
-          x.classList.toggle('active', x.id === 'sub-nwsvar-' + d.v));
-      });
-    };
     wrap.appendChild(el);
   });
   wrap.style.display = 'flex';
@@ -33867,9 +33904,7 @@ const _NWS_MENU_FNS = {
   waves: () => toggleWavesSub(),             air: () => toggleAirSub(),
 };
 function _nwsRefreshMenu() {
-  if (!_nwsScreen) return;
-  if (_nwsScreen.kind === 'src') toggleNwsSourceSub(_nwsScreen.bubble);
-  else toggleNwsVariantSub(_nwsScreen.bubble, _nwsScreen.src);
+  if (_nwsScreen) toggleNwsSourceSub(_nwsScreen.bubble, _nwsScreen.v);
 }
 
 // The other half of "one source per bubble": choosing an Open-Meteo product
@@ -59357,6 +59392,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-01-g', date: 'Sep 1, 2026',
+    text: 'Source picking now works the way it should: tap a variable itself (Wave Height, Air Temp, Dew Point, Surface Winds, Surface Pressure...) and you get just its sources: Open-Meteo, RTMA and NDFD, whichever actually offer it. Tap one, it draws; tap the lit one, it turns off; sources swap instead of stacking. New variables the bubbles never had (Max Temp, Wind Gusts, Wind Direction, the precip forecasts, visibility, sky cover, ceiling) got their own rows opening the same screen.' },
   { id: '2026-09-01-f', date: 'Sep 1, 2026',
     text: 'The Weather Service rows now work exactly like Sea Surface Temperature: one National Weather Service row in each of the six bubbles, opening a source screen (RTMA / NDFD) and then that source’s fields, with Back buttons all the way up. Also fixed the Pi’s ocean temperature maps sitting slightly off the coastlines: the picture is now bent into the map’s own projection before the land is cut out, so sea colour stays in the sea and the land holes sit over their own land.' },
   { id: '2026-09-01-e', date: 'Sep 1, 2026',
