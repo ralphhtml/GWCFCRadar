@@ -210,6 +210,33 @@ console.log('\n2. a brand-new visitor is asked, and Lite-ning answers for them')
   ok('and the Settings dropdown agrees', sw.dropdown === 'lite', sw.dropdown);
   ok('tapping WX-PERT switches straight back', sw.backBody);
 
+  // Saved layers belong to Wx-pert. A preset that arrives while Lite-ning
+  // is on is held back, not applied; switching to Wx-pert applies it; and
+  // switching INTO Lite-ning sweeps the extra layers off the map.
+  const preset = await p.evaluate(async () => {
+    const out = {};
+    _viewStateApplied = false;
+    _setMode('lite', { quiet: true });
+    _applyViewState({ savedLayers: { lightning: true } });
+    out.stashed = !!_pendingViewState;
+    out.liteStaysClean = activeLayers.lightning !== true;
+    _setMode('expert', { quiet: true });
+    out.expertGetsPreset = activeLayers.lightning === true;
+    out.pendingSpent = _pendingViewState == null && _viewStateApplied === true;
+    _setMode('lite', { quiet: true });
+    out.liteSweepsItOff = activeLayers.lightning !== true;
+    out.dotsSurvive = activeLayers.forecasts === true;
+    _setMode('expert', { quiet: true });
+    return out;
+  });
+  ok('a preset arriving in Lite-ning is held back, not applied',
+     preset.stashed && preset.liteStaysClean, JSON.stringify(preset));
+  ok('switching to Wx-pert applies the held preset',
+     preset.expertGetsPreset && preset.pendingSpent);
+  ok('switching into Lite-ning sweeps extra layers off',
+     preset.liteSweepsItOff);
+  ok('but never the forecast dots', preset.dotsSurvive);
+
   // The app menu's seat inside the account panel follows the sign-in
   // state: below the avatar and name for an account, above the sign-in
   // invitation for a guest. One element, moved, never duplicated.

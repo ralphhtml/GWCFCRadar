@@ -56363,9 +56363,34 @@ function _setMode(m, opts) {
     try { if (activeLayers.satellite) _disableSatellite(); } catch (e) {}
     try { if (typeof _hdOn !== 'undefined' && _hdOn && typeof _hdDisable === 'function') _hdDisable(); } catch (e) {}
     try { if (typeof _sevCompareOn !== 'undefined' && _sevCompareOn && typeof _sevToggleCompare === 'function') _sevToggleCompare(); } catch (e) {}
+    // Every other layer comes off too, saved preset or hand-built stack:
+    // those belong to Wx-pert. Lite-ning shows radar, warnings and forecast
+    // dots, and nothing it cannot explain. Same generic toggle the preset
+    // restore uses, so on and off stay symmetric.
+    try {
+      if (typeof activeLayers !== 'undefined' && typeof toggleLayer === 'function') {
+        Object.keys(activeLayers).forEach(id => {
+          if (id === 'nexrad' || id === 'forecasts') return;
+          if (!activeLayers[id]) return;
+          try { toggleLayer(id); } catch (e) {}
+        });
+      }
+    } catch (e) {}
     // And what Lite-ning DOES offer comes on by itself: the 1 km composite
     // and the forecast dots, since their buttons are gone in this mode.
     try { _liteEnsureBasics(); } catch (e) {}
+  }
+  if (m === 'expert') {
+    // The preset that was held back while Lite-ning was on (see
+    // _applyViewState) is theirs again the moment they ask for the full app.
+    try {
+      if (typeof _pendingViewState !== 'undefined' && _pendingViewState
+          && !_viewStateApplied && typeof _applyViewState === 'function') {
+        const d = _pendingViewState;
+        _pendingViewState = null;
+        _applyViewState(d);
+      }
+    } catch (e) {}
   }
   _modeApply();
   if (!(opts && opts.quiet) && typeof showToast === 'function') {
@@ -56873,6 +56898,9 @@ let _fbApp, _fbAuth, _fbDb, _currentUser = null;
 // stick. Declared here, beside the other auth state, so it is initialised
 // before any auth callback can read it.
 let _viewStateApplied = false;
+// A preset that arrived while Lite-ning was on. Not applied and not thrown
+// away: it waits here, and switching to Wx-pert is what applies it.
+let _pendingViewState = null;
 
 function _fbInit() {
   if (!FIREBASE_READY) return false;
@@ -56926,7 +56954,9 @@ function _onSignedOut() {
   _currentUser = null;
   // Clear the once-per-load guard so signing in as a different account applies
   // that account's preset instead of being suppressed by the previous one.
+  // The stashed Lite-ning preset goes too: it belonged to the account leaving.
   _viewStateApplied = false;
+  _pendingViewState = null;
   _updateProfileBadge(null);
   // Sign in anonymously so all Firestore writes (Cloud Capture, guest tracking)
   // pass the "request.auth != null" security rule without requiring an account.
@@ -58650,6 +58680,12 @@ function _applyViewState(d) {
     else { console.warn('_applyViewState: map unavailable, preset not applied'); }
     return;
   }
+  // Lite-ning never wears the saved preset: those are Wx-pert's layers, and
+  // beginner mode's whole point is a map with only the radar, warnings and
+  // forecast dots on it. The snapshot is stashed rather than spent, so the
+  // moment they switch to Wx-pert their saved setup comes back exactly as
+  // saved (see _setMode).
+  if (typeof _isLite === 'function' && _isLite()) { _pendingViewState = d; return; }
   _viewStateApplied = true;
   if (d.savedMapType && typeof setMapType === 'function') {
     try { setMapType(d.savedMapType); } catch(e) { console.warn('restore basemap:', e); }
@@ -58875,6 +58911,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-01-b', date: 'Sep 1, 2026',
+    text: 'Saved layers now belong to Wx-pert only. Switching to Lite-ning clears everything but the radar, warnings and forecast dots, and a signed-in account’s saved setup is held back rather than applied. Switch to Wx-pert and the saved setup comes right back.' },
   { id: '2026-09-01-a', date: 'Sep 1, 2026',
     text: 'The radar now shows the future: when the 1 km MRMS composite is playing, the animation bar keeps going past "now" into HRRR simulated reflectivity, three hours ahead in 15-minute steps, labeled FUTURE in gold. Lite-ning mode also got simpler: the radar and the forecast dots turn themselves on, and the Radar button is gone because there is nothing left to press.' },
   { id: '2026-08-31-l', date: 'Aug 31, 2026',
