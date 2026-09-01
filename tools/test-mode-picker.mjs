@@ -179,7 +179,7 @@ console.log('\n2. a brand-new visitor is asked, and Lite-ning answers for them')
     };
   });
   ok('the switch flips back to Wx-pert', back.saved === 'expert', back.saved);
-  ok('all eight bubbles return', back.bubbles === 8, String(back.bubbles));
+  ok('all nine bubbles return', back.bubbles === 9, String(back.bubbles));
   ok('and so do the tools', back.railBack);
   // The pill tag is retired everywhere (it was already hidden on phones):
   // the mode lives in Settings under Display and in the account panel.
@@ -358,7 +358,7 @@ console.log('\n3. the choice is remembered, and old friends are never quizzed');
   }));
   ok('an existing visitor is never interrupted with the question', !r2.picker);
   ok('and keeps the full app exactly as it was',
-     !r2.body && r2.bubbles === 8, String(r2.bubbles));
+     !r2.body && r2.bubbles === 9, String(r2.bubbles));
   await p2.close();
 }
 
