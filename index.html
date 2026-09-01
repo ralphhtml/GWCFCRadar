@@ -10188,9 +10188,15 @@ body.clean-mode #clean-hint { opacity: 1; }
               <option value="dwd">DWD ICON (Global)</option>
               <option value="ecmwf">ECMWF IFS (Global)</option>
               <option value="hrdps">HRDPS (Hi-Res N. America)</option>
-              <option value="ndfd">NWS NDFD (US Forecast)</option>
               <option value="hrrr">HRRR (18h)</option>
             </optgroup>
+            <!-- NDFD and RTMA moved to the NWS bubble in the left menu: they
+                 are the Weather Service's analysis and official forecast, not
+                 computer models. Hidden rather than deleted so the dropdown
+                 can still DISPLAY them when the bubble drives the panel here;
+                 hidden options cannot be picked from the open list. -->
+            <option value="ndfd" hidden>NWS NDFD (US Forecast)</option>
+            <option value="pi:rtma" hidden>RTMA (Pi, 2.5 km analysis)</option>
             <!-- Filled in from whatever the Pi says it has built, by
                  _hdFillModelPicker(). These are only what to show before it
                  answers; adding a model on the Pi should not need an edit
@@ -16927,7 +16933,10 @@ function _hdFillModelPicker() {
   const sel = document.getElementById('sev-model-sel');
   const mods = _hdIndex && _hdIndex.models;
   if (!group || !mods) return;
-  const names = Object.keys(mods);
+  // RTMA is deliberately left out: it lives in the NWS bubble now (it is an
+  // analysis, not a forecast model). The hidden pi:rtma option beside the
+  // group keeps the dropdown able to display it when the bubble selects it.
+  const names = Object.keys(mods).filter(k => k !== 'rtma');
   if (!names.length) return;             // keep the placeholders over an empty list
   const chosen = sel && sel.value;
   group.innerHTML = '';
@@ -28117,6 +28126,9 @@ const LAYER_DESCRIPTIONS = {
   wind:           'Wind speed shown as a smooth color map, just like Waves and Air, powered by Open-Meteo. Tap a product below to pick Surface Winds or the Jet Stream. For an animated flow effect instead, see the Wind Particles overlay pill.',
   'wind-surface': 'Surface-level (10m) wind speed from Open-Meteo\'s Forecast API, blue/green for calm through yellow/orange/red/purple for very strong wind.',
   'wind-jet':     'Wind speed at the 250 hPa pressure level (roughly 34,000 ft) - the jet stream, the fast-moving upper-air river of wind that steers most weather systems.',
+  nws:            'The National Weather Service, straight from the source: RTMA, its 2.5 km analysis of conditions right now, and NDFD, the official forecast grid its meteorologists publish. Pick a source below, then a variable.',
+  'nws-rtma':     'RTMA (Real-Time Mesoscale Analysis): the Weather Service\'s best estimate of what is actually happening at this moment, built from observations at 2.5 km resolution. Not a forecast - the thing to check a forecast against. Rendered by the Pi.',
+  'nws-ndfd':     'NDFD (National Digital Forecast Database): the official NWS forecast, the same grids behind forecast.weather.gov, out to several days. Human forecasters made these numbers, not just a model.',
   // ── The bubbles that are a way in rather than a layer ──────────────────
   // Nesting the menus meant new bubbles that turn nothing on by themselves,
   // and a bubble whose info button had nothing to say would be a button that
@@ -28264,6 +28276,9 @@ const SB_ICON_WIND = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none
 const SB_ICON_TEMP = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a2 2 0 0 0-2 2v9.5a4 4 0 1 0 4 0V5a2 2 0 0 0-2-2z"/><circle cx="12" cy="17.5" r="2" fill="currentColor" stroke="none"/></svg>';
 const SB_ICON_PRESSURE = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18a8 8 0 1 1 16 0"/><line x1="12" y1="18" x2="16" y2="12"/><circle cx="12" cy="18" r="1.3" fill="currentColor" stroke="none"/><line x1="4" y1="18" x2="2.5" y2="18"/><line x1="20" y1="18" x2="21.5" y2="18"/></svg>';
 const SB_ICON_MODELS = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="20" x2="5" y2="13"/><line x1="12" y1="20" x2="12" y2="8"/><line x1="19" y1="20" x2="19" y2="4"/><line x1="2" y1="20" x2="22" y2="20"/></svg>';
+// A shield with a check: the official read. RTMA (what IS happening) and
+// NDFD (what the Weather Service SAYS will happen) live behind it.
+const SB_ICON_NWS = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg>';
 // A station plot: a reading in the middle with the wind pointing out of it.
 
 const BASE_BUBBLES = [
@@ -28278,6 +28293,7 @@ const BASE_BUBBLES = [
   { id: 'wind',        icon: SB_ICON_WIND,      label: 'Wind',        action: () => toggleWindSub() },
   { id: 'temperature', icon: SB_ICON_TEMP,      label: 'Temperature', action: () => toggleTemperatureSub() },
   { id: 'pressure',    icon: SB_ICON_PRESSURE,  label: 'Pressure',    action: () => togglePressureSub() },
+  { id: 'nws',         icon: SB_ICON_NWS,       label: 'NWS',         action: () => toggleNwsSub() },
   { id: 'models',      icon: SB_ICON_MODELS,    label: 'Models',      action: () => toggleModelsSub() },
 ];
 
@@ -33475,6 +33491,80 @@ const _MODELS_PANELS = {
                         open: () => openAiCyclonesPanel(),
                         close: () => closeAiCyclonesPanel() },
 };
+
+// ── THE NWS BUBBLE: RTMA AND NDFD, OUT OF THE MODELS LIST ───────────────────
+// These two are not models in the sense the Models menu means: RTMA is the
+// Weather Service's 2.5 km analysis of what is happening RIGHT NOW, built
+// from observations, and NDFD is the official human-made forecast grid. In a
+// list of computer forecasts they read as two more computers. So they get
+// their own bubble, laid out the way SST is: pick the source, then pick the
+// variable, and the map shows it. Both still render through the Run Models
+// engine underneath (the Pi for RTMA, digital.weather.gov WMS for NDFD), so
+// runs, forecast hours and playback all keep working in the panel that opens.
+const NWS_SUB_SOURCES = [
+  { id: 'rtma', icon: '\u{1F321}', label: 'Right Now', desc: 'nws-rtma' },
+  { id: 'ndfd', icon: '\u{1F4C5}', label: 'Forecast',  desc: 'nws-ndfd' },
+];
+// RTMA's variable list comes from the Pi's manifest once it has answered
+// (SEV_PRODUCTS['pi:rtma'] is filled in by the model engine). Before that,
+// this is what the 2dvaranl file actually carries, so the row is never blank;
+// a stale id here is clamped to the manifest's default by _sevUpdateProducts.
+const NWS_RTMA_FALLBACK = [
+  { v: 't2m', l: 'Temperature' }, { v: 'd2m', l: 'Dew Point' },
+  { v: 'rh2m', l: 'Humidity' }, { v: 'gust', l: 'Wind Gusts' },
+  { v: 'pres', l: 'Pressure' }, { v: 'vis', l: 'Visibility' },
+  { v: 'tcc', l: 'Cloud Cover' }, { v: 'ceil', l: 'Cloud Ceiling' },
+];
+function _nwsSection(src) { return src === 'rtma' ? 'pi:rtma' : 'ndfd'; }
+function _nwsProducts(src) {
+  if (src === 'ndfd') return SEV_PRODUCTS.ndfd;
+  return SEV_PRODUCTS['pi:rtma'] || NWS_RTMA_FALLBACK;
+}
+let _nwsSrcOpen = null;
+function toggleNwsSub() {
+  const wrap = document.getElementById('sub-bubbles');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  const back = document.createElement('div');
+  back.className = 'sub-bubble';
+  back.innerHTML = `<span class="sb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(180deg)><use href=#ic-arrow></use></svg></span><span class="sb-label">Back</span>`;
+  back.onclick = () => { _syncParentBubble('nws'); renderSubBubbles(TAB_BUBBLES[currentTab] ? currentTab : 'regular'); };
+  wrap.appendChild(back);
+  NWS_SUB_SOURCES.forEach(s => {
+    const el = document.createElement('div');
+    el.className = 'sub-bubble' + (_nwsSrcOpen === s.id ? ' active' : '');
+    el.id = 'sub-nws-' + s.id;
+    el.innerHTML = `<span class="sb-icon">${_eicon(s.icon)}</span><span class="sb-label">${s.label}</span>`;
+    el.onclick = () => { _nwsSrcOpen = _nwsSrcOpen === s.id ? null : s.id; toggleNwsSub(); };
+    if (LAYER_DESCRIPTIONS[s.desc]) el.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS[s.desc]));
+    wrap.appendChild(el);
+    if (_nwsSrcOpen !== s.id) return;
+    const sect = _nwsSection(s.id);
+    _nwsProducts(s.id).forEach(p => {
+      const pe = document.createElement('div');
+      pe.className = 'sub-bubble'
+        + (_sevSection === sect && _sevVar === p.v ? ' active' : '');
+      pe.style.marginLeft = '14px';
+      pe.innerHTML = `<span class="sb-label">${p.l}</span>`;
+      pe.onclick = () => _nwsPick(s.id, p.v);
+      wrap.appendChild(pe);
+    });
+  });
+  wrap.style.display = 'flex';
+}
+async function _nwsPick(src, v) {
+  try {
+    if (typeof openRunModelsPanel === 'function'
+        && typeof _runModelsPanelIsOpen === 'function'
+        && !_runModelsPanelIsOpen()) openRunModelsPanel();
+  } catch (e) {}
+  // The pi: path of _sevSetSection is async (it may have to wake the Pi
+  // engine up); awaiting it means _sevSetVar lands on a product list that
+  // exists rather than the previous model's.
+  try { await _sevSetSection(_nwsSection(src)); } catch (e) { console.warn('nws pick:', e); }
+  try { _sevSetVar(v); } catch (e) {}
+  toggleNwsSub();
+}
 
 function toggleModelsSub() {
   const wrap = document.getElementById('sub-bubbles');
@@ -58911,6 +59001,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-01-d', date: 'Sep 1, 2026',
+    text: 'New NWS bubble in the left menu: RTMA (the Weather Service’s 2.5 km picture of conditions right now) and NDFD (its official human-made forecast) moved out of the Models list into their own bubble, laid out like Sea Surface Temperature: pick the source, then the variable. Every variable both publish is offered.' },
   { id: '2026-09-01-c', date: 'Sep 1, 2026',
     text: 'Two sea-surface temperature sources that had never produced a single map are fixed, thanks to a community contribution: Coral Reef Watch moved to a renamed NOAA folder, and the ocean heat content source now asks the server for just the newest day instead of the entire 7 GB history it was refusing to send.' },
   { id: '2026-09-01-b', date: 'Sep 1, 2026',
