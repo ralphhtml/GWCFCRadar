@@ -28501,6 +28501,17 @@ function toggleOverlayPill(id) {
     else {
       if (_wpcOutlookLayer) { try { map.removeLayer(_wpcOutlookLayer); } catch(e){} _wpcOutlookLayer = null; }
     }
+  } else if (id === 'atcf') {
+    _atcfActive = !_atcfActive;
+    const pill = document.getElementById('op-atcf');
+    if (pill) pill.classList.toggle('active', _atcfActive);
+    if (_atcfActive) {
+      _loadAtcf(true);
+      _atcfTimer = setInterval(_loadAtcf, 10 * 60 * 1000);
+    } else {
+      clearInterval(_atcfTimer); _atcfTimer = null;
+      if (_atcfLayer) { try { map.removeLayer(_atcfLayer); } catch (e) {} _atcfLayer = null; }
+    }
   } else if (id === 'chasers') {
     _chasersActive = !_chasersActive;
     const pill = document.getElementById('op-chasers');
@@ -28945,6 +28956,128 @@ async function _loadChasers() {
         .addTo(_chasersLayer);
     });
   } catch(e) { console.warn('[chasers] all sources failed:', e.message); }
+}
+
+// ── ATCF UPDATES - live tropical cyclone fixes via KnackWX ──
+// One record per active system worldwide, invests included, straight from
+// the Automated Tropical Cyclone Forecast system. These are the current
+// fixes forecasters are working from: position, nature, winds, pressure,
+// with no forecast track in the feed, so everything it carries goes on the
+// map and into the popup. Refreshed every ten minutes while the pill is
+// lit: advisories come six-hourly with specials in between.
+const ATCF_URL = 'https://api.knackwx.com/atcf/v2';
+let _atcfActive = false, _atcfLayer = null, _atcfTimer = null;
+
+// The two-letter nature code, spoken. Hurricanes split by Saffir-Simpson
+// category from the winds (knots), on the NHC's own category colours.
+function _atcfClass(nature, winds) {
+  const w = +winds || 0;
+  const n = String(nature || '').toUpperCase();
+  if (n === 'HU' || n === 'TY' || n === 'ST') {
+    const cat = w >= 137 ? 5 : w >= 113 ? 4 : w >= 96 ? 3 : w >= 83 ? 2 : 1;
+    const word = n === 'HU' ? 'Hurricane' : 'Typhoon';
+    return { label: `${word} - Category ${cat}`,
+             color: ['#ffffcc', '#ffe775', '#ffc140', '#ff8f20', '#ff6060'][cat - 1],
+             dark: cat < 3 };
+  }
+  const kinds = {
+    TS: ['Tropical Storm', '#00faf4', true],
+    TD: ['Tropical Depression', '#5ebaff', true],
+    SS: ['Subtropical Storm', '#00d5a0', true],
+    SD: ['Subtropical Depression', '#7fc6e8', true],
+    EX: ['Extratropical', '#c9a0dc', true],
+    PT: ['Post-Tropical', '#c9a0dc', true],
+    LO: ['Low', '#9aa7b8', true],
+    WV: ['Tropical Wave', '#9aa7b8', true],
+    DB: ['Disturbance', '#9aa7b8', true],
+  };
+  const k = kinds[n] || ['System', '#9aa7b8', true];
+  return { label: k[0], color: k[1], dark: k[2] };
+}
+
+function _atcfCompass(deg) {
+  const pts = ['N','NNE','NE','ENE','E','ESE','SE','SSE',
+               'S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return pts[Math.round((((+deg % 360) + 360) % 360) / 22.5) % 16];
+}
+
+async function _loadAtcf(firstLoad) {
+  if (!_atcfActive) return;
+  let rows = null;
+  // Direct first; the CORS proxies only if the API will not talk to a
+  // browser origin directly.
+  const tries = [u => u,
+    u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+    u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`];
+  for (const t of tries) {
+    try {
+      const r = await fetchWithTimeout(t(ATCF_URL), 10000);
+      if (r.ok) { const j = await r.json(); if (Array.isArray(j)) { rows = j; break; } }
+    } catch (e) {}
+  }
+  if (!_atcfActive) return;
+  if (!rows) {
+    console.warn('[atcf] feed unreachable');
+    if (firstLoad && typeof showToast === 'function') {
+      showToast('The ATCF feed is not answering right now. The overlay will keep trying every 10 minutes.', 5000);
+    }
+    return;
+  }
+  if (!_atcfLayer) _atcfLayer = L.layerGroup().addTo(map);
+  else _atcfLayer.clearLayers();
+  rows.forEach(s => {
+    // Null becomes 0 under unary plus, which is a real place in the Gulf of
+    // Guinea, so a record with no position must be caught before coercion.
+    if (s.latitude == null || s.longitude == null) return;
+    const lat = +s.latitude, lng = +s.longitude;
+    if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90) return;
+    const cls = _atcfClass(s.cyclone_nature, s.winds);
+    const name = _ccEsc(String(s.storm_name || 'SYSTEM'));
+    const isInvest = /INVEST/i.test(String(s.storm_name || ''))
+      || /^9\d/.test(String(s.atcf_id || ''));
+    const idTag = _ccEsc(String(s.atcf_id || ''));
+    const kt = +s.winds || 0;
+    const mph = Math.round(kt * 1.15078);
+    // The marker: the ATCF number in the nature's colour, the name riding
+    // beside it, invests dashed so a numbered storm reads stronger.
+    const icon = L.divIcon({
+      className: '', iconSize: [30, 30], iconAnchor: [15, 15],
+      html: `<div style="display:flex;align-items:center;gap:4px;">
+        <div style="min-width:30px;height:30px;border-radius:50%;background:${cls.color};
+          border:2.5px ${isInvest ? 'dashed' : 'solid'} #fff;box-shadow:0 0 8px ${cls.color};
+          display:flex;align-items:center;justify-content:center;
+          font:700 10px system-ui;color:${cls.dark ? '#08131f' : '#fff'};">${idTag}</div>
+        <div style="font:700 10px system-ui;color:#fff;text-shadow:0 1px 3px #000,0 0 6px #000;
+          white-space:nowrap;">${name}</div></div>`,
+    });
+    const t = s.analysis_time ? new Date(s.analysis_time) : null;
+    const p2 = n2 => String(n2).padStart(2, '0');
+    const tLabel = t && isFinite(+t)
+      ? `${p2(t.getUTCHours())}:${p2(t.getUTCMinutes())} UTC ${t.getUTCDate()} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][t.getUTCMonth()]}`
+      : '';
+    const move = (s.movedir != null && s.movespeed != null)
+      ? `${_atcfCompass(s.movedir)} at ${Math.round(+s.movespeed)} kt` : '';
+    L.marker([lat, lng], { icon, pane: _ovMarkerPane('atcf'), zIndexOffset: 320 })
+      .bindPopup(`<div class="data-popup-inner" style="--dp-accent:${cls.color}">
+        <div class="dp-header">
+          <span class="dp-header-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-wind></use></svg></span>
+          <span class="dp-header-label">${name} · ${idTag}</span>
+        </div>
+        <div class="dp-body">
+          <div class="dp-row"><span>Class</span><b>${_ccEsc(cls.label)}</b></div>
+          <div class="dp-row"><span>Winds</span><b>${kt} kt (${mph} mph)</b></div>
+          <div class="dp-row"><span>Pressure</span><b>${_ccEsc(String(s.pressure ?? '?'))} mb</b></div>
+          ${move ? `<div class="dp-row"><span>Moving</span><b>${move}</b></div>` : ''}
+          <div class="dp-row"><span>Position</span><b>${lat.toFixed(1)}°, ${lng.toFixed(1)}°</b></div>
+          <div class="dp-row"><span>Basin</span><b>${_ccEsc(String(s.basin || '?'))}</b></div>
+          ${tLabel ? `<div class="dp-row"><span>Fix time</span><b>${tLabel}</b></div>` : ''}
+          ${s.long_atcf_id ? `<div class="dp-row"><span>ATCF ID</span><b>${_ccEsc(String(s.long_atcf_id))}</b></div>` : ''}
+          ${s.transitioned_from ? `<div class="dp-row"><span>Was</span><b>${_ccEsc(String(s.transitioned_from))}</b></div>` : ''}
+          ${s.atcf_sector_file ? `<div class="dp-row"><span style="font:10px monospace;opacity:0.7;">${_ccEsc(String(s.atcf_sector_file))}</span></div>` : ''}
+        </div>
+      </div>`, { className: 'data-popup', maxWidth: 260 })
+      .addTo(_atcfLayer);
+  });
 }
 
 // ── PRESSURE SUB-MENU ──
@@ -59530,6 +59663,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-01-k', date: 'Sep 1, 2026',
+    text: 'New in the Overlays menu: ATCF Updates. It draws every active tropical system in the world straight from the Automated Tropical Cyclone Forecast feed, hurricanes colored by category, tropical storms, depressions, and even invests (drawn dashed). Tap any storm for the full advisory: class, winds in knots and mph, pressure, movement, fix time, basin, and the raw ATCF line itself. It re-checks the feed every 10 minutes while it is on.' },
   { id: '2026-09-01-j', date: 'Sep 1, 2026',
     text: 'Fixed the giant dark continent floating in the Pacific on some sea surface temperature maps. OISST and the Ocean Heat maps count longitude from Greenwich instead of the dateline, so the whole eastern hemisphere was being drawn on the wrong side of the world, Africa and India were literally parked over the Pacific. The site now detects those maps and rolls them into place itself, and the Pi renders future days correctly from the start.' },
   { id: '2026-09-01-i', date: 'Sep 1, 2026',
@@ -61533,6 +61668,9 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
     <div class="ov-pill" id="op-jtwc-outlook" data-ovid="jtwc-outlook" title="JTWC Tropical Outlook - western Pacific and Indian Ocean systems">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('jtwc-outlook')">JTWC Outlook</span><span class="ov-drag" title="Drag to reorder">⠿</span>
+    </div>
+    <div class="ov-pill" id="op-atcf" data-ovid="atcf" title="ATCF Updates - live Automated Tropical Cyclone Forecast fixes for every active system and invest worldwide, via KnackWX">
+      <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('atcf')">ATCF Updates</span><span class="ov-drag" title="Drag to reorder">⠿</span>
     </div>
     <div class="ov-pill" id="op-gwcfc-outlook" data-ovid="gwcfc-outlook" title="GWCFC Outlook - the outlook our own forecasters publish from the Forecasting Portal">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('gwcfc-outlook')">GWCFC Outlook</span><span class="ov-drag" title="Drag to reorder">⠿</span>
