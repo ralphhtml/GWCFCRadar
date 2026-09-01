@@ -58,6 +58,22 @@ console.log('\n1. the source keeps the shape of the feature');
      /Promise\.all\(regionNames\.map/.test(PAGE));
   ok('NDFD wave height exists for the Waves bubble',
      /waveheight: 'ndfd\.conus\.waveheight'/.test(PAGE));
+  ok('and carries a second spelling to try if the first draws nothing',
+     /NDFD_LAYER_ALTS = \{ waveheight: \['ndfd\.conus\.waveh'\] \}/.test(PAGE)
+     && /NDFD_LAYERS\[field\] = alts\.shift\(\);/.test(PAGE));
+  ok('an NDFD frame that paints nothing turns the row off and says why',
+     /l\.once\('tileerror'/.test(PAGE)
+     && /has no tiles for this product/.test(PAGE));
+  ok('the warm-up also fetches the SST index for sub-second clicks',
+     /_sstFetchIndex === 'function'\) _sstFetchIndex\(\);/.test(PAGE));
+  ok('an RTMA domain without the field sits the variable out',
+     /if \(x\.man\.fields && !x\.man\.fields\[field\]\) return;/.test(PAGE));
+  ok('and a field no domain built fails with an honest message',
+     /err\.userMsg = 'The Pi has not built this RTMA product yet\./.test(PAGE)
+     && /\(e && e\.userMsg\) \|\|/.test(PAGE));
+  ok('the pipeline derives RH for the analyses that lack it',
+     /if "rh2m" not in found and "t2m" in found and "d2m" in found:/.test(
+       readFileSync(join(ROOT, 'pi/gfs_pipeline.py'), 'utf8')));
   const EM = String.fromCharCode(0x2014);
   ok('no em dashes here or in the page',
      !PAGE.includes(EM)

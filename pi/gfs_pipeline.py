@@ -4447,6 +4447,19 @@ def open_fields(grib_path, regrid_box=None):
         v = uv["10v"][0]
         found["wind"] = (np.sqrt(u ** 2 + v ** 2), lats, lons)
 
+    # The analyses (RTMA, URMA) carry temperature and dewpoint but publish no
+    # relative humidity message at all, so their RH chart is worked out from
+    # those two with the Magnus formula. A model whose file already has RH is
+    # never overridden by the derived one, same rule as the wind above.
+    if "rh2m" not in found and "t2m" in found and "d2m" in found:
+        t, lats, lons = found["t2m"]
+        d = found["d2m"][0]
+        tc, dc = t - 273.15, d - 273.15
+        es = np.exp(17.625 * tc / (243.04 + tc))
+        e = np.exp(17.625 * dc / (243.04 + dc))
+        found["rh2m"] = (np.clip(100.0 * e / np.maximum(es, 1e-12), 0.0, 100.0),
+                         lats, lons)
+
     # Shear is the length of the difference between the two wind vectors, not
     # the difference of their two speeds. Those are not the same thing and the
     # distinction is the whole point: a 40 knot wind at both levels blowing in

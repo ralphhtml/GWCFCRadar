@@ -89,6 +89,16 @@ PASS_BUDGET_S = float(os.environ.get("GWCFC_SST_BUDGET_S", "900"))
 # nothing is ever thrown away, above it the oldest days go first.
 PRUNE_AT_PCT = float(os.environ.get("GWCFC_SST_PRUNE_PCT", "70"))
 
+# SST's own floor and the untouchable window. Pruning may never shrink SST
+# below this many gigabytes of its own files, and never touches the newest
+# days of any rendered product. Both guards exist for the same reason: the
+# 70 percent trigger measures the whole card, which radar and the models
+# fill, so deleting SST files cannot bring that number down. Without a
+# floor the pruner ate every SST file on every pass, including the day it
+# had rendered minutes earlier, and the products went blank.
+SST_FLOOR_GB = float(os.environ.get("GWCFC_SST_FLOOR_GB", "2"))
+PRUNE_KEEP_DAYS = int(os.environ.get("GWCFC_SST_KEEP_DAYS", "3"))
+
 # ── What gets built ─────────────────────────────────────────────────────────
 #
 # `range` is the encode range, not a colour choice: it is the span the 65536
@@ -530,46 +540,80 @@ def disk_pct_used(path):
 
 
 def prune():
-    """Drop the oldest days, but only once the card is actually filling.
+    """Drop the oldest days, without ever eating the fresh ones.
 
-    Asked for as keep the maximum, delete at 70 percent. Below that nothing
-    goes, so the archive grows as deep as the disk allows; above it the
-    oldest day of every product is dropped until it is back under. Raw
-    downloads go before rendered fields, because a raw file can be fetched
-    again and a rendered day is what somebody is scrubbing through.
+    The trigger is still the card genuinely filling, 70 percent used, but
+    what may be deleted is decided by what SST itself owns. The old rule
+    watched the whole filesystem and deleted SST files until the number came
+    down; on a card filled by radar and the models that number never came
+    down, so every pass ate more SST, ending with the day rendered minutes
+    earlier, and every product went blank. Two guards fix that:
+
+    - the newest PRUNE_KEEP_DAYS of every rendered product are never
+      touched, so a fresh build always survives the pass that made it, and
+    - once SST's own footprint is at SST_FLOOR_GB, pruning stops even with
+      the disk still full, because deleting SST cannot fix a disk that
+      something else filled.
+
+    Raw downloads still go before rendered fields, because a raw file can
+    be fetched again and a rendered day is what somebody is scrubbing.
     """
     os.makedirs(OUT_DIR, exist_ok=True)
     if disk_pct_used(OUT_DIR) < PRUNE_AT_PCT:
         return 0
+
+    clim_dir = os.path.join(OUT_DIR, "_cache", "clim")
+    raw_root = os.path.join(CACHE_DIR, "raw")
+
+    # One walk: SST's total footprint, and every dated file grouped by the
+    # directory it lives in (one directory per product per source).
+    sst_total = 0
+    per_dir = {}
+    for dirpath, _dirs, files in os.walk(OUT_DIR):
+        for f in files:
+            p = os.path.join(dirpath, f)
+            try:
+                size = os.path.getsize(p)
+            except Exception:
+                size = 0
+            sst_total += size
+            if dirpath.startswith(clim_dir):
+                continue              # a cached climatology is never redone
+            if not (f.endswith(".png") or f.endswith(".nc")):
+                continue
+            stamp = f.split(".")[0]
+            if not (len(stamp) == 8 and stamp.isdigit()):
+                continue
+            per_dir.setdefault(dirpath, []).append((stamp, size, p))
+
+    # What may go: all raw files, and rendered files older than each
+    # product's protected window. Raw sorts ahead of rendered, then oldest
+    # day first within each kind.
+    candidates = []
+    for dirpath, entries in per_dir.items():
+        entries.sort()
+        is_raw = dirpath.startswith(raw_root)
+        spare = entries if is_raw else entries[:-PRUNE_KEEP_DAYS or None]
+        for stamp, size, p in spare:
+            candidates.append((0 if is_raw else 1, stamp, size, p))
+    candidates.sort()
+
+    floor = SST_FLOOR_GB * 1024 ** 3
     dropped = 0
-    for _ in range(400):
+    for _kind, _stamp, size, p in candidates:
         if disk_pct_used(OUT_DIR) < PRUNE_AT_PCT - 2:
             break
-        oldest, oldest_path = None, None
-        raw_root = os.path.join(CACHE_DIR, "raw")
-        for root in (raw_root, OUT_DIR):
-            for dirpath, _dirs, files in os.walk(root):
-                if os.path.join(OUT_DIR, "_cache", "clim") in dirpath:
-                    continue          # a cached climatology is never redone
-                for f in files:
-                    if not (f.endswith(".png") or f.endswith(".nc")):
-                        continue
-                    stamp = f.split(".")[0]
-                    if not (len(stamp) == 8 and stamp.isdigit()):
-                        continue
-                    if oldest is None or stamp < oldest:
-                        oldest, oldest_path = stamp, os.path.join(dirpath, f)
-            if oldest:                # raw first, and only fall through if none
-                break
-        if not oldest_path:
+        if sst_total <= floor:
             break
         try:
-            os.remove(oldest_path)
-            dropped += 1
+            os.remove(p)
         except Exception:
-            break
+            continue
+        sst_total -= size
+        dropped += 1
     if dropped:
-        log(f"sst: pruned {dropped} old files, disk now "
+        log(f"sst: pruned {dropped} old files, sst now "
+            f"{sst_total / 1024 ** 2:.0f} MB, disk "
             f"{disk_pct_used(OUT_DIR):.0f}% used")
     return dropped
 
