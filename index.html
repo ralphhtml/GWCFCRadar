@@ -25821,7 +25821,10 @@ function toggleWavesSub() {
   const wrap = document.getElementById('sub-bubbles');
   wrap.innerHTML = '';
   const back = document.createElement('div');
-  back.className = 'sub-bubble';
+  // sb-back matters: the column decorator skips navigation rows, and without
+  // it this Back button grew an info button ("no description written") and a
+  // drag handle, and could be reordered away from the top.
+  back.className = 'sub-bubble sb-back';
   back.innerHTML = `<span class="sb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(180deg)><use href=#ic-arrow></use></svg></span><span class="sb-label">Back</span>`;
   back.onclick = () => { _syncParentBubble('waves'); renderSubBubbles('regular'); };
   wrap.appendChild(back);
@@ -25961,9 +25964,22 @@ function toggleSstVariantSub(source) {
     el.innerHTML = `<span class="sb-icon">${_eicon('\u{1F321}')}</span>`
                  + `<span class="sb-label">${SST_VARIANT_LABEL[v] || v}</span>`;
     el.onclick = () => {
+      // Tapping the variant already showing turns the layer off, the same
+      // bargain every radar and satellite product pill keeps. This row had
+      // no off switch at all: the only way out was the Open-Meteo row.
+      if (_sstOn && _sstSource === source && _sstVariant === v) {
+        _sstDisable();
+        el.classList.remove('active');
+        if (typeof _syncParentBubble === 'function') _syncParentBubble('waves');
+        return;
+      }
       _sstEnable(source, v).then(() => {
+        // Lit only when something is actually on the map. A missing Pi or an
+        // unbuilt field says so in a toast, and used to leave a lit row
+        // behind it claiming a layer that was never drawn.
         wrap.querySelectorAll('.sub-bubble').forEach(x =>
-          x.classList.toggle('active', x.id === 'sub-sstvar-' + v));
+          x.classList.toggle('active', !!_sstOn && x.id === 'sub-sstvar-' + v));
+        if (typeof _syncParentBubble === 'function') _syncParentBubble('waves');
       });
     };
     if (LAYER_DESCRIPTIONS['sst-var-' + v]) {
@@ -26064,7 +26080,10 @@ function toggleAirSub() {
   const wrap = document.getElementById('sub-bubbles');
   wrap.innerHTML = '';
   const back = document.createElement('div');
-  back.className = 'sub-bubble';
+  // sb-back matters: the column decorator skips navigation rows, and without
+  // it this Back button grew an info button ("no description written") and a
+  // drag handle, and could be reordered away from the top.
+  back.className = 'sub-bubble sb-back';
   back.innerHTML = `<span class="sb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(180deg)><use href=#ic-arrow></use></svg></span><span class="sb-label">Back</span>`;
   back.onclick = () => { _syncParentBubble('air'); renderSubBubbles('regular'); };
   wrap.appendChild(back);
@@ -26176,7 +26195,10 @@ function toggleTemperatureSub() {
   const wrap = document.getElementById('sub-bubbles');
   wrap.innerHTML = '';
   const back = document.createElement('div');
-  back.className = 'sub-bubble';
+  // sb-back matters: the column decorator skips navigation rows, and without
+  // it this Back button grew an info button ("no description written") and a
+  // drag handle, and could be reordered away from the top.
+  back.className = 'sub-bubble sb-back';
   back.innerHTML = `<span class="sb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(180deg)><use href=#ic-arrow></use></svg></span><span class="sb-label">Back</span>`;
   back.onclick = () => { _syncParentBubble('temperature'); renderSubBubbles('regular'); };
   wrap.appendChild(back);
@@ -26291,7 +26313,10 @@ function togglePressureSub() {
   const wrap = document.getElementById('sub-bubbles');
   wrap.innerHTML = '';
   const back = document.createElement('div');
-  back.className = 'sub-bubble';
+  // sb-back matters: the column decorator skips navigation rows, and without
+  // it this Back button grew an info button ("no description written") and a
+  // drag handle, and could be reordered away from the top.
+  back.className = 'sub-bubble sb-back';
   back.innerHTML = `<span class="sb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(180deg)><use href=#ic-arrow></use></svg></span><span class="sb-label">Back</span>`;
   back.onclick = () => { _syncParentBubble('pressure'); renderSubBubbles('regular'); };
   wrap.appendChild(back);
@@ -26442,7 +26467,10 @@ function toggleWindSub() {
   const wrap = document.getElementById('sub-bubbles');
   wrap.innerHTML = '';
   const back = document.createElement('div');
-  back.className = 'sub-bubble';
+  // sb-back matters: the column decorator skips navigation rows, and without
+  // it this Back button grew an info button ("no description written") and a
+  // drag handle, and could be reordered away from the top.
+  back.className = 'sub-bubble sb-back';
   back.innerHTML = `<span class="sb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(180deg)><use href=#ic-arrow></use></svg></span><span class="sb-label">Back</span>`;
   back.onclick = () => { _syncParentBubble('wind'); renderSubBubbles('regular'); };
   wrap.appendChild(back);
@@ -28525,6 +28553,24 @@ const LAYER_DESCRIPTIONS = {
   'wind-jet':     'Wind speed at the 250 hPa pressure level (roughly 34,000 ft) - the jet stream, the fast-moving upper-air river of wind that steers most weather systems.',
   'nws-rtma':     'RTMA (Real-Time Mesoscale Analysis): the Weather Service\'s best estimate of what is actually happening at this moment, built from observations at 2.5 km over CONUS, Alaska, Hawaii and Puerto Rico at once. Not a forecast - the thing to check a forecast against. Rendered by the Pi; the animation bar scrubs back through recent hourly analyses.',
   'nws-ndfd':     'NDFD (National Digital Forecast Database): the official NWS forecast, the same grids behind forecast.weather.gov. Human forecasters made these numbers, not just a model. The animation bar plays forward through the next two days.',
+  // The NWS rows inside the bubbles, one per variable. The key is the row's
+  // own id (nws-<bubble>-<variable>), which is how the info button finds it.
+  'nws-temperature-temp': 'Air temperature at 2 metres from the National Weather Service: the RTMA analysis says what it is right now, the NDFD forecast says what forecasters expect over the next two days.',
+  'nws-temperature-dew':  'Dew point at 2 metres from the NWS. The higher it sits, the muggier the air; above about 65 F it starts to feel humid. RTMA for now, NDFD for the forecast.',
+  'nws-temperature-maxt': 'The NWS forecast daytime high, from the NDFD grids forecasters edit by hand. Forecast only: there is no analysis of a high that has not happened yet.',
+  'nws-temperature-rh':   'Relative humidity right now, from the RTMA analysis at 2.5 km. Low values with wind are fire weather; near 100 percent with a falling temperature is fog.',
+  'nws-wind-wind':        'Sustained wind speed at 10 metres from the NWS: RTMA for what is blowing now, NDFD for the forecast. In knots.',
+  'nws-wind-gust':        'Wind gusts right now from the RTMA analysis: the peak over the sustained speed, which is what takes down branches and power lines.',
+  'nws-wind-wdir':        'The NWS forecast wind direction, from the NDFD grids. Where the wind is blowing FROM, in degrees, so 270 is a west wind.',
+  'nws-pressure-pres':    'Surface pressure right now from the RTMA analysis, in hPa. Station level rather than reduced to sea level, so mountains read lower whatever the weather.',
+  'nws-radar-pop12':      'The NWS forecast chance of rain or snow over each 12 hour period, from the NDFD grids. The number a forecaster actually signed off on, not a model guess.',
+  'nws-radar-qpf':        'The NWS forecast precipitation amount, from the NDFD grids: how much liquid is expected to fall in each 6 hour window.',
+  'nws-radar-snow':       'The NWS forecast snowfall, from the NDFD grids: how much snow is expected in each 6 hour window.',
+  'nws-radar-wx':         'The NWS forecast weather type, from the NDFD grids: rain, snow, freezing rain, thunderstorms, fog, and the rest, as the forecasters wrote it.',
+  'nws-waves-waveh':      'The NWS forecast significant wave height, from the NDFD marine grids: the average of the highest third of waves, which is what a boat actually feels.',
+  'nws-air-vis':          'Surface visibility right now from the RTMA analysis. Under a mile is fog or heavy precipitation; under a quarter mile is dense fog.',
+  'nws-air-sky':          'Sky cover from the NWS: RTMA total cloud cover for right now, NDFD for the forecast. Zero is clear, one hundred is overcast.',
+  'nws-air-ceil':         'Cloud ceiling right now from the RTMA analysis: the height of the lowest broken or overcast layer, which is the number pilots and airports live by.',
   // ── The bubbles that are a way in rather than a layer ──────────────────
   // Nesting the menus meant new bubbles that turn nothing on by themselves,
   // and a bubble whose info button had nothing to say would be a button that
@@ -34716,6 +34762,12 @@ function _nwsAppendRows(wrap, bubble) {
       }
       toggleNwsSourceSub(bubble, d.v);
     };
+    // Every other builder attaches the info button itself; leaving it to the
+    // column decorator meant these rows got theirs a frame late, and the
+    // radar menu suite counted them missing.
+    if (typeof _makeInfoBtn === 'function' && typeof _sbDescribe === 'function') {
+      el.appendChild(_makeInfoBtn(_sbDescribe(el)));
+    }
     wrap.appendChild(el);
   });
 }
@@ -34824,7 +34876,10 @@ function toggleModelsSub() {
   const wrap = document.getElementById('sub-bubbles');
   wrap.innerHTML = '';
   const back = document.createElement('div');
-  back.className = 'sub-bubble';
+  // sb-back matters: the column decorator skips navigation rows, and without
+  // it this Back button grew an info button ("no description written") and a
+  // drag handle, and could be reordered away from the top.
+  back.className = 'sub-bubble sb-back';
   back.innerHTML = `<span class="sb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(180deg)><use href=#ic-arrow></use></svg></span><span class="sb-label">Back</span>`;
   back.onclick = () => { _syncParentBubble('models'); renderSubBubbles('regular'); };
   wrap.appendChild(back);
@@ -34853,9 +34908,19 @@ function _tropInit() {
   _nhcOutlookOn = true;
   const row = document.getElementById('nhc-tog-row');
   if (row) row.classList.add('on');
+  _nhcSyncPill();
   loadNHC5dayOutlook().catch(e => {
     console.warn('Spaghetti Models load error:', e);
   });
+}
+
+// The NHC Outlook pill and the _nhcOutlookOn flag used to drift apart:
+// opening the Spaghetti panel switched the flag on without lighting the
+// pill, so the pill's next tap turned the outlook OFF while looking like it
+// had done nothing. One place now keeps the light on the flag.
+function _nhcSyncPill() {
+  const pill = document.getElementById('op-nhc-outlook');
+  if (pill) pill.classList.toggle('active', !!_nhcOutlookOn);
 }
 
 function _modelsSPCToggle() {
@@ -36790,6 +36855,7 @@ function _modelsNHCToggle() {
   _nhcOutlookOn = !_nhcOutlookOn;
   const row = document.getElementById('nhc-tog-row');
   if (row) row.classList.toggle('on', _nhcOutlookOn);
+  if (typeof _nhcSyncPill === 'function') _nhcSyncPill();
   if (_nhcOutlookOn) {
     loadTropical();
     loadNHC5dayOutlook();
@@ -61105,6 +61171,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-02-h', date: 'Sep 2, 2026',
+    text: 'Every layer button audited. All 8 menu bubbles, every product row beneath them (satellite bands and composites, sea temperature sources and variants, air, wind, temperature, pressure, models, the NWS rows) and all 38 overlay pills were driven one by one in a real browser and checked for errors and for lighting up correctly. Fixes: the Back rows in six menus had grown a pointless info button and drag handle; the NWS rows in the radar menu got their info buttons late and now carry real descriptions; and the sea temperature variant rows lit up even when the Pi had nothing to show and could not be tapped off. Tapping the variant already showing now turns the layer off, like every other product row.' },
   { id: '2026-09-02-g', date: 'Sep 2, 2026',
     text: 'iPhone and iPad crash fix, round two. Testing showed the first round cut the crashes but did not end them, so every remaining memory budget has been tightened and split into a phone tier and a tablet tier: radar loops keep fewer frames at a gentler resolution, satellite and MRMS hold two or three frames instead of more, the map stops drawing its line layers at double density on Apple screens, the spare 20 MB drawing surfaces behind the sea temperature layer and the Inspector are now freed the instant they are used instead of whenever the browser got around to it, and the map effects that push every layer onto the graphics chip during a pinch are switched off.' },
   { id: '2026-09-02-f', date: 'Sep 2, 2026',
