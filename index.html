@@ -153,6 +153,27 @@ setTimeout(function(){var e=document.getElementById('loading');if(e){e.style.tra
 #animbar, #timeline     { will-change: contents; }
 .sub-bubble             { will-change: transform; }
 
+/* iOS and iPadOS (html.ios-lite, stamped by _isIOS). WebKit gives a page a
+   hard ceiling on canvas and compositing memory and kills the tab past it,
+   which is the "a problem repeatedly occurred" reload. A will-change on every
+   tile promotes each one to its own GPU layer, at three device pixels per CSS
+   pixel on a phone, and every backdrop blur or drop shadow is one more
+   offscreen surface. All of it is shed here whatever the pointer type: an
+   iPad with a trackpad reports hover:hover and slipped past the touch rule
+   above. */
+html.ios-lite #map,
+html.ios-lite .leaflet-tile-container,
+html.ios-lite .leaflet-map-pane,
+html.ios-lite .leaflet-tile,
+html.ios-lite .sub-bubble,
+html.ios-lite #animbar, html.ios-lite #timeline { will-change: auto !important; }
+html.ios-lite *, html.ios-lite *::before, html.ios-lite *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+html.ios-lite .leaflet-marker-icon,
+html.ios-lite .leaflet-marker-icon img { filter: none !important; }
+
 /* Contain repaints inside panels so they don't trigger full-page layout */
 #lqm-settings-overlay, #top-search-bar,
 #tutorial-modal-inner,
@@ -11067,8 +11088,16 @@ function _abortSignal(ms) {
   }
 }
 
-// iOS detection - used to tune keepBuffer and avoid canvas CORS crashes
-const _isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+// iOS detection - used to tune keepBuffer and avoid canvas CORS crashes.
+// iPadOS has called itself a Mac since version 13, so the user agent alone
+// missed every iPad and handed them the desktop memory budgets. A Mac that
+// reports more than one touch point is an iPad. The html element is stamped
+// ios-lite so the stylesheet can shed the GPU-hungry effects on the same
+// devices (see the ios-lite block near the top of the styles).
+const _isIOS = (/iPad|iPhone|iPod/.test(navigator.userAgent)
+  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
+  && !window.MSStream;
+if (_isIOS) { try { document.documentElement.classList.add('ios-lite'); } catch (e) {} }
 
 // ══════════════════════════════════════════════════════════════════════════
 // ── SCROLL AND PINCH ZOOM ─────────────────────────────────────────────────
@@ -11210,7 +11239,13 @@ function initMap() {
   // keepBuffer bumped up so fast pans reveal already-loaded tiles from the
   // surrounding buffer instead of the (now dark, but still a gap) empty
   // background while new tiles catch up.
-  const _mtOpts = { attribution: mtAttr, maxZoom: 20, noWrap: true, crossOrigin: 'anonymous', keepBuffer: _isIOS ? 4 : 8, updateWhenZooming: true };
+  // On iOS the opposite trade: updateWhenZooming makes Leaflet fetch a whole
+  // new tile set at every integer zoom a pinch passes through, and it prunes
+  // NONE of them until the fingers lift, so one long pinch from the country
+  // to a street held seven zoom levels of tiles at once. That is the crash
+  // on zoom. iOS waits for the gesture to end and keeps a slimmer buffer.
+  const _mtOpts = { attribution: mtAttr, maxZoom: 20, noWrap: true, crossOrigin: 'anonymous',
+                    keepBuffer: _isIOS ? 2 : 8, updateWhenZooming: !_isIOS, updateWhenIdle: _isIOS };
   const cartoDark  = L.tileLayer(`https://api.maptiler.com/maps/dataviz-dark/{z}/{x}/{y}.webp?key=${MT_KEY}`,  _mtOpts);
   const cartoLight = L.tileLayer(`https://api.maptiler.com/maps/dataviz/{z}/{x}/{y}.webp?key=${MT_KEY}`,       _mtOpts);
   const satellite  = L.tileLayer(`https://api.maptiler.com/maps/hybrid/{z}/{x}/{y}.jpg?key=${MT_KEY}`,         _mtOpts);
@@ -11245,8 +11280,12 @@ function initMap() {
     _mtFellBack = true;
     console.warn('Basemap: MapTiler is not answering; switching every style to its keyless stand-in.');
     Object.entries(_mtFallbackDefs).forEach(([style, [url, opts]]) => {
-      const fresh = L.tileLayer(url, Object.assign({ noWrap: true,
-        crossOrigin: 'anonymous', keepBuffer: _isIOS ? 4 : 8 }, opts));
+      // {r} asks CARTO for @2x tiles on a retina screen: four times the
+      // pixels per tile, which iOS cannot afford. It keeps the plain ones.
+      const fresh = L.tileLayer(_isIOS ? url.replace('{r}', '') : url,
+        Object.assign({ noWrap: true, crossOrigin: 'anonymous',
+          keepBuffer: _isIOS ? 2 : 8, updateWhenZooming: !_isIOS,
+          updateWhenIdle: _isIOS }, opts));
       fresh.on('tileloadstart', e => { e.tile.decoding = 'async'; });
       const old = mapTileLayers[style];
       const wasOn = old && map.hasLayer(old);
@@ -13363,7 +13402,11 @@ let _alertNewLayers = [];   // { layer, fillLayer, color, until }
 let _alertsCanvasR = null;
 function _alertsCanvas() {
   if (!_alertsCanvasR) {
-    _alertsCanvasR = L.canvas({ pane: 'alertsPane', padding: 0.3 });
+    // A canvas renderer's backing store is the viewport plus its padding on
+    // every side, at two device pixels per CSS pixel. On an iPad that is
+    // already a very large canvas, and WebKit counts every canvas against
+    // one hard limit, so iOS pads far less.
+    _alertsCanvasR = L.canvas({ pane: 'alertsPane', padding: _isIOS ? 0.1 : 0.3 });
   }
   return _alertsCanvasR;
 }
@@ -27879,7 +27922,10 @@ let _goesPending         = false; // pending guard - mirrors wms_satellite_3.js 
 // over its memory limit.
 let _goesPool       = [];
 let _goesPoolLoaded = [];
-const GOES_POOL_MAX = _isIOS ? 5 : 12;
+// A Pi composite frame is a picture up to 3200 pixels on its long side, some
+// 25 MB once decoded, and every pooled frame is decoded because it is an
+// attached overlay. Three is the most a phone can hold beside the basemap.
+const GOES_POOL_MAX = _isIOS ? 3 : 12;
 
 function _goesPoolWindow(idx) {
   const n = goesFrames.length;
@@ -27999,7 +28045,11 @@ function _makeGoesLayer(timeStr, opacity) {
     // high-density display, so a tile arrives with four times the pixels and
     // lands one-to-one. Satellite is a photograph and scales beautifully;
     // this is exactly the case the option exists for.
-    detectRetina: true,
+    //
+    // Except on iOS, where four times the pixels per tile, times a pool of
+    // frames, is the decoded-image memory that gets the tab killed. A phone
+    // takes the softer picture over the reload page.
+    detectRetina: !_isIOS,
   };
   const layer = L.tileLayer.wms(`${cfg.url}?_cb=${Date.now()}`, opts);
   // Satellite is imagery, not banded data, so it must NOT inherit the crisp
@@ -35940,7 +35990,9 @@ function _tanimDim(on) {
 }
 
 function _tanimBuildLayers() {
-  if (!_tanimRenderer) _tanimRenderer = L.canvas({ padding: 0.5 });
+  // Half the viewport of padding on every side is a canvas four times the
+  // screen; iOS keeps it near the screen (see _alertsCanvas).
+  if (!_tanimRenderer) _tanimRenderer = L.canvas({ padding: _isIOS ? 0.15 : 0.5 });
   _tanim.tracks.forEach(t => {
     const line = L.polyline([], { color: t.color, weight: 2.2, opacity: 0.95,
       renderer: _tanimRenderer, interactive: false, lineJoin: 'round' });
@@ -42017,7 +42069,10 @@ let _l3Canvas   = null;   // offscreen HTMLCanvasElement
 // URL, tens of megabytes for a large sweep, and this page already crashed iOS
 // once by letting radar frames pile up. Six is two or three stations' worth of
 // products, which covers going back and forth, and the oldest is dropped.
-const L3_PIC_MAX = 6;
+// iOS keeps two: each entry also holds the decoded mesh, which for a long
+// range Level 2 sweep is tens of megabytes of typed arrays, and two covers
+// the back-and-forth between a pair of products without the pile-up.
+const L3_PIC_MAX = _isIOS ? 2 : 6;
 // How long a cached picture is still the LIVE picture. A radar completes a
 // volume every four to six minutes, so inside three minutes the cached frame
 // is almost always still the newest one. Past that it is still shown instantly,
@@ -42053,6 +42108,21 @@ function _l3PicPut(station, product, tilt, img, result, reqTilt) {
     if (oldest === undefined) break;
     _l3Pic.delete(oldest);
   }
+}
+
+// WebKit judges a backgrounded tab by its footprint and reclaims the fat ones
+// first, and it never says so: the page simply comes back as a reload. So on
+// iOS a tab that goes hidden drops what is cheapest to rebuild: the picture
+// cache (a repaint from the mesh on screen takes 50 ms) and the warm-up image
+// set. What is on the map stays on the map.
+function _memShed() {
+  try { _l3Pic.clear(); } catch (e) {}
+  try { if (typeof _mrmsWarmed !== 'undefined') _mrmsWarmed.clear(); } catch (e) {}
+}
+if (_isIOS) {
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) _memShed();
+  });
 }
 
 // Find a cached picture, allowing for the fact that a tilt can be asked for in
@@ -43898,9 +43968,18 @@ function _meshToImage(result, product, forceBounds) {
   }
 
   var meta = result.metadata;
+  var url = canvas.toDataURL('image/png');
+  // The picture now lives in the PNG; the canvas it was drawn on is 13 to
+  // 16 MB of backing store that nothing reads again. It used to ride along
+  // in the returned object and sit in the picture cache, six deep, and a
+  // loop build made one per frame. WebKit counts every live canvas against
+  // one hard ceiling and kills the page past it, and a dropped canvas is
+  // only released when the collector gets round to it, so the store is
+  // freed explicitly, here, the moment the PNG exists.
+  try { canvas.width = canvas.height = 0; } catch (e) {}
   return {
-    url: canvas.toDataURL('image/png'),
-    canvas: canvas,
+    url: url,
+    canvas: null,
     bounds: bounds,
     leafletBounds: [[minLat, minLon], [maxLat, maxLon]],
     timeIso: (meta && meta.timeIso) || null,
@@ -49107,7 +49186,10 @@ function _cityWebLoad() {
   // built-in list instead of a crash.
   const mem = navigator.deviceMemory || 0;
   const conn = navigator.connection || {};
-  if ((mem && mem <= 2) || conn.saveData) { _cityWebTiles = 'failed'; return _cityWebTiles; }
+  // Safari never reports deviceMemory at all, so every iPhone and iPad sailed
+  // through this gate and took the 100 MB parse on top of everything else
+  // the map holds. iOS keeps the Pi tiles and the built-in list.
+  if ((mem && mem <= 2) || conn.saveData || _isIOS) { _cityWebTiles = 'failed'; return _cityWebTiles; }
   _cityWebTiles = (async () => {
     for (const url of CITY_WEB_URLS) {
       try {
@@ -60962,6 +61044,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-02-f', date: 'Sep 2, 2026',
+    text: 'iPhone and iPad crash fix. Safari on Apple devices gives a page a hard memory ceiling and reloads it with "a problem repeatedly occurred" when the map goes past it. Every cause found has been closed: iPads were being treated as desktop computers and given desktop memory budgets; a pinch zoom loaded a fresh set of map tiles at every zoom level it passed through and kept all of them; each radar picture kept a spare 15 MB drawing surface alive for nothing; satellite tiles were fetched at four times the pixels; and the map effects that push every tile onto the graphics chip are now switched off on Apple devices. The site should feel lighter there too.' },
   { id: '2026-09-02-e', date: 'Sep 2, 2026',
     text: 'Manage Members now shows who everyone is. Accounts that signed up before names and emails were being saved used to sit blank in the list. Now every account quietly fills in its own name and email the next time it signs in, phone signups show their phone number instead of a blank email, and blank names are borrowed from where that person already spoke publicly (the chat or the Messages directory), marked so you know where the name came from.' },
   { id: '2026-09-02-d', date: 'Sep 2, 2026',
@@ -70248,7 +70332,7 @@ function _mbCanvas() {
   // One shared canvas for every border line, the same reason the alert
   // polygons use one: a few thousand separate SVG nodes is what turns a pan
   // into a slideshow.
-  if (!_mbCanvasR) _mbCanvasR = L.canvas({ pane: 'bordersPane', padding: 0.25 });
+  if (!_mbCanvasR) _mbCanvasR = L.canvas({ pane: 'bordersPane', padding: _isIOS ? 0.1 : 0.25 });
   return _mbCanvasR;
 }
 
