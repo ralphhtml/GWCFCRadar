@@ -23547,6 +23547,9 @@ async function _l2ArcShow(site, at) {
 
 let _tmAt = null;      // the radar's moment
 let _tmSatAt = null;   // the satellite's moment
+// How far back the satellite can go when the Pi is there to read NOAA's own
+// buckets: GOES-16 has kept every scan since mid 2017 (see pi/sat_archive.py).
+const SAT_ARC_FLOOR = Date.UTC(2017, 6, 10);
 // Which picture the open modal is set to drive: the radar row opens it as
 // 'radar', the satellite row as 'sat'. Every jump goes to this one only.
 let _tmScope = 'radar';
@@ -23569,7 +23572,7 @@ function _tmSatActive() {
 async function _tmJump(ms) {
   // The radar reaches past the Level 3 floor now: anything older is read
   // straight off the Level 2 tape mirror instead.
-  const floor = _tmScope === 'sat' ? TM_FLOOR : L2ARC_FLOOR;
+  const floor = _tmScope === 'sat' ? SAT_ARC_FLOOR : L2ARC_FLOOR;
   const at = Math.max(floor, Math.min(Date.now(), +ms || 0));
   const when = new Date(at).toISOString().slice(0, 16).replace('T', ' ') + 'Z';
   if (_tmScope === 'sat') {
@@ -23742,7 +23745,7 @@ function _tmOpen(scope) {
     });
   }
   const sat = _tmScope === 'sat';
-  const floor = new Date(sat ? TM_FLOOR : L2ARC_FLOOR).toISOString().slice(0, 10);
+  const floor = new Date(sat ? SAT_ARC_FLOOR : L2ARC_FLOOR).toISOString().slice(0, 10);
   const today = new Date().toISOString().slice(0, 10);
   const d = m.querySelector('#tm-date');
   d.min = floor; d.max = today;
@@ -23753,7 +23756,7 @@ function _tmOpen(scope) {
     'TIME MACHINE - ' + (sat ? 'SATELLITE' : 'RADAR');
   d.value = new Date((sat ? _tmSatAt : _tmAt) || Date.now())
     .toISOString().slice(0, 10);
-  const years = Math.floor((Date.now() - (sat ? TM_FLOOR : L2ARC_FLOOR))
+  const years = Math.floor((Date.now() - (sat ? SAT_ARC_FLOOR : L2ARC_FLOOR))
                            / 86400e3 / 365 * 10) / 10;
   const site = _tmSite();
   const ready = sat ? _tmSatActive() : !!site;
@@ -23761,7 +23764,9 @@ function _tmOpen(scope) {
     ? `Scrubbing <b>${sat ? 'SATELLITE' : _ccEsc(String(site).toUpperCase())}</b>`
       + ` only. The archive reaches back to <b>${floor}</b>, about ${years} years. `
       + (sat ? 'Satellite arrives as the hours leading up to your moment, so the '
-             + 'playbar scrubs the approach. '
+             + 'playbar scrubs the approach. The plain bands come straight off '
+             + "NOAA's own scan archive through the Pi; the Pi composites keep "
+             + 'three days. '
              : 'Before March 2022 the picture comes straight off the Level 2 '
              + 'tape archive: one full-resolution scan per visit, and a site '
              + 'still on the pre-2009 tape format will say so. ')
@@ -28200,8 +28205,69 @@ async function _goesLoadPiFrames() {
   }
 }
 
+// ── The satellite archive: any moment since 2017, through the Pi ──────────
+// The WMS bands reach back only as far as Iowa Mesonet keeps them, and the
+// Pi composites keep three days. NOAA's own buckets keep every scan since the
+// satellites went up (GOES-16 from mid 2017, GOES-West from 2019), as raw
+// NetCDF files a browser cannot read. The Pi can: /sat/archive/index lists
+// the scans leading up to the travelled moment, and /sat/archive/frame
+// renders one to a picture on demand, cached on its disk. So a travelled
+// band routes here first and falls back to the WMS only when the Pi is not
+// there to ask. See pi/sat_archive.py.
+function _goesArcOk() {
+  return typeof _tmSatAt === 'number' && !!_tmSatAt
+    && !!_goesProduct().ch && typeof _hdResolveBase === 'function';
+}
+function _goesArcTarget() {
+  const r = String(_goesRegionId || 'auto');
+  let post = /^w|^alaska$|^hawaii$/.test(r) ? 'west' : 'east';
+  let sector = /fulldisk|alaska|hawaii|caribbean/.test(r) ? 'fulldisk' : 'conus';
+  if (r === 'auto') {
+    let lng = -96;
+    try { if (map) lng = ((map.getCenter().lng + 180) % 360 + 360) % 360 - 180; } catch (e) {}
+    post = lng < -105 ? 'west' : 'east';
+    sector = 'conus';
+  }
+  const band = parseInt(String(_goesProduct().ch || '').replace(/\D/g, ''), 10) || 13;
+  return { post, sector, band };
+}
+let _goesArcGen = 0;
+async function _goesArcFrames() {
+  const base = (typeof _hdBase !== 'undefined' && _hdBase) || await _hdResolveBase();
+  if (!base) throw new Error('no Pi');
+  const t = _goesArcTarget();
+  const qs = `post=${t.post}&band=${t.band}&sector=${t.sector}`
+           + `&at=${Math.round(_tmSatAt)}&n=${_satFrameCount()}`;
+  const r = await fetch(`${base}/sat/archive/index?${qs}`, { signal: _abortSignal(60000) });
+  if (r.status === 404) return [];             // nothing archived there: honest
+  if (!r.ok) throw new Error('index HTTP ' + r.status);
+  const idx = await r.json();
+  if (!idx || !Array.isArray(idx.frames) || !idx.bounds) throw new Error('bad index');
+  return idx.frames.map(f => ({
+    time: new Date(f.t), timeStr: f.stamp, bounds: idx.bounds,
+    url: `${base}/sat/archive/frame?bucket=${encodeURIComponent(idx.bucket)}`
+       + `&key=${encodeURIComponent(f.key)}&band=${t.band}&sector=${t.sector}`,
+  })).filter(f => isFinite(f.time.getTime())).sort((a, b) => a.time - b.time);
+}
+async function _goesLoadArcFrames() {
+  const gen = ++_goesArcGen;
+  let frames = null;
+  try { frames = await _goesArcFrames(); }
+  catch (e) { console.warn('[sat archive]', e); frames = null; }
+  if (gen !== _goesArcGen || !activeLayers.satellite || !_goesArcOk()) return;
+  if (frames && frames.length) { _goesApplyFrames(frames); return; }
+  // The Pi could not answer, or NOAA has nothing: the WMS path, with its own
+  // watcher for a moment that archive does not hold either.
+  _goesApplyFrames(_buildGoesFrames());
+  if (frames && !frames.length && typeof showToast === 'function') {
+    showToast('NOAA has no scan archived for that moment. Showing what the live '
+      + 'satellite service holds instead.', 6000);
+  }
+}
+
 function _clearGoesLayer() {
   _goesPiGen++;    // any manifest still in flight no longer speaks for the map
+  _goesArcGen++;   // nor does an archive listing
   if (_goesLayer) { try { map.removeLayer(_goesLayer); } catch(e) {} _goesLayer = null; }
   // The prewarm layer above is not always a pool member, so both are cleared:
   // one of them may be holding tiles the other knows nothing about.
@@ -28231,10 +28297,16 @@ function loadGoesLayer() {
     // is used - a pre-warmed layer may have been built for the wrong map area.
     _clearGoesLayer();
 
-    _goesApplyFrames(_goesIsPi() ? [] : _buildGoesFrames());
-    // A Pi composite has to be asked for, so the bar shows "nothing yet"
-    // until the manifest answers rather than a frame list that is a guess.
-    if (_goesIsPi()) _goesLoadPiFrames();
+    if (_goesArcOk()) {
+      // A travelled band: NOAA's scan archive through the Pi, listed first.
+      _goesApplyFrames([]);
+      _goesLoadArcFrames();
+    } else {
+      _goesApplyFrames(_goesIsPi() ? [] : _buildGoesFrames());
+      // A Pi composite has to be asked for, so the bar shows "nothing yet"
+      // until the manifest answers rather than a frame list that is a guess.
+      if (_goesIsPi()) _goesLoadPiFrames();
+    }
 
     // Auto-refresh every 60 s so a stale newest frame is replaced as the
     // satellite publishes. This used to tear the whole layer down and snap
@@ -28245,6 +28317,8 @@ function loadGoesLayer() {
     _goesRefreshInterval = setInterval(() => {
       if (!activeLayers.satellite) { clearInterval(_goesRefreshInterval); _goesRefreshInterval = null; return; }
       if (playing || playingBack) return;
+      // A travelled moment does not move: the past has no live edge to follow.
+      if (typeof _tmSatAt === 'number' && _tmSatAt) return;
       const wasAtNewest = goesCurrentFrame >= goesFrames.length - 1;
       if (!wasAtNewest) return;
       _clearGoesLayer();
@@ -28363,6 +28437,7 @@ function _disableSatellite() {
 function _reloadGoesIfActive() {
   if (!activeLayers.satellite) return;
   _clearGoesLayer();
+  if (_goesArcOk()) { _goesApplyFrames([]); _goesLoadArcFrames(); return; }
   if (_goesIsPi()) { _goesApplyFrames([]); _goesLoadPiFrames(); return; }
   _goesApplyFrames(_buildGoesFrames());
 }
@@ -28431,7 +28506,11 @@ function _goesCatsIn(kindId) {
 // One product pill, wherever in the nest it is being drawn.
 function _goesProductBubble(p) {
   const el = document.createElement('div');
-  el.className = 'sub-bubble' + (_goesProductId === p.id ? ' active' : '');
+  // Lit only while the layer is actually on. The remembered product used to
+  // light its whole path (kind, category, product) the moment the Satellite
+  // menu opened, which read as "the satellite turned itself on".
+  el.className = 'sub-bubble'
+    + (activeLayers.satellite && _goesProductId === p.id ? ' active' : '');
   el.dataset.productId = p.id;
   el.innerHTML = `<span class="sb-icon">${_eicon(p.icon)}</span>`
     + `<span class="sb-label">${_ccEsc ? _ccEsc(p.label) : p.label}</span>`;
@@ -28470,7 +28549,8 @@ function toggleSatelliteSub() {
     const cats = _goesCatsIn(k.id);
     if (!cats.length) return;
     const n = cats.reduce((s, x) => s + x.items.length, 0);
-    const on = cats.some(x => x.items.some(p => p.id === _goesProductId));
+    const on = !!activeLayers.satellite
+      && cats.some(x => x.items.some(p => p.id === _goesProductId));
     const el = document.createElement('div');
     el.className = 'sub-bubble' + (on ? ' active' : '');
     el.dataset.satKind = k.id;
@@ -28520,7 +28600,7 @@ function _satKindSub(k) {
   _radarBackBubble(wrap, () => toggleSatelliteSub());
 
   _goesCatsIn(k.id).forEach(({ c, items }) => {
-    const on = items.some(p => p.id === _goesProductId);
+    const on = !!activeLayers.satellite && items.some(p => p.id === _goesProductId);
     const el = document.createElement('div');
     el.className = 'sub-bubble' + (on ? ' active' : '');
     el.dataset.satCat = c.id;
@@ -32126,11 +32206,12 @@ function renderSubBubbles(tab) {
     el.id = 'sub-' + b.id;
     el.innerHTML = `<span class="sb-icon">${_eicon(b.icon)}</span><span class="sb-label">${b.label}</span>`;
     el.onclick = () => {
-      if (b.id !== 'forecasts') {
-        activeBubbles[b.id] = !activeBubbles[b.id];
-        el.classList.toggle('active', activeBubbles[b.id]);
-      }
+      // The eight bubbles here only open their menus; whether they are lit
+      // is read from the layer itself (_getBubbleActive), never flipped by
+      // the tap. Flipping it here lit the Satellite bubble the instant it was
+      // tapped, before any picture had been chosen.
       b.action();
+      el.classList.toggle('active', _getBubbleActive(b.id));
     };
     if (LAYER_DESCRIPTIONS[b.id]) el.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS[b.id]));
     const drag = document.createElement('span');
@@ -61221,6 +61302,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-02-j', date: 'Sep 2, 2026',
+    text: 'Satellite, two fixes. Tapping the Satellite button now turns nothing on: the menu opens with nothing lit, and only picking a product switches the picture on (it used to light the remembered band, Clean IR, the moment the menu opened). And the satellite Time Machine now has a real archive behind it: through the Pi it reads NOAA’s own scan archive, every GOES scan since July 2017, and renders the band you asked for at the moment you chose, so the plain bands travel eight years back instead of stopping where the live service’s memory ends.' },
   { id: '2026-09-02-i', date: 'Sep 2, 2026',
     text: 'The satellite Time Machine works again. Three things had been making it look dead: opening it before picking a satellite product just refused with a message (and the Satellite button no longer turns the layer on by itself, so that was the usual path); the Pi composites and the global mosaic ignored the chosen moment entirely and kept showing the newest frames; and a moment the imagery archive does not hold drew blank tiles with no explanation. Now choosing a moment switches the satellite on right there, the composites end their loop at your moment (and say so if the Pi keeps nothing that old), and a blank archive moment tells you, once, what to try instead.' },
   { id: '2026-09-02-h', date: 'Sep 2, 2026',
