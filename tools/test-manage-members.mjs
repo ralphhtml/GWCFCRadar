@@ -20,7 +20,7 @@
  * stylesheet where nothing was ever wrong.
  */
 
-import { readdirSync, existsSync } from 'fs';
+import { readdirSync, existsSync, readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -206,7 +206,96 @@ console.log('\n6. the wide card belongs to this view and does not leak');
   ok('and the view itself is closed', !back.staffOpen);
 }
 
-console.log('\n7. nothing threw along the way');
+console.log('\n7. blank identities heal from the sign-in token');
+{
+  const PAGE = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  ok('the heal rides every sign-in, not just signup',
+     /_profileSelfHeal\(uid, d \|\| \{\}\)/.test(PAGE));
+  const heal = await page.evaluate(async () => {
+    const writes = [];
+    _fbDb = { collection: c => ({ doc: id => ({
+      set: (data, opts) => { writes.push({ c, id, data, opts }); return Promise.resolve(); },
+    }) }) };
+    // An old account: doc empty, token knows the address.
+    _currentUser = { uid: 'u9', email: 'casey@example.org',
+                     displayName: '', isAnonymous: false };
+    _profileSelfHeal('u9', {});
+    // A phone signup: the synthetic address becomes a phone number.
+    _currentUser = { uid: 'p7', email: 'phone_15551234567@gwcfc-radar.app',
+                     displayName: 'Storm Chaser', isAnonymous: false };
+    _profileSelfHeal('p7', {});
+    // A complete account: nothing to heal, nothing written.
+    _currentUser = { uid: 'ok1', email: 'fine@example.org',
+                     displayName: 'Fine', isAnonymous: false };
+    _profileSelfHeal('ok1', { displayName: 'Fine', email: 'fine@example.org' });
+    // An anonymous session: never writes a profile.
+    _currentUser = { uid: 'anon', email: null, isAnonymous: true };
+    _profileSelfHeal('anon', {});
+    await new Promise(r => setTimeout(r, 50));
+    _currentUser = { uid: 'owner', email: 'ralphies1005@gmail.com',
+                     isAnonymous: false };
+    return writes;
+  });
+  const w9 = heal.find(w => w.id === 'u9');
+  const w7 = heal.find(w => w.id === 'p7');
+  ok('a blank doc gets its email from the token, plus a derived name',
+     w9 && w9.c === 'users' && w9.data.email === 'casey@example.org'
+     && w9.data.displayName === 'casey' && w9.opts && w9.opts.merge === true,
+     JSON.stringify(w9));
+  ok('a phone signup is stored as a phone number, never a fake email',
+     w7 && w7.data.phone === '15551234567' && !('email' in w7.data)
+     && w7.data.displayName === 'Storm Chaser', JSON.stringify(w7));
+  ok('a complete account and an anonymous session write nothing',
+     heal.length === 2, JSON.stringify(heal.map(w => w.id)));
+  ok('role fields are never part of a heal',
+     heal.every(w => !('staffRole' in w.data) && !('forecaster' in w.data)));
+}
+
+console.log('\n8. names the accounts never saved are found where they spoke');
+{
+  const r = await page.evaluate(async () => {
+    _fbDb = { collection: name => ({
+      get: async () => ({ docs: name === 'chatBridge' ? [
+        { id: 'dmpub_c3', data: () => ({ name: 'Quiet Casey', pub: 'x' }) },
+        { id: 'state', data: () => ({ last: '1' }) },
+      ] : [] }),
+      orderBy: () => ({ limit: () => ({ get: async () => ({ docs: [
+        { id: 'm1', data: () => ({ uid: 'd4', name: 'Chatty Dana',
+                                   source: 'radar', ts: 2 }) },
+        { id: 'm2', data: () => ({ uid: 'c3', name: 'Old Casey',
+                                   source: 'radar', ts: 1 }) },
+      ] }) }) }),
+    }) };
+    _staffUsers = [
+      { uid: 'c3', name: '', email: '', phone: '', avatarImage: '',
+        emoji: '', staffRole: 'member', forecaster: false },
+      { uid: 'd4', name: '', email: '', phone: '15550001111', avatarImage: '',
+        emoji: '', staffRole: 'member', forecaster: false },
+      { uid: 'e5', name: 'Named Elle', email: 'elle@example.org', phone: '',
+        avatarImage: '', emoji: '', staffRole: 'member', forecaster: false },
+    ];
+    await _staffFillGaps();
+    document.getElementById('lqm-view-staff').classList.add('open');
+    _staffRenderList('');
+    const rows = [...document.querySelectorAll('.lqm-staff-row')];
+    return rows.map(el => ({
+      name: el.querySelector('.lqm-staff-name').textContent.trim(),
+      who: el.querySelector('.lqm-staff-email').textContent.trim(),
+    }));
+  });
+  const c3 = r.find(x => x.name.startsWith('Quiet Casey'));
+  const d4 = r.find(x => x.name.startsWith('Chatty Dana'));
+  ok('the Messages directory outranks an older chat name',
+     c3 && /\(from Messages directory\)/.test(c3.name), JSON.stringify(r));
+  ok('a chat-only speaker gets their latest chat name, marked as such',
+     d4 && /\(from chat\)/.test(d4.name), JSON.stringify(d4));
+  ok('a phone account shows its number where the email would be',
+     d4 && /phone: 15550001111/.test(d4.who), d4 && d4.who);
+  ok('a name saved in the profile is untouched by harvesting',
+     r.some(x => x.name === 'Named Elle'), JSON.stringify(r.map(x => x.name)));
+}
+
+console.log('\n9. nothing threw along the way');
 ok('no uncaught errors at all', errors.length === 0, errors.join(' | '));
 
 await browser.close();
