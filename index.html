@@ -4074,12 +4074,38 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   box-shadow: 0 6px 22px rgba(0,0,0,0.45);
 }
 /* ── The time machine ────────────────────────────────────────────────────── */
-#tm-modal, #htm-modal {
+#tm-modal, #htm-modal, #dm-modal {
   position: fixed; inset: 0; z-index: 4000; display: none;
   background: rgba(0,0,0,0.55); backdrop-filter: blur(3px);
   align-items: center; justify-content: center; padding: 16px;
 }
-#tm-modal.open, #htm-modal.open { display: flex; }
+#tm-modal.open, #htm-modal.open, #dm-modal.open { display: flex; }
+/* Direct messages: the list of threads, and one open conversation. */
+#dm-modal .tm-card { display: flex; flex-direction: column; height: min(560px, 86vh); }
+.dm-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.dm-row {
+  display: flex; align-items: center; gap: 9px; cursor: pointer;
+  padding: 8px 9px; border-radius: 8px; border: 2px solid rgba(232,184,0,0.25);
+  background: rgba(232,184,0,0.06); color: #ffd9d4; text-align: left;
+}
+.dm-row:hover { background: rgba(232,184,0,0.18); }
+.dm-row b { color: #ffe9a8; font-size: 12px; }
+.dm-row .dm-last { font-size: 10.5px; opacity: 0.75; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.dm-row .dm-unread { width: 9px; height: 9px; border-radius: 50%;
+  background: #e8b800; box-shadow: 0 0 6px #e8b800; flex: none; }
+.dm-msgs { flex: 1; overflow-y: auto; display: flex; flex-direction: column;
+  gap: 6px; padding: 4px 2px; }
+.dm-bubble { max-width: 82%; padding: 7px 10px; border-radius: 11px;
+  font-size: 12px; line-height: 1.45; color: #fff; word-break: break-word;
+  background: rgba(255,255,255,0.10); align-self: flex-start; }
+.dm-bubble.mine { background: rgba(232,184,0,0.28); align-self: flex-end; }
+.dm-bubble .dm-when { display: block; font-size: 9px; opacity: 0.6; margin-top: 3px; }
+.dm-compose { display: flex; gap: 7px; margin-top: 9px; }
+.dm-compose input { flex: 1; background: rgba(0,0,0,0.4);
+  border: 2px solid rgba(232,184,0,0.35); color: #fff; border-radius: 7px;
+  padding: 8px 9px; font-size: 12px; min-width: 0; }
+.chat-name.dm-able { cursor: pointer; text-decoration: underline dotted; }
 /* The history machines' variable switcher: one lit chip decides what every
    station dot is showing. */
 .htm-varchip.active { background: rgba(232,184,0,0.5); color: #fff; }
@@ -55528,7 +55554,7 @@ function _chatRender() {
     return `<div class="chat-msg${mine ? ' pinged' : ''}">${av}<div class="chat-body">
       ${quote}
       <div class="chat-meta">
-        <span class="chat-name">${_escapeHtml(m.name || 'Anonymous')}</span>
+        <span class="chat-name${(m.uid && m.source === 'radar' && (!_currentUser || m.uid !== _currentUser.uid)) ? ' dm-able" title="Send a direct message" onclick="_dmFromChat(' + i + ')"' : '"'}>${_escapeHtml(m.name || 'Anonymous')}</span>
         <span class="chat-from ${discord ? 'discord' : 'radar'}">${discord ? 'DISCORD' : 'RADAR'}</span>
         <span class="chat-time">${_chatTime(m.ts)}</span>
       </div>
@@ -55619,6 +55645,286 @@ function lqmOpenChat() {
 function lqmCloseChat() {
   document.getElementById('lqm-chat-overlay')?.classList.remove('lqm-panel-open');
   _chatUnsubscribe();   // stop paying for reads while nobody is looking
+}
+
+// ── DIRECT MESSAGES: private mail between two radar accounts ───────────────
+// Everything private about this lives in firebase/firestore.rules, not here:
+// a thread's document id is the two uids joined with '__' (lower first), the
+// rules check membership from that id alone, and anonymous sign-ins are shut
+// out entirely. This side is only the furniture: a Messages panel, a thread
+// list, one open conversation with a live listener, and a way to start a
+// conversation from the chat or from a name search.
+let _dmView = 'list';        // 'list' | 'thread'
+let _dmThreads = [];
+let _dmThreadId = null, _dmTitle = '';
+let _dmMsgs = [];
+let _dmUnsubThreads = null, _dmUnsubMsgs = null;
+
+function _dmRealAccount() {
+  return !!(_currentUser && !_currentUser.isAnonymous);
+}
+function _dmPairId(a, b) {
+  return a < b ? a + '__' + b : b + '__' + a;
+}
+function _dmMyName() {
+  return ((_currentUser && (_currentUser.displayName
+    || (_currentUser.email || '').split('@')[0])) || 'Radar user').slice(0, 40);
+}
+function _dmReadMarks() {
+  try { return JSON.parse(localStorage.getItem('gwcfc_dm_read') || '{}'); }
+  catch (e) { return {}; }
+}
+function _dmMarkRead(threadId) {
+  try {
+    const m = _dmReadMarks();
+    m[threadId] = Date.now();
+    localStorage.setItem('gwcfc_dm_read', JSON.stringify(m));
+  } catch (e) {}
+}
+
+// Each account publishes its own directory row, so other accounts can find
+// it by name. Called on sign-in and when the panel opens; a signed-out or
+// anonymous session writes nothing.
+function _dmDirectoryUpsert() {
+  if (!_dmRealAccount() || !_fbDb) return;
+  const name = _dmMyName();
+  if (name.length < 2) return;
+  _fbDb.collection('dmDirectory').doc(_currentUser.uid).set({
+    name, nameLower: name.toLowerCase(),
+    avatar: (typeof _selectedEmoji !== 'undefined' && _selectedEmoji) || '',
+    seen: Date.now(),
+  }).catch(e => console.warn('[dm] directory:', e));
+}
+
+function _dmOpen() {
+  let m = document.getElementById('dm-modal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'dm-modal';
+    m.innerHTML = `
+      <div class="tm-card" role="dialog" aria-modal="true" aria-label="Direct messages">
+        <div class="tm-head">
+          <button type="button" class="tm-x" id="dm-back" title="Back"
+                  style="display:none">&#8592;</button>
+          <span class="tm-title">MESSAGES</span>
+          <button type="button" class="tm-x" onclick="_dmClose()" title="Close">&#10005;</button>
+        </div>
+        <div class="tm-note" id="dm-note"></div>
+        <div class="tm-row" id="dm-search-row">
+          <input type="text" id="dm-search" placeholder="Find a radar account by name…"
+                 maxlength="40" autocomplete="off">
+        </div>
+        <div class="dm-list" id="dm-list"></div>
+        <div class="dm-msgs" id="dm-msgs" style="display:none"></div>
+        <div class="dm-compose" id="dm-compose" style="display:none">
+          <input type="text" id="dm-input" placeholder="Message…" maxlength="1000">
+          <button type="button" class="tm-btn tm-btn-go" style="flex:0 0 auto"
+                  onclick="_dmSend()">SEND</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    m.addEventListener('click', ev => { if (ev.target === m) _dmClose(); });
+    m.querySelector('#dm-back').onclick = () => _dmShowList();
+    m.querySelector('#dm-input').addEventListener('keydown', ev => {
+      if (ev.key === 'Enter') _dmSend();
+    });
+    let t = null;
+    m.querySelector('#dm-search').addEventListener('input', ev => {
+      clearTimeout(t);
+      t = setTimeout(() => _dmSearch(ev.target.value.trim()), 350);
+    });
+  }
+  m.classList.add('open');
+  if (!_dmRealAccount()) {
+    document.getElementById('dm-note').innerHTML =
+      'Direct messages are between signed-in radar accounts. '
+      + '<a onclick="_dmClose();openAuthModal(\'signin\')">Sign in</a> to use them.';
+    document.getElementById('dm-list').innerHTML = '';
+    return;
+  }
+  document.getElementById('dm-note').textContent =
+    'Private, account to account. Only the two of you can read a thread.';
+  _dmDirectoryUpsert();
+  _dmShowList();
+  _dmSubscribeThreads();
+}
+
+function _dmClose() {
+  const m = document.getElementById('dm-modal');
+  if (m) m.classList.remove('open');
+  if (_dmUnsubThreads) { try { _dmUnsubThreads(); } catch (e) {} _dmUnsubThreads = null; }
+  if (_dmUnsubMsgs) { try { _dmUnsubMsgs(); } catch (e) {} _dmUnsubMsgs = null; }
+  _dmThreadId = null;
+}
+
+function _dmShowList() {
+  _dmView = 'list';
+  if (_dmUnsubMsgs) { try { _dmUnsubMsgs(); } catch (e) {} _dmUnsubMsgs = null; }
+  _dmThreadId = null;
+  const $ = id => document.getElementById(id);
+  $('dm-back').style.display = 'none';
+  $('dm-search-row').style.display = '';
+  $('dm-list').style.display = '';
+  $('dm-msgs').style.display = 'none';
+  $('dm-compose').style.display = 'none';
+  document.querySelector('#dm-modal .tm-title').textContent = 'MESSAGES';
+  _dmRenderList();
+}
+
+function _dmSubscribeThreads() {
+  if (_dmUnsubThreads || !_fbDb || !_dmRealAccount()) return;
+  // No orderBy on purpose: array-contains plus orderBy would demand a
+  // composite index, and a handful of threads sorts instantly here.
+  _dmUnsubThreads = _fbDb.collection('dms')
+    .where('members', 'array-contains', _currentUser.uid).limit(50)
+    .onSnapshot(snap => {
+      _dmThreads = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      if (_dmView === 'list') _dmRenderList();
+    }, err => {
+      console.warn('[dm] threads:', err);
+      const n = document.getElementById('dm-note');
+      if (n) n.textContent = 'Messages unavailable: ' + (err.message || 'permission denied')
+        + '. The dms rules in firebase/firestore.rules may still need publishing.';
+    });
+}
+
+function _dmOtherName(t) {
+  const other = (t.members || []).find(u => u !== _currentUser.uid);
+  return (t.names && t.names[other]) || 'Radar user';
+}
+
+function _dmRenderList(searchRows) {
+  const box = document.getElementById('dm-list');
+  if (!box) return;
+  const marks = _dmReadMarks();
+  const rows = [];
+  (searchRows || []).forEach(r => {
+    rows.push(`<button type="button" class="dm-row" onclick="_dmStart('${_ccEsc(r.uid)}','${_ccEsc(r.name).replace(/'/g, '&#39;')}')">
+      <b>${_ccEsc(r.avatar || '')} ${_ccEsc(r.name)}</b><span class="dm-last">start a conversation</span></button>`);
+  });
+  _dmThreads.forEach(t => {
+    const unread = (t.updatedAt || 0) > (marks[t.id] || 0)
+      && t.last && t.last.from !== _currentUser.uid;
+    rows.push(`<button type="button" class="dm-row" onclick="_dmOpenThread('${_ccEsc(t.id)}')">
+      <b>${_ccEsc(_dmOtherName(t))}</b>
+      <span class="dm-last">${_ccEsc((t.last && t.last.text) || '')}</span>
+      ${unread ? '<span class="dm-unread"></span>' : ''}</button>`);
+  });
+  box.innerHTML = rows.length ? rows.join('')
+    : '<div class="tm-note" style="text-align:center;padding:18px 0;">No conversations yet. '
+      + 'Search a name above, or tap someone’s name in the chat.</div>';
+}
+
+async function _dmSearch(q) {
+  if (!q || q.length < 2 || !_fbDb || !_dmRealAccount()) { _dmRenderList(); return; }
+  try {
+    const snap = await _fbDb.collection('dmDirectory')
+      .where('nameLower', '>=', q.toLowerCase())
+      .where('nameLower', '<=', q.toLowerCase() + '\uf8ff')
+      .limit(8).get();
+    const rows = snap.docs.map(d => ({ uid: d.id, ...d.data() }))
+      .filter(r => r.uid !== _currentUser.uid);
+    _dmRenderList(rows);
+  } catch (e) {
+    console.warn('[dm] search:', e);
+  }
+}
+
+// Open (creating if needed) the one thread this pair of accounts shares.
+async function _dmStart(uid, name) {
+  if (!_dmRealAccount() || !_fbDb || !uid || uid === _currentUser.uid) return;
+  const id = _dmPairId(_currentUser.uid, uid);
+  const members = [_currentUser.uid, uid].sort();
+  try {
+    const names = {};
+    names[_currentUser.uid] = _dmMyName();
+    names[uid] = String(name || 'Radar user').slice(0, 40);
+    await _fbDb.collection('dms').doc(id)
+      .set({ members, names, updatedAt: Date.now() }, { merge: true });
+    _dmOpenThread(id, names[uid]);
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('Could not open the conversation: ' + e.message, 5000);
+  }
+}
+
+function _dmOpenThread(threadId, title) {
+  _dmView = 'thread';
+  _dmThreadId = threadId;
+  const t = _dmThreads.find(x => x.id === threadId);
+  _dmTitle = title || (t ? _dmOtherName(t) : 'Conversation');
+  const $ = id => document.getElementById(id);
+  $('dm-back').style.display = '';
+  $('dm-search-row').style.display = 'none';
+  $('dm-list').style.display = 'none';
+  $('dm-msgs').style.display = '';
+  $('dm-compose').style.display = '';
+  document.querySelector('#dm-modal .tm-title').textContent = _dmTitle.toUpperCase();
+  $('dm-msgs').innerHTML = '<div class="tm-note">Loading…</div>';
+  if (_dmUnsubMsgs) { try { _dmUnsubMsgs(); } catch (e) {} }
+  _dmUnsubMsgs = _fbDb.collection('dms').doc(threadId).collection('messages')
+    .orderBy('ts', 'desc').limit(80)
+    .onSnapshot(snap => {
+      _dmMsgs = snap.docs.map(d => d.data()).reverse();
+      _dmRenderMsgs();
+      _dmMarkRead(threadId);
+    }, err => {
+      $('dm-msgs').innerHTML = '<div class="tm-note">Could not load: '
+        + _ccEsc(err.message || 'permission denied') + '</div>';
+    });
+}
+
+function _dmRenderMsgs() {
+  const box = document.getElementById('dm-msgs');
+  if (!box) return;
+  if (!_dmMsgs.length) {
+    box.innerHTML = '<div class="tm-note" style="text-align:center;padding:14px 0;">Say hello.</div>';
+    return;
+  }
+  box.innerHTML = _dmMsgs.map(m => {
+    const mine = m.from === (_currentUser && _currentUser.uid);
+    const d = new Date(m.ts || 0);
+    const when = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    return `<div class="dm-bubble${mine ? ' mine' : ''}">${_ccEsc(m.text || '')}
+      <span class="dm-when">${mine ? 'you' : _ccEsc(m.name || '')} · ${when}</span></div>`;
+  }).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+async function _dmSend() {
+  const input = document.getElementById('dm-input');
+  const text = (input && input.value || '').trim();
+  if (!text || !_dmThreadId || !_dmRealAccount() || !_fbDb) return;
+  input.value = '';
+  try {
+    const doc = { from: _currentUser.uid, name: _dmMyName(),
+                  text: text.slice(0, 1000), ts: Date.now() };
+    await _fbDb.collection('dms').doc(_dmThreadId)
+      .collection('messages').add(doc);
+    // The header is what the list shows, so it travels with every send.
+    await _fbDb.collection('dms').doc(_dmThreadId)
+      .set({ updatedAt: doc.ts, last: { text: doc.text.slice(0, 80), from: doc.from } },
+           { merge: true });
+    _dmMarkRead(_dmThreadId);
+  } catch (e) {
+    input.value = text;      // give the message back rather than losing it
+    if (typeof showToast === 'function') showToast('Message not sent: ' + e.message, 5000);
+  }
+}
+
+// The chat is where people actually meet, so a radar author's name is the
+// natural door: tap it, and you are writing to them.
+function _dmFromChat(i) {
+  const m = _chatMsgs[i];
+  if (!m || !m.uid || m.source !== 'radar') return;
+  if (!_dmRealAccount()) {
+    if (typeof showToast === 'function') showToast('Sign in to send direct messages.', 3500);
+    return;
+  }
+  if (m.uid === _currentUser.uid) return;
+  lqmCloseChat();
+  _dmOpen();
+  _dmStart(m.uid, m.name || 'Radar user');
 }
 
 // ── Replying to a message ───────────────────────────────────────────────────
@@ -60173,6 +60479,9 @@ async function _loadUserPrefs(uid) {
       avatarImage: d.avatarImage || null,
       avatarShape: d.avatarShape || 'circle',
     });
+    // The DM directory row rides the sign-in: publishing your own name is
+    // what lets another account find you to write to.
+    try { _dmDirectoryUpsert(); } catch (e) {}
     if (d.homeLocation) {
       _homeLocation = { country:'', state:'', county:'', city:'', ...d.homeLocation };
       setTimeout(_decorateAlertCards, 1200);
@@ -60266,6 +60575,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-02-b', date: 'Sep 2, 2026',
+    text: 'Private messages are here. Radar accounts can now DM each other: open Messages from the account panel, search a name, or just tap someone’s name in the community chat. Conversations are private between the two accounts, enforced by the database rules themselves, and guests or the Discord bridge can never read anyone’s mail. Unread conversations show a gold dot.' },
   { id: '2026-09-02-a', date: 'Sep 2, 2026',
     text: 'The archives got serious. Every model run is now kept, not just five days: the Pi archives runs until its disk genuinely runs low, and then retires only the oldest. The satellite archive stretches from 3 days to 90. And the radar Time Machine now reaches back to 2008: before March 2022 it reads NOAA’s Level 2 tape archive (via Google’s public mirror) directly in your browser, pulling one full-resolution scan out of the hourly tape files and decoding it with the same engine as live radar. Dates before a site’s 2008-2010 format switch say so honestly instead of showing nothing.' },
   { id: '2026-09-01-n', date: 'Sep 1, 2026',
@@ -61963,6 +62274,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <button class="lqm-pm-btn" onclick="lqmCloseProfile();openCredits()"><svg class=svgi width=18 height=18><use href=#ic-star></use></svg><span>Credits</span></button>
       <button class="lqm-pm-btn" onclick="lqmCloseProfile();openFeedback()"><svg class=svgi width=18 height=18><use href=#ic-mail></use></svg><span>Feedback</span></button>
       <button class="lqm-pm-btn" onclick="lqmCloseProfile();_clOpen()"><svg class=svgi width=18 height=18><use href=#ic-sparkle></use></svg><span>Updates</span></button>
+      <button class="lqm-pm-btn" onclick="lqmCloseProfile();_dmOpen()"><svg class=svgi width=18 height=18><use href=#ic-mail></use></svg><span>Messages</span></button>
     </div>
     <!-- The mode switch, right where the person is: the panel stays open so
          the highlight flips in front of them and the map changes behind it.

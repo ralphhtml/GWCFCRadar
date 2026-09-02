@@ -431,6 +431,19 @@ WHAT THESE RULES GUARANTEE
   fetches radar and model files from.
 
 
+DIRECT MESSAGES
+---------------
+The dms and dmDirectory blocks power private messages between radar
+accounts. A thread's document id is the two account uids joined with two
+underscores, lower uid first, which is what lets the rules check membership
+without reading any document. Only real (non-anonymous) sign-ins can read,
+open or send DMs, and a thread's membership can never be changed after it is
+created, so mail can never be re-pointed at somebody else. The directory
+holds only a display name and avatar, published by each account about
+itself. These blocks must be published to the Firebase console with the
+rest of this file or the Messages panel reports permission denied.
+
+
 CHANGING THE OWNER EMAIL
 ------------------------
 It appears in two places and must match in both, lowercase:
