@@ -136,11 +136,22 @@ ns["free_mb"] = _real_free
 
 
 print("\n4. every pruner asks the disk first")
-for label, src in (("radar frames", radar_src), ("satellite frames", sat_src)):
-    ok(f"the {label} pruner shortens its window to fit",
-       "hours_for_disk(" in src, "not wired")
+ok("the radar frames pruner shortens its window to fit",
+   "hours_for_disk(" in radar_src, "not wired")
+# Satellite is an archive now: when the disk tightens it retires the OLDEST
+# frames one at a time rather than collapsing a ninety day window to a day,
+# which is what the old stepped ladder would have done to it.
+ok("the satellite archive trims oldest-first when the disk tightens",
+   "free_mb(sector_dir) < DISK_FLOOR_MB * 2" in sat_src
+   and "kept.pop(0)" in sat_src, "not wired")
 ok("and so does MRMS", radar_src.count("hours_for_disk(") >= 2,
    str(radar_src.count("hours_for_disk(")))
+# The model archive gets the same manner of guard: forever until the card
+# objects, then the oldest runs go one at a time, never a window cliff.
+gfs_src = open(GFS).read()
+ok("the model archive keeps everything until the disk objects",
+   'GWCFC_MODEL_KEEP_DAYS", "36500"' in gfs_src
+   and "free_mb(model_dir) >= DISK_FLOOR_MB * 2" in gfs_src, "not wired")
 # The MRMS pass is the one that writes the most files, so it also has the
 # hard stop rather than only the softer retention.
 ok("the MRMS build stops mid pass when the disk runs low",

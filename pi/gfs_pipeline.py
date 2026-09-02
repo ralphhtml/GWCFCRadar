@@ -1756,12 +1756,14 @@ SND_VARS = {
 SND_HOURS = list(range(0, 49, 6))
 SND_VAR_FLAGS = ["var_TMP", "var_RH", "var_UGRD", "var_VGRD"]
 
-# Five days of every run, not the last four. A run archive is what lets a
-# forecaster do the one thing a single run cannot: watch the model change its
-# mind. Whether consecutive runs agree is itself a forecast of confidence,
-# and comparing tonight's run against this morning's is how a trend is told
-# from a wobble. After five days a run is climatology, not context.
-KEEP_DAYS = 5
+# Every run is archived now, by request: the window is effectively "forever"
+# and the DISK is the retention policy. Runs are only deleted when free space
+# actually tightens, oldest first, one at a time (see prune), so the archive
+# grows as deep as the card allows and no deeper. A bigger disk is a deeper
+# archive; nothing else needs configuring. The old five day window survives
+# as the env knob for anyone who wants the lean behavior back:
+#     GWCFC_MODEL_KEEP_DAYS=5
+KEEP_DAYS = float(os.environ.get("GWCFC_MODEL_KEEP_DAYS", "36500"))
 KEEP_RUNS = 4          # legacy floor: never fewer than this, whatever the disk says
 REQUEST_TIMEOUT = 60
 RETRIES = 3
@@ -4935,13 +4937,28 @@ def prune(model_dir, keep_days=None):
     """
     if not os.path.isdir(model_dir):
         return
-    window_h = hours_for_disk(model_dir, (keep_days or KEEP_DAYS) * 24.0)
+    window_h = (keep_days or KEEP_DAYS) * 24.0
     runs = sorted(d for d in os.listdir(model_dir)
                   if os.path.isdir(os.path.join(model_dir, d)) and d[0].isdigit())
     for old in runs[:-KEEP_RUNS] if len(runs) > KEEP_RUNS else []:
         if _run_age_h(old) > window_h:
             log(f"  pruning {os.path.basename(model_dir)}/{old}")
             shutil.rmtree(os.path.join(model_dir, old), ignore_errors=True)
+    # The archive guard. With the window effectively forever, the disk is
+    # the real retention policy, and it must never be enforced as a cliff:
+    # the old ladder would have collapsed months of archive to one day the
+    # moment free space dipped. Instead, when the card tightens, the OLDEST
+    # runs go one at a time until it breathes again. Every model's build
+    # calls this on its own directory, so old history is spent evenly across
+    # the catalogue rather than whichever model pruned last.
+    runs = sorted(d for d in os.listdir(model_dir)
+                  if os.path.isdir(os.path.join(model_dir, d)) and d[0].isdigit())
+    for old in runs[:-KEEP_RUNS] if len(runs) > KEEP_RUNS else []:
+        if free_mb(model_dir) >= DISK_FLOOR_MB * 2:
+            break
+        log(f"  disk tight: retiring {os.path.basename(model_dir)}/{old} "
+            "from the archive")
+        shutil.rmtree(os.path.join(model_dir, old), ignore_errors=True)
 
 
 class Lock:

@@ -282,14 +282,17 @@ console.log('\n5. travelling to a moment');
   ok('and to the NEAREST one, not merely an earlier one',
      r.picked === '15:00' || r.picked === '14:59' || r.picked === '15:01',
      r.picked);
-  ok('the picker opens, and cannot ask for a date the archive lacks',
-     r.open && r.min === '2022-03-01', JSON.stringify({ o: r.open, m: r.min }));
+  // The floor moved: before March 2022 the machine reads the Level 2 tape
+  // mirror, so the picker now opens all the way back to 2008.
+  ok('the picker opens, back to the Level 2 tape era',
+     r.open && r.min === '2008-01-01', JSON.stringify({ o: r.open, m: r.min }));
   ok('nor for a date in the future',
      r.max === new Date().toISOString().slice(0, 10), r.max);
   ok('with quick jumps, which is how anyone actually travels',
      r.quickJumps >= 8, String(r.quickJumps));
   ok('and it says how far back it reaches, and which radar',
-     /2022-03-01/.test(r.note) && /KTLX/.test(r.note), r.note.slice(0, 90));
+     /2008-01-01/.test(r.note) && /KTLX/.test(r.note)
+     && /Level 2/.test(r.note), r.note.slice(0, 90));
   // Opened from the radar row (the no-argument default is the radar scope),
   // the machine drives the radar alone now - the satellite has its own - so
   // with no site picked the ask is for a radar, specifically.

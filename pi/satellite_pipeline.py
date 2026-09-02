@@ -49,21 +49,24 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from gfs_pipeline import (HTTP, MAX_EDGE_PX, bounds_from, disk_ok,  # noqa: E402
-                          free_mb, hours_for_disk, log,
+from gfs_pipeline import (DISK_FLOOR_MB, HTTP, MAX_EDGE_PX,  # noqa: E402
+                          bounds_from, disk_ok, free_mb, log,
                           regrid_to_latlon, write_json)
 
 OUT_DIR = os.path.expanduser("~/wxdata/satellite")
 
 # How much history to keep on disk. This is what the page can loop over, so
-# it is the difference between a five frame flicker and a real animation. The
-# ceiling is the SD card, not the code: a CONUS composite is a few hundred KB.
-KEEP_HOURS = float(os.environ.get("GWCFC_SAT_KEEP_HOURS", "72"))
+# it is the difference between a five frame flicker and a real animation.
+# Ninety days now rather than three, by request: the window is the ambition
+# and the DISK is the policy. When the card tightens, prune retires the
+# oldest frames one at a time rather than collapsing the whole window, so
+# the archive is always as deep as the hardware allows.
+KEEP_HOURS = float(os.environ.get("GWCFC_SAT_KEEP_HOURS", "2160"))
 # A composite is a few hundred kilobytes and CONUS rebuilds every ten minutes,
-# so three days is about four hundred and thirty frames a product. The count
-# ceiling is the real budget: the window alone says nothing about how many
-# frames a faster sector produces inside it.
-MAX_FRAMES = int(os.environ.get("GWCFC_SAT_MAX_FRAMES", "500"))
+# so ninety days is about thirteen thousand frames a product. The count
+# ceiling is the guard against a fast mesoscale sector producing several
+# times that inside the same window.
+MAX_FRAMES = int(os.environ.get("GWCFC_SAT_MAX_FRAMES", "15000"))
 
 # GOES-East and GOES-West, as lists rather than single names.
 #
@@ -636,11 +639,6 @@ def prune(sector_dir, hours=KEEP_HOURS):
     if not os.path.isdir(sector_dir):
         return
     import shutil
-    # What the card can afford, not what was asked for. A composite is
-    # several bands reprojected into one PNG and they are the largest
-    # pictures this Pi writes, so the satellite folder is usually the first
-    # place a full disk shows up.
-    hours = hours_for_disk(sector_dir, hours)
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
     kept = []
     for d in sorted(os.listdir(sector_dir)):
@@ -657,10 +655,17 @@ def prune(sector_dir, hours=KEEP_HOURS):
             kept.append(full)
     # The window is not a budget on its own: a mesoscale sector rebuilding
     # every ten minutes produces four times what Full Disk does inside the
-    # same three days. Oldest first, so what goes is what is least missed.
+    # same window. Oldest first, so what goes is what is least missed.
     if MAX_FRAMES and len(kept) > MAX_FRAMES:
         for full in kept[:len(kept) - MAX_FRAMES]:
             shutil.rmtree(full, ignore_errors=True)
+        kept = kept[len(kept) - MAX_FRAMES:]
+    # The archive guard, replacing the old stepped ladder. The ladder would
+    # have collapsed a ninety day archive to one day the moment free space
+    # dipped; instead the oldest frames are retired one by one until the
+    # card breathes, so a tight disk shortens history from the far end only.
+    while len(kept) > 12 and free_mb(sector_dir) < DISK_FLOOR_MB * 2:
+        shutil.rmtree(kept.pop(0), ignore_errors=True)
 
 
 def _relist_frames(sector_dir, recipe_key):
