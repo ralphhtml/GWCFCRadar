@@ -40,6 +40,15 @@ console.log('\n1. the fixes are in the page');
      && PAGE.includes('No satellite imagery is archived for that moment.'));
   ok('the modal tells the truth about what a jump will do',
      /Choose a moment and the satellite switches on there/.test(PAGE));
+  ok('a travelled band routes to the Pi archive door, back to July 2017',
+     PAGE.includes('const SAT_ARC_FLOOR = Date.UTC(2017, 6, 10);')
+     && /function _goesArcOk\(\)/.test(PAGE)
+     && PAGE.includes('fetch(`${base}/sat/archive/index?${qs}`')
+     && PAGE.includes("if (_goesArcOk()) { _goesApplyFrames([]); _goesLoadArcFrames(); return; }"));
+  ok('the menu lights a product only while the layer is on, and a bubble tap flips nothing',
+     PAGE.includes('activeLayers.satellite && _goesProductId === p.id')
+     && PAGE.includes("el.classList.toggle('active', _getBubbleActive(b.id));")
+     && !/renderSubBubbles\(tab\) \{[\s\S]{0,1200}activeBubbles\[b\.id\] = !activeBubbles\[b\.id\]/.test(PAGE));
   const EM = String.fromCharCode(0x2014);
   ok('no em dashes here or in the page',
      !PAGE.includes(EM)
@@ -210,6 +219,107 @@ console.log('\n4. a moment the WMS archive does not hold is reported once');
   ok('the same journey is not nagged twice', r.stillOnce === 1, String(r.stillOnce));
   ok('one loaded tile means the archive is fine', r.healthy === 1, String(r.healthy));
   ok('and a live layer is never watched', r.live === 1, String(r.live));
+  ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
+}
+
+console.log('\n5. a travelled band asks NOAA\'s archive through the Pi, and falls back honestly');
+{
+  const r = await p.evaluate(async () => {
+    const sleep = ms => new Promise(res => setTimeout(res, ms));
+    const out = {};
+    const realFetch = window.fetch, realBase = _hdBase;
+    _hdBase = 'http://pi.test';
+    const calls = [];
+    const at = Date.UTC(2023, 4, 30, 12, 33);
+    window.fetch = async (url) => {
+      calls.push(String(url));
+      if (/\/sat\/archive\/index/.test(url)) {
+        const frames = [];
+        for (let i = 5; i >= 0; i--) {
+          frames.push({ t: at - i * 300000, stamp: 's' + i,
+            key: `ABI-L2-CMIPC/2023/150/12/OR_ABI-L2-CMIPC-M6C13_G16_s2023150120${i}172_e20231501203556_c20231501204056.nc` });
+        }
+        return new Response(JSON.stringify({ bucket: 'noaa-goes16',
+          bounds: [[14.5, -152.1], [56.8, -52.9]], frames }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response('', { status: 404 });
+    };
+    _goesProductId = 'ch13';
+    _tmSatAt = at;
+    activeLayers.satellite = true;
+    _reloadGoesIfActive();
+    await sleep(400);
+    out.n = goesFrames.length;
+    out.piUrls = goesFrames.every(f =>
+      /pi\.test\/sat\/archive\/frame\?bucket=noaa-goes16&key=ABI/.test(f.url));
+    out.bounds = goesFrames[0] ? JSON.stringify(goesFrames[0].bounds) : '';
+    out.ascending = goesFrames.every((f, i) => !i || f.time >= goesFrames[i - 1].time);
+    out.indexQs = (calls.find(c => /archive\/index/.test(c)) || '').split('?')[1] || '';
+    // NOAA has nothing archived there: the WMS path takes over, with a word.
+    const toasts = [];
+    const realToast = window.showToast;
+    window.showToast = t => toasts.push(String(t));
+    window.fetch = async () => new Response('{"error":"none"}', { status: 404 });
+    _reloadGoesIfActive();
+    await sleep(400);
+    out.fallbackN = goesFrames.length;
+    out.fallbackWms = goesFrames.every(f => !f.url && f.timeStr);
+    out.fallbackToast = toasts.join(' | ');
+    window.showToast = realToast;
+    window.fetch = realFetch; _hdBase = realBase;
+    _tmSatAt = null; _disableSatellite();
+    return out;
+  });
+  ok('the frames come from the Pi archive door, oldest first, with their rectangle',
+     r.n === 6 && r.piUrls && r.ascending && /14\.5/.test(r.bounds), JSON.stringify(r));
+  ok('the index was asked for band 13, east CONUS, at the moment',
+     /post=east&band=13&sector=conus&at=\d+&n=\d+/.test(r.indexQs), r.indexQs);
+  ok('with nothing archived the WMS frames take over and the person is told',
+     r.fallbackN > 4 && r.fallbackWms && /NOAA has no scan archived/.test(r.fallbackToast),
+     JSON.stringify({ n: r.fallbackN, wms: r.fallbackWms, t: r.fallbackToast }));
+}
+
+console.log('\n6. tapping Satellite lights nothing until a product is picked');
+{
+  const r = await p.evaluate(async () => {
+    const sleep = ms => new Promise(res => setTimeout(res, ms));
+    const out = {};
+    _disableSatellite();
+    renderSubBubbles('regular');
+    document.getElementById('sub-satellite').click();
+    await sleep(200);
+    out.layerOn = !!activeLayers.satellite;
+    const lit = () => [...document.querySelectorAll('#sub-bubbles .sub-bubble.active')]
+      .map(el => el.textContent.trim()).filter(t => !/^Back/.test(t));
+    out.kindsLit = lit();
+    // Find the kind whose categories include the infrared bands.
+    let found = false;
+    for (const k of [...document.querySelectorAll('#sub-bubbles [data-sat-kind]')]) {
+      k.click(); await sleep(150);
+      if (document.querySelector('#sub-bubbles [data-sat-cat="ir"]')) { found = true; break; }
+      const bk = document.querySelector('#sub-bubbles .sb-back');
+      if (bk) { bk.click(); await sleep(150); }
+    }
+    out.catsLit = lit();
+    if (found) {
+      document.querySelector('#sub-bubbles [data-sat-cat="ir"]').click();
+      await sleep(150);
+    }
+    out.prodsLit = lit();
+    out.stillOff = !activeLayers.satellite;
+    const prod = document.querySelector('#sub-bubbles [data-product-id="ch13"]');
+    if (prod) { prod.click(); await sleep(200); }
+    out.onAfterPick = !!activeLayers.satellite;
+    out.prodLitAfterPick = !!(prod && prod.classList.contains('active'));
+    _disableSatellite(); renderSubBubbles('regular');
+    return out;
+  });
+  ok('the layer stays off and nothing is lit, three levels down',
+     !r.layerOn && r.kindsLit.length === 0 && r.catsLit.length === 0
+     && r.prodsLit.length === 0 && r.stillOff, JSON.stringify(r));
+  ok('picking a product is what switches it on, and lights it',
+     r.onAfterPick && r.prodLitAfterPick, JSON.stringify(r));
   ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
 }
 

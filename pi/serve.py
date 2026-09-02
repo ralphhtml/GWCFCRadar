@@ -107,6 +107,12 @@ SOUNDING_WORKERS = int(os.environ.get("GWCFC_SND_WORKERS", "2"))
 SOUNDING_QUEUE_WAIT_S = 25.0
 _sounding_gate = threading.Semaphore(SOUNDING_WORKERS)
 
+# The satellite archive renders a scan from a raw NetCDF on demand, which is
+# a few megabytes of download and a few seconds of numpy. Same shape of gate.
+SAT_WORKERS = int(os.environ.get("GWCFC_SAT_WORKERS", "2"))
+SAT_QUEUE_WAIT_S = 40.0
+_sat_gate = threading.Semaphore(SAT_WORKERS)
+
 # sounding_service.py lives beside this file. Python already puts a script's
 # own directory on the path, but a systemd unit can be started in ways that do
 # not, and "no soundings" is a confusing symptom for a path problem.
@@ -249,7 +255,7 @@ class CORSHandler(SimpleHTTPRequestHandler):
         self.send_response(204)
         self.end_headers()
 
-    # Two read-side doors; every other GET is plain file serving.
+    # The read-side doors; every other GET is plain file serving.
     def do_GET(self):
         head = self.path.split("?")[0]
         if head == "/relay/ambient":
@@ -257,6 +263,12 @@ class CORSHandler(SimpleHTTPRequestHandler):
             return
         if head == "/relay/ncei":
             self._relay_ncei()
+            return
+        if head == "/sat/archive/index":
+            self._sat_archive_index()
+            return
+        if head == "/sat/archive/frame":
+            self._sat_archive_frame()
             return
         if head == "/sounding/sources":
             self._sounding_sources()
@@ -320,6 +332,127 @@ class CORSHandler(SimpleHTTPRequestHandler):
             while len(_ncei_cache) > NCEI_CACHE_MAX:
                 _ncei_cache.pop(next(iter(_ncei_cache)))
         self._reply_raw(200, body)
+
+    # ── The satellite archive doors ────────────────────────────────────────
+    # GET /sat/archive/index and /sat/archive/frame, both backed by
+    # sat_archive.py beside this file. Every field is checked against a shape
+    # and the S3 key against NOAA's exact filename pattern, so this can only
+    # ask NOAA's four GOES buckets for one kind of file. Rendering a scan is
+    # a few seconds of real work, so it is gated like the soundings are.
+    def _sat_query(self):
+        from urllib.parse import parse_qs, urlparse
+        q = parse_qs(urlparse(self.path).query)
+        return lambda name: (q.get(name, [""]) or [""])[0].strip()
+
+    def _sat_cache_dir(self):
+        return os.path.join(getattr(self, "directory", None)
+                            or os.path.expanduser("~/wxdata"), "satellite", "archive")
+
+    def _sat_archive_index(self):
+        """GET /sat/archive/index?post=east|west&band=13&sector=conus|fulldisk&at=<ms>&n=24"""
+        try:
+            import sat_archive
+        except Exception as e:
+            self._reply_json(501, {"error": f"sat_archive.py is not beside serve.py ({e})"})
+            return
+        one = self._sat_query()
+        post, sector = one("post"), one("sector")
+        if post not in ("east", "west"):
+            self._reply_json(400, {"error": "post must be east or west"})
+            return
+        if sector not in sat_archive.SECTOR_PRODUCT:
+            self._reply_json(400, {"error": "sector must be conus or fulldisk"})
+            return
+        try:
+            band = int(one("band"))
+            at = int(one("at"))
+            n = max(1, min(60, int(one("n") or "24")))
+        except ValueError:
+            self._reply_json(400, {"error": "band, at and n must be numbers"})
+            return
+        if not 1 <= band <= 16:
+            self._reply_json(400, {"error": "band must be 1 to 16"})
+            return
+        now_ms = int(time.time() * 1000)
+        if not 1483228800000 <= at <= now_ms + 3600000:
+            self._reply_json(400, {"error": "at must be a moment since 2017"})
+            return
+        got = sat_archive.frames_around(post, band, sector, at, n)
+        if got is None:
+            self._reply_json(404, {"error": f"no satellite stood at {post} on that date"})
+            return
+        if not got["frames"]:
+            self._reply_json(404, {"error": "NOAA has no scan archived for that moment"})
+            return
+        # The newest frame is rendered now so the rectangle is known and the
+        # first picture is instant; the rest render as the loop asks for them.
+        newest = got["frames"][-1]
+        if not _sat_gate.acquire(timeout=SAT_QUEUE_WAIT_S):
+            self._reply_json(503, {"error": "the archive is busy, try again shortly"})
+            return
+        try:
+            _png, bounds = sat_archive.render(got["bucket"], newest["key"], band, sector,
+                                              self._sat_cache_dir())
+        except Exception as e:
+            self._reply_json(502, {"error": f"could not render that scan ({e})"})
+            return
+        finally:
+            _sat_gate.release()
+        self._reply_json(200, {"post": post, "bucket": got["bucket"], "band": band,
+                               "sector": sector, "at": at, "bounds": bounds,
+                               "frames": got["frames"]})
+
+    def _sat_archive_frame(self):
+        """GET /sat/archive/frame?bucket=&key=&band=&sector= -> image/png"""
+        try:
+            import sat_archive
+        except Exception as e:
+            self._reply_json(501, {"error": f"sat_archive.py is not beside serve.py ({e})"})
+            return
+        one = self._sat_query()
+        bucket, key, sector = one("bucket"), one("key"), one("sector")
+        if bucket not in sat_archive.BUCKETS:
+            self._reply_json(400, {"error": "unknown bucket"})
+            return
+        if not sat_archive.KEY_RE.match(key):
+            self._reply_json(400, {"error": "key is not a GOES scan"})
+            return
+        if sector not in sat_archive.SECTOR_PRODUCT:
+            self._reply_json(400, {"error": "sector must be conus or fulldisk"})
+            return
+        try:
+            band = int(one("band"))
+        except ValueError:
+            self._reply_json(400, {"error": "band must be a number"})
+            return
+        if not 1 <= band <= 16:
+            self._reply_json(400, {"error": "band must be 1 to 16"})
+            return
+        if not _sat_gate.acquire(timeout=SAT_QUEUE_WAIT_S):
+            self._reply_json(503, {"error": "the archive is busy, try again shortly"})
+            return
+        try:
+            png, _bounds = sat_archive.render(bucket, key, band, sector, self._sat_cache_dir())
+            with open(png, "rb") as fh:
+                body = fh.read()
+        except Exception as e:
+            self._reply_json(502, {"error": f"could not render that scan ({e})"})
+            return
+        finally:
+            _sat_gate.release()
+        self._reply_bytes(200, body, "image/png")
+
+    def _reply_bytes(self, code, body, ctype):
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        # An archived scan never changes.
+        self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except OSError:
+            pass
 
     def _sounding_sources(self):
         """GET /sounding/sources -> what this Pi can build a sounding from.
