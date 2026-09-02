@@ -4,11 +4,13 @@
  *
  *     node tools/test-dms.mjs
  *
- * The privacy is the Firestore rules, so section 1 reads them the way a
- * reviewer would: membership provable from the thread id alone, anonymous
- * sign-ins shut out, message shape pinned, membership frozen after create.
- * The browser half drives the furniture: the modal, the signed-out answer,
- * the pair-id arithmetic, and the tap-a-chat-name door.
+ * The console rules are frozen, so the privacy is now the cryptography:
+ * every thread is sealed in the browser (ECDH key agreement, AES-GCM)
+ * before it is stored in collections the published rules already allow.
+ * Section 1 pins that shape into the page; section 2 keeps the unpublished
+ * dms rules honest as OPTIONAL hardening for later; the browser half
+ * drives the furniture and proves the crypto round-trips, rejects
+ * tampering, and refuses the wrong key.
  */
 
 import { readFileSync } from 'node:fs';
@@ -26,7 +28,30 @@ const ok = (name, cond, extra) => {
   else { fail++; console.log('  FAIL ' + name + (extra ? '  <' + extra + '>' : '')); }
 };
 
-console.log('\n1. the rules are the privacy');
+console.log('\n1. the crypto is the privacy, on rules already published');
+{
+  ok('threads are sealed blobs in modelCache, named for their pair',
+     PAGE.includes("collection('modelCache').doc(threadId)")
+     && PAGE.includes("'dmt_' + _dmPairId("));
+  ok('the directory (public keys included) rides chatBridge',
+     PAGE.includes("doc('dmpub_' + "));
+  ok('the sealing is ECDH key agreement into AES-GCM',
+     /namedCurve: 'P-256'/.test(PAGE) && /AES-GCM/.test(PAGE));
+  ok('the private key lives in the one doc only its owner can read',
+     PAGE.includes('dmPriv') && PAGE.includes('dmPeers'));
+  ok('nothing points at the unpublished collections any more',
+     !PAGE.includes("collection('dms')")
+     && !PAGE.includes("collection('dmDirectory')"));
+  ok('a changed peer key is detected and surfaced, not silently trusted',
+     PAGE.includes('_dmcChanged') && PAGE.includes('_dmcTrust'));
+  ok('the sealed field is trimmed under the published 400k cap',
+     /length > 280000/.test(PAGE));
+  ok('the query sentinels are written as escapes, not invisible bytes',
+     PAGE.split('\\uf8ff').length === 3
+     && !PAGE.includes(String.fromCharCode(0xf8ff)));
+}
+
+console.log('\n2. the unpublished rules stay honest, as optional hardening');
 {
   ok('membership is provable from the thread id alone',
      RULES.includes("request.auth.uid in threadId.split('__')"));
@@ -43,10 +68,11 @@ console.log('\n1. the rules are the privacy');
   ok('messages cannot be edited, only taken back by their author',
      /match \/messages\/\{msgId\}[\s\S]*?allow update: if false;[\s\S]*?request\.auth\.uid == resource\.data\.from/.test(RULES));
   ok('the directory row is self-written, name and avatar only',
-     RULES.includes("match /dmDirectory/{uid}")
+     RULES.includes('match /dmDirectory/{uid}')
      && RULES.includes("hasOnly(['name', 'nameLower',"));
-  ok('and the rules handbook explains the block',
-     /DIRECT MESSAGES/.test(RULES_DOC) && /dmDirectory/.test(RULES_DOC));
+  ok('and the handbook says plainly these blocks are not in use yet',
+     /DIRECT MESSAGES/.test(RULES_DOC) && /dmDirectory/.test(RULES_DOC)
+     && /does NOT currently use/.test(RULES_DOC));
   ok('the panel and the chat both open the door',
      /_dmOpen\(\)"><svg[^>]*><use href=#ic-mail><\/use><\/svg><span>Messages<\/span>/.test(PAGE)
      && /_dmFromChat\(/.test(PAGE));
@@ -92,7 +118,7 @@ await p.goto('file://' + join(ROOT, 'index.html'),
              { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(4200);
 
-console.log('\n2. the furniture works, signed out and in');
+console.log('\n3. the furniture works, signed out and in');
 {
   const r = await p.evaluate(() => {
     const out = {};
@@ -112,32 +138,33 @@ console.log('\n2. the furniture works, signed out and in');
   ok('and close means close', r.closed);
 }
 
-console.log('\n3. a chat name is the door to a conversation');
+console.log('\n4. two accounts derive one secret; nobody else opens a word');
 {
-  const r = await p.evaluate(() => {
+  const r = await p.evaluate(async () => {
     const out = {};
-    const hits = [];
-    const orig = window._dmFromChat;
-    window._dmFromChat = i => hits.push(i);
-    _chatMsgs = [
-      { name: 'Storm Fan', uid: 'uidOther', source: 'radar', text: 'hi', ts: Date.now() },
-      { name: 'Bridge Bot', source: 'discord', text: 'relay', ts: Date.now() },
-    ];
-    _chatRender();
-    const names = [...document.querySelectorAll('#lqm-chat-msgs .chat-name')];
-    out.able = names[0] && names[0].classList.contains('dm-able');
-    out.discordPlain = names[1] && !names[1].classList.contains('dm-able');
-    if (names[0]) names[0].click();
-    out.hits = hits.slice();
-    window._dmFromChat = orig;
-    _chatMsgs = [];
+    const mk = () => crypto.subtle.generateKey(
+      { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey']);
+    const pair = (priv, pub) => crypto.subtle.deriveKey(
+      { name: 'ECDH', public: pub }, priv,
+      { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    const A = await mk(), B = await mk(), C = await mk();
+    const kAB = await pair(A.privateKey, B.publicKey);
+    const kBA = await pair(B.privateKey, A.publicKey);
+    const kCB = await pair(C.privateKey, B.publicKey);
+    const sealed = await _dmcSeal(kAB, { msgs: [{ text: 'hello from A' }] });
+    out.opaque = !sealed.includes('hello') && /^[A-Za-z0-9+/=]+\.[A-Za-z0-9+/=]+$/.test(sealed);
+    const opened = await _dmcOpen(kBA, sealed);
+    out.roundtrip = !!(opened && opened.msgs && opened.msgs[0].text === 'hello from A');
+    out.tampered = (await _dmcOpen(kBA,
+      sealed.slice(0, -8) + 'AAAAAAAA')) === null;
+    out.wrongKey = (await _dmcOpen(kCB, sealed)) === null;
     return out;
   });
-  ok('a radar author’s name is tappable', r.able);
-  ok('a Discord relay’s is not: there is no account behind it',
-     r.discordPlain);
-  ok('tapping it heads for that person’s thread',
-     r.hits.length === 1 && r.hits[0] === 0, JSON.stringify(r.hits));
+  ok('what is stored is ciphertext, not words', r.opaque);
+  ok('the other member derives the same key and reads the message',
+     r.roundtrip);
+  ok('a tampered blob opens to nothing, never to garbage', r.tampered);
+  ok('a third party with their own keys gets nothing', r.wrongKey);
   ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
 }
 

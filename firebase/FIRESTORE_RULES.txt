@@ -433,15 +433,26 @@ WHAT THESE RULES GUARANTEE
 
 DIRECT MESSAGES
 ---------------
-The dms and dmDirectory blocks power private messages between radar
-accounts. A thread's document id is the two account uids joined with two
-underscores, lower uid first, which is what lets the rules check membership
-without reading any document. Only real (non-anonymous) sign-ins can read,
-open or send DMs, and a thread's membership can never be changed after it is
-created, so mail can never be re-pointed at somebody else. The directory
-holds only a display name and avatar, published by each account about
-itself. These blocks must be published to the Firebase console with the
-rest of this file or the Messages panel reports permission denied.
+IMPORTANT: the live site does NOT currently use these blocks. The console
+rules could not be updated, so direct messages were rebuilt to run entirely
+on rules that are already published: conversations are end to end encrypted
+in the browser (ECDH key agreement plus AES-GCM) and stored as unreadable
+ciphertext in modelCache (thread docs named dmt_<uidA>__<uidB>), with each
+account's public key and display name in chatBridge (dmpub_<uid>) and its
+PRIVATE key kept in its own users/<uid> document, the one place only that
+account can read. Under that scheme the database never sees a readable
+word, which is what makes the frozen rules sufficient.
+
+The dms and dmDirectory blocks below remain in this file as optional
+hardening for the day the rules CAN be published again: they add
+database-level access control on top. A thread's document id is the two
+account uids joined with two underscores, lower uid first, which is what
+lets the rules check membership without reading any document. Only real
+(non-anonymous) sign-ins can read, open or send DMs, and a thread's
+membership can never be changed after it is created, so mail can never be
+re-pointed at somebody else. The directory holds only a display name and
+avatar, published by each account about itself. Publishing them changes
+nothing for the current encrypted engine; they simply wait.
 
 
 CHANGING THE OWNER EMAIL
