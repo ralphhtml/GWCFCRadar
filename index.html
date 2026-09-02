@@ -173,6 +173,11 @@ html.ios-lite *, html.ios-lite *::before, html.ios-lite *::after {
 }
 html.ios-lite .leaflet-marker-icon,
 html.ios-lite .leaflet-marker-icon img { filter: none !important; }
+/* Leaflet's own stylesheet promotes every zoom-animated element (each tile
+   level, every image overlay, every canvas) to its own GPU layer for the
+   length of a zoom. A 3200 pixel overlay as a texture is 20 MB; several at
+   once is the pinch that ends the tab. */
+html.ios-lite .leaflet-zoom-anim .leaflet-zoom-animated { will-change: auto !important; }
 
 /* Contain repaints inside panels so they don't trigger full-page layout */
 #lqm-settings-overlay, #top-search-bar,
@@ -11098,6 +11103,10 @@ const _isIOS = (/iPad|iPhone|iPod/.test(navigator.userAgent)
   || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
   && !window.MSStream;
 if (_isIOS) { try { document.documentElement.classList.add('ios-lite'); } catch (e) {} }
+// A phone and a tablet are not the same budget: an iPhone has a fraction of
+// an iPad's memory, and Safari reports neither. The short side of the screen
+// tells them apart; every iPad is at least 744 CSS pixels across.
+const _iosPhone = _isIOS && Math.min(screen.width || 0, screen.height || 0) < 700;
 
 // ══════════════════════════════════════════════════════════════════════════
 // ── SCROLL AND PINCH ZOOM ─────────────────────────────────────────────────
@@ -11196,6 +11205,13 @@ function _wireWheelZoom(m) {
 
 // ── INIT MAP ──
 function initMap() {
+  // iOS: Leaflet draws every canvas renderer at two device pixels per CSS
+  // pixel when it believes the screen is retina, which quadruples the backing
+  // store of the alert, border and track canvases. One flag turns that off,
+  // and the @2x tile and icon variants with it. Tile fades and marker zoom
+  // animations go too: each promotes elements to their own compositing layer
+  // for the length of the animation, which is exactly when memory peaks.
+  if (_isIOS) { try { L.Browser.retina = false; } catch (e) {} }
   map = L.map('map', {
     center: [37.5, -96],
     zoom: 5,
@@ -11203,6 +11219,8 @@ function initMap() {
     attributionControl: true,
     maxBounds: [[-90, -180], [90, 180]],
     maxBoundsViscosity: 1.0,
+    fadeAnimation: !_isIOS,
+    markerZoomAnimation: !_isIOS,
     // Fractional zoom, so the map can sit between whole levels and a scroll
     // feels continuous rather than stepping. This is also what made the
     // trackpad almost useless until _wireWheelZoom below took the wheel over.
@@ -11730,7 +11748,7 @@ function _poolWindow(idx) {
   // now actually evicts frames that fall out of range, so keeping this
   // window small is cheap rather than just deferring the same growth.
   if (_isIOS) {
-    const sz = 6, half = 3;
+    const sz = _iosPhone ? 4 : 6, half = _iosPhone ? 2 : 3;
     let s = Math.max(0, idx - half);
     let e = Math.min(n - 1, s + sz - 1);
     s = Math.max(0, e - sz + 1);
@@ -23959,7 +23977,9 @@ let _mrmsLoop = { frames: [], idx: -1, key: null, base: null };
 // playing forward never waits, small enough that nine hundred image layers
 // are never alive at once - which is the same memory problem the radar tile
 // pool had, one scale further up.
-const MRMS_WINDOW = _isIOS ? 6 : 14;
+// On iOS the warm-up images are national composites up to 3200 pixels wide,
+// which the browser may well decode as they arrive; two or three is plenty.
+const MRMS_WINDOW = _isIOS ? (_iosPhone ? 2 : 3) : 14;
 
 function _mrmsLoopActive() { return _mrmsLoop.frames.length > 1; }
 
@@ -25277,6 +25297,9 @@ async function _sstLoadFrame(stamp) {
   const ctx = cv.getContext('2d', { willReadFrequently: true });
   ctx.drawImage(img, 0, 0);
   const px = ctx.getImageData(0, 0, w, h);
+  // The numbers are in px now; the canvas store goes back at once rather
+  // than when the collector notices (a global grid is 20 MB of it).
+  cv.width = cv.height = 0;
   const d = px.data;
   const [lo, hi] = meta.range || [-8, 8];
   const span = (hi - lo) || 1;
@@ -25373,6 +25396,8 @@ function _sstMercReproject(cv, bounds) {
     src = Math.max(0, Math.min(h - 1, src));
     ctx.drawImage(cv, 0, src, w, 1, 0, j, w, 1);
   }
+  // The grid-space picture has been resampled into out; release it now.
+  try { cv.width = cv.height = 0; } catch (e) {}
   return out;
 }
 
@@ -25388,6 +25413,7 @@ async function _sstCutLand(cv, bounds) {
     ctx.globalCompositeOperation = 'destination-out';
     ctx.drawImage(mask, 0, 0);
     ctx.globalCompositeOperation = 'source-over';
+    try { mask.width = mask.height = 0; } catch (e) {}
   } catch (e) { console.warn('[sst] land mask:', e); }
   return cv;
 }
@@ -25414,6 +25440,9 @@ async function _sstShow(idx) {
     const cv = _sstMercReproject(_sstColorize(frame), frame.bounds);
     await _sstCutLand(cv, _sstDisplayBounds(frame.bounds));
     url = _pbBlob(cv.toDataURL('image/png'));
+    // The PNG is the picture from here on; the canvas is 20 MB of store
+    // that nothing reads again.
+    try { cv.width = cv.height = 0; } catch (e) {}
     _sstBlobs.set(stamp, url);
     // A day is about a megabyte coloured. Holding a season of them is not
     // worth it when re-colouring one costs a few milliseconds.
@@ -27925,7 +27954,7 @@ let _goesPoolLoaded = [];
 // A Pi composite frame is a picture up to 3200 pixels on its long side, some
 // 25 MB once decoded, and every pooled frame is decoded because it is an
 // attached overlay. Three is the most a phone can hold beside the basemap.
-const GOES_POOL_MAX = _isIOS ? 3 : 12;
+const GOES_POOL_MAX = _isIOS ? (_iosPhone ? 2 : 3) : 12;
 
 function _goesPoolWindow(idx) {
   const n = goesFrames.length;
@@ -38535,19 +38564,19 @@ function _inspSampleRadarColor(cx, cy) {
   if (!found) return null;
   try {
     const rect = found.getBoundingClientRect();
-    const canvas = document.createElement('canvas');
-    canvas.width = found.naturalWidth;
-    canvas.height = found.naturalHeight;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(found, 0, 0);
-    let x = Math.round((cx - rect.left) / rect.width * found.naturalWidth);
-    let y = Math.round((cy - rect.top) / rect.height * found.naturalHeight);
-    x = Math.max(0, Math.min(canvas.width - 1, x));
-    y = Math.max(0, Math.min(canvas.height - 1, y));
-    const d = ctx.getImageData(x, y, 1, 1).data;
+    // Through the shared pixel cache: this used to allocate a canvas the
+    // size of the whole tile on EVERY read, and a city-label pass reads
+    // ninety times per pan.
+    const c = _inspPixelCanvas(found);
+    let x = Math.round((cx - rect.left) / rect.width * c.w);
+    let y = Math.round((cy - rect.top) / rect.height * c.h);
+    x = Math.max(0, Math.min(c.w - 1, x));
+    y = Math.max(0, Math.min(c.h - 1, y));
+    const d = c.ctx.getImageData(x, y, 1, 1).data;
     if (d[3] < 10) return { transparent: true };
     return { r: d[0], g: d[1], b: d[2] };
   } catch (e) {
+    _inspPxForget(found);
     return { tainted: true }; // CORS-tainted canvas - can't read these pixels
   }
 }
@@ -38615,19 +38644,18 @@ function _inspSampleColorFrom(container, cx, cy) {
   if (!found) return null;
   try {
     const rect = found.getBoundingClientRect();
-    const canvas = document.createElement('canvas');
-    canvas.width = found.naturalWidth;
-    canvas.height = found.naturalHeight;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(found, 0, 0);
-    let x = Math.round((cx - rect.left) / rect.width * found.naturalWidth);
-    let y = Math.round((cy - rect.top) / rect.height * found.naturalHeight);
-    x = Math.max(0, Math.min(canvas.width - 1, x));
-    y = Math.max(0, Math.min(canvas.height - 1, y));
-    const d = ctx.getImageData(x, y, 1, 1).data;
+    // Same shared pixel cache as the radar sampler, for the same reason: a
+    // 3200 pixel satellite or model image is 20 MB of canvas per read.
+    const c = _inspPixelCanvas(found);
+    let x = Math.round((cx - rect.left) / rect.width * c.w);
+    let y = Math.round((cy - rect.top) / rect.height * c.h);
+    x = Math.max(0, Math.min(c.w - 1, x));
+    y = Math.max(0, Math.min(c.h - 1, y));
+    const d = c.ctx.getImageData(x, y, 1, 1).data;
     if (d[3] < 10) return { transparent: true };
     return { r: d[0], g: d[1], b: d[2] };
   } catch (e) {
+    _inspPxForget(found);
     return { tainted: true };
   }
 }
@@ -38805,20 +38833,45 @@ function _inspModelsRow(cx, cy) {
 // crawl. Measured: 4,672 ms for ninety reads that way, against 16.5 ms with
 // one canvas kept. The picture only changes when the frame does, so it is
 // drawn once and then read as many times as anyone likes.
-let _inspPxCache = null;
+//
+// A few slots rather than one: the Inspector and the city labels read radar
+// tiles, satellite, model and NWS images in turn, and a single slot thrashed
+// between them, allocating and abandoning an image-sized canvas on every
+// read. An evicted canvas is zeroed so its store goes back at once; WebKit
+// counts every live canvas against one hard ceiling and frees an abandoned
+// one only when the collector gets round to it, which on a phone is too late.
+const INSP_PX_MAX = 4;
+let _inspPxCache = new Map();
+function _inspPxKey(img) { return (img.currentSrc || img.src) + '|' + img.naturalWidth; }
+function _inspPxDropEntry(e) {
+  try { e.ctx.canvas.width = e.ctx.canvas.height = 0; } catch (err) {}
+}
+function _inspPxForget(img) {
+  const k = _inspPxKey(img);
+  const e = _inspPxCache.get(k);
+  if (e) { _inspPxDropEntry(e); _inspPxCache.delete(k); }
+}
+function _inspPxClear() {
+  _inspPxCache.forEach(_inspPxDropEntry);
+  _inspPxCache.clear();
+}
 function _inspPixelCanvas(img) {
-  const src = img.currentSrc || img.src;
-  if (_inspPxCache && _inspPxCache.src === src
-      && _inspPxCache.w === img.naturalWidth) {
-    return _inspPxCache;
-  }
+  const k = _inspPxKey(img);
+  const hit = _inspPxCache.get(k);
+  if (hit) { _inspPxCache.delete(k); _inspPxCache.set(k, hit); return hit; }
   const canvas = document.createElement('canvas');
   canvas.width = img.naturalWidth;
   canvas.height = img.naturalHeight;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   ctx.drawImage(img, 0, 0);
-  _inspPxCache = { src, ctx, w: img.naturalWidth, h: img.naturalHeight };
-  return _inspPxCache;
+  const e = { src: img.currentSrc || img.src, ctx, w: img.naturalWidth, h: img.naturalHeight };
+  _inspPxCache.set(k, e);
+  while (_inspPxCache.size > INSP_PX_MAX) {
+    const oldest = _inspPxCache.keys().next().value;
+    _inspPxDropEntry(_inspPxCache.get(oldest));
+    _inspPxCache.delete(oldest);
+  }
+  return e;
 }
 
 function _inspReadOverlayPixel(img, cx, cy) {
@@ -38837,7 +38890,7 @@ function _inspReadOverlayPixel(img, cx, cy) {
   } catch (e) {
     // A tainted canvas stays tainted, and caching it would mean every later
     // read paid the draw again to fail the same way.
-    _inspPxCache = null;
+    _inspPxForget(img);
     return { tainted: true };
   }
 }
@@ -42069,10 +42122,11 @@ let _l3Canvas   = null;   // offscreen HTMLCanvasElement
 // URL, tens of megabytes for a large sweep, and this page already crashed iOS
 // once by letting radar frames pile up. Six is two or three stations' worth of
 // products, which covers going back and forth, and the oldest is dropped.
-// iOS keeps two: each entry also holds the decoded mesh, which for a long
-// range Level 2 sweep is tens of megabytes of typed arrays, and two covers
-// the back-and-forth between a pair of products without the pile-up.
-const L3_PIC_MAX = _isIOS ? 2 : 6;
+// iOS keeps one: each entry also holds the decoded mesh, which for a long
+// range Level 2 sweep is tens of megabytes of typed arrays. Coming back to
+// a second product costs a re-decode there, which is slow; the pile-up
+// costs the tab, which is worse.
+const L3_PIC_MAX = _isIOS ? 1 : 6;
 // How long a cached picture is still the LIVE picture. A radar completes a
 // volume every four to six minutes, so inside three minutes the cached frame
 // is almost always still the newest one. Past that it is still shown instantly,
@@ -42118,6 +42172,7 @@ function _l3PicPut(station, product, tilt, img, result, reqTilt) {
 function _memShed() {
   try { _l3Pic.clear(); } catch (e) {}
   try { if (typeof _mrmsWarmed !== 'undefined') _mrmsWarmed.clear(); } catch (e) {}
+  try { if (typeof _inspPxClear === 'function') _inspPxClear(); } catch (e) {}
 }
 if (_isIOS) {
   document.addEventListener('visibilitychange', () => {
@@ -42755,7 +42810,9 @@ function _l2LoopMax() {
       if (t === '3g') return 8;
     }
   } catch (e) {}
-  return _isIOS ? 12 : 20;       // one hour on a phone, over an hour and a half elsewhere
+  // Forty minutes on a phone, fifty on a tablet, over an hour and a half
+  // elsewhere: every frame shown stays decoded in the image cache.
+  return _isIOS ? (_iosPhone ? 8 : 10) : 20;
 }
 const L2_LOOP_MAX = _l2LoopMax();
 let _l2Loop = { frames: [], idx: 0, station: null, product: null,
@@ -42952,10 +43009,12 @@ function _pbFrameBudget() {
   let mb;
   const gb = (typeof navigator !== 'undefined' && navigator.deviceMemory) || 0;
   if (_isIOS) {
-    // The platform that actually fell over before, so it keeps the most
-    // headroom back. deviceMemory is absent on Safari, which is why the
-    // unknown case here is the careful one rather than the middle one.
-    mb = gb >= 6 ? 110 : gb >= 4 ? 80 : 50;
+    // The platform that actually fell over. PB_FRAME_MB is the ENCODED size
+    // of a frame; what a phone actually pays while a loop plays is the
+    // decoded picture of every frame it has shown, ten times that. So the
+    // budget here is written straight as a frame count: 16 on a phone, 24 on
+    // a tablet (deviceMemory is absent on Safari, so the screen decides).
+    mb = (_iosPhone ? 16 : 24) * PB_FRAME_MB;
   } else if (gb >= 16)     mb = 300;
   else if (gb >= 8)        mb = 200;
   else if (gb >= 4)        mb = 120;
@@ -43768,10 +43827,11 @@ function _meshToImage(result, product, forceBounds) {
   var _devGB = (typeof navigator !== 'undefined' && navigator.deviceMemory) || 4;
   var MESH_MAX_PX;
   if (typeof _isIOS !== 'undefined' && _isIOS) {
-    // iPhones hold a decoded canvas per loop frame and are the platform that
-    // actually fell over, so they get the most headroom back but not all of
-    // it. 1800 is 13 MB a frame against 1200's 5.8 MB.
-    MESH_MAX_PX = _devGB >= 6 ? 2048 : 1800;
+    // The platform that actually fell over. Every loop frame shown is a
+    // decoded picture of this size held by the browser's image cache, and
+    // Safari never reports memory, so the screen decides: 1200 is 5.8 MB a
+    // frame on a phone, 1600 is 10 MB on a tablet, against 1800's 13 MB.
+    MESH_MAX_PX = _iosPhone ? 1200 : 1600;
   } else {
     MESH_MAX_PX = _devGB >= 8 ? 3072 : _devGB >= 4 ? 2560 : 1800;
   }
@@ -61045,6 +61105,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-02-g', date: 'Sep 2, 2026',
+    text: 'iPhone and iPad crash fix, round two. Testing showed the first round cut the crashes but did not end them, so every remaining memory budget has been tightened and split into a phone tier and a tablet tier: radar loops keep fewer frames at a gentler resolution, satellite and MRMS hold two or three frames instead of more, the map stops drawing its line layers at double density on Apple screens, the spare 20 MB drawing surfaces behind the sea temperature layer and the Inspector are now freed the instant they are used instead of whenever the browser got around to it, and the map effects that push every layer onto the graphics chip during a pinch are switched off.' },
   { id: '2026-09-02-f', date: 'Sep 2, 2026',
     text: 'iPhone and iPad crash fix. Safari on Apple devices gives a page a hard memory ceiling and reloads it with "a problem repeatedly occurred" when the map goes past it. Every cause found has been closed: iPads were being treated as desktop computers and given desktop memory budgets; a pinch zoom loaded a fresh set of map tiles at every zoom level it passed through and kept all of them; each radar picture kept a spare 15 MB drawing surface alive for nothing; satellite tiles were fetched at four times the pixels; and the map effects that push every tile onto the graphics chip are now switched off on Apple devices. The site should feel lighter there too.' },
   { id: '2026-09-02-e', date: 'Sep 2, 2026',
