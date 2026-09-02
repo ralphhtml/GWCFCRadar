@@ -128,12 +128,14 @@ console.log('\n5. the city labels, and the cost that sank the first attempt');
   // was 4,672 ms of redrawing, measured, against 16.5 ms once cached.
   ok('the pixel canvas is kept rather than rebuilt per read',
      /function _inspPixelCanvas\(img\)/.test(PAGE));
+  // Keyed on the picture's address and width, a few slots deep, so the
+  // radar, satellite, model and NWS readers stop evicting one another.
   ok('and it is reused only while the picture is the same one',
-     /_inspPxCache\.src === src/.test(PAGE)
-     && /_inspPxCache\.w === img\.naturalWidth/.test(PAGE));
+     /function _inspPxKey\(img\) \{ return \(img\.currentSrc \|\| img\.src\) \+ '\|' \+ img\.naturalWidth; \}/.test(PAGE)
+     && /const hit = _inspPxCache\.get\(k\);\s*\n\s*if \(hit\)/.test(PAGE));
   // Caching a tainted canvas would make every later read pay the draw to
   // fail the same way.
-  ok('a tainted canvas is not cached', /_inspPxCache = null;\s*\n\s*return \{ tainted: true \}/.test(PAGE));
+  ok('a tainted canvas is not cached', /_inspPxForget\(img\);\s*\n\s*return \{ tainted: true \}/.test(PAGE));
   // Matched on one line's worth: the sentence wraps across comment lines,
   // and a phrase spanning the wrap matches nothing however true it is.
   ok('the measurement is written down beside it',
@@ -162,9 +164,12 @@ console.log('\n5. the city labels, and the cost that sank the first attempt');
      /const MB_CITY_MAX_ROWS = 1;/.test(PAGE));
   // The values were computed while building the layer, so no name could
   // appear until every value had been worked out.
+  // Filled in idle-time slices of a few milliseconds each since the INP fix,
+  // rather than in one callback that owned the thread for a whole pass.
   ok('the names go up first and the values are filled when idle',
      /function _mbCityFillValues\(\)/.test(PAGE)
-     && /requestIdleCallback\(run, \{ timeout: 600 \}\)/.test(PAGE));
+     && /requestIdleCallback\(slice, \{ timeout: 600 \}\)/.test(PAGE)
+     && /const until = performance\.now\(\) \+ 8;/.test(PAGE));
   ok('the marker html carries an empty slot rather than the values',
      /<span class="mb-city-data"><\/span>/.test(PAGE));
   ok('and a pending fill is cancelled before another is queued',
