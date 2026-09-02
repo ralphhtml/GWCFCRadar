@@ -59372,14 +59372,22 @@ async function lqmOpenStaffView() {
       const v = d.data() || {};
       return {
         uid: d.id,
-        name: v.displayName || v.name || '(no name)',
+        name: v.displayName || v.name || '',
         email: v.email || '',
+        phone: String(v.phone || ''),
         avatarImage: v.avatarImage || '',
         emoji: v.avatarEmoji || v.emoji || '',
         staffRole: _staffRoleFor(v.email, v.staffRole),
         forecaster: v.forecaster === true
       };
-    }).sort((a, b) => a.name.localeCompare(b.name));
+    });
+    // Names for the blank rows can often be found where the account already
+    // spoke publicly; done before the first paint so rows do not rename
+    // themselves in front of you.
+    try { await _staffFillGaps(); } catch (e) {}
+    // Unnamed accounts sort to the bottom: u007f compares after letters.
+    _staffUsers.sort((a, b) =>
+      (a.name || '\u007f').localeCompare(b.name || '\u007f'));
     _staffRenderList(document.getElementById('lqm-staff-search')?.value || '');
   } catch (e) {
     console.warn('Load members failed:', e);
@@ -59392,41 +59400,94 @@ function lqmCloseStaffView() {
   document.getElementById('lqm-view-profile').classList.add('open');
 }
 
+// A doc with no name is not always an account with no name: wherever that
+// account already spoke publicly, its chosen name is on record. Two such
+// places are world-readable under the published rules: the DM directory
+// row each account writes about itself, and the community chat. Harvested
+// names only ever fill blanks; a name the account saved in its own doc
+// always wins, and each row says when its name came from elsewhere.
+async function _staffFillGaps() {
+  if (!_staffUsers.some(u => !u.name)) return;
+  const found = {};
+  try {
+    const snap = await _fbDb.collection('chatBridge').get();
+    snap.docs.forEach(doc => {
+      if (!doc.id.startsWith('dmpub_')) return;
+      const v = doc.data() || {};
+      if (v.name) {
+        found[doc.id.slice(6)] = { name: String(v.name).slice(0, 60),
+                                   from: 'Messages directory' };
+      }
+    });
+  } catch (e) {}
+  try {
+    const snap = await _fbDb.collection('chat')
+      .orderBy('ts', 'desc').limit(400).get();
+    snap.docs.forEach(doc => {
+      const v = doc.data() || {};
+      // Newest first, so the first name seen per uid is their latest.
+      if (v.uid && v.name && v.source === 'radar' && !found[v.uid]) {
+        found[v.uid] = { name: String(v.name).slice(0, 60), from: 'chat' };
+      }
+    });
+  } catch (e) {}
+  _staffUsers.forEach(u => {
+    if (!u.name && found[u.uid]) {
+      u.name = found[u.uid].name;
+      u.nameFrom = found[u.uid].from;
+    }
+  });
+}
+
 function _staffRenderList(filter) {
   const list = document.getElementById('lqm-staff-list');
   const note = document.getElementById('lqm-staff-note');
   if (!list) return;
   const q = (filter || '').trim().toLowerCase();
   const rows = _staffUsers.filter(u =>
-    !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
+    !q || (u.name || '').toLowerCase().includes(q)
+       || (u.email || '').toLowerCase().includes(q)
+       || (u.phone || '').includes(q));
 
   if (!rows.length) {
     list.innerHTML = `<div class="lqm-staff-note">${_staffUsers.length ? 'No members match that search.' : 'No accounts yet.'}</div>`;
   } else {
     list.innerHTML = rows.map(u => {
       const isOwnerRow = u.staffRole === 'owner';
+      // '(no name)' is the label an older build stored literally; treat it
+      // as blank rather than presenting it as a person's chosen name.
+      const shownName = (u.name && u.name !== '(no name)')
+        ? u.name : 'Unnamed account';
       const av = u.avatarImage
         ? `<div class="lqm-staff-av" style="background-image:url('${_escapeHtml(u.avatarImage)}')"></div>`
-        : `<div class="lqm-staff-av" style="background:hsl(${Math.abs(_hashHue(u.name))},60%,38%)">${_escapeHtml(u.emoji || u.name.charAt(0).toUpperCase())}</div>`;
+        : `<div class="lqm-staff-av" style="background:hsl(${Math.abs(_hashHue(u.name || u.uid))},60%,38%)">${_escapeHtml(u.emoji || shownName.charAt(0).toUpperCase())}</div>`;
       // The owner's own row is fixed: there is no way to demote yourself and
       // lock everyone, including you, out of this panel.
       const opts = isOwnerRow
         ? `<option>Owner</option>`
         : STAFF_ROLES.map(r => `<option value="${r}"${r === u.staffRole ? ' selected' : ''}>${STAFF_ROLE_LABELS[r]}</option>`).join('');
-      // An account with no address is identified by its id, said as such
-      // rather than printed bare where an email would be: a long hex string
-      // in the email slot reads as a corrupted address.
+      // A harvested name is still that person's own words, but it did not
+      // come from their profile, and the row says so.
+      const nameNote = u.nameFrom
+        ? ` <span class="lqm-staff-uid" title="This account never saved a name to its profile; this one was found where they spoke publicly.">(from ${_escapeHtml(u.nameFrom)})</span>`
+        : '';
+      // Who this is, in order of what is known: the address, else the phone
+      // number a phone signup gave, else the honest truth that the account
+      // has not signed in since addresses started being saved, with the id
+      // said as an id rather than printed where an address would be.
       const who = u.email
         ? `<div class="lqm-staff-email">${_escapeHtml(u.email)}</div>`
-        : `<div class="lqm-staff-email lqm-staff-uid">no email on file `
-          + `&middot; ${_escapeHtml(u.uid)}</div>`;
+        : u.phone
+          ? `<div class="lqm-staff-email">phone: ${_escapeHtml(u.phone)}</div>`
+          : `<div class="lqm-staff-email lqm-staff-uid">no email saved yet; `
+            + `it fills in when they next sign in &middot; ${_escapeHtml(u.uid)}</div>`;
       // Everything about this member on hover as well, so a row can be read
       // without the panel being wide enough to lay it all out.
-      const tip = `${u.name}\n${u.email || 'no email'}\n${u.uid}`;
+      const tip = `${shownName}\n${u.email || (u.phone ? 'phone: ' + u.phone : 'no email')}\n${u.uid}`;
       return `<div class="lqm-staff-row" title="${_escapeHtml(tip)}">
         ${av}
         <div class="lqm-staff-meta">
-          <div class="lqm-staff-name">${_escapeHtml(u.name)}</div>
+          <div class="lqm-staff-name">${_escapeHtml(shownName)}${nameNote}</div>
           ${who}
         </div>
         <select class="lqm-staff-sel" ${isOwnerRow ? 'disabled' : ''} onchange="staffSetRole('${u.uid}', this.value, this)">${opts}</select>
@@ -60705,14 +60766,53 @@ function _applyViewState(d) {
   }
 }
 
+// Fill the identity gaps in this account's own doc from its sign-in token.
+// Names and addresses only ever come from the account itself (the published
+// rules let nobody else write them), so accounts that signed up before the
+// signup write existed, or whose write failed, sat blank in Manage Members
+// forever. The token cannot be blank: it always carries the address the
+// account signs in with, and usually the display name too. Phone signups
+// use a synthetic address (phone_<digits>@gwcfc-radar.app), which is stored
+// back as the phone number rather than shown as a fake email. Only missing
+// or stale fields are written; anything a person chose stays theirs, and
+// role fields are never touched.
+function _profileSelfHeal(uid, d) {
+  if (!_currentUser || _currentUser.isAnonymous || _currentUser.uid !== uid || !_fbDb) return;
+  const fix = {};
+  const authEmail = _currentUser.email || '';
+  const phoneMatch = authEmail.match(/^phone_(\d+)@gwcfc-radar\.app$/);
+  if (phoneMatch) {
+    if (!d.phone) fix.phone = phoneMatch[1];
+    if (!d.authMethod) fix.authMethod = 'phone';
+  } else if (authEmail && d.email !== authEmail) {
+    fix.email = authEmail;
+    if (!d.authMethod) fix.authMethod = 'email';
+  }
+  if (!d.displayName && !d.name) {
+    fix.displayName = (_currentUser.displayName
+      || (phoneMatch ? 'Radar user ' + phoneMatch[1].slice(-4)
+                     : authEmail.split('@')[0])
+      || 'Radar user').slice(0, 60);
+  }
+  if (!Object.keys(fix).length) return;
+  _fbDb.collection('users').doc(uid).set(fix, { merge: true })
+    .catch(e => console.warn('profile self-heal:', e));
+}
+
 async function _loadUserPrefs(uid) {
   if (!_fbDb) return;
   let d;
   try {
     const snap = await _fbDb.collection('users').doc(uid).get();
-    if (!snap.exists) return;
-    d = snap.data();
+    d = snap.exists ? snap.data() : null;
   } catch(e) { console.warn('loadUserPrefs read:', e); return; }
+
+  // The sign-in token always knows who this account is, even when the doc
+  // does not: old accounts, and ones whose signup write failed, never
+  // recorded a name or an address. Top the doc up on every sign-in, fire
+  // and forget, so a heal that cannot write never blocks the restore below.
+  try { _profileSelfHeal(uid, d || {}); } catch (e) {}
+  if (!d) return;
 
   // Queue the saved view FIRST. None of the profile or notification work below
   // affects it, and having it last meant one throw up there - a missing element,
@@ -60862,6 +60962,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-02-e', date: 'Sep 2, 2026',
+    text: 'Manage Members now shows who everyone is. Accounts that signed up before names and emails were being saved used to sit blank in the list. Now every account quietly fills in its own name and email the next time it signs in, phone signups show their phone number instead of a blank email, and blank names are borrowed from where that person already spoke publicly (the chat or the Messages directory), marked so you know where the name came from.' },
   { id: '2026-09-02-d', date: 'Sep 2, 2026',
     text: 'Direct messages now work without any database rules update. Conversations are sealed with end to end encryption right in your browser: each account mints its own lock and key the first time it opens Messages, and every message is scrambled before it ever leaves your device, so the server only ever stores unreadable text. Open Messages once so your account gets its key, then friends can find you by name.' },
   { id: '2026-09-02-c', date: 'Sep 2, 2026',
