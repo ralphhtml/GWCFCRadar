@@ -55690,17 +55690,28 @@ function lqmCloseChat() {
 }
 
 // ── DIRECT MESSAGES: private mail between two radar accounts ───────────────
-// Everything private about this lives in firebase/firestore.rules, not here:
-// a thread's document id is the two uids joined with '__' (lower first), the
-// rules check membership from that id alone, and anonymous sign-ins are shut
-// out entirely. This side is only the furniture: a Messages panel, a thread
-// list, one open conversation with a live listener, and a way to start a
-// conversation from the chat or from a name search.
+// The database rules could not be updated, so nothing here relies on new
+// rules. Privacy comes from end-to-end encryption instead: every message is
+// sealed in the sender's browser (ECDH key agreement, AES-GCM) before it is
+// stored, and what the database holds is unreadable ciphertext.
+//
+// Where things live, all under rules that are already published:
+//   users/{uid}       your own key pair, in the one doc only you can read
+//   chatBridge/dmpub_{uid}   your PUBLIC key + display name (public by design)
+//   modelCache/dmt_{a}__{b}  one thread per pair, as {v: ciphertext, at: time}
+//
+// Honest limits of this arrangement: anyone can see THAT two accounts have a
+// thread (the doc id names the pair) and when it last moved, and any signed-in
+// client could vandalise a thread doc by overwriting it. What nobody without
+// the pair's keys can ever do is read a word of it, or forge a message that
+// decrypts. A message that does not decrypt is simply not shown.
 let _dmView = 'list';        // 'list' | 'thread'
 let _dmThreads = [];
 let _dmThreadId = null, _dmTitle = '';
 let _dmMsgs = [];
 let _dmUnsubThreads = null, _dmUnsubMsgs = null;
+let _dmPayloads = {};        // threadId -> { at, pay } decrypted cache
+let _dmNames = {};           // uid -> { name } from the public directory
 
 function _dmRealAccount() {
   return !!(_currentUser && !_currentUser.isAnonymous);
@@ -55724,18 +55735,162 @@ function _dmMarkRead(threadId) {
   } catch (e) {}
 }
 
-// Each account publishes its own directory row, so other accounts can find
-// it by name. Called on sign-in and when the panel opens; a signed-out or
-// anonymous session writes nothing.
+// ── The lock and key ────────────────────────────────────────────────────────
+// Each account owns one ECDH P-256 key pair. The private half lives in the
+// account's own users/{uid} document, the one place the published rules let
+// only that account read, so it follows you between devices. The public half
+// is published for everyone. Two accounts then derive the SAME shared secret
+// from (my private + your public) and (your private + my public); that is
+// the whole trick of Diffie-Hellman, and it needs no message exchange at
+// all. The shared secret becomes an AES-GCM key that seals every thread.
+let _dmcPriv = null, _dmcPubStr = '', _dmcPins = {}, _dmcKeys = {};
+let _dmcChanged = {}, _dmcReadyP = null;
+
+function _dmcOk() {
+  return !!(window.crypto && crypto.subtle && window.isSecureContext !== false);
+}
+function _dmcB64(u8) {
+  let s = '';
+  for (let i = 0; i < u8.length; i += 0x8000) {
+    s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  }
+  return btoa(s);
+}
+function _dmcUnb64(str) {
+  const bin = atob(str);
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return u8;
+}
+
+// Seal an object into 'base64(iv).base64(ciphertext)'. AES-GCM authenticates
+// as it encrypts, so a flipped byte anywhere makes _dmcOpen return null
+// rather than garbage: tampering is indistinguishable from noise.
+async function _dmcSeal(key, obj) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const pt = new TextEncoder().encode(JSON.stringify(obj));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, pt));
+  return _dmcB64(iv) + '.' + _dmcB64(ct);
+}
+async function _dmcOpen(key, str) {
+  try {
+    const dot = String(str).indexOf('.');
+    const iv = _dmcUnb64(str.slice(0, dot));
+    const ct = _dmcUnb64(str.slice(dot + 1));
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+    return JSON.parse(new TextDecoder().decode(pt));
+  } catch (e) { return null; }
+}
+
+// Load this account's key pair, minting one on first use. The users/{uid}
+// update rule already allows any non-role field, so no rules change needed.
+function _dmcEnsureKeys() {
+  if (_dmcReadyP) return _dmcReadyP;
+  _dmcReadyP = (async () => {
+    if (!_dmcOk()) throw new Error('this browser has no WebCrypto');
+    if (!_dmRealAccount() || !_fbDb) throw new Error('sign in first');
+    const ref = _fbDb.collection('users').doc(_currentUser.uid);
+    const snap = await ref.get();
+    const d = (snap.exists && snap.data()) || {};
+    let privJwk = null, pubJwk = null;
+    try {
+      if (d.dmPriv && d.dmPub) {
+        privJwk = JSON.parse(d.dmPriv);
+        pubJwk = JSON.parse(d.dmPub);
+      }
+    } catch (e) {}
+    if (!privJwk || !pubJwk) {
+      const kp = await crypto.subtle.generateKey(
+        { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey']);
+      privJwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
+      pubJwk = await crypto.subtle.exportKey('jwk', kp.publicKey);
+      await ref.set({ dmPriv: JSON.stringify(privJwk),
+                      dmPub: JSON.stringify(pubJwk) }, { merge: true });
+    }
+    _dmcPins = (d.dmPeers && typeof d.dmPeers === 'object') ? d.dmPeers : {};
+    _dmcPubStr = JSON.stringify(pubJwk);
+    _dmcPriv = await crypto.subtle.importKey('jwk', privJwk,
+      { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveKey']);
+    return _dmcPriv;
+  })();
+  _dmcReadyP.catch(() => { _dmcReadyP = null; });
+  return _dmcReadyP;
+}
+
+async function _dmcPeerPub(uid) {
+  const s = await _fbDb.collection('chatBridge').doc('dmpub_' + uid).get();
+  const d = (s.exists && s.data()) || {};
+  if (d.name) _dmNames[uid] = { name: String(d.name).slice(0, 40) };
+  return d.pub || null;
+}
+
+// Derive the AES key this pair shares. The first public key ever seen for a
+// peer is pinned into your own users doc (which nobody else can write), so a
+// later swap of their published key is at least DETECTED and flagged, even
+// though these rules cannot prevent the swap itself.
+async function _dmcPairKey(peerUid) {
+  if (_dmcKeys[peerUid]) return _dmcKeys[peerUid];
+  await _dmcEnsureKeys();
+  const pubStr = await _dmcPeerPub(peerUid);
+  if (!pubStr) return null;
+  if (!_dmcPins[peerUid]) {
+    _dmcPins[peerUid] = pubStr;
+    const pin = {}; pin[peerUid] = pubStr;
+    _fbDb.collection('users').doc(_currentUser.uid)
+      .set({ dmPeers: pin }, { merge: true }).catch(() => {});
+  } else if (_dmcPins[peerUid] !== pubStr) {
+    _dmcChanged[peerUid] = true;
+  }
+  const pub = await crypto.subtle.importKey('jwk', JSON.parse(pubStr),
+    { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+  const key = await crypto.subtle.deriveKey({ name: 'ECDH', public: pub },
+    _dmcPriv, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  _dmcKeys[peerUid] = key;
+  return key;
+}
+
+// Open a thread blob, once with the cached key and once more with a freshly
+// fetched one, in case the peer re-minted their pair since we last derived.
+async function _dmcOpenWith(peer, vstr) {
+  let key = await _dmcPairKey(peer);
+  let pay = (key && vstr) ? await _dmcOpen(key, vstr) : null;
+  if (vstr && !pay) {
+    delete _dmcKeys[peer];
+    key = await _dmcPairKey(peer);
+    pay = key ? await _dmcOpen(key, vstr) : null;
+  }
+  return { key, pay };
+}
+
+function _dmcTrust(peerUid) {
+  delete _dmcKeys[peerUid];
+  delete _dmcChanged[peerUid];
+  _dmcPeerPub(peerUid).then(pubStr => {
+    if (!pubStr) return;
+    _dmcPins[peerUid] = pubStr;
+    const pin = {}; pin[peerUid] = pubStr;
+    _fbDb.collection('users').doc(_currentUser.uid)
+      .set({ dmPeers: pin }, { merge: true }).catch(() => {});
+    if (_dmThreadId) _dmOpenThread(_dmThreadId, _dmTitle);
+  });
+}
+
+// Each account publishes its own directory row: display name, avatar, and
+// now its PUBLIC key, which is safe to shout from a rooftop; that is what
+// "public key" means. Rides chatBridge, whose published rules already allow
+// signed-in writes and world reads. Called on sign-in and when the panel
+// opens; a signed-out or anonymous session writes nothing.
 function _dmDirectoryUpsert() {
-  if (!_dmRealAccount() || !_fbDb) return;
+  if (!_dmRealAccount() || !_fbDb || !_dmcOk()) return;
   const name = _dmMyName();
   if (name.length < 2) return;
-  _fbDb.collection('dmDirectory').doc(_currentUser.uid).set({
-    name, nameLower: name.toLowerCase(),
-    avatar: (typeof _selectedEmoji !== 'undefined' && _selectedEmoji) || '',
-    seen: Date.now(),
-  }).catch(e => console.warn('[dm] directory:', e));
+  _dmcEnsureKeys().then(() =>
+    _fbDb.collection('chatBridge').doc('dmpub_' + _currentUser.uid).set({
+      pub: _dmcPubStr, name, nameLower: name.toLowerCase(),
+      avatar: String((typeof _selectedEmoji !== 'undefined' && _selectedEmoji) || '').slice(0, 300),
+      seen: Date.now(),
+    })
+  ).catch(e => console.warn('[dm] directory:', e));
 }
 
 function _dmOpen() {
@@ -55784,8 +55939,11 @@ function _dmOpen() {
     document.getElementById('dm-list').innerHTML = '';
     return;
   }
-  document.getElementById('dm-note').textContent =
-    'Private, account to account. Only the two of you can read a thread.';
+  document.getElementById('dm-note').textContent = _dmcOk()
+    ? 'Private, account to account. Messages are sealed in your browser '
+      + 'before they are stored; only the two of you hold the key.'
+    : 'This browser has no WebCrypto, so sealed messages cannot be '
+      + 'opened here. Try a current browser over https.';
   _dmDirectoryUpsert();
   _dmShowList();
   _dmSubscribeThreads();
@@ -55815,25 +55973,68 @@ function _dmShowList() {
 
 function _dmSubscribeThreads() {
   if (_dmUnsubThreads || !_fbDb || !_dmRealAccount()) return;
-  // No orderBy on purpose: array-contains plus orderBy would demand a
-  // composite index, and a handful of threads sorts instantly here.
-  _dmUnsubThreads = _fbDb.collection('dms')
-    .where('members', 'array-contains', _currentUser.uid).limit(50)
+  // One live range read over the shared cache collection: every DM thread
+  // doc id starts with dmt_, and the pair of uids inside the id says whose
+  // it is. Reading past strangers' ids reveals no words: the payloads are
+  // ciphertext this account has no key for.
+  _dmUnsubThreads = _fbDb.collection('modelCache')
+    .orderBy(firebase.firestore.FieldPath.documentId())
+    .startAt('dmt_').endAt('dmt_' + '\uf8ff').limit(200)
     .onSnapshot(snap => {
-      _dmThreads = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      const uid = _currentUser.uid;
+      _dmThreads = snap.docs
+        .map(d => {
+          const data = d.data() || {};
+          return { id: d.id, at: data.at || 0, v: data.v || '' };
+        })
+        .filter(t => {
+          const p = t.id.slice(4).split('__');
+          return p.length === 2 && (p[0] === uid || p[1] === uid);
+        })
+        .sort((a, b) => b.at - a.at);
       if (_dmView === 'list') _dmRenderList();
+      _dmDecorate();
     }, err => {
       console.warn('[dm] threads:', err);
       const n = document.getElementById('dm-note');
-      if (n) n.textContent = 'Messages unavailable: ' + (err.message || 'permission denied')
-        + '. The dms rules in firebase/firestore.rules may still need publishing.';
+      if (n) n.textContent = 'Messages unavailable: '
+        + (err.message || 'permission denied');
     });
 }
 
+function _dmPeerOf(threadDocId) {
+  const p = String(threadDocId).replace(/^dmt_/, '').split('__');
+  return p[0] === (_currentUser && _currentUser.uid) ? p[1] : p[0];
+}
+
 function _dmOtherName(t) {
-  const other = (t.members || []).find(u => u !== _currentUser.uid);
-  return (t.names && t.names[other]) || 'Radar user';
+  const other = _dmPeerOf(t.id);
+  return (t.names && t.names[other])
+    || (_dmNames[other] && _dmNames[other].name) || 'Radar user';
+}
+
+// Unlock each of my threads for the list view: the name to show and the
+// last line under it both live inside the ciphertext. Cached by (id, at)
+// so a thread is only decrypted again when it has actually moved.
+async function _dmDecorate() {
+  for (const t of _dmThreads.slice(0, 20)) {
+    try {
+      const hit = _dmPayloads[t.id];
+      if (!hit || hit.at !== t.at) {
+        const { pay } = await _dmcOpenWith(_dmPeerOf(t.id), t.v);
+        _dmPayloads[t.id] = { at: t.at, pay };
+      }
+      const pay = _dmPayloads[t.id].pay;
+      if (pay) {
+        t.names = pay.names || {};
+        const last = (pay.msgs || [])[(pay.msgs || []).length - 1];
+        t.last = last
+          ? { text: String(last.text || '').slice(0, 80), from: last.from }
+          : null;
+      }
+    } catch (e) {}
+  }
+  if (_dmView === 'list') _dmRenderList();
 }
 
 function _dmRenderList(searchRows) {
@@ -55846,7 +56047,7 @@ function _dmRenderList(searchRows) {
       <b>${_ccEsc(r.avatar || '')} ${_ccEsc(r.name)}</b><span class="dm-last">start a conversation</span></button>`);
   });
   _dmThreads.forEach(t => {
-    const unread = (t.updatedAt || 0) > (marks[t.id] || 0)
+    const unread = (t.at || 0) > (marks[t.id] || 0)
       && t.last && t.last.from !== _currentUser.uid;
     rows.push(`<button type="button" class="dm-row" onclick="_dmOpenThread('${_ccEsc(t.id)}')">
       <b>${_ccEsc(_dmOtherName(t))}</b>
@@ -55861,30 +56062,36 @@ function _dmRenderList(searchRows) {
 async function _dmSearch(q) {
   if (!q || q.length < 2 || !_fbDb || !_dmRealAccount()) { _dmRenderList(); return; }
   try {
-    const snap = await _fbDb.collection('dmDirectory')
+    // Directory rows live in chatBridge as dmpub_ docs; only they carry a
+    // nameLower field, so the query cannot catch the bridge's own docs.
+    const snap = await _fbDb.collection('chatBridge')
       .where('nameLower', '>=', q.toLowerCase())
       .where('nameLower', '<=', q.toLowerCase() + '\uf8ff')
       .limit(8).get();
-    const rows = snap.docs.map(d => ({ uid: d.id, ...d.data() }))
-      .filter(r => r.uid !== _currentUser.uid);
+    const rows = snap.docs
+      .map(d => ({ uid: d.id.replace(/^dmpub_/, ''), ...d.data() }))
+      .filter(r => r.pub && r.uid !== _currentUser.uid);
     _dmRenderList(rows);
   } catch (e) {
     console.warn('[dm] search:', e);
   }
 }
 
-// Open (creating if needed) the one thread this pair of accounts shares.
+// Open the one thread this pair of accounts shares. Nothing is written yet:
+// the thread doc only comes into being with the first sealed message.
 async function _dmStart(uid, name) {
   if (!_dmRealAccount() || !_fbDb || !uid || uid === _currentUser.uid) return;
-  const id = _dmPairId(_currentUser.uid, uid);
-  const members = [_currentUser.uid, uid].sort();
   try {
-    const names = {};
-    names[_currentUser.uid] = _dmMyName();
-    names[uid] = String(name || 'Radar user').slice(0, 40);
-    await _fbDb.collection('dms').doc(id)
-      .set({ members, names, updatedAt: Date.now() }, { merge: true });
-    _dmOpenThread(id, names[uid]);
+    const key = await _dmcPairKey(uid);
+    if (!key) {
+      if (typeof showToast === 'function') {
+        showToast('That account has not opened Messages yet, so it has no '
+          + 'key to write to. Ask them to open Messages once.', 6000);
+      }
+      return;
+    }
+    _dmOpenThread('dmt_' + _dmPairId(_currentUser.uid, uid),
+                  String(name || 'Radar user').slice(0, 40));
   } catch (e) {
     if (typeof showToast === 'function') showToast('Could not open the conversation: ' + e.message, 5000);
   }
@@ -55904,11 +56111,21 @@ function _dmOpenThread(threadId, title) {
   document.querySelector('#dm-modal .tm-title').textContent = _dmTitle.toUpperCase();
   $('dm-msgs').innerHTML = '<div class="tm-note">Loading…</div>';
   if (_dmUnsubMsgs) { try { _dmUnsubMsgs(); } catch (e) {} }
-  _dmUnsubMsgs = _fbDb.collection('dms').doc(threadId).collection('messages')
-    .orderBy('ts', 'desc').limit(80)
-    .onSnapshot(snap => {
-      _dmMsgs = snap.docs.map(d => d.data()).reverse();
-      _dmRenderMsgs();
+  // One live listener on the one sealed doc. Decryption happens here, on
+  // every change, and only what decrypts is ever shown.
+  _dmUnsubMsgs = _fbDb.collection('modelCache').doc(threadId)
+    .onSnapshot(async snap => {
+      if (_dmThreadId !== threadId) return;
+      const peer = _dmPeerOf(threadId);
+      const data = (snap.exists && snap.data()) || null;
+      let pay = null;
+      try {
+        pay = (await _dmcOpenWith(peer, data && data.v)).pay;
+      } catch (e) {}
+      if (_dmThreadId !== threadId) return;
+      _dmPayloads[threadId] = { at: (data && data.at) || 0, pay };
+      _dmMsgs = ((pay && pay.msgs) || []).slice(-80);
+      _dmRenderMsgs(data && data.v && !pay ? peer : '');
       _dmMarkRead(threadId);
     }, err => {
       $('dm-msgs').innerHTML = '<div class="tm-note">Could not load: '
@@ -55916,9 +56133,21 @@ function _dmOpenThread(threadId, title) {
     });
 }
 
-function _dmRenderMsgs() {
+function _dmRenderMsgs(lockedPeer) {
   const box = document.getElementById('dm-msgs');
   if (!box) return;
+  if (lockedPeer) {
+    box.innerHTML = '<div class="tm-note" style="text-align:center;padding:14px 0;">'
+      + 'This conversation is sealed with a key this account cannot derive'
+      + (_dmcChanged[lockedPeer]
+         ? ', and the other account\'s published key has changed since you '
+           + 'last wrote to each other. If they really did reset their '
+           + 'account, <a onclick="_dmcTrust(\'' + _ccEsc(lockedPeer)
+           + '\')">trust their new key</a>; the old history stays locked.'
+         : '. Sending a new message starts a fresh page.')
+      + '</div>';
+    return;
+  }
   if (!_dmMsgs.length) {
     box.innerHTML = '<div class="tm-note" style="text-align:center;padding:14px 0;">Say hello.</div>';
     return;
@@ -55939,14 +56168,30 @@ async function _dmSend() {
   if (!text || !_dmThreadId || !_dmRealAccount() || !_fbDb) return;
   input.value = '';
   try {
-    const doc = { from: _currentUser.uid, name: _dmMyName(),
+    const peer = _dmPeerOf(_dmThreadId);
+    const ref = _fbDb.collection('modelCache').doc(_dmThreadId);
+    // Read-decrypt-append-seal-write: the whole thread is one sealed blob,
+    // so a send re-reads it first to fold in anything that just arrived.
+    const snap = await ref.get();
+    const data = (snap.exists && snap.data()) || null;
+    const { key, pay: existing } = await _dmcOpenWith(peer, data && data.v);
+    if (!key) throw new Error('that account has no message key yet');
+    const pay = existing || { msgs: [] };
+    const msg = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+                  from: _currentUser.uid, name: _dmMyName(),
                   text: text.slice(0, 1000), ts: Date.now() };
-    await _fbDb.collection('dms').doc(_dmThreadId)
-      .collection('messages').add(doc);
-    // The header is what the list shows, so it travels with every send.
-    await _fbDb.collection('dms').doc(_dmThreadId)
-      .set({ updatedAt: doc.ts, last: { text: doc.text.slice(0, 80), from: doc.from } },
-           { merge: true });
+    pay.msgs = (pay.msgs || []).concat([msg]);
+    pay.members = [_currentUser.uid, peer].sort();
+    pay.names = pay.names || {};
+    pay.names[_currentUser.uid] = _dmMyName();
+    if (!pay.names[peer] && _dmTitle) pay.names[peer] = _dmTitle;
+    // The stored field must stay under the published 400,000-character cap,
+    // ciphertext-and-base64 included, so the oldest lines retire first.
+    while (pay.msgs.length > 1
+           && new TextEncoder().encode(JSON.stringify(pay)).length > 280000) {
+      pay.msgs.shift();
+    }
+    await ref.set({ v: await _dmcSeal(key, pay), at: msg.ts });
     _dmMarkRead(_dmThreadId);
   } catch (e) {
     input.value = text;      // give the message back rather than losing it
@@ -60617,6 +60862,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-02-d', date: 'Sep 2, 2026',
+    text: 'Direct messages now work without any database rules update. Conversations are sealed with end to end encryption right in your browser: each account mints its own lock and key the first time it opens Messages, and every message is scrambled before it ever leaves your device, so the server only ever stores unreadable text. Open Messages once so your account gets its key, then friends can find you by name.' },
   { id: '2026-09-02-c', date: 'Sep 2, 2026',
     text: 'Map speed and reliability. Fixed a freeze where tapping the map could stall everything for three seconds: the city weather labels were reading every layer in one giant gulp, and now sip in tiny slices, so taps answer instantly and tiles keep painting. And the basemap heals itself: if the main imagery service stops answering (or runs out of quota), every map style automatically switches to a free backup provider instead of leaving a black map.' },
   { id: '2026-09-02-b', date: 'Sep 2, 2026',
