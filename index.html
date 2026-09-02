@@ -23573,12 +23573,6 @@ async function _tmJump(ms) {
   const at = Math.max(floor, Math.min(Date.now(), +ms || 0));
   const when = new Date(at).toISOString().slice(0, 16).replace('T', ' ') + 'Z';
   if (_tmScope === 'sat') {
-    if (!_tmSatActive()) {
-      if (typeof showToast === 'function') {
-        showToast('Pick a satellite product first, then travel to a time.', 3500);
-      }
-      return;
-    }
     _tmSatAt = at;
     _tmClose();
     if (typeof showToast === 'function') showToast(`satellite at ${when}`, 3000);
@@ -23589,7 +23583,16 @@ async function _tmJump(ms) {
         showToast('Pi composites keep 3 days. Pick a plain band for older imagery.', 5000);
       }
     }
-    try { loadGoesLayer(); } catch (e) { console.warn('[tm] satellite:', e); }
+    _goesTmWarnedAt = null;
+    try {
+      // The Satellite bubble only opens its menu now, so the Time Machine row
+      // is usually tapped with no picture on yet, and refusing here ("pick a
+      // product first") is what made the satellite machine look dead. With
+      // the clock already set, choosing the current product IS the on
+      // switch, and it loads at the travelled moment straight away.
+      if (!_tmSatActive()) _setGoesProduct(_goesProductId);
+      else loadGoesLayer();
+    } catch (e) { console.warn('[tm] satellite:', e); }
     _tmSyncBadge();
     return;
   }
@@ -23763,7 +23766,11 @@ function _tmOpen(scope) {
              + 'tape archive: one full-resolution scan per visit, and a site '
              + 'still on the pre-2009 tape format will say so. ')
       + 'A source that was down that day has nothing to show, and will say so.'
-    : (sat ? 'Pick a satellite product first, then choose a moment.'
+    : (sat ? `Choose a moment and the satellite switches on there, showing `
+             + `<b>${_ccEsc((typeof _goesProduct === 'function' && _goesProduct().label) || 'Clean IR')}</b>`
+             + ` (pick another product from the satellite menu any time). The archive `
+             + `reaches back to <b>${floor}</b>, about ${years} years, for the plain bands; `
+             + `the Pi composites keep three days.`
            : 'Turn on a radar first, then choose a moment.');
   m.classList.add('open');
 }
@@ -27834,12 +27841,20 @@ async function _goesPiFrames() {
   if (!p || !p.frames || !p.frames.length) return [];
   const base = _hdBase;
   const dir = `${base}/satellite/${target.sat}/${target.sector}`;
-  return p.frames.map(f => ({
+  let list = p.frames.map(f => ({
     time: new Date(_prStampToMs(f.t)),
     timeStr: f.t,
     url: `${dir}/${f.file}`,
     bounds: f.bounds || p.bounds,
   })).filter(f => f.bounds && isFinite(f.time.getTime()));
+  // The satellite time machine: the loop ends at the travelled moment, the
+  // same way the WMS path anchors its own list (_buildGoesFrames). This
+  // path used to ignore the clock and hand back the newest frames whatever
+  // moment was chosen, so travelling on a composite did nothing at all.
+  if (typeof _tmSatAt === 'number' && _tmSatAt) {
+    list = list.filter(f => f.time.getTime() <= _tmSatAt);
+  }
+  return list;
 }
 
 // Shared WMS base URLs.
@@ -27994,6 +28009,30 @@ function _goesPoolWindow(idx) {
   return { s, e };
 }
 
+// A travelled-to moment the WMS archive does not hold answers with tiles
+// that all fail, which used to look exactly like a working layer with no
+// clouds in it. So while the satellite clock is set, the frame being shown
+// is watched: if every tile it asks for fails and none arrives within the
+// grace period, the person is told once per journey, with the fix.
+let _goesTmWarnedAt = null;
+function _goesTmWatch(layer, graceMs) {
+  const stamp = typeof _tmSatAt === 'number' && _tmSatAt;
+  if (!stamp || !layer || typeof layer.on !== 'function') return;
+  let loads = 0, errors = 0;
+  layer.on('tileload', () => { loads++; });
+  layer.on('tileerror', () => { errors++; });
+  setTimeout(() => {
+    if (_tmSatAt !== stamp || _goesTmWarnedAt === stamp) return;
+    if (loads === 0 && errors > 0) {
+      _goesTmWarnedAt = stamp;
+      if (typeof showToast === 'function') {
+        showToast('No satellite imagery is archived for that moment. Try a '
+          + 'different time, or Back to Live in the Time Machine.', 7000);
+      }
+    }
+  }, graceMs || 8000);
+}
+
 function _goesEnsureLayer(i) {
   const f = goesFrames[i];
   if (_goesPool[i] || !f) return;
@@ -28007,6 +28046,7 @@ function _goesEnsureLayer(i) {
                        crossOrigin: 'anonymous', zIndex: 11 }).addTo(map)
     : _makeGoesLayer(f.timeStr, 0);
   l.on('load', () => { _goesPoolLoaded[i] = true; });
+  if (!f.url) _goesTmWatch(l);
   _goesPool[i] = l;
 }
 
@@ -28141,12 +28181,22 @@ async function _goesLoadPiFrames() {
   if (gen !== _goesPiGen || !activeLayers.satellite || !_goesIsPi()) return;
   _goesApplyFrames(frames);
   if (!frames.length) {
+    const travelled = typeof _tmSatAt === 'number' && _tmSatAt;
     const at = document.getElementById('anim-time');
-    if (at) { at.textContent = 'Not built on the Pi yet'; at.style.visibility = 'visible'; }
+    if (at) {
+      at.textContent = travelled ? 'Nothing kept for that moment' : 'Not built on the Pi yet';
+      at.style.visibility = 'visible';
+    }
     // And loudly, with the reason and the fix. The corner of the animation
     // bar is not where someone looks when a layer they just chose draws
-    // nothing at all.
-    if (typeof showToast === 'function') showToast(_goesPiWhy(), 8000);
+    // nothing at all. A travelled moment gets its own reason: the Pi may be
+    // perfectly healthy and simply not keep imagery that old.
+    if (typeof showToast === 'function') {
+      showToast(travelled
+        ? 'The Pi keeps three days of composites and has none for that moment. '
+          + 'Pick a plain band (Clean IR, Visible, Water Vapor) for older imagery.'
+        : _goesPiWhy(), 8000);
+    }
   }
 }
 
@@ -61171,6 +61221,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-02-i', date: 'Sep 2, 2026',
+    text: 'The satellite Time Machine works again. Three things had been making it look dead: opening it before picking a satellite product just refused with a message (and the Satellite button no longer turns the layer on by itself, so that was the usual path); the Pi composites and the global mosaic ignored the chosen moment entirely and kept showing the newest frames; and a moment the imagery archive does not hold drew blank tiles with no explanation. Now choosing a moment switches the satellite on right there, the composites end their loop at your moment (and say so if the Pi keeps nothing that old), and a blank archive moment tells you, once, what to try instead.' },
   { id: '2026-09-02-h', date: 'Sep 2, 2026',
     text: 'Every layer button audited. All 8 menu bubbles, every product row beneath them (satellite bands and composites, sea temperature sources and variants, air, wind, temperature, pressure, models, the NWS rows) and all 38 overlay pills were driven one by one in a real browser and checked for errors and for lighting up correctly. Fixes: the Back rows in six menus had grown a pointless info button and drag handle; the NWS rows in the radar menu got their info buttons late and now carry real descriptions; and the sea temperature variant rows lit up even when the Pi had nothing to show and could not be tapped off. Tapping the variant already showing now turns the layer off, like every other product row.' },
   { id: '2026-09-02-g', date: 'Sep 2, 2026',
