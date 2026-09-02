@@ -371,5 +371,88 @@ service cloud.firestore {
       allow create, update: if isForecasterAccount();
       allow delete: if isOwner();
     }
+
+    // ── DIRECT MESSAGES ───────────────────────────────────────────────────
+    //
+    // Private mail between two radar accounts. The thread's document id IS
+    // its membership: the two uids joined with '__', lower uid first. That
+    // makes "may this person touch this thread" checkable from the id
+    // alone, with no document read, and it makes the pair's one thread
+    // findable without a query. Firebase uids never contain underscores,
+    // so the split is unambiguous.
+    //
+    // Only real accounts take part: the anonymous sign-in the chat bridge
+    // and the Discord bot use can never open, read or send anyone's mail.
+    // Privacy here is the rules and nothing else, so nothing below trusts
+    // a field the browser could have written.
+    match /dms/{threadId} {
+      // A direct get proves membership through the id; a list query proves
+      // it through the members array filter the client is forced to use.
+      allow read: if realAccount()
+        && (request.auth.uid in threadId.split('__')
+            || request.auth.uid in resource.data.members);
+
+      // A thread names exactly its two members, in order, and its id must
+      // be exactly those two joined, so an id and its membership can never
+      // disagree. Either member may open the thread.
+      allow create: if realAccount()
+        && request.auth.uid in threadId.split('__')
+        && request.resource.data.members is list
+        && request.resource.data.members.size() == 2
+        && request.resource.data.members[0] < request.resource.data.members[1]
+        && threadId == request.resource.data.members[0] + '__'
+                       + request.resource.data.members[1]
+        && request.auth.uid in request.resource.data.members;
+
+      // The header carries display sugar (names, the last line, a clock).
+      // Membership is frozen: a thread can never be re-pointed at somebody.
+      allow update: if realAccount()
+        && request.auth.uid in threadId.split('__')
+        && request.resource.data.members == resource.data.members;
+
+      allow delete: if isOwner();
+
+      match /messages/{msgId} {
+        allow read: if realAccount()
+          && request.auth.uid in threadId.split('__');
+        allow create: if realAccount()
+          && request.auth.uid in threadId.split('__')
+          && request.resource.data.from == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 1000
+          && request.resource.data.name is string
+          && request.resource.data.name.size() <= 60
+          && request.resource.data.ts is number
+          && request.resource.data.keys().hasOnly(['from', 'name', 'text', 'ts']);
+        allow update: if false;
+        // You may take back your own words; nobody can edit them into
+        // something else.
+        allow delete: if realAccount()
+          && request.auth.uid == resource.data.from;
+      }
+    }
+
+    // How one account finds another to write to. Each account publishes
+    // its own row: display name and avatar, nothing else, the same two
+    // things everyone already sees beside every chat message. Readable by
+    // signed-in real accounts only, and only ever written by its subject.
+    match /dmDirectory/{uid} {
+      allow read: if realAccount();
+      allow write: if realAccount() && request.auth.uid == uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2
+        && request.resource.data.name.size() <= 40
+        && request.resource.data.nameLower is string
+        && request.resource.data.nameLower.size() <= 40
+        && request.resource.data.seen is number
+        && request.resource.data.keys().hasOnly(['name', 'nameLower',
+                                                 'avatar', 'seen'])
+        && (!('avatar' in request.resource.data)
+            || (request.resource.data.avatar is string
+                && request.resource.data.avatar.size() <= 300));
+      allow delete: if isOwner()
+        || (realAccount() && request.auth.uid == uid);
+    }
   }
 }
