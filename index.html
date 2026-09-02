@@ -11223,9 +11223,48 @@ function initMap() {
   // replacing it: MapTiler failures are usually transient (a rate limit or a
   // dropped connection), and redraw() re-requests only the tiles still missing.
   let _mtErrors = 0, _mtRetries = 0, _mtRetryTimer = null;
+
+  // The keyless stand-ins, one per style. When MapTiler stops answering for
+  // real (an exhausted key quota looks exactly like an outage from here),
+  // retrying the same key forever leaves a black map. These serve without
+  // any key at all: CARTO's basemaps for the two street styles, Esri's
+  // imagery and topo for the other two. Not as pretty, but a map.
+  const _mtFallbackDefs = {
+    dark: ['https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+           { attribution: '© <a href="https://carto.com/">CARTO</a> © <a href="https://www.openstreetmap.org/">OpenStreetMap</a>', subdomains: 'abcd', maxZoom: 20 }],
+    light: ['https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+            { attribution: '© <a href="https://carto.com/">CARTO</a> © <a href="https://www.openstreetmap.org/">OpenStreetMap</a>', subdomains: 'abcd', maxZoom: 20 }],
+    satellite: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                { attribution: '© Esri, Maxar, Earthstar Geographics', maxZoom: 19 }],
+    topo: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+           { attribution: '© Esri and contributors', maxZoom: 19 }],
+  };
+  let _mtFellBack = false;
+  window._mtFallBack = function () {
+    if (_mtFellBack) return;
+    _mtFellBack = true;
+    console.warn('Basemap: MapTiler is not answering; switching every style to its keyless stand-in.');
+    Object.entries(_mtFallbackDefs).forEach(([style, [url, opts]]) => {
+      const fresh = L.tileLayer(url, Object.assign({ noWrap: true,
+        crossOrigin: 'anonymous', keepBuffer: _isIOS ? 4 : 8 }, opts));
+      fresh.on('tileloadstart', e => { e.tile.decoding = 'async'; });
+      const old = mapTileLayers[style];
+      const wasOn = old && map.hasLayer(old);
+      if (old) { try { map.removeLayer(old); } catch (e) {} }
+      mapTileLayers[style] = fresh;
+      if (wasOn) { fresh.addTo(map); try { fresh.bringToBack(); } catch (e) {} }
+    });
+    if (typeof showToast === 'function') {
+      showToast('The main map imagery is not answering, so a backup basemap has taken over.', 5000);
+    }
+  };
+
   [cartoDark, cartoLight, satellite, topo].forEach(layer => {
     layer.on('tileerror', () => {
       _mtErrors++;
+      // Three redraw retries came and went and tiles are still dying: this
+      // is not a blip, so stop retrying the dead key and change horses.
+      if (_mtRetries >= 3 && _mtErrors >= 10) { window._mtFallBack(); return; }
       if (_mtErrors < 10 || _mtRetryTimer || _mtRetries >= 3) return;
       // Back off 5s, 10s, 20s so a hard outage is not hammered.
       const wait = 5000 * Math.pow(2, _mtRetries);
@@ -33985,6 +34024,9 @@ function _watchBasemap() {
   setTimeout(() => {
     if (loaded || !map) return;
     console.warn('No basemap tile loaded within 20s.');
+    // Not just a notice anymore: twenty tile-less seconds means the key or
+    // the service is dead, and there are keyless stand-ins to switch to.
+    if (typeof window._mtFallBack === 'function') { window._mtFallBack(); return; }
     _mapFailNotice('Basemap imagery is unavailable right now. Radar and alerts are still live.');
   }, 20000);
 }
@@ -60575,6 +60617,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-02-c', date: 'Sep 2, 2026',
+    text: 'Map speed and reliability. Fixed a freeze where tapping the map could stall everything for three seconds: the city weather labels were reading every layer in one giant gulp, and now sip in tiny slices, so taps answer instantly and tiles keep painting. And the basemap heals itself: if the main imagery service stops answering (or runs out of quota), every map style automatically switches to a free backup provider instead of leaving a black map.' },
   { id: '2026-09-02-b', date: 'Sep 2, 2026',
     text: 'Private messages are here. Radar accounts can now DM each other: open Messages from the account panel, search a name, or just tap someone’s name in the community chat. Conversations are private between the two accounts, enforced by the database rules themselves, and guests or the Discord bridge can never read anyone’s mail. Unread conversations show a gold dot.' },
   { id: '2026-09-02-a', date: 'Sep 2, 2026',
@@ -70252,24 +70296,42 @@ function _mbCityValues(c) {
 // Cheap per city, but ninety times cheap is still a wait, and a wait before
 // the map draws is the one place it is felt.
 let _mbCityFillTimer = null;
+let _mbCityFillGen = 0;
 function _mbCityFillValues() {
   if (_mbCityFillTimer) {
     (window.cancelIdleCallback || clearTimeout)(_mbCityFillTimer);
     _mbCityFillTimer = null;
   }
-  const run = () => {
+  // Sliced, hard. The old version filled all ninety labels in ONE task, and
+  // ninety point-reads across every active layer is a three second task on a
+  // modest GPU. Three seconds of held main thread is a frozen map: tiles
+  // stop painting, and any tap that lands during it waits the whole three
+  // seconds for its response (this was the measured 3.1s INP). Now each
+  // slice spends at most ~8ms, then hands the thread back, so input and
+  // tile decodes run between slices and the labels still finish in a blink.
+  const gen = ++_mbCityFillGen;
+  const els = [...document.querySelectorAll('#map .mb-city[data-lat]')];
+  let i = 0;
+  const slice = () => {
     _mbCityFillTimer = null;
-    if (!_mbOn.cities || !_mbCityLayer) return;
-    document.querySelectorAll('#map .mb-city[data-lat]').forEach(el => {
+    if (gen !== _mbCityFillGen || !_mbOn.cities || !_mbCityLayer) return;
+    const until = performance.now() + 8;
+    while (i < els.length && performance.now() < until) {
+      const el = els[i++];
       const slot = el.querySelector('.mb-city-data');
-      if (!slot) return;
+      if (!slot) continue;
       const v = _mbCityValues({ lat: +el.dataset.lat, lng: +el.dataset.lng });
       if (slot.innerHTML !== v) slot.innerHTML = v;
-    });
+    }
+    if (i < els.length) {
+      _mbCityFillTimer = window.requestIdleCallback
+        ? requestIdleCallback(slice, { timeout: 300 })
+        : setTimeout(slice, 32);
+    }
   };
   _mbCityFillTimer = window.requestIdleCallback
-    ? requestIdleCallback(run, { timeout: 600 })
-    : setTimeout(run, 60);
+    ? requestIdleCallback(slice, { timeout: 600 })
+    : setTimeout(slice, 60);
 }
 
 function _mbCityMinPop(z) {
