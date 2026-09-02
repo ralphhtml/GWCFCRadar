@@ -43969,17 +43969,18 @@ function _meshToImage(result, product, forceBounds) {
 
   var meta = result.metadata;
   var url = canvas.toDataURL('image/png');
-  // The picture now lives in the PNG; the canvas it was drawn on is 13 to
-  // 16 MB of backing store that nothing reads again. It used to ride along
-  // in the returned object and sit in the picture cache, six deep, and a
-  // loop build made one per frame. WebKit counts every live canvas against
-  // one hard ceiling and kills the page past it, and a dropped canvas is
-  // only released when the collector gets round to it, so the store is
-  // freed explicitly, here, the moment the PNG exists.
-  try { canvas.width = canvas.height = 0; } catch (e) {}
+  // The picture now lives in the PNG. On iOS the canvas it was drawn on is
+  // released right here: it is 13 to 16 MB of backing store, it used to ride
+  // along in the returned object and sit in the picture cache six deep (and
+  // a loop build made one per frame), WebKit counts every live canvas
+  // against one hard ceiling and kills the page past it, and a dropped
+  // canvas is only freed when the collector gets round to it. Elsewhere it
+  // is kept: the pixel-truth tests and the screenshot tooling read values
+  // straight off it, and a desktop has the memory to spare.
+  if (_isIOS) { try { canvas.width = canvas.height = 0; } catch (e) {} }
   return {
     url: url,
-    canvas: null,
+    canvas: _isIOS ? null : canvas,
     bounds: bounds,
     leafletBounds: [[minLat, minLon], [maxLat, maxLon]],
     timeIso: (meta && meta.timeIso) || null,

@@ -46,8 +46,9 @@ console.log('\n1. every guard is in the page');
      PAGE.includes("L.canvas({ pane: 'alertsPane', padding: _isIOS ? 0.1 : 0.3 })")
      && PAGE.includes('L.canvas({ padding: _isIOS ? 0.15 : 0.5 })')
      && PAGE.includes("L.canvas({ pane: 'bordersPane', padding: _isIOS ? 0.1 : 0.25 })"));
-  ok('a radar picture releases its drawing canvas the moment the PNG exists',
-     /var url = canvas\.toDataURL\('image\/png'\);[\s\S]*?canvas\.width = canvas\.height = 0;[\s\S]*?canvas: null,/.test(PAGE)
+  ok('on iOS a radar picture releases its drawing canvas the moment the PNG exists',
+     PAGE.includes('if (_isIOS) { try { canvas.width = canvas.height = 0; } catch (e) {} }')
+     && PAGE.includes('canvas: _isIOS ? null : canvas,')
      && !/url: canvas\.toDataURL\('image\/png'\),\s*canvas: canvas,/.test(PAGE));
   ok('the picture cache and satellite pool are shallower on iOS',
      PAGE.includes('const L3_PIC_MAX = _isIOS ? 2 : 6;')
