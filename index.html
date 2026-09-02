@@ -11554,11 +11554,14 @@ let lastPastIdx = 0;
 // ── IEM NOAA L3 N0Q composite frame fetch ──
 // IEM NEXRAD composites run every 5 min at predictable times - compute timestamps directly.
 // No API call needed; tiles exist at mesonet.agron.iastate.edu/cache/tile.py/.../nexrad-n0q-{key}/...
-function _generateL3Frames(count) {
+// `endMs`, when given, is the mosaic time machine's moment: the loop then
+// ends there instead of at the live edge, and needs no publishing lag.
+function _generateL3Frames(count, endMs) {
   count = count || 12;
   const interval = 5 * 60 * 1000;
   const lag = 10 * 60 * 1000; // IEM tiles lag ~10 min behind real-time
-  const latest = Math.floor((Date.now() - lag) / interval) * interval;
+  const end = (typeof endMs === 'number' && endMs > 0) ? endMs : Date.now() - lag;
+  const latest = Math.floor(end / interval) * interval;
   const pad = n => String(n).padStart(2, '0');
   const frames = [];
   for (let i = count - 1; i >= 0; i--) {
@@ -11588,7 +11591,9 @@ function _loopFrameCount() {
 async function loadNEXRAD() {
   updateLoadStatus('Loading radar…');
   try {
-    const frames = _generateL3Frames(_loopFrameCount());
+    // Travelled, the loop ends at the mosaic machine's moment; live, at now.
+    const endMs = (typeof _tmMosaicAt === 'number' && _tmMosaicAt) ? _tmMosaicAt : null;
+    const frames = _generateL3Frames(_loopFrameCount(), endMs);
     console.log(`[Radar] NOAA L3 (IEM computed): ${frames.length} frames`);
     radarFrames = frames;
     lastPastIdx = radarFrames.length - 1;
@@ -23550,6 +23555,12 @@ let _tmSatAt = null;   // the satellite's moment
 // How far back the satellite can go when the Pi is there to read NOAA's own
 // buckets: GOES-16 has kept every scan since mid 2017 (see pi/sat_archive.py).
 const SAT_ARC_FLOOR = Date.UTC(2017, 6, 10);
+// The radar MOSAIC's own clock, the third machine. The Composite menu's MRMS
+// 1 km mosaic only advertises its last few hours, so the archive behind this
+// one is the NEXRAD national composite Iowa Mesonet has kept every five
+// minutes since November 2010, which is what the Normal mosaic draws anyway.
+let _tmMosaicAt = null;
+const MOSAIC_FLOOR = Date.UTC(2010, 10, 1);
 // Which picture the open modal is set to drive: the radar row opens it as
 // 'radar', the satellite row as 'sat'. Every jump goes to this one only.
 let _tmScope = 'radar';
@@ -23572,7 +23583,8 @@ function _tmSatActive() {
 async function _tmJump(ms) {
   // The radar reaches past the Level 3 floor now: anything older is read
   // straight off the Level 2 tape mirror instead.
-  const floor = _tmScope === 'sat' ? SAT_ARC_FLOOR : L2ARC_FLOOR;
+  const floor = _tmScope === 'sat' ? SAT_ARC_FLOOR
+              : _tmScope === 'mosaic' ? MOSAIC_FLOOR : L2ARC_FLOOR;
   const at = Math.max(floor, Math.min(Date.now(), +ms || 0));
   const when = new Date(at).toISOString().slice(0, 16).replace('T', ' ') + 'Z';
   if (_tmScope === 'sat') {
@@ -23599,12 +23611,38 @@ async function _tmJump(ms) {
     _tmSyncBadge();
     return;
   }
+  if (_tmScope === 'mosaic') {
+    _tmMosaicAt = at;
+    _tmClose();
+    if (typeof showToast === 'function') showToast(`radar mosaic at ${when}`, 3000);
+    // The MRMS 1 km mosaic keeps a few hours and no more; the NEXRAD national
+    // composite is the archive, so the travelled picture is that one.
+    if (typeof _mrmsActive !== 'undefined' && _mrmsActive) {
+      try { _clearMrms(); } catch (e) {}
+      if (typeof showToast === 'function') {
+        showToast('MRMS keeps only its last few hours. Showing the NEXRAD national '
+          + 'composite archive for that moment instead.', 5000);
+      }
+    }
+    try {
+      _radarSource = 'normal';
+      if (typeof _prDisable === 'function') _prDisable();
+      if (typeof _clearSingleSiteRef === 'function') _clearSingleSiteRef();
+      activeLayers.nexrad = true;
+      if (currentProduct === 'mrms') currentProduct = 'ref';
+      if (typeof _syncParentBubble === 'function') _syncParentBubble('radar');
+      await loadNEXRAD();
+    } catch (e) { console.warn('[tm] mosaic:', e); }
+    _tmSyncBadge();
+    return;
+  }
   const site = _tmSite();
   if (!site) {
-    if (typeof showToast === 'function') {
-      showToast('Turn on a radar first, then travel to a time.', 3500);
-    }
-    return;
+    // No single site on screen means the radar being watched is the mosaic,
+    // so the mosaic is what travels. Refusing here ("turn on a radar first")
+    // was a dead end for anyone on the Composite or Normal mosaic.
+    _tmScope = 'mosaic';
+    return _tmJump(ms);
   }
   _tmAt = at;
   _tmClose();
@@ -23627,6 +23665,12 @@ async function _tmLive() {
     _tmSyncBadge();
     return;
   }
+  if (_tmScope === 'mosaic') {
+    _tmMosaicAt = null;
+    if (activeLayers.nexrad) { try { await loadNEXRAD(); } catch (e) {} }
+    _tmSyncBadge();
+    return;
+  }
   const site = _tmSite();
   _tmAt = null;
   if (site) await _l3BucketShow(site, null);
@@ -23637,7 +23681,7 @@ async function _tmLive() {
 // last opened for. The badge names its own layer, so clicking it must not
 // depend on which menu somebody happened to visit last.
 async function _tmLiveScope(scope) {
-  _tmScope = scope === 'sat' ? 'sat' : 'radar';
+  _tmScope = scope === 'sat' ? 'sat' : scope === 'mosaic' ? 'mosaic' : 'radar';
   return _tmLive();
 }
 
@@ -23648,6 +23692,7 @@ async function _tmLiveScope(scope) {
 // independent now and either one can be in the past on its own.
 function _tmSyncBadge() {
   [['tm-badge', 'RADAR', _tmAt, 'radar'],
+   ['tm-badge-mosaic', 'RADAR MOSAIC', _tmMosaicAt, 'mosaic'],
    ['tm-badge-sat', 'SATELLITE', _tmSatAt, 'sat']].forEach(([id, name, at, scope]) => {
     let el = document.getElementById(id);
     if (at == null) { if (el) el.remove(); return; }
@@ -23682,7 +23727,7 @@ function _tmPlaceBadge() {
   } catch (e) {}
   // Stacked, radar first: when both layers are in the past there are two
   // badges, and each has to be readable and clickable on its own.
-  ['tm-badge', 'tm-badge-sat', 'tm-badge-htm'].forEach(id => {
+  ['tm-badge', 'tm-badge-mosaic', 'tm-badge-sat', 'tm-badge-htm'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.style.top = top + 'px';
@@ -23700,7 +23745,7 @@ function _tmOpen(scope) {
   // Which picture this visit drives, remembered until the next open: the
   // radar row passes 'radar', the satellite row 'sat', and every button in
   // the modal then moves only that one.
-  _tmScope = scope === 'sat' ? 'sat' : 'radar';
+  _tmScope = scope === 'sat' ? 'sat' : scope === 'mosaic' ? 'mosaic' : 'radar';
   let m = document.getElementById('tm-modal');
   if (!m) {
     m = document.createElement('div');
@@ -23745,7 +23790,9 @@ function _tmOpen(scope) {
     });
   }
   const sat = _tmScope === 'sat';
-  const floor = new Date(sat ? SAT_ARC_FLOOR : L2ARC_FLOOR).toISOString().slice(0, 10);
+  const mosaic = _tmScope === 'mosaic';
+  const floorMs = sat ? SAT_ARC_FLOOR : mosaic ? MOSAIC_FLOOR : L2ARC_FLOOR;
+  const floor = new Date(floorMs).toISOString().slice(0, 10);
   const today = new Date().toISOString().slice(0, 10);
   const d = m.querySelector('#tm-date');
   d.min = floor; d.max = today;
@@ -23753,20 +23800,24 @@ function _tmOpen(scope) {
   // picture's own moment: the two clocks are independent, so opening the
   // satellite's machine must not show the radar's date.
   m.querySelector('.tm-title').textContent =
-    'TIME MACHINE - ' + (sat ? 'SATELLITE' : 'RADAR');
-  d.value = new Date((sat ? _tmSatAt : _tmAt) || Date.now())
+    'TIME MACHINE - ' + (sat ? 'SATELLITE' : mosaic ? 'RADAR MOSAIC' : 'RADAR');
+  d.value = new Date((sat ? _tmSatAt : mosaic ? _tmMosaicAt : _tmAt) || Date.now())
     .toISOString().slice(0, 10);
-  const years = Math.floor((Date.now() - (sat ? SAT_ARC_FLOOR : L2ARC_FLOOR))
-                           / 86400e3 / 365 * 10) / 10;
+  const years = Math.floor((Date.now() - floorMs) / 86400e3 / 365 * 10) / 10;
   const site = _tmSite();
-  const ready = sat ? _tmSatActive() : !!site;
+  const ready = sat ? _tmSatActive() : mosaic ? true : !!site;
   m.querySelector('.tm-note').innerHTML = ready
-    ? `Scrubbing <b>${sat ? 'SATELLITE' : _ccEsc(String(site).toUpperCase())}</b>`
+    ? `Scrubbing <b>${sat ? 'SATELLITE' : mosaic ? 'RADAR MOSAIC'
+                      : _ccEsc(String(site).toUpperCase())}</b>`
       + ` only. The archive reaches back to <b>${floor}</b>, about ${years} years. `
       + (sat ? 'Satellite arrives as the hours leading up to your moment, so the '
              + 'playbar scrubs the approach. The plain bands come straight off '
              + "NOAA's own scan archive through the Pi; the Pi composites keep "
              + 'three days. '
+         : mosaic ? 'The national NEXRAD composite, every five minutes, from Iowa '
+             + 'Mesonet. The MRMS 1 km mosaic only keeps its last few hours, so a '
+             + 'travelled moment shows the NEXRAD composite in its place; the '
+             + 'playbar scrubs the hours leading up to your moment. '
              : 'Before March 2022 the picture comes straight off the Level 2 '
              + 'tape archive: one full-resolution scan per visit, and a site '
              + 'still on the pre-2009 tape format will say so. ')
@@ -28406,6 +28457,12 @@ function _disableRadar() {
   _canadaLayerPool.forEach(l => { if (l) l.setOpacity(0); });
   // Clear any active-station highlight on NEXRAD site labels
   if (typeof _refreshNexradSiteStyles === 'function') _refreshNexradSiteStyles();
+  // The mosaic's time machine belongs to the mosaic. Off means live next
+  // time, and the PAST badge comes down with the picture it described.
+  if (typeof _tmMosaicAt !== 'undefined' && _tmMosaicAt != null) {
+    _tmMosaicAt = null;
+    try { _tmSyncBadge(); } catch (e) {}
+  }
   // Hide station marker bubbles now that radar is off
   _syncNexradSites();
 }
@@ -28806,7 +28863,7 @@ const LAYER_DESCRIPTIONS = {
   'radar-l2':     'Level 2 is the raw feed straight off a single radar, the sharpest picture the radar makes. Decoded from the live feed, with the full set of dual-pol products, for every NEXRAD and airport terminal radar in the country.',
   'radar-l3':     'Level 3 is a single radar\'s lighter, pre-processed feed: slightly coarser than Level 2 but faster, with extra derived products like storm totals, VIL, and echo tops.',
   'radar-mrms':   'MRMS is a national mosaic NOAA builds by merging every radar together, then computing things no single radar can: rotation tracks, hail swaths, rainfall totals, lightning probability and more. Your Pi builds the pictures; the whole catalogue lives in here.',
-  'timemachine': 'Travel the radar back to any moment since March 2022. Pick a date and time, or jump by a day, a month or a year, and the site you are watching redraws as it looked then, with its own scrubbable loop around that moment. The archive is Level 3 only, so it is the Weather Service\'s own product files rather than raw volumes, and a radar that was down that day has nothing to show and will say so.',
+  'timemachine': 'Travel the radar back to any moment. Pick a date and time, or jump by a day, a month or a year. A single site redraws as it looked then (Level 3 product files back to March 2022, the Level 2 tape archive before that, to 2008), with its own scrubbable loop around that moment. The mosaic travels too: with no single site on screen, the national NEXRAD composite Iowa Mesonet has kept every five minutes since November 2010 is what moves, since the MRMS 1 km mosaic only keeps its last few hours. A radar that was down that day has nothing to show and will say so.',
   // The Models row's two doors.
   'run-models':      'Forecast model charts - GFS, ECMWF, HRRR, NAM and more - browsable by product and forecast hour, with an Ensemble Spread view that shows where the models disagree.',
   'spaghetti-models': 'Tropical guidance from the NHC a-deck: official tracks and cones, plus storm-track spaghetti from every published model, each line wearing its model\'s name tag on a stem. Includes the track animation.',
@@ -31600,6 +31657,7 @@ async function toggleMrmsSub() {
   // and its own playback. So it still works on a day the Pi is down, and it
   // must not sit behind a loading note that is waiting on the Pi.
   _mrmsCompositeBubble(wrap);
+  _mosaicTimeMachineBubble(wrap);
 
   const note = document.createElement('div');
   // sb-note, not a bare sub-bubble: this is a status line rather than a
@@ -31687,6 +31745,24 @@ function _mrmsCompositeBubble(wrap) {
     if (typeof _syncNexradSites === 'function') try { _syncNexradSites(); } catch (e) {}
   };
   wrap.appendChild(el);
+}
+
+// The Composite menu's way into the archive. This is the MOSAIC's machine,
+// with its own clock (_tmMosaicAt): the MRMS 1 km picture keeps a few hours,
+// so a travelled moment is drawn from the NEXRAD national composite Iowa
+// Mesonet has kept since November 2010, and wears its own PAST badge.
+function _mosaicTimeMachineBubble(wrap) {
+  const tm = document.createElement('div');
+  tm.className = 'sub-bubble' + (_tmMosaicAt != null ? ' active' : '');
+  tm.id = 'sub-mosaic-timemachine';
+  tm.title = 'Travel the radar mosaic to any moment back to November 2010';
+  tm.innerHTML = '<span class="sb-icon">' + _eicon('\u{1F550}')
+               + '</span><span class="sb-label">Time Machine</span>';
+  tm.onclick = () => _tmOpen('mosaic');
+  if (LAYER_DESCRIPTIONS['timemachine']) {
+    tm.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS['timemachine']));
+  }
+  wrap.appendChild(tm);
 }
 
 // One group's products. Back returns to the group list rather than to the
@@ -31864,14 +31940,15 @@ function toggleRadarSub() {
   // says the picture is not live.
   {
     const tm = document.createElement('div');
-    tm.className = 'sub-bubble' + (_tmAt != null ? ' active' : '');
+    tm.className = 'sub-bubble' + ((_tmAt != null || _tmMosaicAt != null) ? ' active' : '');
     tm.id = 'sub-timemachine';
-    tm.title = 'Travel the radar to any moment back to March 2022';
+    tm.title = 'Travel the radar to any moment: a single site back to 2008, the mosaic back to 2010';
     // _eicon takes the emoji, not the slug it maps to: handed 'clock' it
     // finds no entry and prints the word.
     tm.innerHTML = '<span class="sb-icon">' + _eicon('\u{1F550}')
                  + '</span><span class="sb-label">Time Machine</span>';
-    tm.onclick = () => _tmOpen('radar');
+    // A single site on screen travels the site; otherwise the mosaic travels.
+    tm.onclick = () => _tmOpen(_tmSite() ? 'radar' : 'mosaic');
     if (LAYER_DESCRIPTIONS['timemachine']) {
       tm.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS['timemachine']));
     }
@@ -34375,7 +34452,11 @@ async function init() {
   });
 
   setInterval(() => { try { loadAlerts(); } catch(e){} }, 60000);
-  setInterval(() => { try { loadNEXRAD(); } catch(e){} }, 300000);
+  setInterval(() => {
+    // A travelled mosaic does not move: the past has no live edge to follow.
+    if (typeof _tmMosaicAt === 'number' && _tmMosaicAt) return;
+    try { loadNEXRAD(); } catch(e){}
+  }, 300000);
   loadSurfaceAnalysis().catch(e => console.warn('Fronts init:', e));
 
   // Start following the Pi's published address. A quick tunnel can hand out a
@@ -61302,6 +61383,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-02-k', date: 'Sep 2, 2026',
+    text: 'A Time Machine for the radar mosaic. The Composite menu now has its own Time Machine row, and the radar row’s Time Machine travels the mosaic whenever no single site is selected instead of saying "turn on a radar first". A travelled moment draws the national NEXRAD composite Iowa Mesonet has kept every five minutes since November 2010, with the playbar scrubbing the hours leading up to it; the MRMS 1 km mosaic only keeps its last few hours, so it hands over to the composite for anything older and says so. It wears its own RADAR MOSAIC PAST badge, and Back to Live puts the live loop straight back.' },
   { id: '2026-09-02-j', date: 'Sep 2, 2026',
     text: 'Satellite, two fixes. Tapping the Satellite button now turns nothing on: the menu opens with nothing lit, and only picking a product switches the picture on (it used to light the remembered band, Clean IR, the moment the menu opened). And the satellite Time Machine now has a real archive behind it: through the Pi it reads NOAA’s own scan archive, every GOES scan since July 2017, and renders the band you asked for at the moment you chose, so the plain bands travel eight years back instead of stopping where the live service’s memory ends.' },
   { id: '2026-09-02-i', date: 'Sep 2, 2026',
