@@ -23274,6 +23274,151 @@ const TM_FLOOR = Date.UTC(2022, 2, 1);
 // archives, and one machine driving both meant travelling the radar dragged
 // the satellite along whether you asked or not. Each row's Time Machine now
 // moves only its own picture.
+// ── THE LEVEL 2 DEEP ARCHIVE ───────────────────────────────────────────────
+// NOAA's own Level 2 archive bucket refuses anonymous browsers (verified:
+// AccessDenied on listings and reads alike), but Google's public mirror of
+// the same tape does not: its JSON API answers with CORS for this origin,
+// serves ranged reads, and holds every volume back to the first NEXRAD
+// data in June 1991. Each day is stored as hourly tar files of gzipped
+// volumes, so getting one scan means walking tar headers by ranged reads
+// and gunzipping the one entry wanted - no server anywhere in between.
+//
+// The honest floor: this browser's decoder reads the dual-pol era format.
+// Proven against real archive volumes: a 2015 AR2V0006 file decodes to a
+// full mesh, while the 2006 AR2V0001 and 1991 ARCHIVE2 formats do not, and
+// those eras are stored in Unix .Z compression besides. Sites switched to
+// the readable era across 2008-2010, so the machine offers 2008 onward and
+// says exactly why when a picked moment turns out to predate this site's
+// switch.
+const L2ARC_API = 'https://storage.googleapis.com/storage/v1/b/gcp-public-data-nexrad-l2/o';
+const L2ARC_FLOOR = Date.UTC(2008, 0, 1);
+
+function _l2ArcStampMs(name) {
+  const m = /(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/.exec(String(name || ''));
+  return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : NaN;
+}
+function _l2ArcMs14(s) {
+  return Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8),
+                  +s.slice(8, 10), +s.slice(10, 12), +s.slice(12, 14));
+}
+
+// Gunzip that tolerates a truncated tail, because a capped ranged read of a
+// big volume is truncated on purpose: the records already decompressed are
+// whole sweeps and decode fine, exactly like the live chunk feed's prefix.
+async function _l2ArcGunzip(bytes, truncated) {
+  const reader = new Blob([bytes]).stream()
+    .pipeThrough(new DecompressionStream('gzip')).getReader();
+  const parts = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parts.push(value); total += value.length;
+    }
+  } catch (e) {
+    if (!truncated && !parts.length) throw e;
+  }
+  if (!total) throw new Error('the archive volume would not decompress');
+  const out = new Uint8Array(total);
+  let o = 0;
+  parts.forEach(p => { out.set(p, o); o += p.length; });
+  return out;
+}
+
+// One volume scan out of the mirror: list the day, pick the tar covering
+// the moment, walk its headers, read the nearest volume.
+async function _l2ArcVolume(site, at) {
+  let sid = String(site).toUpperCase();
+  if (sid.length === 3) sid = 'K' + sid;
+  const d = new Date(at);
+  const p2 = n => String(n).padStart(2, '0');
+  const day = `${d.getUTCFullYear()}/${p2(d.getUTCMonth() + 1)}/${p2(d.getUTCDate())}`;
+  const lr = await fetch(`${L2ARC_API}?prefix=${encodeURIComponent(day + '/' + sid + '/')}`
+    + '&maxResults=64&fields=items(name,size,mediaLink)', { signal: _abortSignal(20000) });
+  if (!lr.ok) throw new Error('archive listing HTTP ' + lr.status);
+  const tars = ((await lr.json()).items || []).filter(x => /\.tar$/.test(x.name));
+  if (!tars.length) {
+    throw new Error(`the archive has no ${sid} data on ${day.replace(/\//g, '-')}.`
+      + ' The radar may have been down, or not built yet.');
+  }
+  let tar = tars.find(x => {
+    const m = /_(\d{14})_(\d{14})\.tar$/.exec(x.name);
+    return m && at >= _l2ArcMs14(m[1]) && at <= _l2ArcMs14(m[2]) + 999;
+  }) || tars[tars.length - 1];
+  const range = async (a, b) => {
+    const r = await fetch(tar.mediaLink, { headers: { Range: `bytes=${a}-${b}` },
+                                           signal: _abortSignal(45000) });
+    if (r.status !== 206 && r.status !== 200) throw new Error('archive read HTTP ' + r.status);
+    return new Uint8Array(await r.arrayBuffer());
+  };
+  // Walk the tar: each 512 byte header carries a name and an octal size,
+  // and the next header sits past the padded data. Pax metadata entries
+  // are bookkeeping, not volumes, and are stepped over.
+  const size = +tar.size || Infinity;
+  const dec = new TextDecoder();
+  const entries = [];
+  let off = 0;
+  for (let hop = 0; hop < 120 && off + 512 <= size; hop++) {
+    const h = await range(off, off + 511);
+    const name = dec.decode(h.subarray(0, 100)).replace(/\0[\s\S]*$/, '');
+    if (!name) break;
+    const esz = parseInt(dec.decode(h.subarray(124, 136)).replace(/[^0-7]/g, ' ').trim(), 8) || 0;
+    if (!/PaxHeaders/.test(name)) {
+      entries.push({ name: name.replace(/^\.\//, ''), start: off + 512, size: esz });
+    }
+    off += 512 + Math.ceil(esz / 512) * 512;
+  }
+  const vols = entries.filter(e => isFinite(_l2ArcStampMs(e.name)) && e.size > 1024);
+  if (!vols.length) throw new Error('no volumes inside the archive tar');
+  let best = vols[0];
+  vols.forEach(v => {
+    if (Math.abs(_l2ArcStampMs(v.name) - at) < Math.abs(_l2ArcStampMs(best.name) - at)) best = v;
+  });
+  if (/\.Z$/.test(best.name)) {
+    throw new Error(`${sid}'s archive at that date is still in the pre-2009 tape format`
+      + ' this decoder cannot read yet. Try 2009 or later for this site.');
+  }
+  const cap = Math.min(best.size, L2_DIRECT_CAP);
+  const body = await range(best.start, best.start + cap - 1);
+  const raw = /\.gz$/.test(best.name) ? await _l2ArcGunzip(body, cap < best.size) : body;
+  return { buffer: raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength),
+           when: _l2ArcStampMs(best.name), name: best.name };
+}
+
+// Show one archived Level 2 scan through the exact pipeline the live radar
+// uses: same worker, same mesh renderer, same colours.
+async function _l2ArcShow(site, at) {
+  const longMap = { reflectivity: 'ref', velocity: 'vel', corrcoeff: 'cc',
+                    diffrefl: 'zdr', kdp: 'kdp' };
+  const shortOk = ['ref', 'vel', 'cc', 'zdr', 'kdp', 'sw'];
+  const want = (typeof _prProduct !== 'undefined' && _prProduct) || '';
+  const product = longMap[want] || (shortOk.includes(want) ? want : null)
+    || (typeof currentProduct !== 'undefined' && shortOk.includes(currentProduct)
+        ? currentProduct : 'ref');
+  const layer = { cc: 'CC', zdr: 'ZDR', vel: 'VEL', ref: 'REF', kdp: 'KDP', sw: 'SW' }[product];
+  const atEl = document.getElementById('anim-time');
+  if (atEl) atEl.textContent = 'Reading the Level 2 tape archive…';
+  try {
+    const vol = await _l2ArcVolume(site, at);
+    const result = await _workerProcess(vol.buffer, layer);
+    if (typeof _l3MeshNormalize === 'function') _l3MeshNormalize(result.meshData, layer);
+    if (typeof _l2LoopReset === 'function') _l2LoopReset();
+    _renderMesh(result, product, site);
+    if (atEl) {
+      atEl.textContent = 'ARCHIVE · '
+        + new Date(vol.when).toISOString().slice(0, 16).replace('T', ' ') + 'Z';
+      atEl.style.color = '#e8b800';
+    }
+  } catch (e) {
+    if (e && e.message === 'superseded') return;
+    if (typeof showToast === 'function') {
+      showToast(String(site).toUpperCase() + ' archive: ' + e.message, 6000);
+    }
+    if (atEl) atEl.textContent = '';
+  }
+}
+
 let _tmAt = null;      // the radar's moment
 let _tmSatAt = null;   // the satellite's moment
 // Which picture the open modal is set to drive: the radar row opens it as
@@ -23296,7 +23441,10 @@ function _tmSatActive() {
 // about it, the site, the product, the tilt, the sector, stays exactly as
 // it is: this control changes WHEN and nothing else.
 async function _tmJump(ms) {
-  const at = Math.max(TM_FLOOR, Math.min(Date.now(), +ms || 0));
+  // The radar reaches past the Level 3 floor now: anything older is read
+  // straight off the Level 2 tape mirror instead.
+  const floor = _tmScope === 'sat' ? TM_FLOOR : L2ARC_FLOOR;
+  const at = Math.max(floor, Math.min(Date.now(), +ms || 0));
   const when = new Date(at).toISOString().slice(0, 16).replace('T', ' ') + 'Z';
   if (_tmScope === 'sat') {
     if (!_tmSatActive()) {
@@ -23331,7 +23479,11 @@ async function _tmJump(ms) {
   if (typeof showToast === 'function') {
     showToast(`${String(site).toUpperCase()} at ${when}`, 3000);
   }
-  await _l3BucketShow(site, at);
+  // Level 3's bucket floor is March 2022. Older than that, the moment is
+  // read from the Level 2 tape mirror: one full-resolution scan, decoded
+  // in this browser by the same worker that decodes the live feed.
+  if (at < TM_FLOOR) await _l2ArcShow(site, at);
+  else await _l3BucketShow(site, at);
   _tmSyncBadge();
 }
 
@@ -23460,11 +23612,11 @@ function _tmOpen(scope) {
       q.appendChild(b);
     });
   }
-  const floor = new Date(TM_FLOOR).toISOString().slice(0, 10);
+  const sat = _tmScope === 'sat';
+  const floor = new Date(sat ? TM_FLOOR : L2ARC_FLOOR).toISOString().slice(0, 10);
   const today = new Date().toISOString().slice(0, 10);
   const d = m.querySelector('#tm-date');
   d.min = floor; d.max = today;
-  const sat = _tmScope === 'sat';
   // The card says which picture it is holding, and the date lands on that
   // picture's own moment: the two clocks are independent, so opening the
   // satellite's machine must not show the radar's date.
@@ -23472,14 +23624,18 @@ function _tmOpen(scope) {
     'TIME MACHINE - ' + (sat ? 'SATELLITE' : 'RADAR');
   d.value = new Date((sat ? _tmSatAt : _tmAt) || Date.now())
     .toISOString().slice(0, 10);
-  const years = Math.floor((Date.now() - TM_FLOOR) / 86400e3 / 365 * 10) / 10;
+  const years = Math.floor((Date.now() - (sat ? TM_FLOOR : L2ARC_FLOOR))
+                           / 86400e3 / 365 * 10) / 10;
   const site = _tmSite();
   const ready = sat ? _tmSatActive() : !!site;
   m.querySelector('.tm-note').innerHTML = ready
     ? `Scrubbing <b>${sat ? 'SATELLITE' : _ccEsc(String(site).toUpperCase())}</b>`
       + ` only. The archive reaches back to <b>${floor}</b>, about ${years} years. `
       + (sat ? 'Satellite arrives as the hours leading up to your moment, so the '
-             + 'playbar scrubs the approach. ' : '')
+             + 'playbar scrubs the approach. '
+             : 'Before March 2022 the picture comes straight off the Level 2 '
+             + 'tape archive: one full-resolution scan per visit, and a site '
+             + 'still on the pre-2009 tape format will say so. ')
       + 'A source that was down that day has nothing to show, and will say so.'
     : (sat ? 'Pick a satellite product first, then choose a moment.'
            : 'Turn on a radar first, then choose a moment.');
@@ -60110,6 +60266,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-02-a', date: 'Sep 2, 2026',
+    text: 'The archives got serious. Every model run is now kept, not just five days: the Pi archives runs until its disk genuinely runs low, and then retires only the oldest. The satellite archive stretches from 3 days to 90. And the radar Time Machine now reaches back to 2008: before March 2022 it reads NOAA’s Level 2 tape archive (via Google’s public mirror) directly in your browser, pulling one full-resolution scan out of the hourly tape files and decoding it with the same engine as live radar. Dates before a site’s 2008-2010 format switch say so honestly instead of showing nothing.' },
   { id: '2026-09-01-n', date: 'Sep 1, 2026',
     text: 'The huge city expansion now works immediately, not just after the Pi rebuilds: while the Pi prepares its millions-of-places tiles, the map pulls about 150,000 towns from a web mirror of the same GeoNames data, so zooming in already reveals far more places today. Tap any town, big or tiny, for its full Open-Meteo forecast. Phones asked to save data, and devices with very little memory, skip the big download and keep the classic list.' },
   { id: '2026-09-01-m', date: 'Sep 1, 2026',
