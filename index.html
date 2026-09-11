@@ -11248,7 +11248,7 @@ function initMap() {
   // Apply saved color palette on init
 
   // ── MapTiler tile layers ──
-  const MT_KEY  = window.__MAPTILER_KEY__ || '2IyoBUrliM6RSLG6UVYO';
+  const MT_KEY  = window.__MAPTILER_KEY__ || 'tS7eh2gIUu17DZvGa1dP';
   // MapTiler renders its tiles from OpenStreetMap data, so OSM has to stay
   // credited here whatever else changes: it is a condition of the ODbL licence
   // the basemap data is published under, not an optional label.
@@ -61383,6 +61383,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-11-a', date: 'Sep 11, 2026',
+    text: 'A fresh MapTiler key behind the basemaps. Every base map style (dark, light, satellite, topo) now loads its tiles with a new key, so the streets, borders and terrain under the weather keep drawing instead of falling back to the plainer keyless maps when the old key ran dry.' },
   { id: '2026-09-02-k', date: 'Sep 2, 2026',
     text: 'A Time Machine for the radar mosaic. The Composite menu now has its own Time Machine row, and the radar row’s Time Machine travels the mosaic whenever no single site is selected instead of saying "turn on a radar first". A travelled moment draws the national NEXRAD composite Iowa Mesonet has kept every five minutes since November 2010, with the playbar scrubbing the hours leading up to it; the MRMS 1 km mosaic only keeps its last few hours, so it hands over to the composite for anything older and says so. It wears its own RADAR MOSAIC PAST badge, and Back to Live puts the live loop straight back.' },
   { id: '2026-09-02-j', date: 'Sep 2, 2026',
