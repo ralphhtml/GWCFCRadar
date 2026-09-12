@@ -5795,10 +5795,6 @@ body.lite-mode #export-toolbar { display: none !important; }
   transform: translateX(-50%) rotate(45deg);
 }
 #site-pop.below::after { bottom: auto; top: -6px; transform: translateX(-50%) rotate(225deg); }
-.site-pop-site {
-  font-family: var(--mono); font-size: 9px; letter-spacing: 1.5px;
-  color: rgba(0,229,255,0.85); text-align: center; padding-bottom: 2px;
-}
 .site-pop-btn {
   display: flex; flex-direction: column; gap: 1px; text-align: left; cursor: pointer;
   background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px;
@@ -5808,25 +5804,16 @@ body.lite-mode #export-toolbar { display: none !important; }
 .site-pop-btn span { font-size: 9px; color: rgba(255,255,255,0.55); }
 .site-pop-btn:hover { background: rgba(0,140,186,0.28); border-color: rgba(0,229,255,0.5); }
 
-/* ── RADAR COMPARE PANEL ── the strips, listed, with the same row look as
-   the model comparison's slots */
-#rc-panel {
-  /* Top right, under the search box and clear of the toolbar's column: the
-     top left is where the layer menu lives. */
-  position: absolute; top: 70px; right: 60px; z-index: 640; width: 215px; display: none;
-  background: rgba(8,8,10,0.86); border: 1px solid rgba(0,229,255,0.35); border-radius: 8px;
-  padding: 8px 9px; font-family: var(--mono); font-size: 10px; color: #fff;
+/* ── RADAR COMPARE STRIP LABELS ── the model comparison's label, plus a
+   small × on it, since the strips have no panel: the label on the map is
+   where a strip is named and where it is removed. */
+.rc-label { pointer-events: auto; display: flex; align-items: center; gap: 7px; max-width: 46%; }
+.rc-label .rc-x {
+  background: none; border: 1px solid rgba(255,255,255,0.25); color: rgba(255,150,150,0.9);
+  border-radius: 4px; width: 16px; height: 16px; font-size: 11px; line-height: 1; cursor: pointer;
+  padding: 0; flex: none;
 }
-#rc-panel.open { display: block; }
-#rc-panel .rc-title {
-  display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;
-  font-family: var(--display); font-size: 10px; letter-spacing: 1.5px; color: #00e5ff;
-}
-.rc-row { display: flex; align-items: center; gap: 6px; padding: 4px 0; border-top: 1px solid rgba(255,255,255,0.08); }
-.rc-row .rc-letter { font-family: var(--display); font-size: 9px; letter-spacing: 1px; color: rgba(232,184,0,0.8); width: 12px; }
-.rc-row .rc-site { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rc-hint { margin-top: 6px; font-size: 9px; line-height: 1.35; color: rgba(255,255,255,0.55); }
-@media (max-width: 480px) { #rc-panel { width: 170px; top: 64px; right: 8px; } }
+.rc-label .rc-x:hover { background: rgba(170,0,0,0.35); }
 .city-tooltip {
   background: rgba(30,0,0,0.9) !important;
   border: 1px solid rgba(232,184,0,0.5) !important;
@@ -10275,11 +10262,9 @@ body.clean-mode #clean-hint { opacity: 1; }
     <div id="sev-cmp-dividers"></div>
     <div id="sev-cmp-labels"></div>
 
-    <!-- Radar site comparison: the same strips, a second set of them, plus
-         the small panel that lists the sites being compared -->
+    <!-- Radar site comparison: the same strips, a second set of them -->
     <div id="rc-dividers"></div>
     <div id="rc-labels"></div>
-    <div id="rc-panel"></div>
 
     <!-- Cam Panel injected at body level via position:fixed --!>
     <div id="model-info">
@@ -45859,8 +45844,8 @@ function _sitePopEl() {
   if (el) return el;
   el = document.createElement('div');
   el.id = 'site-pop';
-  el.innerHTML = '<div class="site-pop-site"></div>'
-    + '<button type="button" class="site-pop-btn site-pop-view" onclick="_sitePopView()">'
+  // No station name at the top: the popup floats off the pill that says it.
+  el.innerHTML = '<button type="button" class="site-pop-btn site-pop-view" onclick="_sitePopView()">'
     + '<b>View this site</b><span>Load this radar on its own</span></button>'
     + '<button type="button" class="site-pop-btn site-pop-compare" onclick="_sitePopCompare()">'
     + '<b>Compare radar sites</b><span>Several radars side by side</span></button>';
@@ -45877,7 +45862,6 @@ function _sitePopEl() {
 function _sitePopOpen(s) {
   const el = _sitePopEl();
   _sitePopStation = s;
-  el.querySelector('.site-pop-site').textContent = String(s.id).toUpperCase();
   const pill = document.getElementById('nxlbl-' + s.id);
   let x = innerWidth / 2, y = innerHeight / 2, below = false;
   if (pill) {
@@ -46012,7 +45996,7 @@ async function _rcStart(s) {
   _rcRefreshDOM();
   _refreshNexradSiteStyles();
   if (typeof showToast === 'function') {
-    showToast(`${sid.toUpperCase()} is strip A. Tap another radar pill to add it beside it.`, 4000);
+    showToast(`${sid.toUpperCase()} is strip A. Tap another radar pill to add it beside it; tap a strip's pill again, or the × on its label, to take it out.`, 5000);
   }
 }
 
@@ -46044,6 +46028,13 @@ function _rcRemoveSlot(id) {
   if (!slot) return;
   _rcClearSlot(slot);
   _rcSlots = _rcSlots.filter(x => x.id !== id);
+  // The last strip gone is the comparison over: with no panel to stop it
+  // from, taking every strip out is how it is ended.
+  if (!_rcSlots.length) {
+    _rcOff();
+    if (typeof showToast === 'function') showToast('Radar compare ended.', 2500);
+    return;
+  }
   _rcRecalcSplits();
   _rcRefreshDOM();
   _rcUpdateClips();
@@ -46351,16 +46342,17 @@ function _rcSlotLabel(slot) {
 }
 function _rcRefreshLabels() {
   _rcSlots.forEach((slot, i) => {
-    if (slot.labelEl) slot.labelEl.textContent = _rcLetter(i) + '  ' + _rcSlotLabel(slot);
+    const t = slot.labelEl && slot.labelEl.querySelector('.rc-label-text');
+    if (t) t.textContent = _rcLetter(i) + '  ' + _rcSlotLabel(slot);
   });
 }
 // Built again whenever the strip count changes, never on a pan or zoom,
-// which would break a drag in progress.
+// which would break a drag in progress. There is no panel: each strip is
+// named by its label on the map, and the × on that label removes it.
 function _rcRefreshDOM() {
   const dc = document.getElementById('rc-dividers');
   const lc = document.getElementById('rc-labels');
-  const panel = document.getElementById('rc-panel');
-  if (!dc || !lc || !panel) return;
+  if (!dc || !lc) return;
   dc.innerHTML = ''; lc.innerHTML = '';
   _rcSlots.forEach((slot, i) => {
     const d = document.createElement('div');
@@ -46371,23 +46363,20 @@ function _rcRefreshDOM() {
     slot.dividerEl = d;
     const l = document.createElement('div');
     l.className = 'sev-cmp-label rc-label';
+    const t = document.createElement('span');
+    t.className = 'rc-label-text';
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'rc-x';
+    x.title = 'Remove this strip';
+    x.textContent = '×';
+    x.addEventListener('pointerdown', e => e.stopPropagation());
+    x.addEventListener('click', e => { e.stopPropagation(); _rcRemoveSlot(slot.id); });
+    l.appendChild(t);
+    l.appendChild(x);
     lc.appendChild(l);
     slot.labelEl = l;
   });
-  const main = _rcMainSite();
-  const prod = _rcProductLabel(), src = _rcSourceLabel();
-  panel.innerHTML = `
-    <div class="rc-title"><span>RADAR COMPARE</span>
-      <button type="button" class="sev-slot-remove" onclick="_rcOff()" title="Stop comparing">×</button></div>
-    <div class="rc-row"><span class="rc-letter">A</span>
-      <span class="rc-site" id="rc-row-a">${main ? main.toUpperCase() : '-'} · ${prod} (${src})</span></div>
-    ${_rcSlots.map((slot, i) => `
-    <div class="rc-row"><span class="rc-letter">${_rcLetter(i)}</span>
-      <span class="rc-site">${slot.site.toUpperCase()}</span>
-      <button type="button" class="sev-slot-remove" onclick="_rcRemoveSlot('${slot.id}')" title="Remove this strip">×</button></div>`).join('')}
-    <div class="rc-hint">Tap another radar pill to add it as a strip; tap a strip’s pill again to remove it.
-      Drag a divider on the map to resize. Every strip draws ${prod} from the ${src} source, the same as strip A.</div>`;
-  panel.classList.toggle('open', _rcOn);
   _rcRefreshLabels();
 }
 function _rcUpdateClips() {
@@ -46423,8 +46412,6 @@ function _rcOff() {
   _rcSlots.forEach(_rcClearSlot);
   _rcSlots = []; _rcSplits = []; _rcDragIdx = -1;
   ['rc-dividers', 'rc-labels'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
-  const panel = document.getElementById('rc-panel');
-  if (panel) { panel.classList.remove('open'); panel.innerHTML = ''; }
   try { _refreshNexradSiteStyles(); } catch (e) {}
 }
 
@@ -62229,6 +62216,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-12-c', date: 'Sep 12, 2026',
+    text: 'Radar compare, tidied. The panel that listed the compared sites is gone: each strip is named by its label on the map, and a small × on that label removes it. Taking the last strip out ends the comparison. The popup above a tapped radar pill no longer repeats the station’s name, since the pill under it already says it.' },
   { id: '2026-09-12-b', date: 'Sep 12, 2026',
     text: 'Env. CN Outlooks, a new overlay. Environment Canada’s thunderstorm outlooks now draw on the map as shaded areas: yellow where thunderstorms are possible, orange where severe thunderstorms are possible, red where they are likely. It is the Canadian counterpart of the SPC Outlook, read live from Environment Canada’s GeoMet API, with an info button and a drag handle like every other overlay pill. Tap a shaded area for the region, the period and the forecasters’ notes.' },
   { id: '2026-09-12-a', date: 'Sep 12, 2026',
