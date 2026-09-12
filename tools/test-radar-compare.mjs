@@ -44,6 +44,9 @@ console.log('\n1. the pieces are in the page');
   ok('the playback decoder takes the tilt a strip needs',
      PAGE.includes('function _pbDecode(buffer, layer, extra)')
      && PAGE.includes("options: Object.assign({ range_limit_km: far }, extra || {}) }, [buffer]);"));
+  ok('no panel, and no station name in the popup: the map label and the pill say those',
+     !PAGE.includes('id="rc-panel"') && !PAGE.includes('site-pop-site')
+     && PAGE.includes("x.className = 'rc-x';"));
   const EM = String.fromCharCode(0x2014);
   ok('no em dashes here or in the page',
      !PAGE.includes(EM)
@@ -103,14 +106,14 @@ console.log('\n2. a tap on a pill asks, rather than acting');
     const pill = document.getElementById('nxlbl-ktlx').getBoundingClientRect();
     const pr = pop.getBoundingClientRect();
     return { open: pop.classList.contains('open'),
-             site: pop.querySelector('.site-pop-site').textContent,
+             noName: !pop.querySelector('.site-pop-site') && !/KTLX/.test(pop.textContent),
              btns: [...pop.querySelectorAll('.site-pop-btn b')].map(x => x.textContent),
              above: pr.bottom <= pill.top + 1,
              centred: Math.abs((pr.left + pr.width / 2) - (pill.left + pill.width / 2)) < 2,
              ref: _refStation };
   });
-  ok('the popup opens for that site with the two choices',
-     r.open && r.site === 'KTLX' && r.btns.join('|') === 'View this site|Compare radar sites', JSON.stringify(r));
+  ok('the popup opens with the two choices and nothing else',
+     r.open && r.noName && r.btns.join('|') === 'View this site|Compare radar sites', JSON.stringify(r));
   ok('above the pill, centred on it', r.above && r.centred, JSON.stringify(r));
   ok('and nothing has loaded yet', r.ref === null, String(r.ref));
 
@@ -141,7 +144,6 @@ console.log('\n3. Compare radar sites cuts the map into strips');
     const slot = _rcSlots[0];
     const pane = slot && map.getPane('rc-' + slot.id);
     const rp = map.getPane('radarPane');
-    const panel = document.getElementById('rc-panel');
     return {
       on: _rcOn, n: _rcSlots.length, site: slot && slot.site, kind: slot && slot.kind,
       layerName: slot && slot.layer && slot.layer.wmsParams && slot.layer.wmsParams.layers,
@@ -151,8 +153,8 @@ console.log('\n3. Compare radar sites cuts the map into strips');
       radarZ: parseInt(rp.style.zIndex, 10) || parseInt(getComputedStyle(rp).zIndex, 10) || 400,
       dividers: document.querySelectorAll('#rc-dividers .sev-cmp-divider').length,
       labels: [...document.querySelectorAll('#rc-labels .sev-cmp-label')].map(e => e.textContent),
-      panelOpen: panel.classList.contains('open'),
-      rows: [...panel.querySelectorAll('.rc-row')].map(e => e.textContent.replace(/\s+/g, ' ').trim()),
+      noPanel: !document.getElementById('rc-panel'),
+      x: !!document.querySelector('#rc-labels .rc-label .rc-x'),
       split: _rcSplits.slice(),
       ring: document.getElementById('nxlbl-kfws').classList.contains('in-compare'),
       main: _rcMainSite(),
@@ -170,9 +172,8 @@ console.log('\n3. Compare radar sites cuts the map into strips');
   ok('one divider and one label, at the halfway split',
      r.dividers === 1 && r.labels.length === 1 && /^B  KFWS · Reflectivity/.test(r.labels[0]) && r.split[0] === 50,
      JSON.stringify({ d: r.dividers, l: r.labels, s: r.split }));
-  ok('the panel lists A and B, and the pill wears the compare ring',
-     r.panelOpen && /^A KTLX · Reflectivity \(Normal\)/.test(r.rows[0]) && /^B KFWS/.test(r.rows[1]) && r.ring,
-     JSON.stringify(r.rows));
+  ok('no panel: the label on the map carries the ×, and the pill wears the compare ring',
+     r.noPanel && r.x && r.ring, JSON.stringify({ noPanel: r.noPanel, x: r.x, ring: r.ring }));
 }
 
 console.log('\n4. while comparing, a pill tap adds a strip, and a second tap takes it out');
@@ -260,11 +261,10 @@ console.log('\n6. strips follow the playbar, and switch product with strip A');
     await new Promise(res => setTimeout(res, 200));
     const slot = _rcSlots[0];
     return { kind: slot.kind, layer: slot.layer && slot.layer.wmsParams.layers,
-             row: document.getElementById('rc-row-a').textContent.replace(/\s+/g, ' ').trim(),
              label: slot.labelEl.textContent };
   });
   ok('switching strip A to velocity redraws every strip as velocity',
-     m.kind === 'wms' && m.layer === 'kdyx_sr_bvel' && /KTLX · Velocity/.test(m.row) && /KDYX · Velocity/.test(m.label),
+     m.kind === 'wms' && m.layer === 'kdyx_sr_bvel' && /KDYX · Velocity/.test(m.label),
      JSON.stringify(m));
 
   // The other sources, as plans only: the network is off, so what is
@@ -292,32 +292,34 @@ console.log('\n6. strips follow the playbar, and switch product with strip A');
      plans.cant.kind === 'none' && /TDAL does not publish Corr/.test(plans.cant.why), JSON.stringify(plans.cant));
 }
 
-console.log('\n7. ending the comparison, from the panel and from the radar switch');
+console.log('\n7. ending the comparison, from the last label\'s × and from the radar switch');
 {
   const r = await p.evaluate(async () => {
     _rcTickFn();                       // settle back onto reflectivity
     await new Promise(res => setTimeout(res, 100));
     const paneId = 'rc-' + _rcSlots[0].id;
-    document.querySelector('#rc-panel .rc-title button').click();
+    window.__toasts.length = 0;
+    document.querySelector('#rc-labels .rc-label .rc-x').click();
     const off = { on: _rcOn, n: _rcSlots.length,
                   dividers: document.querySelectorAll('#rc-dividers *').length,
-                  panel: document.getElementById('rc-panel').classList.contains('open'),
+                  labels: document.querySelectorAll('#rc-labels *').length,
                   layers: map.getPane(paneId).children.length,
-                  ring: document.getElementById('nxlbl-kdyx').classList.contains('in-compare') };
+                  ring: document.getElementById('nxlbl-kdyx').classList.contains('in-compare'),
+                  toasts: window.__toasts.join(' | ') };
     _nexradSiteMarkers['kfws'].label.fire('click');
     document.querySelector('#site-pop .site-pop-compare').click();
     await new Promise(res => setTimeout(res, 200));
     const again = { on: _rcOn, n: _rcSlots.length };
     _disableRadar();
     const after = { on: _rcOn, n: _rcSlots.length,
-                    panel: document.getElementById('rc-panel').classList.contains('open') };
+                    labels: document.querySelectorAll('#rc-labels *').length };
     return { off, again, after };
   });
-  ok('the panel close takes every strip, divider and ring down',
-     !r.off.on && r.off.n === 0 && r.off.dividers === 0 && !r.off.panel && r.off.layers === 0 && !r.off.ring,
-     JSON.stringify(r.off));
+  ok('the × on the last strip takes the strip, divider and ring down and ends the comparison',
+     !r.off.on && r.off.n === 0 && r.off.dividers === 0 && r.off.labels === 0 && r.off.layers === 0 && !r.off.ring
+     && /Radar compare ended/.test(r.off.toasts), JSON.stringify(r.off));
   ok('it comes back on demand', r.again.on && r.again.n === 1, JSON.stringify(r.again));
-  ok('and switching the radar off ends it too', !r.after.on && r.after.n === 0 && !r.after.panel, JSON.stringify(r.after));
+  ok('and switching the radar off ends it too', !r.after.on && r.after.n === 0 && r.after.labels === 0, JSON.stringify(r.after));
 }
 
 console.log('\n8. with nothing on screen yet, Compare makes the tapped site strip A');
