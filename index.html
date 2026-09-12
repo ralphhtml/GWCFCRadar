@@ -5770,6 +5770,63 @@ body.lite-mode #export-toolbar { display: none !important; }
   0%, 100% { box-shadow: 0 0 6px rgba(255,42,42,0.6); }
   50%      { box-shadow: 0 0 12px rgba(255,42,42,1); }
 }
+/* A pill that is one of the strips in a running comparison, in the strip
+   colour, so the map says which radars are being compared without the
+   panel being open. */
+.nexrad-label.in-compare {
+  border-color: #00e5ff;
+  box-shadow: 0 0 10px rgba(0,229,255,0.9);
+}
+
+/* ── THE SITE POPUP ── two choices, floated above a tapped radar pill */
+#site-pop {
+  position: fixed; z-index: 3100; display: none; flex-direction: column; gap: 4px;
+  min-width: 168px; max-width: 220px;
+  background: rgb(8,12,16); border: 1px solid rgba(0,229,255,0.45); border-radius: 9px;
+  padding: 7px; box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+  font-family: var(--sans); transform: translate(-50%, -100%);
+}
+#site-pop.open { display: flex; }
+#site-pop.below { transform: translate(-50%, 0); }
+#site-pop::after {
+  content: ''; position: absolute; left: 50%; bottom: -6px; width: 10px; height: 10px;
+  background: rgb(8,12,16);
+  border-right: 1px solid rgba(0,229,255,0.45); border-bottom: 1px solid rgba(0,229,255,0.45);
+  transform: translateX(-50%) rotate(45deg);
+}
+#site-pop.below::after { bottom: auto; top: -6px; transform: translateX(-50%) rotate(225deg); }
+.site-pop-site {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 1.5px;
+  color: rgba(0,229,255,0.85); text-align: center; padding-bottom: 2px;
+}
+.site-pop-btn {
+  display: flex; flex-direction: column; gap: 1px; text-align: left; cursor: pointer;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px;
+  padding: 6px 9px; color: #fff; font-family: var(--sans);
+}
+.site-pop-btn b { font-size: 11px; }
+.site-pop-btn span { font-size: 9px; color: rgba(255,255,255,0.55); }
+.site-pop-btn:hover { background: rgba(0,140,186,0.28); border-color: rgba(0,229,255,0.5); }
+
+/* ── RADAR COMPARE PANEL ── the strips, listed, with the same row look as
+   the model comparison's slots */
+#rc-panel {
+  /* Top right, under the search box and clear of the toolbar's column: the
+     top left is where the layer menu lives. */
+  position: absolute; top: 70px; right: 60px; z-index: 640; width: 215px; display: none;
+  background: rgba(8,8,10,0.86); border: 1px solid rgba(0,229,255,0.35); border-radius: 8px;
+  padding: 8px 9px; font-family: var(--mono); font-size: 10px; color: #fff;
+}
+#rc-panel.open { display: block; }
+#rc-panel .rc-title {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;
+  font-family: var(--display); font-size: 10px; letter-spacing: 1.5px; color: #00e5ff;
+}
+.rc-row { display: flex; align-items: center; gap: 6px; padding: 4px 0; border-top: 1px solid rgba(255,255,255,0.08); }
+.rc-row .rc-letter { font-family: var(--display); font-size: 9px; letter-spacing: 1px; color: rgba(232,184,0,0.8); width: 12px; }
+.rc-row .rc-site { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-hint { margin-top: 6px; font-size: 9px; line-height: 1.35; color: rgba(255,255,255,0.55); }
+@media (max-width: 480px) { #rc-panel { width: 170px; top: 64px; right: 8px; } }
 .city-tooltip {
   background: rgba(30,0,0,0.9) !important;
   border: 1px solid rgba(232,184,0,0.5) !important;
@@ -10217,6 +10274,12 @@ body.clean-mode #clean-hint { opacity: 1; }
     <div id="sev-compare-label-a" class="sev-cmp-label" style="display:none;left:8px;border-left:3px solid #00e5ff;"></div>
     <div id="sev-cmp-dividers"></div>
     <div id="sev-cmp-labels"></div>
+
+    <!-- Radar site comparison: the same strips, a second set of them, plus
+         the small panel that lists the sites being compared -->
+    <div id="rc-dividers"></div>
+    <div id="rc-labels"></div>
+    <div id="rc-panel"></div>
 
     <!-- Cam Panel injected at body level via position:fixed --!>
     <div id="model-info">
@@ -28463,6 +28526,8 @@ function _disableRadar() {
     _tmMosaicAt = null;
     try { _tmSyncBadge(); } catch (e) {}
   }
+  // A running site comparison has nothing left to compare against.
+  try { if (typeof _rcOff === 'function') _rcOff(); } catch (e) {}
   // Hide station marker bubbles now that radar is off
   _syncNexradSites();
 }
@@ -30966,31 +31031,54 @@ function _sevBuildDividerDOM() {
 // reliably known for a Leaflet pane - a polygon needs no such assumption.
 function _sevUpdateAllClips() {
   if (!_sevCompareOn) return;
-  const pos = (map._mapPane && L.DomUtil.getPosition(map._mapPane)) || { x: 0, y: 0 };
-  const mapSize = map.getSize();
   _sevExtraSlots.forEach((slot, i) => {
     const leftPct = _sevSplits[i];
     const rightPct = (i + 1 < _sevSplits.length) ? _sevSplits[i + 1] : 100;
-    const leftPx = mapSize.x * (leftPct / 100) - pos.x;
-    const rightPx = mapSize.x * (rightPct / 100) - pos.x;
+    const g = _stripGeometry(leftPct, rightPct);
     const paneEl = map.getPane(_sevSlotPaneName(slot.id));
-    if (paneEl) paneEl.style.clipPath = `polygon(${leftPx}px -99999px, ${rightPx}px -99999px, ${rightPx}px 99999px, ${leftPx}px 99999px)`;
-    if (slot.dividerEl) slot.dividerEl.style.left = leftPx + 'px';
-    if (slot.labelEl) slot.labelEl.style.left = (leftPx + 8) + 'px';
+    if (paneEl) paneEl.style.clipPath = g.polygon;
+    if (slot.dividerEl) slot.dividerEl.style.left = g.leftView + 'px';
+    if (slot.labelEl) slot.labelEl.style.left = (g.leftView + 8) + 'px';
   });
   _sevCompareUpdateLabels();
 }
 
 function _sevSetSplit(idx, clientX) {
-  const mapEl = document.getElementById('map');
-  if (!mapEl) return;
-  const rect = mapEl.getBoundingClientRect();
-  let pct = ((clientX - rect.left) / rect.width) * 100;
-  const minBound = idx > 0 ? _sevSplits[idx - 1] + 4 : 4;
-  const maxBound = idx + 1 < _sevSplits.length ? _sevSplits[idx + 1] - 4 : 96;
-  pct = Math.max(minBound, Math.min(maxBound, pct));
+  const pct = _stripPctFromClientX(clientX, _sevSplits, idx);
+  if (pct == null) return;
   _sevSplits[idx] = pct;
   _sevUpdateAllClips();
+}
+
+// ── STRIPS: the geometry every side-by-side comparison shares ─────────────
+// The model comparison above and the radar site comparison both cut the map
+// into vertical bands, and both need the same two sums.
+//
+// A pane's clip is written in the pane's own coordinates, and Leaflet slides
+// the whole map pane sideways as the map is dragged, so the clip has to
+// subtract that slide each time or the band would drift with the pan. The
+// divider and its label do not live in the sliding pane: they sit in the
+// map's frame, so they take the plain view x. (They used to be handed the
+// pane-relative number as well, and walked away from their bands by exactly
+// the width of any drag of the map.)
+function _stripGeometry(leftPct, rightPct) {
+  const pos = (map._mapPane && L.DomUtil.getPosition(map._mapPane)) || { x: 0, y: 0 };
+  const w = map.getSize().x;
+  const leftView = w * (leftPct / 100), rightView = w * (rightPct / 100);
+  const leftPx = leftView - pos.x, rightPx = rightView - pos.x;
+  return { leftView, rightView, leftPx, rightPx,
+           polygon: `polygon(${leftPx}px -99999px, ${rightPx}px -99999px, ${rightPx}px 99999px, ${leftPx}px 99999px)` };
+}
+// Where a dragged divider lands, as a percent of the map's width, kept at
+// least four percent clear of its neighbours and of both edges.
+function _stripPctFromClientX(clientX, splits, idx) {
+  const mapEl = document.getElementById('map');
+  if (!mapEl) return null;
+  const rect = mapEl.getBoundingClientRect();
+  const pct = ((clientX - rect.left) / rect.width) * 100;
+  const minBound = idx > 0 ? splits[idx - 1] + 4 : 4;
+  const maxBound = idx + 1 < splits.length ? splits[idx + 1] - 4 : 96;
+  return Math.max(minBound, Math.min(maxBound, pct));
 }
 
 (function _sevCompareInitDrag() {
@@ -43484,7 +43572,7 @@ function _pbPoolFree() {
 
 // One decode on the pool. Waits for a free worker rather than killing a busy
 // one, which is the whole difference from the interactive path.
-function _pbDecode(buffer, layer) {
+function _pbDecode(buffer, layer, extra) {
   return new Promise((resolve, reject) => {
     const start = () => {
       const w = _pbWorker();
@@ -43501,8 +43589,11 @@ function _pbDecode(buffer, layer) {
           if (p) p.reject(new Error('decode timed out'));
         }, 45000),
       };
+      // `extra` is the odd option a caller needs on top, the elevation cut
+      // for a comparison strip decoding a Level 2 volume at the same tilt
+      // as the picture beside it.
       w.w.postMessage({ type: 'process', arrayBuffer: buffer, layer: layer,
-                        options: { range_limit_km: far } }, [buffer]);
+                        options: Object.assign({ range_limit_km: far }, extra || {}) }, [buffer]);
     };
     start();
   });
@@ -45486,71 +45577,14 @@ function _buildNexradSiteMarkers() {
       el.addEventListener('pointerdown', warmBoth, { passive: true });
     });
 
-    // Click on pill , single-site only activates in REF mode
-    label.on('click', async () => {
-      // Level 2 and Level 3 first, because both call a product "ref" and the
-      // branch below that name belongs to the tile layers. Checked in the
-      // wrong order, clicking a pill while Level 2 was showing reflectivity
-      // swapped the decoded volume for a mosaic tile without a word about it.
-      if (_radarSource === 'l2') {
-        if (_l2Site !== s.id) { _l2Tilt = null; _l2TiltList = []; }
-        _l2Site = s.id;
-        try { localStorage.setItem('gwcfc_l2_site', s.id); } catch (e) {}
-        // Carrying a dual-pol product onto a terminal would ask it for a
-        // measurement it cannot make and end in an error popup. The product
-        // falls back to reflectivity, and the menu redraws to this site's
-        // real offerings.
-        if (typeof _isTdwrSite === 'function' && _isTdwrSite(s.id) &&
-            ['cc', 'zdr', 'kdp'].includes(currentProduct)) {
-          currentProduct = 'ref';
-        }
-        if (document.getElementById('sub-l2-ref')) toggleRadarL2Sub();
-        loadL3Data(currentProduct || 'ref', s.id);
-        _refreshNexradSiteStyles();
-        return;
-      }
-      if (_radarSource === 'l3') {
-        // Only the radars the Pi has actually built. Clicking any other pill
-        // would set a station it has no volume for and draw nothing.
-        //
-        // Upper case for the lookup: the pills carry lower case ids and the
-        // Pi writes its index under the station's real name, so the bare
-        // s.id missed every entry and even the Pi's own five radars were
-        // told they were not built. Four letters of case, the same bug that
-        // once broke Level 2 against the Worker.
-        const sid = String(s.id).toUpperCase();
-        // No index yet means the Pi could not be read when the row opened,
-        // not that this radar is unbuilt. The click is a fresh reason to try
-        // again; claiming "not built" for every pill on a bad connection
-        // read as no data existing for any station at all.
-        if (!_prIndex || !_prIndex.sites) await _prEnable();
-        if (_prIndex && _prIndex.sites && _prIndex.sites[sid]) {
-          _prBucketSite = null;     // back to the Pi's own prebuilt pictures
-          _prSetSite(sid);
-          _refreshNexradSiteStyles();
-        } else {
-          // Every other radar in the country, decoded here from the Level 3
-          // bucket. The Pi's few sites are the fast path, not the only one.
-          await _l3BucketShow(sid);
-        }
-        return;
-      }
-      if (currentProduct === 'ref') {
-        _loadSingleSiteRef(s.id);
-      } else if (currentProduct === 'vel') {
-        _velStation = s.id;
-        _buildVelPool(s.id, velFrames);
-        showVelFrame(velCurrentFrame);
-        _refreshNexradSiteStyles();
-      } else if (currentProduct === 'hc' || currentProduct === 'accum' || currentProduct === 'boha') {
-        loadDualPolData(currentProduct, s.id);
-        _refreshNexradSiteStyles();
-      } else if (currentProduct === 'cc' || currentProduct === 'zdr' || currentProduct === 'kdp' || currentProduct === 'sw') {
-        loadL3Data(currentProduct, s.id);
-        _refreshNexradSiteStyles();
-      } else {
-        map.setView([s.lat, s.lon], Math.max(map.getZoom(), 7));
-      }
+    // A tap opens the two-choice popup above the pill (view this site, or
+    // compare radar sites) rather than loading on the spot. While a
+    // comparison is running it adds the site as the next strip instead,
+    // since that is the only reason to tap a pill then. The load itself is
+    // _siteView, the same code this handler used to be.
+    label.on('click', () => {
+      if (typeof _rcOn !== 'undefined' && _rcOn) { _rcAddSite(s.id); return; }
+      _sitePopOpen(s);
     });
 
     label.addTo(_nexradSiteLayer);
@@ -45579,7 +45613,662 @@ function _refreshNexradSiteStyles() {
     const isBuilt = _radarSource === 'l3' && _prIndex && _prIndex.sites &&
                     !!_prIndex.sites[id.toUpperCase()];
     if (labelEl) labelEl.classList.toggle('pi-built', isBuilt);
+    // The strips of a running comparison, in the strip colour.
+    let inCompare = false;
+    try { inCompare = _rcOn && _rcSlots.some(s => s.site === id); } catch (e) {}
+    if (labelEl) labelEl.classList.toggle('in-compare', inCompare);
   });
+}
+
+// ── VIEWING ONE SITE ──────────────────────────────────────────────────────
+// What a tap on a pill always did: load that radar in the product and from
+// the source currently selected. Kept whole, and now reached through the
+// popup's View button (or straight from code).
+async function _siteView(s) {
+  // Level 2 and Level 3 first, because both call a product "ref" and the
+  // branch below that name belongs to the tile layers. Checked in the
+  // wrong order, clicking a pill while Level 2 was showing reflectivity
+  // swapped the decoded volume for a mosaic tile without a word about it.
+  if (_radarSource === 'l2') {
+    if (_l2Site !== s.id) { _l2Tilt = null; _l2TiltList = []; }
+    _l2Site = s.id;
+    try { localStorage.setItem('gwcfc_l2_site', s.id); } catch (e) {}
+    // Carrying a dual-pol product onto a terminal would ask it for a
+    // measurement it cannot make and end in an error popup. The product
+    // falls back to reflectivity, and the menu redraws to this site's
+    // real offerings.
+    if (typeof _isTdwrSite === 'function' && _isTdwrSite(s.id) &&
+        ['cc', 'zdr', 'kdp'].includes(currentProduct)) {
+      currentProduct = 'ref';
+    }
+    if (document.getElementById('sub-l2-ref')) toggleRadarL2Sub();
+    loadL3Data(currentProduct || 'ref', s.id);
+    _refreshNexradSiteStyles();
+    return;
+  }
+  if (_radarSource === 'l3') {
+    // Only the radars the Pi has actually built. Clicking any other pill
+    // would set a station it has no volume for and draw nothing.
+    //
+    // Upper case for the lookup: the pills carry lower case ids and the
+    // Pi writes its index under the station's real name, so the bare
+    // s.id missed every entry and even the Pi's own five radars were
+    // told they were not built. Four letters of case, the same bug that
+    // once broke Level 2 against the Worker.
+    const sid = String(s.id).toUpperCase();
+    // No index yet means the Pi could not be read when the row opened,
+    // not that this radar is unbuilt. The click is a fresh reason to try
+    // again; claiming "not built" for every pill on a bad connection
+    // read as no data existing for any station at all.
+    if (!_prIndex || !_prIndex.sites) await _prEnable();
+    if (_prIndex && _prIndex.sites && _prIndex.sites[sid]) {
+      _prBucketSite = null;     // back to the Pi's own prebuilt pictures
+      _prSetSite(sid);
+      _refreshNexradSiteStyles();
+    } else {
+      // Every other radar in the country, decoded here from the Level 3
+      // bucket. The Pi's few sites are the fast path, not the only one.
+      await _l3BucketShow(sid);
+    }
+    return;
+  }
+  if (currentProduct === 'ref') {
+    _loadSingleSiteRef(s.id);
+  } else if (currentProduct === 'vel') {
+    _velStation = s.id;
+    _buildVelPool(s.id, velFrames);
+    showVelFrame(velCurrentFrame);
+    _refreshNexradSiteStyles();
+  } else if (currentProduct === 'hc' || currentProduct === 'accum' || currentProduct === 'boha') {
+    loadDualPolData(currentProduct, s.id);
+    _refreshNexradSiteStyles();
+  } else if (currentProduct === 'cc' || currentProduct === 'zdr' || currentProduct === 'kdp' || currentProduct === 'sw') {
+    loadL3Data(currentProduct, s.id);
+    _refreshNexradSiteStyles();
+  } else {
+    map.setView([s.lat, s.lon], Math.max(map.getZoom(), 7));
+  }
+}
+
+// ── THE SITE POPUP ────────────────────────────────────────────────────────
+// A tap on a pill opens this above it: two lines, View this site or Compare
+// radar sites. Built once, moved to whichever pill was tapped, and closed by
+// a tap anywhere else, the Escape key, or the map moving underneath it (a
+// popup pinned to a pill that has slid away is pinned to nothing).
+let _sitePopStation = null;
+
+function _sitePopEl() {
+  let el = document.getElementById('site-pop');
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'site-pop';
+  el.innerHTML = '<div class="site-pop-site"></div>'
+    + '<button type="button" class="site-pop-btn site-pop-view" onclick="_sitePopView()">'
+    + '<b>View this site</b><span>Load this radar on its own</span></button>'
+    + '<button type="button" class="site-pop-btn site-pop-compare" onclick="_sitePopCompare()">'
+    + '<b>Compare radar sites</b><span>Several radars side by side</span></button>';
+  document.body.appendChild(el);
+  document.addEventListener('pointerdown', e => {
+    if (!el.classList.contains('open') || el.contains(e.target)) return;
+    _sitePopClose();
+  }, true);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') _sitePopClose(); });
+  try { map.on('movestart zoomstart', _sitePopClose); } catch (e) {}
+  return el;
+}
+
+function _sitePopOpen(s) {
+  const el = _sitePopEl();
+  _sitePopStation = s;
+  el.querySelector('.site-pop-site').textContent = String(s.id).toUpperCase();
+  const pill = document.getElementById('nxlbl-' + s.id);
+  let x = innerWidth / 2, y = innerHeight / 2, below = false;
+  if (pill) {
+    const r = pill.getBoundingClientRect();
+    x = r.left + r.width / 2;
+    y = r.top - 8;
+    // Near the top edge there is no room above the pill, so it sits below.
+    if (r.top < 96) { below = true; y = r.bottom + 8; }
+  }
+  x = Math.max(100, Math.min(innerWidth - 100, x));
+  el.classList.toggle('below', below);
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+  el.classList.add('open');
+}
+function _sitePopClose() {
+  const el = document.getElementById('site-pop');
+  if (el) el.classList.remove('open');
+}
+function _sitePopView() {
+  const s = _sitePopStation;
+  _sitePopClose();
+  if (s) return _siteView(s);
+}
+function _sitePopCompare() {
+  const s = _sitePopStation;
+  _sitePopClose();
+  if (s) return _rcStart(s);
+}
+
+// ── COMPARING RADAR SITES SIDE BY SIDE ────────────────────────────────────
+// The model comparison's idea, applied to radars. The map is cut into
+// vertical strips with draggable dividers. Strip A is the single-site
+// picture already on screen, drawn by the ordinary radar code and never
+// touched here. Every strip after it is another site drawn in the SAME
+// product from the SAME source (Normal, Level 2 or Level 3), clipped to its
+// own band in its own pane just above the radar. The strips follow the
+// playbar: each one shows its own scan nearest the moment strip A is on.
+// Once a comparison is running, tapping a pill adds that site as the next
+// strip, and tapping a strip's pill again takes it out.
+let _rcOn = false;
+let _rcSlots = [];     // [{id, site, kind, plan, layer, frames, frameIso, stamp, dividerEl, labelEl, token}]
+let _rcSplits = [];    // ascending %, one per slot: the slot's left edge
+let _rcSeq = 0;
+let _rcDragIdx = -1;
+let _rcTimer = null;
+let _rcKey = '';
+let _rcTimeMs = 0;
+const RC_MAX_STRIPS = 5;   // six radars across one map is already a lot
+
+// The site strip A is showing, read from whichever single-site machinery
+// currently owns the screen. Lower case, the way the pills spell it.
+function _rcMainSite() {
+  let s = null;
+  if (_radarSource === 'l3') s = _prOn ? (_prBucketSite || _prSite) : null;
+  else if (_radarSource === 'l2') s = _l2Site || _l3Station;
+  else if (currentProduct === 'ref') s = _refStation;
+  else if (currentProduct === 'vel') s = _velStation;
+  else if (currentProduct === 'hc' || currentProduct === 'accum' || currentProduct === 'boha') s = _dpStation;
+  else if (['cc', 'zdr', 'kdp', 'sw'].includes(currentProduct)) s = _l3Station;
+  return s ? String(s).toLowerCase() : null;
+}
+
+// Everything that, when it changes, means every strip must be redrawn.
+function _rcModeKey() {
+  return [_radarSource, currentProduct, _prProduct, _prTilt, _l2Tilt, _prDrawnLvl,
+          _rcMainSite()].join('|');
+}
+
+function _rcProductLabel() {
+  if (_radarSource === 'l3') return (PR_PRODUCTS[_prProduct] || {}).label || _prProduct;
+  const p = currentProduct || 'ref';
+  const names = { ref: 'Reflectivity', hc: 'Hydro. Class.', accum: 'Storm Total',
+                  boha: '1-Hr Precip', sw: 'Spectrum Width', kdp: 'Spec. Diff. Phase' };
+  let lbl = null;
+  try { lbl = _MESH_LABELS[p]; } catch (e) {}
+  return lbl || names[p] || String(p).toUpperCase();
+}
+function _rcSourceLabel() {
+  return _radarSource === 'l2' ? 'Level 2' : _radarSource === 'l3' ? 'Level 3' : 'Normal';
+}
+
+// What a strip should draw for one site, decided from the same switches
+// the main picture is drawn from: the source, the product and the tilt.
+function _rcPlan(site) {
+  const sid = String(site).toUpperCase();
+  const lc = String(site).toLowerCase();
+  const p = currentProduct;
+  if (_radarSource === 'l3') {
+    const built = _prIndex && _prIndex.sites && _prIndex.sites[sid];
+    const lvl = _prDrawnLvl || 'l3';
+    const raw = typeof _fxWantsRaw === 'function' && _fxWantsRaw(lvl);
+    if (built && !raw && _hdBase) return { kind: 'pi', meta: built, lvl };
+    const code = _l3BucketCode(sid, _prProduct, _prTilt);
+    if (!code) {
+      return { kind: 'none', why: `${sid} does not publish `
+               + ((PR_PRODUCTS[_prProduct] || {}).label || _prProduct) + '.' };
+    }
+    return { kind: 'mesh-l3', code };
+  }
+  if (_radarSource === 'l2') return { kind: 'mesh-l2', product: p || 'ref' };
+  if (p === 'ref') return { kind: 'wms', layer: `${lc}_sr_bref` };
+  if (p === 'vel') return { kind: 'wms', layer: `${lc}_sr_bvel` };
+  if (p === 'hc' || p === 'accum' || p === 'boha') return { kind: 'wms', layer: `${lc}_${DP_LAYER_MAP[p]}` };
+  if (p === 'cc' || p === 'zdr' || p === 'kdp' || p === 'sw') return { kind: 'mesh-l2', product: p };
+  return { kind: 'none', why: 'Pick a single-site radar product first, then compare sites.' };
+}
+
+// Start from a pill. If nothing single-site is on screen yet, this pill
+// becomes strip A the ordinary way and the comparison waits for the next
+// tap; otherwise it joins as the next strip beside what is already there.
+async function _rcStart(s) {
+  const sid = String(s.id).toLowerCase();
+  let main = _rcMainSite();
+  if (!main) {
+    const p = _siteView(s);
+    if (!_rcMainSite()) { try { await p; } catch (e) {} }
+    main = _rcMainSite();
+    if (!main) {
+      if (typeof showToast === 'function') showToast('Pick a single-site radar product first, then compare sites.', 4000);
+      return;
+    }
+  }
+  if (!_rcOn) {
+    _rcOn = true;
+    _rcKey = _rcModeKey();
+    _rcTimeMs = 0;
+    map.on('move zoom resize', _rcUpdateClips);
+    if (!_rcTimer) _rcTimer = setInterval(_rcTickFn, 500);
+  }
+  if (main !== sid) { _rcAddSite(sid); return; }
+  _rcRefreshDOM();
+  _refreshNexradSiteStyles();
+  if (typeof showToast === 'function') {
+    showToast(`${sid.toUpperCase()} is strip A. Tap another radar pill to add it beside it.`, 4000);
+  }
+}
+
+function _rcAddSite(site) {
+  if (!_rcOn) return;
+  const sid = String(site).toLowerCase();
+  if (sid === _rcMainSite()) {
+    if (typeof showToast === 'function') showToast(`${sid.toUpperCase()} is already strip A.`, 2500);
+    return;
+  }
+  const have = _rcSlots.find(x => x.site === sid);
+  if (have) { _rcRemoveSlot(have.id); return; }   // a strip's own pill, tapped again, takes it out
+  if (_rcSlots.length >= RC_MAX_STRIPS) {
+    if (typeof showToast === 'function') showToast(`${RC_MAX_STRIPS + 1} radars across one map is the most it can hold. Remove one first.`, 3500);
+    return;
+  }
+  const slot = { id: 'r' + (++_rcSeq), site: sid, kind: null, plan: null, layer: null, blob: null,
+                 frames: null, frameIso: '', stamp: '', timeIso: '', dividerEl: null, labelEl: null, token: 0 };
+  _rcSlots.push(slot);
+  _rcRecalcSplits();
+  _rcRefreshDOM();
+  _rcRenderSlot(slot);
+  _rcUpdateClips();
+  _refreshNexradSiteStyles();
+}
+
+function _rcRemoveSlot(id) {
+  const slot = _rcSlots.find(x => x.id === id);
+  if (!slot) return;
+  _rcClearSlot(slot);
+  _rcSlots = _rcSlots.filter(x => x.id !== id);
+  _rcRecalcSplits();
+  _rcRefreshDOM();
+  _rcUpdateClips();
+  _refreshNexradSiteStyles();
+}
+
+// Spreads the strips evenly across the width after A's band, exactly as the
+// model comparison does.
+function _rcRecalcSplits() {
+  const n = _rcSlots.length;
+  _rcSplits = _rcSlots.map((_, i) => Math.round(10000 * (i + 1) / (n + 1)) / 100);
+}
+
+function _rcClearSlot(slot) {
+  slot.token++;
+  if (slot.layer) { try { map.removeLayer(slot.layer); } catch (e) {} slot.layer = null; }
+  if (slot.blob) { try { _pbFree(slot.blob); } catch (e) {} slot.blob = null; }
+  slot.frames = null; slot.frameIso = ''; slot.stamp = ''; slot.timeIso = ''; slot.kind = null;
+}
+
+function _rcPaneName(slot) { return 'rc-' + slot.id; }
+
+// Just above the radar pane, and never out of the radar's own band, so the
+// strips stay under the borders and the warnings like the radar itself.
+function _rcSlotZ(i) {
+  let base = 400;
+  try {
+    const p = map.getPane('radarPane');
+    const z = p && (parseInt(p.style.zIndex, 10) || parseInt(getComputedStyle(p).zIndex, 10));
+    if (z) base = z;
+  } catch (e) {}
+  let step = 10;
+  try { step = MAP_STACK_STEP; } catch (e) {}
+  return base + 1 + Math.min(i, step - 2);
+}
+function _rcSyncPaneZ() {
+  if (typeof map === 'undefined' || !map) return;
+  _rcSlots.forEach((slot, i) => {
+    const p = map.getPane(_rcPaneName(slot));
+    if (p) p.style.zIndex = String(_rcSlotZ(i));
+  });
+}
+
+function _rcRenderAll() {
+  _rcSlots.forEach(_rcRenderSlot);
+  _rcRefreshDOM();
+  _rcUpdateClips();
+}
+
+function _rcRenderSlot(slot) {
+  _rcClearSlot(slot);
+  if (!_rcOn) return;
+  const paneName = _rcPaneName(slot);
+  if (!map.getPane(paneName)) {
+    const p = map.createPane(paneName);
+    p.style.pointerEvents = 'none';
+  }
+  _rcSyncPaneZ();
+  const plan = _rcPlan(slot.site);
+  slot.kind = plan.kind;
+  slot.plan = plan;
+  const token = ++slot.token;
+  const alive = () => _rcOn && token === slot.token && _rcSlots.includes(slot);
+  if (plan.kind === 'none') {
+    if (plan.why && typeof showToast === 'function') showToast(plan.why, 4000);
+    return;
+  }
+  if (plan.kind === 'wms') {
+    // The same per-site service the main picture uses for this product. No
+    // TIME to begin with, which the server answers with its newest scan, so
+    // the picture is up before the scan list is even asked for; the list
+    // arrives behind it and from then on the strip follows the playbar.
+    const site = slot.site;
+    slot.layer = L.tileLayer.wms(`https://opengeo.ncep.noaa.gov/geoserver/${site}/ows`, {
+      layers: plan.layer, format: 'image/png', transparent: true, version: '1.3.0',
+      opacity: typeof radarOpacity === 'number' ? radarOpacity : 0.85, pane: paneName,
+      crossOrigin: 'anonymous', noWrap: true, keepBuffer: 2,
+      updateWhenIdle: _isIOS, updateWhenZooming: false,
+      attribution: `${site.toUpperCase()} © NOAA Level III`,
+    }).addTo(map);
+    _rcOpengeoTimes(site, plan.layer).then(frames => {
+      if (!alive() || !frames || !frames.length) return;
+      slot.frames = frames;
+      _rcSyncSlotTime(slot, _rcMainTimeMs(), true);
+    }).catch(() => {});
+    _rcRefreshLabels();
+    return;
+  }
+  if (plan.kind === 'pi') { _rcPiSlot(slot, plan, alive); return; }
+  _rcMeshSlot(slot, plan, alive);
+}
+
+// The scan times a per-site layer offers, read off the same capabilities
+// document the main picture reads, cached briefly. Reflectivity's list is
+// the one the pills warm on hover, so it is often already in hand.
+const _rcTimesCache = new Map();
+async function _rcOpengeoTimes(site, layerNm) {
+  const key = site + '|' + layerNm;
+  const hit = _rcTimesCache.get(key);
+  if (hit && Date.now() - hit.at < 120000) return hit.frames;
+  if (/_sr_bref$/.test(layerNm)) {
+    try {
+      const c = _rsCaps.get(site);
+      if (c && c.frames && c.frames.length && Date.now() - c.at < RS_CAPS_TTL_MS) return c.frames;
+    } catch (e) {}
+  }
+  const url = `https://opengeo.ncep.noaa.gov/geoserver/${site}/ows?service=wms&version=1.3.0&request=GetCapabilities&_=${Date.now()}`;
+  const res = await fetch(url, { cache: 'no-store', signal: _abortSignal(10000) });
+  const xml = new DOMParser().parseFromString(await res.text(), 'text/xml');
+  let frames = [];
+  for (const lyr of xml.querySelectorAll('Layer')) {
+    const nameEl = lyr.querySelector(':scope > Name');
+    if (!nameEl || nameEl.textContent.trim().toLowerCase() !== layerNm.toLowerCase()) continue;
+    const dim = lyr.querySelector('Dimension[name="time"]') || lyr.querySelector('Extent[name="time"]');
+    if (!dim) break;
+    frames = dim.textContent.trim().split(',').map(x => x.trim()).filter(Boolean).slice(-20)
+      .map(iso => ({ iso, time: new Date(iso).getTime() / 1000 }));
+    break;
+  }
+  _rcTimesCache.set(key, { at: Date.now(), frames });
+  return frames;
+}
+
+// A Pi-built site: the newest of the Pi's own pictures for the product on
+// screen, then whichever of its frames is nearest the playbar as it moves.
+async function _rcPiSlot(slot, plan, alive) {
+  const meta = plan.meta;
+  const stamps = (meta.frames || []).slice();
+  if (!stamps.length) return;
+  const newest = stamps[stamps.length - 1];
+  const cutoff = _prStampToMs(newest) - _prLoopLenH * 3600000;
+  slot.frames = stamps.filter(st => _prStampToMs(st) >= cutoff);
+  slot.meta = meta;
+  slot.lvl = plan.lvl;
+  const st = _rcNearest(slot.frames, _prStampToMs, _rcMainTimeMs()) || newest;
+  await _rcPiShow(slot, st);
+}
+async function _rcPiShow(slot, stamp) {
+  const token = slot.token;
+  const meta = slot.meta, lvl = slot.lvl, sid = slot.site.toUpperCase();
+  const cacheKey = `${meta.path}|${stamp}`;
+  let man = _prLoop.cache.get(cacheKey);
+  if (!man) {
+    man = await fetch(`${_hdBase}/radar/${meta.path.replace('{frame}', stamp)}`, { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null).catch(() => null);
+    if (man) _prLoop.cache.set(cacheKey, man);
+  }
+  if (token !== slot.token || !_rcOn || !man || !man.bounds) return;
+  let product = (PR_PRODUCTS[_prProduct] || PR_PRODUCTS.reflectivity)[lvl];
+  const cuts = (PR_PRODUCTS[_prProduct] || {}).l3Tilts;
+  if (lvl === 'l3' && cuts) product = cuts[Math.min(Math.max(_prTilt, 1), cuts.length) - 1];
+  const TDWR_TWIN = { n0q: 'tz0', n1q: 'tz1', n0u: 'tv0', n1u: 'tv1' };
+  if (man.fields && !man.fields[product] && TDWR_TWIN[product] && man.fields[TDWR_TWIN[product]]) {
+    product = TDWR_TWIN[product];
+  }
+  const field = (man.fields && man.fields[product]) ? product : Object.keys(man.fields || {})[0];
+  if (!field) return;
+  const url = `${_hdBase}/radar/${lvl}/${sid}/${stamp}/${field}.png`;
+  slot.stamp = stamp;
+  if (!slot.layer) {
+    slot.layer = L.imageOverlay(url, man.bounds,
+      { opacity: 0.78, interactive: false, pane: _rcPaneName(slot) }).addTo(map);
+  } else {
+    slot.layer.setUrl(url);
+    slot.layer.setBounds(man.bounds);
+  }
+  _rcRefreshLabels();
+}
+
+// A decoded volume: the newest Level 2 volume, or the newest Level 3 file
+// for the product's code (or the one nearest the radar Time Machine's
+// moment), read and decoded here through the playback decoders so the
+// interactive decoder's one slot, which exists to make the last click win,
+// is never asked to hold two pictures at once. One still frame per strip:
+// a volume is megabytes, and a loop of them per strip is what a phone
+// falls over on.
+async function _rcMeshSlot(slot, plan, alive) {
+  const sid = slot.site.toUpperCase(), lc = slot.site.toLowerCase();
+  let buf, layerName = '', product;
+  try {
+    if (plan.kind === 'mesh-l3') {
+      layerName = plan.code;
+      product = plan.code.toLowerCase();
+      const at = (typeof _tmAt !== 'undefined' && _tmAt) || null;
+      const url = await _l3BucketNewest(sid, plan.code, at);
+      if (!url) throw new Error('nothing published in the last few hours');
+      buf = await fetch(url, { signal: _abortSignal(30000) })
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); });
+    } else {
+      product = plan.product;
+      const lm = { cc: 'CC', zdr: 'ZDR', vel: 'VEL', ref: 'REF', kdp: 'KDP', sw: 'SW' };
+      layerName = lm[product] || String(product).toUpperCase();
+      try {
+        buf = await _fetchVolumeDirect(lc);
+      } catch (direct) {
+        const res = await fetch(RADAR_WORKER_URL + '?station=' + sid, { signal: _abortSignal(30000) });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        buf = await res.arrayBuffer();
+      }
+    }
+    if (!alive()) return;
+    const extra = (plan.kind === 'mesh-l2' && _l2Tilt) ? { elevation: _l2Tilt } : undefined;
+    const result = await _pbDecode(buf, layerName, extra);
+    if (!alive()) return;
+    if (plan.kind === 'mesh-l3') _l3MeshNormalize(result.meshData, plan.code);
+    const img = _meshToImage(result, product, _meshStableBox(result, lc));
+    if (!img || !alive()) return;
+    slot.blob = _pbBlob(img.url);
+    slot.timeIso = img.timeIso || '';
+    slot.layer = L.imageOverlay(slot.blob, img.leafletBounds,
+      { opacity: typeof radarOpacity === 'number' ? radarOpacity : 0.85,
+        interactive: false, pane: _rcPaneName(slot) }).addTo(map);
+    _rcRefreshLabels();
+  } catch (e) {
+    if (!alive()) return;
+    if (typeof showToast === 'function') {
+      showToast(`${sid} ${layerName}: ${(e && e.message) || e}`, 4500);
+    }
+  }
+}
+
+// ── following the playbar ──
+function _rcMs(t) { return t > 1e11 ? t : t * 1000; }
+function _rcNearest(list, timeOf, ms) {
+  let best = null, gap = Infinity;
+  for (const f of list) {
+    const g = Math.abs(timeOf(f) - ms);
+    if (g < gap) { gap = g; best = f; }
+  }
+  return best;
+}
+// The moment strip A is showing, read from whichever loop owns the bar.
+function _rcMainTimeMs() {
+  try {
+    if (_radarSource === 'l3') {
+      if (_prBucketSite) { const f = _l2Loop.frames[_l2Loop.idx]; return f ? f.time : Date.now(); }
+      const st = _prLoop.frames[_prLoop.idx];
+      return st ? _prStampToMs(st) : Date.now();
+    }
+    if (_radarSource === 'l2' || ['cc', 'zdr', 'kdp', 'sw'].includes(currentProduct)) {
+      const f = _l2Loop.frames[_l2Loop.idx]; return f ? f.time : Date.now();
+    }
+    if (currentProduct === 'ref') { const f = _refSiteFrames[currentFrame]; return f ? _rcMs(f.time) : Date.now(); }
+    if (currentProduct === 'vel') { const f = velFrames[velCurrentFrame]; return f ? _rcMs(f.time) : Date.now(); }
+    if (currentProduct === 'hc' || currentProduct === 'accum' || currentProduct === 'boha') {
+      const f = _dpFrames[_dpCurrentFrame]; return f ? _rcMs(f.time) : Date.now();
+    }
+  } catch (e) {}
+  return Date.now();
+}
+// Move one strip to its own scan nearest that moment.
+function _rcSyncSlotTime(slot, ms, force) {
+  if (!slot.layer) return;
+  if (slot.kind === 'wms' && slot.frames && slot.frames.length) {
+    const f = _rcNearest(slot.frames, x => _rcMs(x.time), ms);
+    if (!f || (!force && f.iso === slot.frameIso)) return;
+    slot.frameIso = f.iso;
+    try { slot.layer.setParams({ TIME: f.iso }); } catch (e) {}
+    _rcRefreshLabels();
+    return;
+  }
+  if (slot.kind === 'pi' && slot.frames && slot.frames.length) {
+    const st = _rcNearest(slot.frames, _prStampToMs, ms);
+    if (!st || (!force && st === slot.stamp)) return;
+    _rcPiShow(slot, st);
+  }
+}
+// Twice a second while comparing: a product, source, tilt or main-site
+// change redraws every strip; a playbar move re-times them.
+function _rcTickFn() {
+  if (!_rcOn) return;
+  const key = _rcModeKey();
+  if (key !== _rcKey) {
+    _rcKey = key;
+    const main = _rcMainSite();
+    if (!main) {
+      _rcOff();
+      if (typeof showToast === 'function') showToast('Radar compare ended: no single-site radar is on screen.', 3500);
+      return;
+    }
+    // Strip A moved onto one of the strips: that strip would now show A
+    // twice, so it goes.
+    const dup = _rcSlots.find(s => s.site === main);
+    if (dup) _rcRemoveSlot(dup.id);
+    _rcRenderAll();
+    _rcTimeMs = 0;
+    return;
+  }
+  const t = _rcMainTimeMs();
+  if (Math.abs(t - _rcTimeMs) < 1000) return;
+  _rcTimeMs = t;
+  _rcSlots.forEach(s => _rcSyncSlotTime(s, t));
+}
+
+// ── the dividers, labels and panel ──
+function _rcLetter(i) { return String.fromCharCode(66 + i); }  // B, C, D...
+function _rcSlotLabel(slot) {
+  let when = '';
+  try {
+    if (slot.kind === 'wms' && slot.frameIso) when = _fmtHHMM(new Date(slot.frameIso));
+    else if (slot.kind === 'pi' && slot.stamp) when = _fmtHHMM(new Date(_prStampToMs(slot.stamp)));
+    else if (slot.timeIso) when = _fmtHHMM(new Date(slot.timeIso));
+  } catch (e) {}
+  return slot.site.toUpperCase() + ' · ' + _rcProductLabel() + (when ? ' · ' + when : '');
+}
+function _rcRefreshLabels() {
+  _rcSlots.forEach((slot, i) => {
+    if (slot.labelEl) slot.labelEl.textContent = _rcLetter(i) + '  ' + _rcSlotLabel(slot);
+  });
+}
+// Built again whenever the strip count changes, never on a pan or zoom,
+// which would break a drag in progress.
+function _rcRefreshDOM() {
+  const dc = document.getElementById('rc-dividers');
+  const lc = document.getElementById('rc-labels');
+  const panel = document.getElementById('rc-panel');
+  if (!dc || !lc || !panel) return;
+  dc.innerHTML = ''; lc.innerHTML = '';
+  _rcSlots.forEach((slot, i) => {
+    const d = document.createElement('div');
+    d.className = 'sev-cmp-divider active rc-divider';
+    d.innerHTML = '<div class="sev-cmp-handle"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></div>';
+    d.addEventListener('pointerdown', e => { e.preventDefault(); _rcDragIdx = i; });
+    dc.appendChild(d);
+    slot.dividerEl = d;
+    const l = document.createElement('div');
+    l.className = 'sev-cmp-label rc-label';
+    lc.appendChild(l);
+    slot.labelEl = l;
+  });
+  const main = _rcMainSite();
+  const prod = _rcProductLabel(), src = _rcSourceLabel();
+  panel.innerHTML = `
+    <div class="rc-title"><span>RADAR COMPARE</span>
+      <button type="button" class="sev-slot-remove" onclick="_rcOff()" title="Stop comparing">×</button></div>
+    <div class="rc-row"><span class="rc-letter">A</span>
+      <span class="rc-site" id="rc-row-a">${main ? main.toUpperCase() : '-'} · ${prod} (${src})</span></div>
+    ${_rcSlots.map((slot, i) => `
+    <div class="rc-row"><span class="rc-letter">${_rcLetter(i)}</span>
+      <span class="rc-site">${slot.site.toUpperCase()}</span>
+      <button type="button" class="sev-slot-remove" onclick="_rcRemoveSlot('${slot.id}')" title="Remove this strip">×</button></div>`).join('')}
+    <div class="rc-hint">Tap another radar pill to add it as a strip; tap a strip’s pill again to remove it.
+      Drag a divider on the map to resize. Every strip draws ${prod} from the ${src} source, the same as strip A.</div>`;
+  panel.classList.toggle('open', _rcOn);
+  _rcRefreshLabels();
+}
+function _rcUpdateClips() {
+  if (!_rcOn) return;
+  _rcSlots.forEach((slot, i) => {
+    const leftPct = _rcSplits[i];
+    const rightPct = (i + 1 < _rcSplits.length) ? _rcSplits[i + 1] : 100;
+    const g = _stripGeometry(leftPct, rightPct);
+    const pane = map.getPane(_rcPaneName(slot));
+    if (pane) pane.style.clipPath = g.polygon;
+    if (slot.dividerEl) slot.dividerEl.style.left = g.leftView + 'px';
+    if (slot.labelEl) slot.labelEl.style.left = (g.leftView + 8) + 'px';
+  });
+}
+function _rcSetSplit(idx, clientX) {
+  const pct = _stripPctFromClientX(clientX, _rcSplits, idx);
+  if (pct == null) return;
+  _rcSplits[idx] = pct;
+  _rcUpdateClips();
+}
+window.addEventListener('pointermove', e => { if (_rcDragIdx >= 0) _rcSetSplit(_rcDragIdx, e.clientX); });
+window.addEventListener('pointerup', () => { _rcDragIdx = -1; });
+window.addEventListener('pointercancel', () => { _rcDragIdx = -1; });
+
+// Everything down: the strips, their panes' contents, the dividers, the
+// labels, the panel and the pill rings. Strip A is left exactly as it was,
+// because it was never this code's to begin with.
+function _rcOff() {
+  if (!_rcOn && !_rcSlots.length) return;
+  _rcOn = false;
+  if (_rcTimer) { clearInterval(_rcTimer); _rcTimer = null; }
+  try { map.off('move zoom resize', _rcUpdateClips); } catch (e) {}
+  _rcSlots.forEach(_rcClearSlot);
+  _rcSlots = []; _rcSplits = []; _rcDragIdx = -1;
+  ['rc-dividers', 'rc-labels'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+  const panel = document.getElementById('rc-panel');
+  if (panel) { panel.classList.remove('open'); panel.innerHTML = ''; }
+  try { _refreshNexradSiteStyles(); } catch (e) {}
 }
 
 // ── NEXRAD STATION STATUS (api.weather.gov) ──
@@ -61383,6 +62072,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-12-a', date: 'Sep 12, 2026',
+    text: 'Tap a radar site and choose. A tiny popup now opens above any radar pill you tap, with two choices: View this site (what a tap always did) or Compare radar sites. Compare cuts the map into strips with draggable dividers, borrowed from the model comparison: strip A is the radar already on screen, and every other pill you tap becomes another strip showing that site in the same product and from the same source, whether that is Normal, Level 2 or Level 3. The strips follow the playbar, a small panel lists them with remove buttons, tapping a strip’s pill again takes it out, and turning the radar off ends the comparison.' },
   { id: '2026-09-11-a', date: 'Sep 11, 2026',
     text: 'A fresh MapTiler key behind the basemaps. Every base map style (dark, light, satellite, topo) now loads its tiles with a new key, so the streets, borders and terrain under the weather keep drawing instead of falling back to the plainer keyless maps when the old key ran dry.' },
   { id: '2026-09-02-k', date: 'Sep 2, 2026',
@@ -65497,6 +66188,8 @@ function _stackApply(){
   // move when it does. Reordering the stack and leaving them where they were
   // is how the second model ends up somewhere its own row is not.
   if (typeof _sevSyncSlotPaneZ === 'function') { try { _sevSyncSlotPaneZ(); } catch (e) {} }
+  // And the radar strips hang off the radar pane's position the same way.
+  if (typeof _rcSyncPaneZ === 'function') { try { _rcSyncPaneZ(); } catch (e) {} }
 }
 
 // Where a comparison slot's pane belongs: just above the model layer it is

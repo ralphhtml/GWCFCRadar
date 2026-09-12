@@ -212,6 +212,7 @@ console.log('\n2b. the menu offers what the site actually measures');
   const fell = await page.evaluate(() => {
     currentProduct = 'cc';
     _nexradSiteMarkers['ttpa'].label.fire('click');
+    _sitePopView();          // the tap opens a popup now; View is the load
     return currentProduct;
   });
   ok('a dual-pol product falls back to reflectivity on a terminal',
