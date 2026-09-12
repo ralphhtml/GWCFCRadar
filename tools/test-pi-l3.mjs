@@ -254,9 +254,11 @@ console.log('\n1. a healthy Pi, seen from the page');
      !labels.some(t => /No Pi radar/.test(t)), labels.join(','));
 
   // The map pill for the other built site: a real Leaflet event, the same
-  // path a finger takes.
+  // path a finger takes, then the popup's View button, which is where the
+  // load now lives.
   await page.evaluate(() => { window.__toasts.length = 0;
-                              _nexradSiteMarkers['kfws'].label.fire('click'); });
+                              _nexradSiteMarkers['kfws'].label.fire('click');
+                              _sitePopView(); });
   await page.waitForTimeout(1200);
   const pill = await page.evaluate(() => ({
     site: _prSite, layers: _prLayers.length,
@@ -272,7 +274,8 @@ console.log('\n1. a healthy Pi, seen from the page');
   // what matters is that it tried and said why rather than telling anyone to
   // go and edit a config file on the Pi.
   await page.evaluate(() => { window.__toasts.length = 0;
-                              _nexradSiteMarkers['kdyx'].label.fire('click'); });
+                              _nexradSiteMarkers['kdyx'].label.fire('click');
+                              _sitePopView(); });
   await page.waitForTimeout(1200);
   const other = await page.evaluate(() => ({ toasts: window.__toasts,
                                              stuck: _prBucketSite }));
@@ -320,7 +323,8 @@ console.log('\n1. a healthy Pi, seen from the page');
   // tables tz0 IS base reflectivity, so the pill draws it without a single
   // word of complaint, and the terminal wears the built ring like any radar.
   await page.evaluate(() => { window.__toasts.length = 0;
-                              _nexradSiteMarkers['ttpa'].label.fire('click'); });
+                              _nexradSiteMarkers['ttpa'].label.fire('click');
+                              _sitePopView(); });
   await page.waitForTimeout(1200);
   const tdwr = await page.evaluate(() => ({
     site: _prSite,
@@ -574,7 +578,8 @@ console.log('\n2. a Pi that cannot be reached');
   // Clicking a pill while unreachable used to say the radar was not one the
   // Pi builds, for every single pill, which read as no data existing at all.
   await page.evaluate(() => { window.__toasts.length = 0;
-                              _nexradSiteMarkers['ktlx'].label.fire('click'); });
+                              _nexradSiteMarkers['ktlx'].label.fire('click');
+                              _sitePopView(); });
   await page.waitForTimeout(1200);
   const clicked = await page.evaluate(() => window.__toasts);
   ok('a pill click retries and repeats the real reason',
