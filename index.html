@@ -14460,6 +14460,151 @@ async function loadCanadaAlerts() {
   updateLoadStatus('');
 }
 
+// ── ENVIRONMENT CANADA THUNDERSTORM OUTLOOKS (via api.weather.gc.ca) ──
+// The "Env. CN Outlooks" pill. Environment Canada's storm prediction centres
+// issue thunderstorm outlooks as polygons, the Canadian counterpart of the
+// SPC convective outlook, published through the same GeoMet OGC API the
+// Canada Alerts pill already reads. Each polygon is coloured by how serious
+// the outlook is: severe storms likely in red, severe storms possible in
+// orange, ordinary thunderstorms in yellow.
+//
+// The API's field names are read a few spellings at a time, because the
+// collection's schema is Environment Canada's to change and a renamed field
+// should cost a label, never the whole layer. Whatever the fields are, the
+// popup lists all of them, so nothing the forecasters wrote is hidden.
+let _ecOutlookOn = false, _ecOutlookLayer = null, _ecOutlookTimer = null;
+const EC_OUTLOOK_URL = 'https://api.weather.gc.ca/collections/thunderstorm_outlook/items?f=json&limit=500&lang=en';
+const EC_KEYS = {
+  category: ['threat_level', 'threat', 'severity', 'risk', 'category', 'outlook_type', 'type', 'level'],
+  region:   ['region', 'area', 'office', 'zone', 'name', 'location'],
+  issued:   ['publication_datetime', 'issuance_datetime', 'issue_datetime', 'issued', 'creation_datetime', 'datetime'],
+  start:    ['start_datetime', 'effective_datetime', 'valid_start', 'validity_datetime', 'onset'],
+  end:      ['end_datetime', 'expiration_datetime', 'expiry_datetime', 'valid_end', 'expires'],
+  day:      ['day', 'outlook_day', 'period'],
+  text:     ['text', 'description', 'summary', 'comment', 'notes', 'headline'],
+};
+const EC_RANK_LABEL = { 3: 'Severe thunderstorms likely', 2: 'Severe thunderstorms possible', 1: 'Thunderstorms possible' };
+const EC_RANK_COLOR = { 3: '#ff2121', 2: '#ff6600', 1: '#ffcc00' };
+
+// The first of several spellings that carries a value; the English form of
+// a field (region_en) is preferred over the bare one where both exist.
+function _ecPick(props, keys) {
+  for (const k of keys) {
+    for (const kk of [k + '_en', k]) {
+      const v = props[kk];
+      if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+    }
+  }
+  return '';
+}
+// How serious: 3 severe likely, 2 severe possible, 1 thunderstorms.
+function _ecRank(props) {
+  const s = String(_ecPick(props, EC_KEYS.category)).toLowerCase().trim();
+  if (s === '3' || (/severe/.test(s) && /likely|high|enhanced|probable|expected/.test(s))) return 3;
+  if (s === '2' || /severe/.test(s)) return 2;
+  return 1;
+}
+
+async function loadEcOutlook() {
+  const wrappers = [
+    u => u,
+    u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+    u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+    u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+  ];
+  updateLoadStatus('Loading Env. CN Outlooks…');
+  let data = null;
+  for (const wrap of wrappers) {
+    try {
+      const r = await fetchWithTimeout(wrap(EC_OUTLOOK_URL), 10000);
+      if (!r.ok) { console.debug(`[ec-outlook] ${r.status}`); continue; }
+      const txt = await r.text();
+      let d; try { d = JSON.parse(txt); } catch(e) { console.debug('[ec-outlook] non-JSON'); continue; }
+      if (d?.features !== undefined) { data = d; break; }
+    } catch(e) { console.debug('[ec-outlook] error:', e.message); }
+  }
+
+  if (_ecOutlookLayer) { try { map.removeLayer(_ecOutlookLayer); } catch(e){} _ecOutlookLayer = null; }
+  if (!_ecOutlookOn) { updateLoadStatus(''); return; }   // switched off while it loaded
+  const raw = (data && Array.isArray(data.features)) ? data.features : null;
+  if (!raw) {
+    updateLoadStatus('Env. CN Outlooks unavailable.');
+    setTimeout(() => updateLoadStatus(''), 4000);
+    return;
+  }
+  // Only what is still in effect: an outlook whose period has ended is
+  // yesterday's forecast, and drawing it would say a storm is expected
+  // where one has already come and gone.
+  const now = Date.now();
+  const live = raw.filter(f => {
+    if (!f || !f.geometry) return false;
+    const end = Date.parse(_ecPick(f.properties || {}, EC_KEYS.end));
+    return !(isFinite(end) && end < now);
+  });
+  if (!live.length) {
+    updateLoadStatus('No Environment Canada thunderstorm outlooks in effect.');
+    setTimeout(() => updateLoadStatus(''), 4000);
+    return;
+  }
+  // Least serious first, so where areas overlap the red one is on top.
+  live.sort((a, b) => _ecRank(a.properties || {}) - _ecRank(b.properties || {}));
+  const fc = { type: 'FeatureCollection', features: live };
+
+  // Black casing (the same technique as the alert layers) so the coloured
+  // edges read over any basemap.
+  const casing = L.geoJSON(fc, {
+    pane: _ovPane('ec-outlook'), interactive: false,
+    style: () => ({ color: '#000000', weight: 4.5, fill: false, opacity: 1 }),
+  });
+  const main = L.geoJSON(fc, {
+    pane: _ovPane('ec-outlook'),
+    style: f => {
+      const color = EC_RANK_COLOR[_ecRank(f.properties || {})];
+      return { color, weight: 2.5, fillColor: color, fillOpacity: 0.3, opacity: 1 };
+    },
+    onEachFeature: (f, layer) => {
+      const cp = f.properties || {};
+      const rank = _ecRank(cp);
+      const color = EC_RANK_COLOR[rank];
+      const day = _ecPick(cp, EC_KEYS.day);
+      const notes = String(_ecPick(cp, EC_KEYS.text) || '').trim();
+      // Every field, so whatever Environment Canada wrote is on show even
+      // when this page did not know to look for it by name.
+      const listing = Object.keys(cp)
+        .filter(k => !/^geom/i.test(k) && cp[k] !== null && cp[k] !== undefined && String(cp[k]).trim() !== '')
+        .map(k => `${k}: ${cp[k]}`).join('\n');
+      // Mapped onto the shape the shared alert popup expects, so an outlook
+      // reads exactly like a Canada alert does.
+      const mapped = {
+        event: EC_RANK_LABEL[rank],
+        areaDesc: String(_ecPick(cp, EC_KEYS.region) || 'Canada'),
+        onset: _ecPick(cp, EC_KEYS.start) || _ecPick(cp, EC_KEYS.issued),
+        expires: _ecPick(cp, EC_KEYS.end),
+        senderName: 'Environment Canada',
+        severity: rank === 3 ? 'Severe' : rank === 2 ? 'Moderate' : 'Minor',
+        urgency: day ? `Day ${day}` : '',
+        headline: 'Thunderstorm outlook' + (day ? ` for day ${day}` : '') + ', Environment Canada',
+        description: (notes ? notes + '\n\n' : '') + listing,
+      };
+      layer.on('click', function(ev) {
+        L.DomEvent.stop(ev);
+        const html = _buildAlertPopupHTML(mapped, color);
+        const pop = L.popup({ className: 'ap-popup-container', maxWidth: 340, autoPan: true, closeButton: true })
+          .setLatLng(ev.latlng).setContent(html).openOn(map);
+        setTimeout(() => {
+          const el = pop.getElement ? pop.getElement() : null;
+          if (!el) return;
+          const cw = el.querySelector('.leaflet-popup-content-wrapper');
+          if (cw) { cw.style.borderColor = color; cw.style.boxShadow = `0 4px 28px rgba(0,0,0,0.7), 0 0 0 1px ${color}33`; }
+        }, 10);
+      });
+    }
+  });
+
+  _ecOutlookLayer = L.layerGroup([casing, main]).addTo(map);
+  updateLoadStatus('');
+}
+
 // ── TORNADO TRACKS / DAMAGE ASSESSMENT (NWS Damage Assessment Toolkit) ──
 // Real, verified NOAA service: services.dat.noaa.gov hosts the official DAT
 // "DamageViewer" feature service. Layer 2 ("Damage Polygons SDE") is the
@@ -29264,6 +29409,18 @@ function toggleOverlayPill(id) {
     } else {
       clearInterval(_canadaAlertsTimer); _canadaAlertsTimer = null;
       if (_canadaAlertsLayer) { try { map.removeLayer(_canadaAlertsLayer); } catch(e){} _canadaAlertsLayer = null; }
+    }
+  } else if (id === 'ec-outlook') {
+    _ecOutlookOn = !_ecOutlookOn;
+    const pill = document.getElementById('op-ec-outlook');
+    if (pill) pill.classList.toggle('active', _ecOutlookOn);
+    if (_ecOutlookOn) {
+      loadEcOutlook();
+      // Outlooks are issued a few times a day, so a quarter hour is plenty.
+      _ecOutlookTimer = setInterval(loadEcOutlook, 15 * 60 * 1000);
+    } else {
+      clearInterval(_ecOutlookTimer); _ecOutlookTimer = null;
+      if (_ecOutlookLayer) { try { map.removeLayer(_ecOutlookLayer); } catch(e){} _ecOutlookLayer = null; }
     }
   } else if (id === 'tornado-tracks') {
     _tornadoTracksActive = !_tornadoTracksActive;
@@ -62072,6 +62229,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-12-b', date: 'Sep 12, 2026',
+    text: 'Env. CN Outlooks, a new overlay. Environment Canada’s thunderstorm outlooks now draw on the map as shaded areas: yellow where thunderstorms are possible, orange where severe thunderstorms are possible, red where they are likely. It is the Canadian counterpart of the SPC Outlook, read live from Environment Canada’s GeoMet API, with an info button and a drag handle like every other overlay pill. Tap a shaded area for the region, the period and the forecasters’ notes.' },
   { id: '2026-09-12-a', date: 'Sep 12, 2026',
     text: 'Tap a radar site and choose. A tiny popup now opens above any radar pill you tap, with two choices: View this site (what a tap always did) or Compare radar sites. Compare cuts the map into strips with draggable dividers, borrowed from the model comparison: strip A is the radar already on screen, and every other pill you tap becomes another strip showing that site in the same product and from the same source, whether that is Normal, Level 2 or Level 3. The strips follow the playbar, a small panel lists them with remove buttons, tapping a strip’s pill again takes it out, and turning the radar off ends the comparison.' },
   { id: '2026-09-11-a', date: 'Sep 11, 2026',
@@ -62317,7 +62476,7 @@ function _srchBuildCatalog() {
     'wind-barbs': 'wind', terminator: 'moon', 'wave-particles': 'wave', cloudcam: 'camera', radio: 'antenna',
     forecasts: 'cloud-sun', fronts: 'map', spotters: 'target',
     'spotter-reports': 'target', chasers: 'target', 'fire-outlook': 'fire',
-    'cpc-outlook': 'temp', 'canada-alerts': 'siren', 'tornado-tracks': 'tornado',
+    'cpc-outlook': 'temp', 'canada-alerts': 'siren', 'ec-outlook': 'storm', 'tornado-tracks': 'tornado',
     wildfires: 'fire', 'traffic-cameras': 'camera', 'wfo-offices': 'map',
     'ambient-weather': 'temp',
   };
@@ -64177,6 +64336,9 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="ov-pill" id="op-canada-alerts" data-ovid="canada-alerts" title="Environment Canada Weather Alerts">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('canada-alerts')">Canada Alerts</span><span class="ov-drag" title="Drag to reorder">⠿</span>
     </div>
+    <div class="ov-pill" id="op-ec-outlook" data-ovid="ec-outlook" title="Environment Canada Thunderstorm Outlooks - where storms, and severe storms, are expected across Canada">
+      <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('ec-outlook')">Env. CN Outlooks</span><span class="ov-drag" title="Drag to reorder">⠿</span>
+    </div>
     <div class="ov-pill" id="op-tornado-tracks" data-ovid="tornado-tracks" title="Tornado Tracks - NWS Damage Assessment Toolkit survey paths (last 60 days)">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('tornado-tracks')">Tornado Tracks</span><span class="ov-drag" title="Drag to reorder">⠿</span>
     </div>
@@ -65250,6 +65412,7 @@ const OV_DESCRIPTIONS = {
   'meso-disc':        'Short-term alerts from forecasters flagging that severe weather may develop soon in a specific area.',
   'cpc-outlook':      'Whether an area is likely to run warmer, colder, wetter, or drier than normal over the next couple of weeks.',
   'canada-alerts':    'Active weather alerts for Canada, from Environment Canada.',
+  'ec-outlook':       'Environment Canada\'s thunderstorm outlooks: the areas its storm prediction centres expect thunderstorms in, coloured by how serious they could be. Yellow is thunderstorms possible, orange is severe thunderstorms possible, red is severe thunderstorms likely. The Canadian counterpart of the SPC Outlook, read live from Environment Canada\'s GeoMet API. Tap a shaded area for the region, the outlook period and the forecasters\' notes.',
   'tornado-tracks':   'Surveyed tornado damage paths, rated by EF scale, from the last 60 days.',
   'wildfires':        'Active large wildfires, updated in the last 48 hours, with acres burned and location.',
   'ambient-weather':  'Personal weather stations from the Ambient Weather Network, showing live temperature, wind, rain, and pressure.',
