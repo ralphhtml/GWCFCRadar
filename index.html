@@ -6190,6 +6190,16 @@ body.shot-mode > button {
    which is the whole reason a shot is being taken, so a capture that dropped
    it would return a bare map. Its two skip buttons still go, above. */
 
+/* Same idea, one level deeper: the compass, the right-edge tool icons, the
+   draw/measure/polygon toolbars, the GPS and navigation HUDs and a dozen
+   other controls all live as direct children of #map-wrap right alongside
+   the map itself, so the body-level rule above never touches them. Keeping
+   only #map and dropping every other direct child clears that whole layer
+   the same way, without listing each control by id. */
+body.shot-mode #map-wrap > div:not(#map) {
+  display: none !important;
+}
+
 #logo-quick-menu {
   /* Retired from the screen, not from the code. The five buttons this row
      carried live inside the account panel now (#lqm-panel-menu), where they
@@ -62972,6 +62982,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-14-f', date: 'Sep 14, 2026',
+    text: 'Screenshots taken by the Asturio Discord bot’s /map command now hide the whole interface, not just the parts that hang off the page directly. The compass, the right-edge tool icons, the draw and measure toolbars and a handful of other controls used to still show up in a bot screenshot even though the menus and toolbar did not; now it is map, data and overlays only, with a GWCFC title bar stamped across the top like a broadcast graphic.' },
   { id: '2026-09-14-e', date: 'Sep 14, 2026',
     text: 'Tap an SPC, WPC or NHC outlook area for the real discussion now, not just the risk category it was coloured for. Each one opens the same style of popup Env. CN Outlooks already uses: the category first, then the actual forecaster’s written discussion underneath, read live from the Storm Prediction Center, the Weather Prediction Center or the National Hurricane Center.' },
   { id: '2026-09-14-d', date: 'Sep 14, 2026',
