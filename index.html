@@ -11736,8 +11736,9 @@ const _canadaLayerLoaded = [];
 
 function _buildRadarPool() {
   // If custom colors are active, skip tile cache (needs crossOrigin/canvas) and go straight to WMS.
-  // The Inspector also forces WMS so it can read tile pixels for color->dBZ lookup.
-  _nexradCacheFailed = _inspForcedWms;
+  // The Inspector, and T-Storm Tracker reading the mosaic's colours back into
+  // dBZ, both force WMS for the same reason: neither can read a tainted canvas.
+  _nexradCacheFailed = _inspForcedWms || _tstForcedWms;
   // Cancel any stale wait-loop pointing at layers we're about to remove
   if (_showFrameTick) { clearInterval(_showFrameTick); _showFrameTick = null; }
   _radarLayerPool.forEach(l => { try { if (l) map.removeLayer(l); } catch(e){} });
@@ -14592,35 +14593,249 @@ async function loadEcOutlook() {
 
 // ── T-STORM TRACKER ──────────────────────────────────────────────────────
 // A dashed circle around every storm cell the radar you are currently
-// decoding turns up, colour-coded by how hard it is hitting, with a line and
-// tick marks ahead of it guessing where the same cell will be in 10, 20, 30
-// and 40 minutes if it keeps moving the way it has. The idea, and the four
-// time steps, come from a site called wxtools.org.
+// looking at turns up, colour-coded by how hard it is hitting, with a line
+// and tick marks ahead of it guessing where the same cell will be in 10, 20,
+// 30 and 40 minutes if it keeps moving the way it has. The idea, and the
+// four time steps, come from a site called wxtools.org.
 //
-// The cell detector (_fxCellsFromMesh) and the motion tracker's geometry
-// (_fxKm/_fxBearing/_fxCompass/_fxProject) already exist, built for the AI
-// assistant's storm briefs. This overlay reuses both but keeps its OWN
-// history (_tstHistory) rather than sharing the assistant's (_fxHistory):
-// the assistant only ever records the literal product string 'ref' (Level 2
-// reflectivity), while this overlay tracks reflectivity from either level by
-// its FAMILY, and the two must not silently change each other's behaviour.
+// Reads every radar this page can show, not only the ones it decodes into
+// raw numbers itself:
+//   - Level 2, and Level 3 read from the NOAA bucket: this page already
+//     decodes those into a real mesh of numbers (_lastMeshData), so the
+//     cell detector reads that directly. Exact.
+//   - Normal mode's own single-site picture, the Pi's Level 3 picture, the
+//     Normal national mosaic, and MRMS: none of those hand this page real
+//     numbers, only finished, already-coloured tiles. For these, the colour
+//     under each point of a grid across the map is read back off the
+//     rendered tiles and matched to the nearest step of the same NWS
+//     reflectivity ramp the Inspector already uses for exactly this
+//     (_inspColorToDbz) - a genuine value, just read from the picture
+//     instead of the file.
 //
-// It only ever sees what this page has already decoded for its own picture:
-// a Level 2 volume, or a Level 3 file read from the bucket. The Normal
-// mosaic and MRMS arrive as finished tiles with no numbers behind them, so
-// there is nothing here for a cell detector to read while either is on
-// screen - the same reason the value filter and custom radar colours stop
-// at those two sources.
+// A decoded mesh clusters with the AI assistant's own _fxCellsFromMesh
+// (points a few hundred metres apart no matter the zoom, so a fixed
+// geographic bin is the right ruler); a picture read back by colour
+// clusters with its own _tstClusterGrid instead, for a reason explained
+// where that lives. Both share the same motion geometry
+// (_fxKm/_fxBearing/_fxCompass/_fxProject) already built for the
+// assistant's storm briefs, but keep their OWN history (_tstHistory)
+// keyed by a SCOPE rather than sharing the assistant's (_fxHistory): the
+// assistant only ever records the literal product string 'ref' (Level 2),
+// while this tracks reflectivity from anywhere by family, and the two
+// histories must never change each other's behaviour.
+//
+// The scope is recomputed on a short timer (_tstPoll) rather than from
+// hooks sprinkled through every place the radar can change, because there
+// are too many of those to find them all reliably: switching site, source,
+// product, turning MRMS on, the mosaic's own 5-minute refresh. A couple of
+// the most common actions (picking a site, turning MRMS on) also poke the
+// timer directly so those specific changes feel instant; everything else
+// is caught within a couple of seconds regardless.
 let _tstOn = false;
 let _tstLayer = null;
-let _tstHistory = [];   // [{ t, station, cells }] oldest first, mirrors _fxHistory's shape
+let _tstHistory = [];   // [{ t, scope, cells }] oldest first, mirrors _fxHistory's shape
+let _tstScope = null;          // the scope key as of the last poll tick
+let _tstPollTimer = null;
+let _tstLastPixelScan = 0;
+let _tstForcedWms = false;     // this overlay's own copy of _inspForcedWms
+let _tstToldTainted = false;
 const TST_TIER_LABEL = { 1: 'Moderate', 2: 'Heavy', 3: 'Extreme' };
 const TST_TIER_COLOR = { 1: '#ff9500', 2: '#ff2d2d', 3: '#b83bff' };
+const TST_POLL_MS = 2000;              // how often the scope is rechecked
+const TST_PIXEL_RESCAN_MS = 20000;     // how often a picture-only scope is re-sampled
+const TST_PIXEL_STEP = 8;              // screen pixels between sampled points
 // wxtools.org's three bands, read off the same peak dBZ _fxCellsFromMesh
 // already returns per cell: 35 is where a cell begins existing at all (the
 // clustering threshold), 50 and 60 split it into the three tiers.
 function _tstTier(maxDbz) {
   return maxDbz >= 60 ? 3 : maxDbz >= 50 ? 2 : 1;
+}
+
+// The one site a single reflectivity picture is currently showing, however
+// it got drawn: the per-site WMS tiles Normal mode uses, or the Pi's own
+// rendered Level 3 picture. Both paint the same NWS colour ramp into
+// radarPane, so the pixel reader below does not need to know which one it
+// is looking at.
+function _tstPictureSite() {
+  if (_radarSource === 'normal' && currentProduct === 'ref' && _refStation) return _refStation;
+  if (_radarSource === 'l3' && _prOn && !_prBucketSite
+      && _prProduct === 'reflectivity' && _prSite) return _prSite;
+  return null;
+}
+
+// What T-Storm Tracker should be reading right now, as one short string -
+// 'mesh:<station>' for a real decoded mesh, 'site:<station>' or 'mosaic' or
+// 'mrms' for a picture read back by colour, or null when there is no
+// reflectivity radar on screen to read at all. Recomputed from live state
+// each time, never from the decode-result globals alone: those (_lastMesh*)
+// only update when a NEW decode lands, so trusting them on their own would
+// keep reporting the last site decoded even after switching to the mosaic.
+function _tstScopeKey() {
+  // A decoded mesh is the current picture only when the LIVE state says
+  // browser-side decoding is what is actually happening right now: Level 2
+  // always decodes here, Level 3 only when the Pi could not be read and
+  // this page fell back to the NOAA bucket itself (_prBucketSite set).
+  const meshActive = _radarSource === 'l2' || (_radarSource === 'l3' && !!_prBucketSite);
+  if (meshActive && _lastMeshData && _lastMeshBounds
+      && typeof _meshFamily === 'function' && _meshFamily(_lastMeshProduct) === 'ref') {
+    return 'mesh:' + String(_lastMeshStation || '').toLowerCase();
+  }
+  if (typeof activeLayers === 'undefined' || !activeLayers.nexrad) return null;
+  if (typeof _mrmsActive !== 'undefined' && _mrmsActive) return 'mrms';
+  const site = _tstPictureSite();
+  if (site) return 'site:' + String(site).toLowerCase();
+  if (_radarSource === 'normal') return 'mosaic';
+  return null;
+}
+
+// Forces the national mosaic's own tiles to the CORS-enabled WMS door
+// instead of the plain tile cache, the same switch the Inspector already
+// throws for the same reason - kept as this overlay's own flag rather than
+// reusing the Inspector's, so turning THIS off restores it without also
+// yanking the picture out from under the Inspector if that is on too.
+function _tstEnsureReadableTiles() {
+  if (_tstForcedWms || typeof activeLayers === 'undefined' || !activeLayers.nexrad) return;
+  _tstForcedWms = true;
+  try { _buildRadarPool(); showFrame(currentFrame); } catch (e) {}
+}
+function _tstRestoreTiles() {
+  if (!_tstForcedWms) return;
+  _tstForcedWms = false;
+  if (typeof _inspForcedWms !== 'undefined' && _inspForcedWms) return;   // the Inspector still needs it
+  try { _buildRadarPool(); showFrame(currentFrame); } catch (e) {}
+}
+
+// Clusters a grid of already-thresholded samples the way _fxCellsFromMesh
+// clusters a decoded mesh - touching bins merge, a lone sample is noise -
+// except the bins here are the SAMPLING GRID's own indices, not a fixed
+// degree size. A decoded mesh's points sit a few hundred metres apart no
+// matter the zoom, so a fixed geographic bin is the right ruler for it; a
+// screen-pixel grid is not - the same eight pixels apart is two kilometres
+// at a close-in zoom and twenty at the national view the mosaic is most
+// often looked at, and a fixed-degree bin would either fold whole states
+// into one "cell" up close, or, at the zoom the mosaic actually gets used
+// at, never find two samples close enough to touch at all - every point
+// would read as its own one-sample speck and be thrown out as noise, which
+// is exactly the failure this clusters in the grid's own space to avoid.
+// cellAreaKm2 is one sample's own footprint (the map's real scale at the
+// sampling step, worked out once per scan, not once per sample).
+function _tstClusterGrid(samples, cellAreaKm2) {
+  const byKey = new Map();
+  samples.forEach(s => byKey.set(s.gx + ',' + s.gy, s));
+  const seen = new Set(), cells = [];
+  for (const s of samples) {
+    const key = s.gx + ',' + s.gy;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const stack = [s], members = [];
+    while (stack.length) {
+      const cur = stack.pop();
+      members.push(cur);
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          if (!dx && !dy) continue;
+          const nk = (cur.gx + dx) + ',' + (cur.gy + dy);
+          if (seen.has(nk)) continue;
+          const nb = byKey.get(nk);
+          if (!nb) continue;
+          seen.add(nk);
+          stack.push(nb);
+        }
+      }
+    }
+    if (members.length < 2) continue;   // a lone sample is noise, not a cell
+    let max = -Infinity, sLat = 0, sLon = 0, cn = 0, cLat = 0, cLon = 0;
+    members.forEach(m => {
+      sLat += m.lat; sLon += m.lon;
+      if (m.v > max) max = m.v;
+      // The core, tracked separately, is what a cell's centre actually
+      // follows - the same reasoning _fxCellsFromMesh uses.
+      if (m.v >= FX_DBZ_CORE) { cn++; cLat += m.lat; cLon += m.lon; }
+    });
+    cells.push({
+      lat: cn ? cLat / cn : sLat / members.length,
+      lon: cn ? cLon / cn : sLon / members.length,
+      max: +max.toFixed(1),
+      areaKm2: Math.round(members.length * cellAreaKm2),
+    });
+  }
+  cells.sort((a, b) => (b.max - a.max) || (b.areaKm2 - a.areaKm2));
+  return cells.slice(0, FX_MAX_CELLS);
+}
+
+// Reads a grid of points off whatever is actually painted in radarPane
+// right now, turns every reflectivity-coloured one back into a real dBZ,
+// and clusters them into cells. A canvas is drawn once per VISIBLE tile,
+// not once per sampled point - a national mosaic is a few dozen tiles
+// covering the screen, and finding which one covers each of several
+// thousand grid points is the only part of this worth being careful about.
+function _tstCellsFromPixels() {
+  const out = { cells: [], tainted: false };
+  if (typeof map === 'undefined' || !map) return out;
+  const pane = map.getPane('radarPane');
+  const mapEl = document.getElementById('map');
+  if (!pane || !mapEl) return out;
+  const mapRect = mapEl.getBoundingClientRect();
+  const size = map.getSize();
+  const imgs = [...pane.querySelectorAll('img')].filter(img => {
+    if (!img.complete || !img.naturalWidth) return false;
+    const layer = img.closest('.leaflet-layer');
+    const op = layer ? parseFloat(getComputedStyle(layer).opacity || '1') : 1;
+    return op >= 0.05;   // a hidden pool frame is not the picture on screen
+  });
+  if (!imgs.length) return out;
+  // Held only for this one scan: a fresh scan is fresh data, so nothing
+  // here is worth keeping past the loop that uses it.
+  const tiles = [];
+  for (const img of imgs) {
+    let ctx = null, w = 0, h = 0;
+    try {
+      const canvas = document.createElement('canvas');
+      w = canvas.width = img.naturalWidth;
+      h = canvas.height = img.naturalHeight;
+      ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+      ctx.getImageData(0, 0, 1, 1);   // one cheap read to know NOW if this tile is CORS-tainted
+    } catch (e) { out.tainted = true; continue; }
+    tiles.push({ rect: img.getBoundingClientRect(), ctx, w, h });
+  }
+  if (!tiles.length) return out;
+  // One sample's real footprint, in km2, from the map's own scale right
+  // now - a single measurement for the whole scan rather than one per
+  // sample, since a screen this size never spans enough latitude for the
+  // difference to matter for a "roughly this big" circle.
+  const centre = map.containerPointToLatLng([size.x / 2, size.y / 2]);
+  const east   = map.containerPointToLatLng([size.x / 2 + TST_PIXEL_STEP, size.y / 2]);
+  const south  = map.containerPointToLatLng([size.x / 2, size.y / 2 + TST_PIXEL_STEP]);
+  const stepKmX = _fxKm(centre.lat, centre.lng, centre.lat, east.lng) || 1;
+  const stepKmY = _fxKm(centre.lat, centre.lng, south.lat, centre.lng) || 1;
+  const cellAreaKm2 = stepKmX * stepKmY;
+  const samples = [];
+  for (let py = 0; py < size.y; py += TST_PIXEL_STEP) {
+    const cy = mapRect.top + py;
+    for (let px = 0; px < size.x; px += TST_PIXEL_STEP) {
+      const cx = mapRect.left + px;
+      // Later tiles paint over earlier ones, so the LAST covering tile wins.
+      let hit = null;
+      for (let i = tiles.length - 1; i >= 0; i--) {
+        const t = tiles[i];
+        if (cx >= t.rect.left && cx <= t.rect.right && cy >= t.rect.top && cy <= t.rect.bottom) { hit = t; break; }
+      }
+      if (!hit) continue;
+      let x = Math.round((cx - hit.rect.left) / hit.rect.width * hit.w);
+      let y = Math.round((cy - hit.rect.top) / hit.rect.height * hit.h);
+      x = Math.max(0, Math.min(hit.w - 1, x));
+      y = Math.max(0, Math.min(hit.h - 1, y));
+      const d = hit.ctx.getImageData(x, y, 1, 1).data;
+      if (d[3] < 10) continue;      // transparent: no echo here
+      const dbz = _inspColorToDbz(d[0], d[1], d[2]);
+      if (!dbz || dbz.dbz < FX_DBZ_CELL) continue;
+      const ll = map.containerPointToLatLng([px, py]);
+      samples.push({ gx: px / TST_PIXEL_STEP, gy: py / TST_PIXEL_STEP, lat: ll.lat, lon: ll.lng, v: dbz.dbz });
+    }
+  }
+  out.cells = _tstClusterGrid(samples, cellAreaKm2);
+  return out;
 }
 
 // A frame just got decoded and drawn. Nothing happens while the overlay is
@@ -14631,23 +14846,76 @@ function _tstOnFrame(mesh, station, product, timeMs) {
     if (!mesh || !mesh.length) return;
     const fam = (typeof _meshFamily === 'function') ? _meshFamily(product) : null;
     if (fam !== 'ref') return;   // tracks reflectivity, the measurement a "cell" is
-    const t = timeMs || Date.now();
-    // Same frame seen twice (the live draw, then a loop rebuild reaching the
-    // same volume) replaces rather than doubles, or a cell that has not
-    // actually moved would read as one that jumped and came straight back.
-    _tstHistory = _tstHistory.filter(f => Math.abs(f.t - t) > 30000 || f.station !== station);
-    _tstHistory.push({ t, station, cells: _fxCellsFromMesh(mesh) });
-    _tstHistory.sort((a, b) => a.t - b.t);
-    if (_tstHistory.length > FX_HISTORY_MAX) _tstHistory = _tstHistory.slice(-FX_HISTORY_MAX);
+    _tstRecord('mesh:' + String(station || '').toLowerCase(), _fxCellsFromMesh(mesh),
+               timeMs || Date.now());
     _tstRedraw();
   } catch (e) { /* a redraw must never break a radar draw */ }
+}
+
+// Files one scope's cell list into the shared history, replacing rather
+// than doubling a frame seen twice within thirty seconds of another for the
+// SAME scope (a live draw and a loop rebuild reaching the same volume). A
+// cap several times the size of one scope's own window, because several
+// scopes - a couple of sites visited earlier, the mosaic - can be cached at
+// once now, each wanting its own short history to read motion out of.
+function _tstRecord(scope, cells, t) {
+  _tstHistory = _tstHistory.filter(f => f.scope !== scope || Math.abs(f.t - t) > 30000);
+  _tstHistory.push({ t, scope, cells });
+  _tstHistory.sort((a, b) => a.t - b.t);
+  const cap = FX_HISTORY_MAX * 4;
+  if (_tstHistory.length > cap) _tstHistory = _tstHistory.slice(-cap);
+}
+
+// Re-samples a picture-only scope's pixels right now, records the result,
+// and redraws. If the tiles turn out to be CORS-tainted (the national
+// mosaic's plain tile cache, the one radar source here that is not already
+// CORS-enabled), it switches to the readable WMS door instead and waits for
+// the next poll tick to read the rebuilt tiles rather than retrying inside
+// the same tick.
+function _tstScanPixels(scope) {
+  try {
+    const { cells, tainted } = _tstCellsFromPixels();
+    if (tainted) {
+      _tstEnsureReadableTiles();
+      if (!_tstToldTainted && typeof showToast === 'function') {
+        _tstToldTainted = true;
+        showToast('T-Storm Tracker switched the radar mosaic to its CORS-enabled tiles so it '
+          + 'can read the colours back into real numbers. Redrawing in a moment...', 4500);
+      }
+      return;
+    }
+    _tstRecord(scope, cells, Date.now());
+  } catch (e) { /* a scan must never break the map */ }
+  _tstRedraw();
+}
+
+// The heartbeat. Checks what should be on screen right now and acts on
+// whatever changed: a fresh mesh redraws immediately on its own (see
+// _tstOnFrame) so this just redraws for it here; a picture-only scope is
+// re-sampled the moment it is new, and again periodically afterwards so a
+// scan sitting still for a while still catches the site's or the mosaic's
+// next real update.
+function _tstPoll() {
+  if (!_tstOn) return;
+  const scope = _tstScopeKey();
+  const changed = scope !== _tstScope;
+  _tstScope = scope;
+  if (!scope) { _tstRedraw(); return; }
+  if (scope.indexOf('mesh:') === 0) { _tstRedraw(); return; }
+  const now = Date.now();
+  if (changed || now - _tstLastPixelScan > TST_PIXEL_RESCAN_MS) {
+    _tstLastPixelScan = now;
+    _tstScanPixels(scope);
+  } else {
+    _tstRedraw();
+  }
 }
 
 // Matches one cell backwards through this overlay's own history to read its
 // speed and heading. Identical method to the AI assistant's _fxCellMotion,
 // kept as its own copy so the two histories stay genuinely independent.
-function _tstCellMotion(cell, station) {
-  const frames = _tstHistory.filter(f => f.station === station);
+function _tstCellMotion(cell, scope) {
+  const frames = _tstHistory.filter(f => f.scope === scope);
   if (frames.length < 2) return null;
   const newest = frames[frames.length - 1];
   const track = [{ t: newest.t, lat: cell.lat, lon: cell.lon, max: cell.max }];
@@ -14709,14 +14977,21 @@ function _tstMapped(cell, tier, motion, frameT) {
   };
 }
 
-// Rebuilt from the newest frame every time one lands. Older cells are not
-// redrawn on top of it - a cell list is the whole current picture, not
-// something to accumulate.
+// Rebuilt from the current scope's newest frame every time one lands, or
+// every poll tick otherwise. Older cells are not redrawn on top of it - a
+// cell list is the whole current picture, not something to accumulate. This
+// is also what makes T-Storm Tracker "switch" the moment the radar it is
+// reading changes: the scope this draws from is read fresh each call.
 function _tstRedraw() {
   if (_tstLayer) { try { map.removeLayer(_tstLayer); } catch (e) {} _tstLayer = null; }
-  if (!_tstOn || !_tstHistory.length) return;
-  const newest = _tstHistory[_tstHistory.length - 1];
-  if (!newest.cells.length) return;
+  if (!_tstOn) return;
+  const scope = _tstScopeKey();
+  if (!scope) return;   // no reflectivity radar on screen to draw for
+  let newest = null;
+  for (let i = _tstHistory.length - 1; i >= 0; i--) {
+    if (_tstHistory[i].scope === scope) { newest = _tstHistory[i]; break; }
+  }
+  if (!newest || !newest.cells.length) return;
   const pane = _ovPane('tstorm-tracker');
   const items = [];
   newest.cells.forEach(cell => {
@@ -14731,7 +15006,7 @@ function _tstRedraw() {
       pane, radius: radiusM, color, weight: 2.5, dashArray: '7 5',
       fill: true, fillColor: color, fillOpacity: 0.08,
     });
-    const motion = _tstCellMotion(cell, newest.station);
+    const motion = _tstCellMotion(cell, scope);
     circle.on('click', function (ev) {
       L.DomEvent.stop(ev);
       const mapped = _tstMapped(cell, tier, motion, newest.t);
@@ -14767,15 +15042,17 @@ function _tstRedraw() {
 function _tstToggle() {
   _tstOn = !_tstOn;
   if (_tstOn) {
-    _tstRedraw();
-    if (!_tstHistory.length && typeof showToast === 'function') {
-      showToast('T-Storm Tracker reads whatever single-site radar you decode here: tap a radar '
-        + 'pill for Level 2, or Level 3 for a site the browser can read, and tracked cells will '
-        + 'appear as scans come in. It does not read the Normal mosaic or MRMS.', 6500);
+    if (!_tstPollTimer) _tstPollTimer = setInterval(_tstPoll, TST_POLL_MS);
+    _tstPoll();   // read what is on screen now rather than waiting for the first tick
+    if (!_tstScopeKey() && typeof showToast === 'function') {
+      showToast('T-Storm Tracker needs a reflectivity radar on screen: Normal, MRMS, Level 2 or '
+        + 'Level 3 all work. Turn one on and tracked cells will appear.', 5000);
     }
-  } else if (_tstLayer) {
-    try { map.removeLayer(_tstLayer); } catch (e) {}
-    _tstLayer = null;
+  } else {
+    if (_tstPollTimer) { clearInterval(_tstPollTimer); _tstPollTimer = null; }
+    if (_tstLayer) { try { map.removeLayer(_tstLayer); } catch (e) {} _tstLayer = null; }
+    _tstScope = null;
+    _tstRestoreTiles();
   }
 }
 
@@ -28847,6 +29124,9 @@ function _disableRadar() {
   }
   // A running site comparison has nothing left to compare against.
   try { if (typeof _rcOff === 'function') _rcOff(); } catch (e) {}
+  // T-Storm Tracker's picture just went away too; redraw now rather than
+  // waiting for its next poll tick to notice the radar is off.
+  try { if (typeof _tstRedraw === 'function') _tstRedraw(); } catch (e) {}
   // Hide station marker bubbles now that radar is off
   _syncNexradSites();
 }
@@ -46032,6 +46312,9 @@ async function _siteView(s) {
   } else {
     map.setView([s.lat, s.lon], Math.max(map.getZoom(), 7));
   }
+  // A site change is the one radar switch worth reacting to instantly
+  // rather than on T-Storm Tracker's own two-second heartbeat.
+  if (typeof _tstOn !== 'undefined' && _tstOn) { try { _tstPoll(); } catch (e) {} }
 }
 
 // ── THE SITE POPUP ────────────────────────────────────────────────────────
@@ -46820,6 +47103,7 @@ async function _loadMrmsComposite() {
   const gen = ++_refSiteGen;          // stale calls bail after the await
   _mrmsActive = true;
   _refStation = null;                 // national mosaic, not a station product
+  if (typeof _tstOn !== 'undefined' && _tstOn) { try { _tstPoll(); } catch (e) {} }
   // Hide the n0q loop rather than removing it, matching how toggleLayer does it,
   // so switching back does not need a rebuild.
   _radarLayerPool.forEach(l => { if (l) l.setOpacity(0); });
@@ -62418,6 +62702,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-14-b', date: 'Sep 14, 2026',
+    text: 'T-Storm Tracker now reads every radar, not only a decoded single site. The Normal mosaic, MRMS, and a single site’s own picture are read back by colour, the same way the Inspector already turns a tap on the map into a real number, and matched onto the same reflectivity scale Level 2 and Level 3 already used. It also switches the moment you pick a different site, radar source, or turn MRMS on, instead of waiting on the picture that used to be showing.' },
   { id: '2026-09-14-a', date: 'Sep 14, 2026',
     text: 'T-Storm Tracker, a new overlay. It circles storm cells picked out of the radar you are currently decoding, colour-coded by how hard they are hitting: orange for moderate, red for heavy, purple for extreme. A line and tick marks ahead of each one project 10, 20, 30 and 40 minutes out, based on how fast that cell has actually been moving. Info button and drag handle like every other overlay pill. It reads Level 2 or Level 3, not the Normal mosaic or MRMS, since those are pictures rather than raw values.' },
   { id: '2026-09-12-c', date: 'Sep 12, 2026',
@@ -65621,7 +65907,7 @@ const OV_DESCRIPTIONS = {
   'wind-barbs':       'Station-model wind barbs on a grid across the map, reading the same Surface Wind (10m) field the Wind Particles animate. The staff points back into the wind, and the feathers on it add up to the speed in knots: half feather 5, full feather 10, solid pennant 50, so 2 pennants plus a feather and a half is 115. A circle with a dot in it means calm. Feathers sit on the low-pressure side, which flips below the equator. Where the particles show you the flow, a barb gives you a number without a colour key.',
   'wind-particles':   'An animated flow of particles that streams across the map along the real Surface Wind (10m) direction, colored by speed. Independent of the Wind layer\'s color map, both can be on together. Tune Speed, Intensity, and Thickness under Settings → Particles → Wind Particles.',
   'wave-particles':   'An animated flow of particles that streams across the ocean along real wave height and direction, colored the same way as the Waves layer. Independent of the Waves color map, both can be on together. Tune Speed, Intensity, Thickness, Density, and Opacity under Settings → Wave Particles.',
-  'tstorm-tracker':   'Storm cells picked out of the radar you are currently decoding (Level 2, or Level 3 for a site the browser can read raw), circled and colour-coded by peak reflectivity: orange for moderate (35-50 dBZ), red for heavy (50-60 dBZ), purple for extreme (60+ dBZ). A line with dots ahead of each cell projects 10, 20, 30 and 40 minutes out, spaced by how fast that cell has actually been moving over its last several scans. It is a straight-line guess from recent motion, not an official forecast: a cell can turn, strengthen, weaken or die out at any time. Needs a single-site radar picture on screen - it does not read the Normal mosaic or MRMS, since those arrive as pictures rather than raw values.',
+  'tstorm-tracker':   'Storm cells picked out of whatever reflectivity radar is currently on screen, circled and colour-coded by peak strength: orange for moderate (35-50 dBZ), red for heavy (50-60 dBZ), purple for extreme (60+ dBZ). A line with dots ahead of each cell projects 10, 20, 30 and 40 minutes out, spaced by how fast that cell has actually been moving over its last several scans. It is a straight-line guess from recent motion, not an official forecast: a cell can turn, strengthen, weaken or die out at any time. Works on any of them - the Normal mosaic, a single site, MRMS, Level 2, Level 3 - and switches automatically the moment you change site, source or product, usually within a couple of seconds.',
 };
 
 function _ovInjectInfoButtons() {
