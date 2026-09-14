@@ -15,6 +15,8 @@ import {
 } from 'discord.js';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { timingSafeEqual, createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { getLinkCode, claimLinkCode, getSyncHistory, appendSyncHistory,
          addChatMessage, upsertRosterEntry } from './firestore.mjs';
 
@@ -436,6 +438,44 @@ const SHOT_H = Number(process.env.SHOT_HEIGHT) || 640;
 const SHOT_NAV_MS   = 45000;   // loading the page itself
 const SHOT_READY_MS = 20000;   // then waiting for tiles to settle
 
+// A GWCFC-branded title bar stamped across the top of every /map screenshot,
+// the way a broadcast graphic sits over a weather feed. The source file is a
+// wide banner with a lot of transparent margin around the actual bar (so it
+// still looks right at other sizes elsewhere); trimmed once at startup and
+// cached, then resized to whatever width a given screenshot needs.
+const MAP_OVERLAY_PATH = join(dirname(fileURLToPath(import.meta.url)), 'assets', 'map-overlay-banner.png');
+let _overlayBanner; // undefined = not attempted yet, null = sharp or the file is unavailable
+async function getMapOverlayBanner() {
+  if (_overlayBanner !== undefined) return _overlayBanner;
+  try {
+    const sharp = (await import('sharp')).default;
+    _overlayBanner = await sharp(MAP_OVERLAY_PATH).trim({ threshold: 10 }).toBuffer();
+  } catch {
+    // No sharp installed, or no banner file on this machine: screenshots
+    // still work, they just come back without the title bar.
+    _overlayBanner = null;
+  }
+  return _overlayBanner;
+}
+
+// Stamps the banner across the top of a screenshot, full width, scaled to
+// keep its own proportions. Falls back to the plain screenshot on any
+// failure - a missing overlay is not worth losing the map over.
+async function applyMapOverlay(shotBuffer, width) {
+  const banner = await getMapOverlayBanner();
+  if (!banner) return shotBuffer;
+  try {
+    const sharp = (await import('sharp')).default;
+    const bar = await sharp(banner).resize({ width }).toBuffer();
+    return await sharp(shotBuffer)
+      .composite([{ input: bar, top: 0, left: 0 }])
+      .jpeg({ quality: 82 })
+      .toBuffer();
+  } catch {
+    return shotBuffer;
+  }
+}
+
 // Named places, so nobody has to know coordinates to ask for a picture.
 const PLACES = {
   us:        { lat: 39.5,  lon: -98.4, z: 4 },
@@ -554,7 +594,8 @@ async function screenshotMap(opt) {
       const shot = await page.screenshot({ type: 'jpeg', quality: 82 });
       // Newer Puppeteer returns a Uint8Array where it used to return a Buffer,
       // and discord.js will not accept the former as an attachment.
-      return { image: Buffer.from(shot), url };
+      const withBanner = await applyMapOverlay(Buffer.from(shot), SHOT_W);
+      return { image: withBanner, url };
     } finally {
       // Close the page but keep the browser, which is the whole point of holding one.
       if (page) await page.close().catch(() => {});
