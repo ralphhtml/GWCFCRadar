@@ -4717,6 +4717,33 @@ body.lite-mode #export-toolbar { display: none !important; }
 }
 .dtb-del-d:hover { background: rgba(255,60,60,0.18); color: #fff; }
 @media (max-width: 480px) { #dist-toolbar { left: 8px; transform: none; } }
+/* Same shell as #dist-toolbar - only one of the two is ever open at once, so
+   sharing the exact spot is not a collision, it is one docked slot on screen
+   that whichever measuring tool is active gets to use. */
+#brg-toolbar {
+  display: none;
+  position: absolute;
+  bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1100;
+  background: rgb(14,18,24);
+  border: 1px solid rgba(0,140,186,0.35);
+  border-radius: 12px;
+  padding: 6px 10px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.7);
+  white-space: nowrap;
+  flex-wrap: nowrap;
+  user-select: none;
+  max-width: calc(100vw - 16px);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  align-items: flex-start;
+  gap: 6px;
+  flex-direction: column;
+}
+#brg-toolbar.visible { display: flex; }
+@media (max-width: 480px) { #brg-toolbar { left: 8px; transform: none; } }
 /* ── MAP ROTATION ── */
 #map {
   transform-origin: center center;
@@ -10087,6 +10114,7 @@ body.clean-mode #text-toolbar,
 body.clean-mode #stormcone-toolbar,
 body.clean-mode #radius-toolbar,
 body.clean-mode #dist-toolbar,
+body.clean-mode #brg-toolbar,
 body.clean-mode #poly-toolbar {
   opacity: 0 !important;
   pointer-events: none !important;
@@ -10096,7 +10124,7 @@ body.clean-mode #poly-toolbar {
 #right-menu, #sub-bubbles, #top-search-bar, #lqm-profile-btn, #lqm-ai-btn,
 #overlay-launcher, #overlay-toggle-btn,
 #map-compass, #map-reset-bearing,
-#draw-toolbar, #text-toolbar, #stormcone-toolbar, #radius-toolbar, #dist-toolbar, #poly-toolbar {
+#draw-toolbar, #text-toolbar, #stormcone-toolbar, #radius-toolbar, #dist-toolbar, #brg-toolbar, #poly-toolbar {
   transition: opacity 0.35s ease;
 }
 /* Tiny restore hint visible only in clean mode */
@@ -10780,6 +10808,24 @@ body.clean-mode #clean-hint { opacity: 1; }
   <div id="dtb-list"></div>
 </div>
 
+<!-- BEARING TOOLBAR -->
+<div id="brg-toolbar">
+  <div class="dtb-top-row-d">
+    <div class="dtb-drag" id="brg-drag-handle" title="Drag to move">⠿</div>
+    <span class="dtb-title-d">
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><polygon points="12,5 14.2,12 12,19 9.8,12" fill="currentColor" stroke="none"/></svg>
+      BEARING
+    </span>
+    <div class="dtb-sep"></div>
+    <button class="dtb-btn-d" onclick="_brgClearAll()" title="Remove all">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M9 6V4h6v2"/></svg>
+    </button>
+    <div class="dtb-sep"></div>
+    <button id="brg-close-btn" onclick="_brgClose()">&#x2715;</button>
+  </div>
+  <div id="brg-list"></div>
+</div>
+
 <div id="poly-toolbar">
   <div class="dtb-drag" id="poly-drag" title="Drag to move">⠿</div>
   <span class="dtb-label">
@@ -10914,6 +10960,14 @@ body.clean-mode #clean-hint { opacity: 1; }
       <circle cx="4"  cy="12" r="2.5" fill="currentColor"/>
       <line x1="7" y1="12" x2="17" y2="12" stroke="currentColor" stroke-width="1.8" stroke-dasharray="2.5 2"/>
       <circle cx="20" cy="12" r="2.5" fill="currentColor"/>
+    </svg>
+  </button>
+
+  <!-- 4b: Bearing , compass ring with a needle, click two points -->
+  <button class="tool-btn" id="tool-bearing" onclick="startBearingTool()" title="Bearing , click two points for the compass direction between them">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
+      <circle cx="12" cy="12" r="9"/>
+      <polygon points="12,5 14.2,12 12,19 9.8,12" fill="currentColor" stroke="none"/>
     </svg>
   </button>
 
@@ -37899,6 +37953,8 @@ function _clearListeners() {
   map.off('click',       _onDistClick);
   map.off('mousemove',   _onDistMove);
   map.off('dblclick',    _onDistDbl);
+  map.off('click',       _onBrgClick);
+  map.off('mousemove',   _onBrgMove);
   map.off('click',       _onTextClick);
   map.off('mousemove',   _onScMove);
   map.off('click',       _onScClick);
@@ -37936,6 +37992,7 @@ function clearAllDrawings() {
   if (_polyFinal)    { map.removeLayer(_polyFinal);    _polyFinal    = null; }
   if (_polyPreview)  { map.removeLayer(_polyPreview);  _polyPreview  = null; }
   _dtbClearAll();
+  _brgClearAll();
   _txtClear();
   if (typeof _scClearAll === 'function') _scClearAll(); // remove all storm cones
   // Clear polygon spatial filter
@@ -42408,6 +42465,168 @@ function _onDistDbl(e) {
   L.DomEvent.stopPropagation(e);
   if (_distActive.layers.preview) { map.removeLayer(_distActive.layers.preview); _distActive.layers.preview = null; }
   _dtbFinalize();
+}
+
+// ── BEARING ──
+// ── BEARING TOOL (compass direction between two points) ──
+//
+// Two clicks, not the open-ended path Distance draws: a bearing is only a
+// meaningful thing to ask about two points, start and end, and stopping
+// after the second click means there is no double-click or Esc needed to
+// close a measurement out - it finishes itself, and the very next click
+// starts the next one.
+const _BRG_COLORS = ['#e8b800','#ff6b6b','#54a0ff','#1dd1a1','#ff9f43','#48dbfb','#ff9ff3'];
+// The 16-point compass rose, in 22.5-degree slices centred on each name.
+const BRG_CARDINALS = ['N','NNE','NE','ENE','E','ESE','SE','SSE',
+                        'S','SSW','SW','WSW','W','WNW','NW','NNW'];
+let _brgMeasurements = [];
+let _brgNextId = 1;
+let _brgActive = null;   // { id, color, pts: [start] or [start,end], layers, deg }
+
+// Initial bearing (great-circle, not a flat-map angle) from a to b, in
+// degrees clockwise from true north. The same formula every marine and
+// aviation bearing calculator uses.
+function _brgOf(a, b) {
+  const toRad = d => d * Math.PI / 180, toDeg = r => r * 180 / Math.PI;
+  const lat1 = toRad(a.lat), lat2 = toRad(b.lat), dLon = toRad(b.lng - a.lng);
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+function _brgCardinal(deg) { return BRG_CARDINALS[Math.round(deg / 22.5) % 16]; }
+function _brgFmt(deg) { return String(Math.round(deg)).padStart(3, '0') + '° ' + _brgCardinal(deg); }
+// A plain CSS triangle, resting point-up (0deg, north) and rotated
+// clockwise by the bearing - the same direction degrees already run in, so
+// the rotation is the bearing itself with nothing to invert.
+function _brgArrowHtml(color, deg) {
+  return `<div style="width:0;height:0;border-left:7px solid transparent;`
+    + `border-right:7px solid transparent;border-bottom:14px solid ${color};`
+    + `transform:rotate(${deg}deg);transform-origin:50% 100%;"></div>`;
+}
+
+function startBearingTool() {
+  if (activeTool === 'bearing') { _brgClose(); return; }
+  deactivateTool();
+  activeTool = 'bearing';
+  _setBtn('tool-bearing');
+  map.dragging.enable();
+  map.on('click', _onBrgClick);
+  map.on('mousemove', _onBrgMove);
+  map.on('contextmenu', _onRightClick);
+  _brgShow();
+  _brgActive = null;
+}
+
+function _brgShow() { document.getElementById('brg-toolbar')?.classList.add('visible'); }
+function _brgHide() { document.getElementById('brg-toolbar')?.classList.remove('visible'); }
+function _brgClose() {
+  _brgClearAll();
+  _brgHide();
+  if (activeTool === 'bearing') deactivateTool();
+}
+
+function _onBrgClick(e) {
+  if (activeTool !== 'bearing') return;
+  L.DomEvent.stopPropagation(e);
+  if (!_brgActive) {
+    const color = _BRG_COLORS[(_brgNextId - 1) % _BRG_COLORS.length];
+    const m = L.circleMarker(e.latlng,
+      { radius: 5, color, fillColor: color, fillOpacity: 1, weight: 1.5 }).addTo(map);
+    _brgActive = { id: _brgNextId++, color, pts: [e.latlng],
+                   layers: { line: null, preview: null, markers: [m], arrow: null, label: null } };
+    _brgRebuildList();
+    return;
+  }
+  _brgFinalize(e.latlng);
+}
+
+function _brgFinalize(endLatLng) {
+  const da = _brgActive;
+  if (!da) return;
+  if (da.layers.preview) { map.removeLayer(da.layers.preview); da.layers.preview = null; }
+  const a = da.pts[0], b = endLatLng;
+  const deg = _brgOf(a, b);
+  const m2 = L.circleMarker(b,
+    { radius: 5, color: da.color, fillColor: da.color, fillOpacity: 1, weight: 1.5 }).addTo(map);
+  const line = L.polyline([a, b], { color: da.color, weight: 2.5, opacity: 0.9 }).addTo(map);
+  const arrow = L.marker(b, { icon: L.divIcon({ className: '', html: _brgArrowHtml(da.color, deg),
+    iconSize: [14, 14], iconAnchor: [7, 14] }), interactive: false }).addTo(map);
+  const mid = L.latLng((a.lat + b.lat) / 2, (a.lng + b.lng) / 2);
+  const label = L.marker(mid, { icon: L.divIcon({ className: 'tool-label', html: _brgFmt(deg),
+    iconAnchor: [30, 22] }), interactive: false }).addTo(map);
+  da.pts.push(b);
+  da.layers.markers.push(m2);
+  da.layers.line = line;
+  da.layers.arrow = arrow;
+  da.layers.label = label;
+  da.deg = deg;
+  [line, arrow, label, ...da.layers.markers].forEach(l => _allToolLayers.push(l));
+  _brgMeasurements.push(da);
+  _brgActive = null;
+  _brgRebuildList();
+}
+
+function _onBrgMove(e) {
+  if (activeTool !== 'bearing' || !_brgActive || _brgActive.pts.length !== 1) return;
+  if (_brgActive.layers.preview) map.removeLayer(_brgActive.layers.preview);
+  _brgActive.layers.preview = L.polyline([_brgActive.pts[0], e.latlng],
+    { color: _brgActive.color, weight: 1.5, dashArray: '5,5', opacity: 0.55 }).addTo(map);
+}
+
+function _brgRemoveLayers(m) {
+  [m.layers.line, m.layers.arrow, m.layers.label, ...m.layers.markers].forEach(l => {
+    if (!l) return;
+    try { map.removeLayer(l); } catch (e) {}
+    const i = _allToolLayers.indexOf(l); if (i !== -1) _allToolLayers.splice(i, 1);
+  });
+}
+
+function _brgDelete(id) {
+  const idx = _brgMeasurements.findIndex(m => m.id === id);
+  if (idx === -1) return;
+  _brgRemoveLayers(_brgMeasurements[idx]);
+  _brgMeasurements.splice(idx, 1);
+  _brgRebuildList();
+}
+
+function _brgCancelDrawOnly() {
+  if (!_brgActive) return;
+  const l = _brgActive.layers;
+  if (l.preview) { try { map.removeLayer(l.preview); } catch (e) {} }
+  l.markers.forEach(m => { try { map.removeLayer(m); } catch (e) {} });
+  _brgActive = null;
+  _brgRebuildList();
+}
+
+function _brgClearAll() {
+  _brgCancelDrawOnly();
+  _brgMeasurements.forEach(_brgRemoveLayers);
+  _brgMeasurements = [];
+  _brgRebuildList();
+}
+
+function _brgRebuildList() {
+  const list = document.getElementById('brg-list');
+  if (!list) return;
+  list.innerHTML = '';
+  _brgMeasurements.forEach(m => {
+    const row = document.createElement('div');
+    row.className = 'dtb-row-d';
+    row.innerHTML =
+      `<span class="dtb-id-d" style="color:${m.color}">&#x25CF;</span>` +
+      `<span class="dtb-dist-val">${_brgFmt(m.deg)}</span>` +
+      `<button class="dtb-del-d" onclick="_brgDelete(${m.id})" title="Delete">&#x2715;</button>`;
+    list.appendChild(row);
+  });
+  if (_brgActive) {
+    const row = document.createElement('div');
+    row.className = 'dtb-row-d drawing';
+    row.innerHTML =
+      `<span class="dtb-id-d" style="color:${_brgActive.color}">&#x25CF;</span>` +
+      `<span class="dtb-dist-val">Click where it is headed…</span>` +
+      `<button class="dtb-del-d" onclick="_brgCancelDrawOnly()" title="Cancel">&#x2715;</button>`;
+    list.appendChild(row);
+  }
 }
 
 // ── TRACK MAKER ──
@@ -62831,6 +63050,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-14-l', date: 'Sep 14, 2026',
+    text: 'A new Bearing tool on the toolbar. Click a starting point, then where it is headed, and it draws the line with an arrowhead and reads off the real compass direction between them, like 065° ENE, the same way the Measure Distance tool already reads off the distance.' },
   { id: '2026-09-14-k', date: 'Sep 14, 2026',
     text: 'Manage Members can now block an account from the live chat. A new "Block chat" switch sits beside each member’s Forecaster toggle: flip it and that account keeps every other part of the site exactly as it was, it just can’t post here any more. Enforced at the database, not just hidden in the composer, so it holds even against a direct attempt to write around the page.' },
   { id: '2026-09-14-j', date: 'Sep 14, 2026',
@@ -64330,6 +64551,7 @@ document.addEventListener('DOMContentLoaded', () => {
   _makeDraggable(document.getElementById('spaghetti-models-panel'), document.getElementById('spaghetti-models-drag'));
   _makeDraggable(document.getElementById('ai-cyclones-panel'), document.getElementById('ai-cyclones-drag'));
   _makeDraggable(document.getElementById('dist-toolbar'),        document.getElementById('dist-drag-handle'));
+  _makeDraggable(document.getElementById('brg-toolbar'),         document.getElementById('brg-drag-handle'));
   _makeDraggable(document.getElementById('spc-controls'),        document.getElementById('spc-drag'));
   _makeDraggable(document.getElementById('wpc-controls'),        document.getElementById('wpc-drag'));
   _makeDraggable(document.getElementById('fw-controls'),         document.getElementById('fw-drag'));
@@ -66708,6 +66930,7 @@ const TOOL_LABELS = {
   'tool-text':      'Text',
   'tool-polygon':   'Polygon',
   'tool-distance':  'Measure Distance',
+  'tool-bearing':   'Bearing',
   'tool-radius':    'Radius Maker',
   'tool-stormcone': 'Storm Cone',
   'tool-inspector': 'Inspector',
@@ -66719,6 +66942,7 @@ const TOOL_DESCRIPTIONS = {
   'tool-text':      'Adds a text label you can place and edit anywhere on the map.',
   'tool-polygon':   'Draws a custom shape by clicking each corner point.',
   'tool-distance':  'Measures the straight-line distance between two points you click.',
+  'tool-bearing':   'Click a starting point, then where it is headed, and it draws the line with an arrowhead and reads off the compass direction between them - e.g. 065° ENE.',
   'tool-radius':    'Click to place a center point, then set a radius to draw a circle around it.',
   'tool-stormcone': 'Click and drag to draw a cone-shaped threat area with hurricane-category icons and speed per point, lists the cities inside it with ETA, and can animate the storm moving along its path.',
   'tool-inspector': 'Shows the radar value at the exact center of the map, and updates live as you pan.',
@@ -68040,7 +68264,7 @@ function closeCredits() {
    was the loudest of them, a solid cyan strip across the bottom of a red
    application. */
 #animbar,
-#export-toolbar, #xsec-toolbar, #radius-toolbar, #dist-toolbar,
+#export-toolbar, #xsec-toolbar, #radius-toolbar, #dist-toolbar, #brg-toolbar,
 #poly-toolbar, #draw-toolbar, #text-toolbar, #stormcone-toolbar,
 #tt-toolbar, #cs-toolbar,
 #top-search-bar,
