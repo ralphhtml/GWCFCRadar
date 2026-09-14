@@ -104,12 +104,17 @@ const satellite = [];
   }
 }
 
-// ── Basemaps ───────────────────────────────────────────────────────────────
-const basemaps = [...new Set(
-  [...live(html).matchAll(/setMapType\('([a-z]+)'\)/g)].map(m => m[1]))]
-  .concat('dark')                       // the default, never set by a call
-  .filter((v, i, a) => a.indexOf(v) === i)
-  .sort();
+// ── Basemaps ─────────────────────────────────────────────────────────────
+// Used to be one onclick="setMapType('x')" button per style; that became a
+// single <select id="lqm-set-maptype"> at some point and this regex, still
+// hunting for the old buttons, quietly stopped finding anything - a bot
+// offering only the default basemap and nothing else would have gone
+// unnoticed since "dark" is a real, working value.
+const basemapSelect = html.match(
+  /<select id="lqm-set-maptype"[^>]*>([\s\S]*?)<\/select>/);
+const basemaps = basemapSelect
+  ? [...live(basemapSelect[1]).matchAll(/<option value="([a-z]+)"/g)].map(m => m[1])
+  : ['dark'];                           // the fallback if the select ever moves again
 
 const out = {
   generated: 'by tools/extract-map-options.js from index.html, do not edit',
