@@ -3548,9 +3548,18 @@ img.wx-model-smooth {
   color:var(--accent2);
   box-shadow:0 0 10px rgba(0,140,186,0.3);
 }
+/* top/left used to be 50% - assuming the map fills the viewport exactly,
+   which is not always true (mobile address-bar show/hide moves the real
+   visual viewport without necessarily moving #main by the same amount, so
+   "50% of the page" and "the middle of the actual map" could disagree).
+   _inspUpdate() now sets top/left itself, in real pixels, from the map
+   container's own bounding rect - the same rect the pixel it reads back
+   comes from - so the ring drawn on screen and the point actually sampled
+   can never drift apart. 0/0 here is just a harmless default before the
+   first update ever runs. */
 #inspector-crosshair {
   position: fixed;
-  top: 50%; left: 50%;
+  top: 0; left: 0;
   transform: translate(-50%, -50%);
   width: 26px; height: 26px;
   border-radius: 50%;
@@ -3568,7 +3577,7 @@ img.wx-model-smooth {
 #inspector-crosshair::after  { top: 50%; left: -10px; height: 1px; width: 8px; transform: translateY(-50%); }
 #inspector-readout {
   position: fixed;
-  top: calc(50% + 22px); left: 50%;
+  top: 0; left: 0;                    /* see the comment on #inspector-crosshair above */
   transform: translateX(-50%);
   pointer-events: none;
   z-index: 850;
@@ -39344,16 +39353,15 @@ function _inspClampOff() {
   _inspOff.y = Math.max(-my, Math.min(my, _inspOff.y));
 }
 
+// Only clamps _inspOff now - it used to also paint the crosshair and readout
+// at 50% of the page plus this offset, back when the page and the map were
+// assumed to be the same rectangle. They are not always the same rectangle
+// (see the CSS comment on #inspector-crosshair), so painting them is
+// _inspUpdate()'s job now: it already computes the map's real on-screen
+// centre to sample a pixel there, and that same point is what gets drawn.
+// Every caller of this already calls _inspUpdate() itself right after.
 function _inspApplyOff() {
   _inspClampOff();
-  if (_inspEl) {
-    _inspEl.style.transform =
-      `translate(calc(-50% + ${_inspOff.x}px), calc(-50% + ${_inspOff.y}px))`;
-  }
-  if (_inspLabelEl) {
-    _inspLabelEl.style.transform =
-      `translate(calc(-50% + ${_inspOff.x}px), ${_inspOff.y}px)`;
-  }
 }
 
 function _inspSaveOff() {
@@ -40330,6 +40338,14 @@ function _inspUpdate() {
   // Where the crosshair actually is, which is the middle until it is dragged.
   const cx = rect.left + rect.width / 2 + _inspOff.x;
   const cy = rect.top + rect.height / 2 + _inspOff.y;
+  // Painted at the exact point being sampled, every time, rather than left to
+  // a CSS 50% that quietly assumed the map fills the whole page. A mobile
+  // browser showing or hiding its own address bar is the common way that
+  // assumption breaks: the visible page can be a different height than the
+  // map container for a moment, and the ring would sit somewhere that is not
+  // actually the centre of the map, reading a point nobody sees a marker on.
+  if (_inspEl) { _inspEl.style.left = cx + 'px'; _inspEl.style.top = cy + 'px'; }
+  if (_inspLabelEl) { _inspLabelEl.style.left = cx + 'px'; _inspLabelEl.style.top = (cy + 22) + 'px'; }
   const center = map.containerPointToLatLng([cx - rect.left, cy - rect.top]);
   const rows = _inspRowsAt(center, cx, cy, false);
   if (!rows.length) {
@@ -62753,6 +62769,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-14-i', date: 'Sep 14, 2026',
+    text: 'Fixed the Inspector reading the wrong spot. Its ring and readout used to be pinned to the dead centre of the page, on the assumption the map always fills the whole screen; the point it actually sampled was the dead centre of the map itself, which is not always the same pixel. They are the same calculation now, so the ring is always drawn on exactly the point being read.' },
   { id: '2026-09-14-h', date: 'Sep 14, 2026',
     text: 'The Asturio Discord bot’s /map layers and overlays are back in sync with the site: five overlays added since the bot’s option list was last generated (ATCF Updates, Forecast Time Machine, Climate Time Machine, Env. CN Outlooks, T-Storm Tracker) are now things you can actually ask the bot for. Also caught and fixed a real bug in the generator itself: it was still hunting for an old per-button way of picking the map style that the site replaced a while back, so it had quietly been telling the bot only one basemap existed instead of the real four.' },
   { id: '2026-09-14-g', date: 'Sep 14, 2026',
