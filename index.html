@@ -14745,18 +14745,25 @@ function _tstClusterGrid(samples, cellAreaKm2) {
     }
     if (members.length < 2) continue;   // a lone sample is noise, not a cell
     let max = -Infinity, sLat = 0, sLon = 0, cn = 0, cLat = 0, cLon = 0;
+    let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
     members.forEach(m => {
       sLat += m.lat; sLon += m.lon;
       if (m.v > max) max = m.v;
       // The core, tracked separately, is what a cell's centre actually
       // follows - the same reasoning _fxCellsFromMesh uses.
       if (m.v >= FX_DBZ_CORE) { cn++; cLat += m.lat; cLon += m.lon; }
+      // The full extent every sampled point actually reached, so the circle
+      // drawn from this cell can be sized to genuinely contain it rather
+      // than merely approximate its area.
+      if (m.lat < minLat) minLat = m.lat; if (m.lat > maxLat) maxLat = m.lat;
+      if (m.lon < minLon) minLon = m.lon; if (m.lon > maxLon) maxLon = m.lon;
     });
     cells.push({
       lat: cn ? cLat / cn : sLat / members.length,
       lon: cn ? cLon / cn : sLon / members.length,
       max: +max.toFixed(1),
       areaKm2: Math.round(members.length * cellAreaKm2),
+      bbox: { south: minLat, north: maxLat, west: minLon, east: maxLon },
     });
   }
   cells.sort((a, b) => (b.max - a.max) || (b.areaKm2 - a.areaKm2));
@@ -14810,6 +14817,11 @@ function _tstCellsFromPixels() {
   const stepKmX = _fxKm(centre.lat, centre.lng, centre.lat, east.lng) || 1;
   const stepKmY = _fxKm(centre.lat, centre.lng, south.lat, centre.lng) || 1;
   const cellAreaKm2 = stepKmX * stepKmY;
+  // Half a sample's own width: a sample stands for the ground around it, not
+  // one infinitesimal point, so the circle drawn from a cell's bbox needs
+  // this much slack on every side to actually reach the true edge of what
+  // was detected, not just the centres of the outermost samples that hit it.
+  out.padKm = Math.max(stepKmX, stepKmY) / 2;
   const samples = [];
   for (let py = 0; py < size.y; py += TST_PIXEL_STEP) {
     const cy = mapRect.top + py;
@@ -14846,8 +14858,12 @@ function _tstOnFrame(mesh, station, product, timeMs) {
     if (!mesh || !mesh.length) return;
     const fam = (typeof _meshFamily === 'function') ? _meshFamily(product) : null;
     if (fam !== 'ref') return;   // tracks reflectivity, the measurement a "cell" is
+    // Half a decoded bin's own width, the same slack the pixel path works
+    // out for its own sampling grid, so a mesh cell's circle also reaches
+    // its bbox's true edge rather than stopping at the outermost bin centre.
+    const padKm = (FX_CELL_DEG * 111.32) / 2;
     _tstRecord('mesh:' + String(station || '').toLowerCase(), _fxCellsFromMesh(mesh),
-               timeMs || Date.now());
+               timeMs || Date.now(), padKm);
     _tstRedraw();
   } catch (e) { /* a redraw must never break a radar draw */ }
 }
@@ -14858,9 +14874,9 @@ function _tstOnFrame(mesh, station, product, timeMs) {
 // cap several times the size of one scope's own window, because several
 // scopes - a couple of sites visited earlier, the mosaic - can be cached at
 // once now, each wanting its own short history to read motion out of.
-function _tstRecord(scope, cells, t) {
+function _tstRecord(scope, cells, t, padKm) {
   _tstHistory = _tstHistory.filter(f => f.scope !== scope || Math.abs(f.t - t) > 30000);
-  _tstHistory.push({ t, scope, cells });
+  _tstHistory.push({ t, scope, cells, padKm: padKm || 0 });
   _tstHistory.sort((a, b) => a.t - b.t);
   const cap = FX_HISTORY_MAX * 4;
   if (_tstHistory.length > cap) _tstHistory = _tstHistory.slice(-cap);
@@ -14874,7 +14890,7 @@ function _tstRecord(scope, cells, t) {
 // the same tick.
 function _tstScanPixels(scope) {
   try {
-    const { cells, tainted } = _tstCellsFromPixels();
+    const { cells, tainted, padKm } = _tstCellsFromPixels();
     if (tainted) {
       _tstEnsureReadableTiles();
       if (!_tstToldTainted && typeof showToast === 'function') {
@@ -14884,7 +14900,7 @@ function _tstScanPixels(scope) {
       }
       return;
     }
-    _tstRecord(scope, cells, Date.now());
+    _tstRecord(scope, cells, Date.now(), padKm);
   } catch (e) { /* a scan must never break the map */ }
   _tstRedraw();
 }
@@ -14948,6 +14964,29 @@ function _tstCellMotion(cell, scope) {
   };
 }
 
+// The smallest circle, centred on the cell's own point, guaranteed to
+// still reach every corner of the cell's bounding box - so "the circle
+// always has the storm in it" holds for a squall line or any other
+// irregular shape, not only for something roughly round. A rectangle's
+// farthest point from any interior point is always one of its four
+// corners, so checking those four is enough; padKm is the extra slack a
+// sample stands for the ground AROUND it, not one bare point, so the box
+// itself already undershoots the storm's true edge by about half a sample's
+// width on every side.
+function _tstEnclosingRadiusKm(lat, lon, bbox, padKm) {
+  if (!bbox) return null;
+  const corners = [
+    [bbox.north, bbox.west], [bbox.north, bbox.east],
+    [bbox.south, bbox.west], [bbox.south, bbox.east],
+  ];
+  let r = 0;
+  corners.forEach(([clat, clon]) => {
+    const d = _fxKm(lat, lon, clat, clon);
+    if (d > r) r = d;
+  });
+  return r + (padKm || 0);
+}
+
 // Mapped onto the shape the shared alert popup expects, so a tracked cell
 // reads in the same style every other overlay's popup already does.
 function _tstMapped(cell, tier, motion, frameT) {
@@ -14997,11 +15036,19 @@ function _tstRedraw() {
   newest.cells.forEach(cell => {
     const tier = _tstTier(cell.max);
     const color = TST_TIER_COLOR[tier];
-    // A circle sized to the cell's own detected area (never smaller than a
-    // single map click can miss, never so large a cluster of small cells
-    // reads as one storm the size of a county).
-    const radiusM = Math.max(4000, Math.min(45000,
-      Math.sqrt(cell.areaKm2 / Math.PI) * 1000 * 1.15));
+    // Sized to genuinely CONTAIN the cell, not merely approximate its area:
+    // an area-equivalent circle undershoots anything that is not roughly
+    // round, and a squall line is the normal shape a "cell" takes, not the
+    // exception. Reaches every corner of the cell's own bounding box; falls
+    // back to the old area estimate only on the rare cell with no bbox at
+    // all. Never smaller than a single map click can miss; a generous but
+    // real ceiling stands in only for a detection gone pathological, since
+    // capping tighter than that would be capping AWAY the very containment
+    // this exists to guarantee.
+    const enclosingKm = cell.bbox
+      ? _tstEnclosingRadiusKm(cell.lat, cell.lon, cell.bbox, newest.padKm)
+      : Math.sqrt((cell.areaKm2 || 0) / Math.PI) * 1.15;
+    const radiusM = Math.max(4000, Math.min(150000, enclosingKm * 1000));
     const circle = L.circle([cell.lat, cell.lon], {
       pane, radius: radiusM, color, weight: 2.5, dashArray: '7 5',
       fill: true, fillColor: color, fillOpacity: 0.08,
@@ -62702,6 +62749,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-14-c', date: 'Sep 14, 2026',
+    text: 'T-Storm Tracker’s circles now always fully contain the storm cell they are drawn for. They used to be sized from the cell’s total area, which undersells anything that is not roughly round, a squall line most of all. The circle is now the smallest one that still reaches every edge of the cell as actually detected, with a little slack added for the fact a sampled point stands for the ground around it, not one bare pixel.' },
   { id: '2026-09-14-b', date: 'Sep 14, 2026',
     text: 'T-Storm Tracker now reads every radar, not only a decoded single site. The Normal mosaic, MRMS, and a single site’s own picture are read back by colour, the same way the Inspector already turns a tap on the map into a real number, and matched onto the same reflectivity scale Level 2 and Level 3 already used. It also switches the moment you pick a different site, radar source, or turn MRMS on, instead of waiting on the picture that used to be showing.' },
   { id: '2026-09-14-a', date: 'Sep 14, 2026',

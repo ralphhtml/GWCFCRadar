@@ -49,6 +49,9 @@ console.log('\n1. the pieces are in the page');
      /function _tstCellsFromPixels\(\)/.test(PAGE) && PAGE.includes('_inspColorToDbz(d[0], d[1], d[2])'));
   ok('the pixel grid clusters in its own index space, not a fixed geographic bin',
      /function _tstClusterGrid\(samples, cellAreaKm2\)/.test(PAGE));
+  ok('the circle is sized to actually contain the cell\'s bounding box, not just approximate its area',
+     PAGE.includes('function _tstEnclosingRadiusKm(lat, lon, bbox, padKm) {')
+     && /const enclosingKm = cell\.bbox\s*\? _tstEnclosingRadiusKm\(cell\.lat, cell\.lon, cell\.bbox, newest\.padKm\)/.test(PAGE));
   ok('a heartbeat rechecks the scope on a timer, and a site change pokes it immediately',
      PAGE.includes('function _tstPoll() {')
      && /_tstPollTimer = setInterval\(_tstPoll, TST_POLL_MS\)/.test(PAGE)
@@ -443,7 +446,79 @@ console.log('\n13. radar off ends it, and it resumes from a still-warm site the 
      back.layer && back.hist === 1, JSON.stringify(back));
 }
 
-console.log('\n14. turning the pill off stops the timer and clears everything');
+console.log('\n14. the circle always fully contains the cell, even one that is not round');
+{
+  // An area-equivalent circle is a fine approximation for something roughly
+  // round and a real understatement for anything long and thin - a squall
+  // line above all, which is the ordinary shape a "cell" takes, not the
+  // exception. A straight line of reflectivity makes the point: eleven
+  // points in a row, all above the heavy threshold, one bin apart in
+  // longitude and none at all in latitude, so the cluster is real but far
+  // from circular.
+  const line = [];
+  for (let i = 0; i < 11; i++) line.push(-98.50 + i * 0.05, 34.00, 0, 0, 0, 0, 0, 0, 55);
+  const r = await p.evaluate((mesh) => {
+    activeLayers.nexrad = true; _radarSource = 'l2';
+    _lastMeshData = mesh; _lastMeshBounds = [-99, 33, -97, 35];
+    _lastMeshProduct = 'ref'; _lastMeshStation = 'kddc';
+    _tstOnFrame(mesh, 'kddc', 'ref', Date.now());
+    let circle = null;
+    _tstLayer.eachLayer(l => { if (l instanceof L.Circle) circle = l; });
+    const centre = circle.getLatLng();
+    const bbox = { south: 34.00, north: 34.05, west: -98.50, east: -97.95 };
+    // The independent check: Leaflet's own great-circle distance from the
+    // drawn circle's centre to each corner of the cell's real bounding box,
+    // against the radius that circle was actually given.
+    const corners = [[bbox.north, bbox.west], [bbox.north, bbox.east],
+                     [bbox.south, bbox.west], [bbox.south, bbox.east]];
+    const distances = corners.map(c => map.distance([centre.lat, centre.lng], c));
+    return { radius: circle.getRadius(), distances, oldRadiusWouldHaveBeen:
+      Math.sqrt((11 * (0.05 * 111.32) ** 2) / Math.PI) * 1.15 * 1000 };
+  }, line);
+  ok('every corner of the line\'s true extent sits inside the circle actually drawn',
+     r.distances.every(d => d <= r.radius + 50), JSON.stringify(r));
+  ok('and the old area-only formula would have missed the far end badly - this is a real fix, not a no-op',
+     r.radius > r.oldRadiusWouldHaveBeen * 1.5, JSON.stringify(r));
+}
+
+console.log('\n15. the same containment guarantee holds for a picture-only cell, not just a decoded one');
+{
+  await removeTile();
+  // Zoomed in for this one check: at the wide national view the rest of the
+  // suite uses, 400 screen pixels is genuinely most of a continent, which
+  // would trip the deliberate safety ceiling rather than exercise the
+  // containment maths this is actually testing. Restored afterward.
+  await p.evaluate(() => map.setView([35.05, -96.5], 10, { animate: false }));
+  await injectTile([{ x: 100, y: 300, w: 400, h: 16, hex: '#fd0000' }]);   // wide and short: 50 dBZ, heavy
+  const r = await p.evaluate(() => {
+    _radarSource = 'normal'; currentProduct = 'ref'; _refStation = 'ktlx'; _mrmsActive = false;
+    _tstScope = null; _tstLastPixelScan = 0;
+    _tstPoll();
+    let circle = null;
+    _tstLayer.eachLayer(l => { if (l instanceof L.Circle) circle = l; });
+    if (!circle) return null;
+    const centre = circle.getLatLng();
+    // The cell's own reported bbox is the ground truth here (this shape is
+    // painted in screen pixels, not degrees, so there is no simple lat/lon
+    // formula to check it against independently) - what matters is that the
+    // circle the code drew really does reach every corner of the box the
+    // SAME code reported detecting.
+    let cell = null;
+    _tstHistory.forEach(f => { if (f.scope === 'site:ktlx' && f.cells.length) cell = f.cells[f.cells.length - 1]; });
+    const bbox = cell.bbox;
+    const corners = [[bbox.north, bbox.west], [bbox.north, bbox.east],
+                     [bbox.south, bbox.west], [bbox.south, bbox.east]];
+    const distances = corners.map(c => map.distance([centre.lat, centre.lng], c));
+    return { radius: circle.getRadius(), distances, wide: bbox.east - bbox.west, tall: bbox.north - bbox.south };
+  });
+  ok('the block was genuinely wide and short, the shape this is meant to prove',
+     r && r.wide > r.tall * 3, JSON.stringify(r));
+  ok('every corner of its own reported bbox sits inside its own drawn circle',
+     r && r.distances.every(d => d <= r.radius + 50), JSON.stringify(r));
+  await p.evaluate(() => map.setView([35.05, -96.5], 6, { animate: false }));
+}
+
+console.log('\n16. turning the pill off stops the timer and clears everything');
 {
   const r = await p.evaluate(() => {
     toggleOverlayPill('tstorm-tracker');
