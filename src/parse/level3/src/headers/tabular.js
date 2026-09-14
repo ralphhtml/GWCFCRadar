@@ -62,4 +62,9 @@ if (typeof module !== 'undefined') {
 	module.exports = parse;
 }
 
-export default parseProductDescription;
+// The CommonJS export above was always `parse`, but the ES export handed out
+// the product description parser instead, so under the bundler every tabular
+// block was read as a second product description and came back without its
+// pages: no error, no warning, no text. This is the one line that makes the
+// alphanumeric products (storm tracking, hail, mesocyclone) readable.
+export default parse;

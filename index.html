@@ -9618,7 +9618,7 @@ body.gwcfc-crosshair #map::after {
 }
 
 /* Shared panel shell – applied to all overlay panels */
-#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #meso-panel, #storm-reports-panel, #tornado-tracks-panel {
+#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #meso-panel, #storm-reports-panel, #tornado-tracks-panel, #storm-tracks-panel {
   position: static;
   transform: none;
   width: 180px;
@@ -9638,6 +9638,16 @@ body.gwcfc-crosshair #map::after {
 #meso-panel   { border: 1.5px solid rgba(255,140,0,0.45); }
 #storm-reports-panel { border: 1.5px solid rgba(255,68,68,0.45); }
 #tornado-tracks-panel { border: 1.5px solid rgba(220,20,60,0.45); }
+#storm-tracks-panel   { border: 1.5px solid rgba(255,140,58,0.45); }
+/* Storm Tracks legend: rings rather than filled squares, because that is what
+   the map draws. A dashed ring is a cell the radar has only just picked up. */
+.stk-sw { width: 11px; height: 11px; border-radius: 50%; border: 2px solid currentColor; box-sizing: border-box; flex-shrink: 0; }
+.stk-sw.new { border-style: dashed; }
+.stk-line { width: 14px; height: 0; border-top: 2px solid #ff4d4d; flex-shrink: 0; position: relative; }
+.stk-line::after { content: ''; position: absolute; right: -2px; top: -3px; width: 4px; height: 4px; border-radius: 50%; background: #ff4d4d; }
+/* The cell's two character id, floated just above its ring on the map. */
+.stk-lbl { font-family: var(--mono); font-size: 9px; font-weight: 700; text-align: center; line-height: 12px;
+  text-shadow: 0 0 3px #000, 0 0 2px #000, 0 1px 1px #000; pointer-events: none; }
 
 /* Title bars */
 .spc-float-title {
@@ -9651,6 +9661,10 @@ body.gwcfc-crosshair #map::after {
 .fw-float-title {
   font-family: var(--display); font-weight: 700; font-size: 10px; letter-spacing: 1px;
   color: #ff6600; text-align: center; text-transform: uppercase; margin-bottom: 1px;
+}
+.stk-float-title {
+  font-family: var(--display); font-weight: 700; font-size: 10px; letter-spacing: 1px;
+  color: #ff8c3a; text-align: center; text-transform: uppercase; margin-bottom: 1px;
 }
 .cpc-float-title {
   font-family: var(--display); font-weight: 700; font-size: 10px; letter-spacing: 1px;
@@ -14720,6 +14734,230 @@ async function loadTornadoTracks() {
 
   _tornadoTracksLayer = L.layerGroup([casing, main]).addTo(map);
   updateLoadStatus('');
+}
+
+
+// ── STORM TRACKS (NEXRAD storm tracking, product NST) ──────────────────────
+// Where the radar's own algorithm says each storm cell is, which way it is
+// going, and where it expects the cell to be in 15, 30, 45 and 60 minutes.
+// That is the Weather Service's Level 3 storm tracking product, read straight
+// out of the public bucket and decoded in the browser like every other Level
+// 3 product here, except that this one is a table of text rather than a
+// picture, so the worker hands back positions instead of a mesh.
+//
+// One site at a time, because that is how the product is published: the site
+// on screen when a single radar is up (Level 2, a Level 3 picture, or the
+// single-site reflectivity), else the NEXRAD nearest the middle of the map,
+// re-picked when the map settles somewhere else. Terminal radars (the T
+// sites) do not make this product, so the nearest NEXRAD stands in.
+let _stkActive = false, _stkLayer = null, _stkTimer = null, _stkGen = 0;
+let _stkSite = null, _stkFollow = true, _stkMoveT = null;
+const STK_REFRESH_MS = 5 * 60 * 1000;
+const STK_NM_KM = 1.852;
+// Ring colour by how fast the cell is moving. Speed is the one number every
+// tracked cell carries, and it is the number that decides how much warning a
+// place downstream gets.
+const STK_CLASSES = [
+  { max: 20,       label: 'Under 20 kt', color: '#f5a623' },
+  { max: 40,       label: '20 to 40 kt', color: '#ff4d4d' },
+  { max: Infinity, label: 'Over 40 kt',  color: '#c65cff' },
+];
+const STK_NEW_COLOR = '#9ecbff';
+
+function _stkClass(kts) {
+  const v = Number(kts);
+  if (!isFinite(v)) return null;
+  return STK_CLASSES.find(c => v < c.max) || STK_CLASSES[STK_CLASSES.length - 1];
+}
+
+// The product places every cell by azimuth (degrees true) and range (nautical
+// miles) from the radar. Great circle on a 6371 km sphere, which is a few
+// metres out at 250 nm and the same formula the Level 2 painter uses.
+function _stkDest(lat, lon, deg, nm) {
+  const R = 6371, d = (Number(nm) * STK_NM_KM) / R, b = Number(deg) * Math.PI / 180;
+  const p1 = lat * Math.PI / 180, l1 = lon * Math.PI / 180;
+  const p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(b));
+  const l2 = l1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(p1),
+                             Math.cos(d) - Math.sin(p1) * Math.sin(p2));
+  return [p2 * 180 / Math.PI, ((l2 * 180 / Math.PI + 540) % 360) - 180];
+}
+
+// The product's MOVEMENT column is the direction the cell is coming FROM,
+// the meteorological convention, which the data itself confirms: a cell at
+// azimuth 207 whose forecast spots march outward along 207 reports a
+// movement of 28. Heading is the other way round.
+function _stkHeading(fromDeg) { return (Number(fromDeg) + 180) % 360; }
+
+function _stkCompass(deg) {
+  const names = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+  return names[Math.round((((Number(deg) % 360) + 360) % 360) / 22.5) % 16];
+}
+
+function _stkPickSite() {
+  let id = null;
+  if (typeof _prOn !== 'undefined' && _prOn) {
+    id = (typeof _prBucketSite !== 'undefined' && _prBucketSite)
+      || (typeof _prSite !== 'undefined' && _prSite) || null;
+  } else if (typeof _radarSource !== 'undefined' && _radarSource === 'l2'
+             && typeof _l2Site !== 'undefined' && _l2Site) {
+    id = _l2Site;
+  } else if (typeof _refStation !== 'undefined' && _refStation) {
+    id = _refStation;
+  }
+  id = id ? String(id).toUpperCase() : null;
+  if (id && typeof _isTdwrSite === 'function' && _isTdwrSite(id)) id = null;
+  _stkFollow = !id;
+  if (!id && typeof map !== 'undefined' && map && typeof _nearestStation === 'function') {
+    const c = map.getCenter();
+    id = String(_nearestStation(c.lat, c.lng) || '').toUpperCase() || null;
+  }
+  return id;
+}
+
+function _stkStatus(text) {
+  const el = document.getElementById('stk-status');
+  if (el) el.textContent = text;
+}
+
+async function _stkLoad(force) {
+  if (!_stkActive) return;
+  const site = _stkPickSite();
+  if (!site) { _stkStatus('No radar site to ask.'); return; }
+  // The map settled somewhere that resolves to the same site: nothing to do.
+  if (!force && site === _stkSite && _stkLayer) return;
+  const gen = ++_stkGen;
+  _stkSite = site;
+  _stkStatus(`${site} · loading…`);
+  try {
+    if (typeof _l3BucketNewest !== 'function' || typeof _pbDecode !== 'function') {
+      throw new Error('decoder not ready');
+    }
+    const url = await _l3BucketNewest(site, 'NST');
+    if (gen !== _stkGen || !_stkActive) return;
+    if (!url) throw new Error('nothing published in the last few hours');
+    const buf = await fetch(url, { signal: _abortSignal(30000) })
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); });
+    if (gen !== _stkGen || !_stkActive) return;
+    const res = await _pbDecode(buf, 'NST', { tabular: true, station: site });
+    if (gen !== _stkGen || !_stkActive) return;
+    _stkDraw(site, res, _l3BucketKeyTime(url));
+  } catch (e) {
+    if (gen !== _stkGen || !_stkActive) return;
+    _stkStatus(`${site} · ${(e && e.message) ? e.message : 'no data'}`);
+  }
+}
+
+function _stkPopup(site, id, s, cls, when) {
+  const esc = (typeof _escapeHtml === 'function') ? _escapeHtml : (x => String(x));
+  const mv = (s.movement && typeof s.movement === 'object') ? s.movement : null;
+  const rows = [];
+  if (mv) {
+    const mph = Math.round(mv.kts * 1.15078);
+    rows.push(`<div class="dp-row"><span>Moving</span><span>${esc(_stkCompass(_stkHeading(mv.deg)))} at ${esc(mv.kts)} kt (${mph} mph)</span></div>`);
+  } else if (s.movement === 'new') {
+    rows.push('<div class="dp-row"><span>Moving</span><span>New cell, no track yet</span></div>');
+  } else {
+    rows.push('<div class="dp-row"><span>Moving</span><span>No data</span></div>');
+  }
+  rows.push(`<div class="dp-row"><span>From ${esc(site)}</span><span>${esc(s.current.nm)} nm at ${esc(s.current.deg)}°</span></div>`);
+  const fc = Array.isArray(s.forecast) ? s.forecast : [];
+  const have = fc.filter(f => f && typeof f === 'object').length;
+  rows.push(`<div class="dp-row"><span>Forecast spots</span><span>${have ? have * 15 + ' min ahead' : 'none yet'}</span></div>`);
+  if (isFinite(when)) {
+    const d = new Date(when);
+    rows.push(`<div class="dp-row"><span>Scan</span><span>${esc(d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</span></div>`);
+  }
+  const speed = cls ? cls.label : 'New cell';
+  const accent = cls ? cls.color : STK_NEW_COLOR;
+  return `<div class="data-popup-inner" style="--dp-accent:${accent}">`
+       + `<div class="dp-header"><span class="dp-header-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-storm></use></svg></span>`
+       + `<span class="dp-header-label">Storm cell ${esc(id)}</span>`
+       + `<span class="dp-header-sub">${esc(speed)}</span></div>${rows.join('')}</div>`;
+}
+
+function _stkDraw(site, res, when) {
+  const storms = (res && res.tabular && res.tabular.storms) || {};
+  const at = (res && Array.isArray(res.site)) ? res.site : [];
+  const slat = Number(at[0]), slon = Number(at[1]);
+  if (_stkLayer) { try { map.removeLayer(_stkLayer); } catch (e) {} }
+  _stkLayer = L.layerGroup().addTo(map);
+  if (!isFinite(slat) || !isFinite(slon)) { _stkStatus(`${site} · no radar position in the file`); return; }
+  let n = 0;
+  Object.keys(storms).forEach(id => {
+    const s = storms[id];
+    if (!s || !s.current || typeof s.current !== 'object') return;
+    n++;
+    const here = _stkDest(slat, slon, s.current.deg, s.current.nm);
+    const mv = (s.movement && typeof s.movement === 'object') ? s.movement : null;
+    const isNew = s.movement === 'new';
+    const cls = mv ? _stkClass(mv.kts) : null;
+    const color = cls ? cls.color : STK_NEW_COLOR;
+    // The line: through the product's own forecast spots when it gives any,
+    // otherwise dead reckoned an hour ahead from the reported motion and
+    // drawn dashed so the guess reads as a guess.
+    const pts = [here];
+    let reckoned = false;
+    (Array.isArray(s.forecast) ? s.forecast : []).forEach(f => {
+      if (f && typeof f === 'object') pts.push(_stkDest(slat, slon, f.deg, f.nm));
+    });
+    if (pts.length === 1 && mv && mv.kts > 0) {
+      const toward = _stkHeading(mv.deg);
+      [15, 30, 45, 60].forEach(m => pts.push(_stkDest(here[0], here[1], toward, mv.kts * m / 60)));
+      reckoned = true;
+    }
+    if (pts.length > 1) {
+      L.polyline(pts, { color: '#000', weight: 5, opacity: 0.35, interactive: false }).addTo(_stkLayer);
+      L.polyline(pts, { color, weight: 2.5, opacity: 0.95, interactive: false,
+                        dashArray: reckoned ? '4 4' : null }).addTo(_stkLayer);
+      pts.slice(1).forEach((p, i, arr) => {
+        const last = i === arr.length - 1;
+        L.circleMarker(p, { radius: last ? 3.5 : 2.5, color, weight: 1.5,
+                            fillColor: last ? '#000' : color, fillOpacity: 1,
+                            interactive: false }).addTo(_stkLayer);
+      });
+    }
+    const ring = L.circleMarker(here, { radius: 13, color, weight: 2.5, fillColor: color,
+                                        fillOpacity: 0.06, dashArray: isNew ? '3 4' : null });
+    ring.bindPopup(_stkPopup(site, id, s, cls, when), { className: 'data-popup', maxWidth: 240 });
+    ring.addTo(_stkLayer);
+    L.marker(here, { interactive: false, icon: L.divIcon({ className: 'stk-lbl',
+      html: `<span style="color:${color}">${String(id).replace(/[^A-Z0-9]/g, '')}</span>`,
+      iconSize: [26, 12], iconAnchor: [13, 26] }) }).addTo(_stkLayer);
+  });
+  const clock = isFinite(when)
+    ? new Date(when).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+  const how = _stkFollow ? 'nearest the map' : 'the site on screen';
+  _stkStatus(`${site} (${how}) · ${n} cell${n === 1 ? '' : 's'}${clock ? ' · ' + clock : ''}`);
+}
+
+function _stkMoved() {
+  if (!_stkActive || !_stkFollow) return;
+  clearTimeout(_stkMoveT);
+  _stkMoveT = setTimeout(() => _stkLoad(false), 700);
+}
+
+function _stkStart() {
+  _stkActive = true;
+  const panel = document.getElementById('storm-tracks-panel');
+  if (panel) panel.style.display = 'flex';
+  clearInterval(_stkTimer);
+  _stkTimer = setInterval(() => _stkLoad(true), STK_REFRESH_MS);
+  if (typeof map !== 'undefined' && map) map.on('moveend', _stkMoved);
+  _stkLoad(true);
+}
+
+function _stkStop() {
+  _stkActive = false;
+  _stkGen++;                       // anything still in flight lands nowhere
+  clearInterval(_stkTimer); _stkTimer = null;
+  clearTimeout(_stkMoveT); _stkMoveT = null;
+  if (typeof map !== 'undefined' && map) {
+    map.off('moveend', _stkMoved);
+    if (_stkLayer) { try { map.removeLayer(_stkLayer); } catch (e) {} }
+  }
+  _stkLayer = null; _stkSite = null;
+  const panel = document.getElementById('storm-tracks-panel');
+  if (panel) panel.style.display = 'none';
 }
 
 // ── WILDFIRES (NIFC / Esri USA_Wildfires_v1) ──
@@ -29415,6 +29653,10 @@ function toggleOverlayPill(id) {
     if (panel) panel.style.display = _tornadoTracksActive ? 'flex' : 'none';
     if (_tornadoTracksActive) loadTornadoTracks();
     else { if (_tornadoTracksLayer) { try { map.removeLayer(_tornadoTracksLayer); } catch(e){} _tornadoTracksLayer = null; } }
+  } else if (id === 'storm-tracks') {
+    if (_stkActive) _stkStop(); else _stkStart();
+    const pill = document.getElementById('op-storm-tracks');
+    if (pill) pill.classList.toggle('active', _stkActive);
   } else if (id === 'wildfires') {
     _wildfiresActive = !_wildfiresActive;
     const pill = document.getElementById('op-wildfires');
@@ -42811,7 +43053,7 @@ let _radarWorkerPending = null;  // { resolve, reject } for current request
 // is a new URL, and a page from before the build keeps the URL its decoder
 // answers to. A mismatched pair is how "Parse failed" appears on one device
 // while the same click works everywhere else.
-var RADAR_WORKER_V = '608a05bf';
+var RADAR_WORKER_V = 'd7203c09';
 
 function _getRadarWebWorker() {
   if (_radarWebWorker) return _radarWebWorker;
@@ -62216,6 +62458,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-14-a', date: 'Sep 14, 2026',
+    text: 'Storm Tracks, a new overlay. The overlay launcher now has a Storm Tracks row that draws the storm cells the radar itself is tracking: a ring on each cell, a line through where the radar expects it to be in 15, 30, 45 and 60 minutes, and the ring coloured by how fast the cell is moving. Tap a ring for its speed, heading and distance from the site. It follows the radar you are viewing, or the nearest site to the middle of the map. The legend panel has the usual info button and a grip to drag it anywhere. Under the hood this also fixes the decoder so the text products in a Level 3 file (storm tracking among them) can be read at all.' },
   { id: '2026-09-12-c', date: 'Sep 12, 2026',
     text: 'Radar compare, tidied. The panel that listed the compared sites is gone: each strip is named by its label on the map, and a small × on that label removes it. Taking the last strip out ends the comparison. The popup above a tapped radar pill no longer repeats the station’s name, since the pill under it already says it.' },
   { id: '2026-09-12-b', date: 'Sep 12, 2026',
@@ -62465,7 +62709,7 @@ function _srchBuildCatalog() {
     'wind-barbs': 'wind', terminator: 'moon', 'wave-particles': 'wave', cloudcam: 'camera', radio: 'antenna',
     forecasts: 'cloud-sun', fronts: 'map', spotters: 'target',
     'spotter-reports': 'target', chasers: 'target', 'fire-outlook': 'fire',
-    'cpc-outlook': 'temp', 'canada-alerts': 'siren', 'ec-outlook': 'storm', 'tornado-tracks': 'tornado',
+    'cpc-outlook': 'temp', 'canada-alerts': 'siren', 'ec-outlook': 'storm', 'tornado-tracks': 'tornado', 'storm-tracks': 'storm',
     wildfires: 'fire', 'traffic-cameras': 'camera', 'wfo-offices': 'map',
     'ambient-weather': 'temp',
   };
@@ -63700,6 +63944,7 @@ document.addEventListener('DOMContentLoaded', () => {
   _makeDraggable(document.getElementById('storm-reports-panel'), document.getElementById('storm-reports-drag'));
   _makeDraggable(document.getElementById('meso-panel'),          document.getElementById('meso-drag'));
   _makeDraggable(document.getElementById('tornado-tracks-panel'), document.getElementById('tornado-tracks-drag'));
+  _makeDraggable(document.getElementById('storm-tracks-panel'),   document.getElementById('storm-tracks-drag'));
   _makeDraggable(document.getElementById('cc-modal'), document.getElementById('cc-drag'));
   _makeDraggable(document.getElementById('lqm-ai-overlay'),       document.getElementById('lqm-ai-drag'));
   _makeDraggable(document.getElementById('lqm-settings-overlay'), document.getElementById('lqm-settings-drag'));
@@ -64331,6 +64576,9 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="ov-pill" id="op-tornado-tracks" data-ovid="tornado-tracks" title="Tornado Tracks - NWS Damage Assessment Toolkit survey paths (last 60 days)">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('tornado-tracks')">Tornado Tracks</span><span class="ov-drag" title="Drag to reorder">⠿</span>
     </div>
+    <div class="ov-pill" id="op-storm-tracks" data-ovid="storm-tracks" title="Storm Tracks - NEXRAD storm cells with their heading and forecast positions (NST)">
+      <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('storm-tracks')">Storm Tracks</span><span class="ov-drag" title="Drag to reorder">⠿</span>
+    </div>
     <div class="ov-pill" id="op-wildfires" data-ovid="wildfires" title="Wildfire Reports - active large wildfires, updated in the last 48 hours">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('wildfires')">Wildfire Reports</span><span class="ov-drag" title="Drag to reorder">⠿</span>
     </div>
@@ -64835,6 +65083,19 @@ function _tlTickHTML(times, fmt) {
       <div class="ov-panel-row"><div class="ov-panel-swatch" style="background:#888888"></div>Unrated</div>
     </div>
     <div style="font-family:var(--mono);font-size:8px;color:var(--muted);margin-top:2px;line-height:1.4;">Last 60 days · NWS DAT (preliminary)</div>
+  </div>
+
+  <div id="storm-tracks-panel">
+    <div class="ov-panel-header-row"><div class="dtb-drag" id="storm-tracks-drag" title="Drag to move">⠿</div><div class="stk-float-title"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-storm></use></svg> Storm Tracks</div></div>
+    <div id="stk-status" style="font-family:var(--mono);font-size:8px;color:var(--muted);line-height:1.4;">Waiting for the radar…</div>
+    <div class="ov-panel-legend">
+      <div class="ov-panel-row"><div class="stk-sw" style="color:#f5a623"></div>Moving under 20 kt</div>
+      <div class="ov-panel-row"><div class="stk-sw" style="color:#ff4d4d"></div>20 to 40 kt</div>
+      <div class="ov-panel-row"><div class="stk-sw" style="color:#c65cff"></div>Over 40 kt</div>
+      <div class="ov-panel-row"><div class="stk-sw new" style="color:#9ecbff"></div>New cell, no motion yet</div>
+      <div class="ov-panel-row"><div class="stk-line"></div>Forecast spot at 15, 30, 45, 60 min</div>
+    </div>
+    <div style="font-family:var(--mono);font-size:8px;color:var(--muted);margin-top:2px;line-height:1.4;">NEXRAD storm tracking (NST) · tap a ring for details</div>
   </div>
 
 </div>
@@ -65403,6 +65664,7 @@ const OV_DESCRIPTIONS = {
   'canada-alerts':    'Active weather alerts for Canada, from Environment Canada.',
   'ec-outlook':       'Environment Canada\'s thunderstorm outlooks: the areas its storm prediction centres expect thunderstorms in, coloured by how serious they could be. Yellow is thunderstorms possible, orange is severe thunderstorms possible, red is severe thunderstorms likely. The Canadian counterpart of the SPC Outlook, read live from Environment Canada\'s GeoMet API. Tap a shaded area for the region, the outlook period and the forecasters\' notes.',
   'tornado-tracks':   'Surveyed tornado damage paths, rated by EF scale, from the last 60 days.',
+  'storm-tracks':     "Storm cells the radar's own tracking algorithm has picked out, each with a ring, its heading, and where it expects the cell to be in 15, 30, 45 and 60 minutes. Ring colour is how fast the cell is moving. One NEXRAD site at a time: the site you are viewing, or the nearest one to the middle of the map. Refreshes every 5 minutes.",
   'wildfires':        'Active large wildfires, updated in the last 48 hours, with acres burned and location.',
   'ambient-weather':  'Personal weather stations from the Ambient Weather Network, showing live temperature, wind, rain, and pressure.',
   'rotation':         'Where NEXRAD has detected storm rotation over the last hour (MRMS Rotation Tracks), decoded on your Pi. A trail means a mesocyclone passed through, not necessarily that a tornado touched down.',

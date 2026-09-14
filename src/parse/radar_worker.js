@@ -768,6 +768,39 @@ self.onmessage = (event) => {
         const isLevel3 = !isLevel2Product;
         const buffer = Buffer.from(arrayBuffer);
 
+        if (isLevel3 && options?.tabular) {
+            // An alphanumeric product. Storm tracking (NST) carries no radials
+            // at all: its payload is a tabular block of fixed-width text lines,
+            // one per storm cell, which the product's own formatter turns into
+            // positions and forecasts. Nothing here is rasterised, so the
+            // radial pass below is skipped rather than asked to draw text.
+            const radar = nexradLevel3Data(buffer, {
+                logger: false,
+                parseSymbology: false,
+                parseGraphic: false,
+                includeRawBinData: false,
+                includePacketMetadata: false
+            });
+            parserEndMs = toEpochMs(performance.now());
+            const pd = radar?.productDescription || {};
+            const { timeIso } = getLevel3Metadata(radar);
+            self.postMessage({
+                type: 'result',
+                tabular: radar?.formatted || null,
+                pages: radar?.tabular?.pages || null,
+                site: [pd.latitude, pd.longitude],
+                metadata: {
+                    station: options?.station || null,
+                    product: layer,
+                    timeIso,
+                    averageStormSpeed: pd.averageStormSpeed,
+                    averageStormDirection: pd.averageStormDirection
+                },
+                timing: { parserStartMs, parserEndMs, meshEndMs: parserEndMs }
+            });
+            return;
+        }
+
         if (isLevel3) {
             const requestedParseMode = typeof options?.level3ParseMode === 'string'
                 ? options.level3ParseMode.toLowerCase()
