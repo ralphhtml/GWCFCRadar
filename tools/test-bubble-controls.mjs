@@ -1,15 +1,21 @@
 #!/usr/bin/env node
 /*
- * Every bubble, at every depth, has an info button and a drag handle.
+ * Every bubble, at every depth, has an info button - and, now, nothing else.
  *
  *     node tools/test-bubble-controls.mjs
  *
  * There are about twenty places in index.html that build a bubble, and they
- * had drifted apart: the top row had both buttons, the product rows had an
- * info button only where somebody had happened to write a description, and
- * nothing below the top row could be reordered at all. Asking twenty builders
- * to stay in step forever is asking for exactly that drift, so the column is
- * decorated after the fact instead.
+ * had drifted apart: the top row had an info button, the product rows had
+ * one only where somebody had happened to write a description. Asking twenty
+ * builders to stay in step forever is asking for exactly that drift, so the
+ * column is decorated after the fact instead.
+ *
+ * A drag handle used to sit beside that info button on every row, reordering
+ * the BUTTONS in this menu - never what draws on top of what on the map,
+ * which people kept assuming it did. That handle is gone: the real way to
+ * restack the map is Settings -> Layer Order, which now covers every layer
+ * there is, so this file checks the drag handle's absence instead of its
+ * presence.
  *
  * Which makes this the test that matters: it opens every menu the app has,
  * walks down into every level of every one, and checks what is actually in
@@ -91,7 +97,7 @@ await page.evaluate(() => {
       back: el.classList.contains('sb-back') || el.classList.contains('sb-note'),
       main: el.classList.contains('sub-bubble-main'),
       info: !!el.querySelector('.ov-info-btn'),
-      drag: !!el.querySelector('.sb-drag'),
+      drag: !!el.querySelector('.sb-drag'),   // must never be true any more
       count: !!el.querySelector('.sb-count'),
     }));
   };
@@ -144,13 +150,13 @@ for (const [name, open, down] of menus) {
   totalRows += rows.length;
   totalLevels += levels.length;
   const noInfo = rows.filter(r => !r.info).map(r => r.label);
-  const noDrag = rows.filter(r => !r.drag).map(r => r.label);
+  const hasDrag = rows.filter(r => r.drag).map(r => r.label);
   ok(`${name}: it built something to check`, rows.length > 0,
      `${levels.length} levels`);
   ok(`${name}: every bubble has an info button`,
      noInfo.length === 0, noInfo.join(', ').slice(0, 120));
-  ok(`${name}: every bubble has a drag handle`,
-     noDrag.length === 0, noDrag.join(', ').slice(0, 120));
+  ok(`${name}: no bubble has a drag handle any more`,
+     hasDrag.length === 0, hasDrag.join(', ').slice(0, 120));
 }
 // The decorator runs off a MutationObserver, so it has to have really fired
 // across every one of those rebuilds rather than once at boot.
@@ -213,145 +219,7 @@ console.log('\n3. the info buttons say something real');
      /No description has been written/.test(r.auto), r.auto.slice(0, 80));
 }
 
-console.log('\n4. dragging a sub-bubble really reorders it, and it sticks');
-{
-  const r = await page.evaluate(async () => {
-    const settle = () => new Promise(res => setTimeout(res, 90));
-    const w = () => document.getElementById('sub-bubbles');
-    // toggleMrmsSub is a toggle: called while already inside MRMS it goes
-    // back out. Every entry here starts from the top so each step lands
-    // where it says it does.
-    const enterGroup = async (g) => {
-      renderSubBubbles('regular'); await settle();
-      toggleMrmsSub(); await settle();
-      const btn = w().querySelector(`[data-mrms-group="${g}"]`);
-      if (!btn) return false;
-      btn.click(); await settle();
-      return true;
-    };
-    if (!await enterGroup('severe')) return { skipped: true, before: [] };
-
-    const labels = () => [...w().children]
-      .filter(e => e.classList.contains('sub-bubble') && !e.classList.contains('sb-back'))
-      .map(e => (e.querySelector('.sb-label') || {}).textContent);
-    const before = labels();
-    if (before.length < 2) return { before, skipped: true };
-
-    // Drag the last row above the first, through the real pointer path.
-    const rows = [...w().children].filter(e =>
-      e.classList.contains('sub-bubble') && !e.classList.contains('sb-back'));
-    const last = rows[rows.length - 1], first = rows[0];
-    const handle = last.querySelector('.sb-drag');
-    const fire = (type, y) => document.dispatchEvent(
-      new PointerEvent(type, { clientY: y, bubbles: true, pointerId: 1 }));
-    handle.dispatchEvent(new PointerEvent('pointerdown',
-      { clientY: last.getBoundingClientRect().top + 5, bubbles: true, pointerId: 1 }));
-    fire('pointermove', first.getBoundingClientRect().top + 1);
-    fire('pointerup', first.getBoundingClientRect().top + 1);
-    await settle();
-    const after = labels();
-
-    // Leave and come back: the order has to survive a rebuild, which is the
-    // whole point of saving it.
-    await enterGroup('severe');
-    const reopened = labels();
-
-    // A different group must NOT have been shuffled by that: each list is
-    // saved under its own name.
-    const otherLabels = (await enterGroup('refl')) ? labels() : null;
-    // Read the key the app itself computes rather than guessing at its
-    // spelling: what matters is that the order was written down somewhere it
-    // can be found again, which the reopen check below then proves.
-    await enterGroup('severe');
-    const saved = localStorage.getItem('gwcfc_sb_order_' + _sbCtxKey());
-    return { before, after, reopened, otherLabels, saved };
-  });
-  if (r.skipped) {
-    ok('not enough rows to drag', false, JSON.stringify(r.before));
-  } else {
-    ok('the dragged row moves to the front',
-       r.after[0] === r.before[r.before.length - 1],
-       `${JSON.stringify(r.before)} -> ${JSON.stringify(r.after)}`);
-    ok('and nothing was lost on the way',
-       r.after.length === r.before.length
-       && r.before.every(l => r.after.includes(l)),
-       JSON.stringify(r.after));
-    ok('the new order is written down', !!r.saved, String(r.saved));
-    ok('and it is still there after the menu is rebuilt',
-       JSON.stringify(r.reopened) === JSON.stringify(r.after),
-       `${JSON.stringify(r.after)} vs ${JSON.stringify(r.reopened)}`);
-    // Two lists, two saved orders. One key for both would mean reordering
-    // the severe products silently shuffled reflectivity as well.
-    ok('another group keeps its own order',
-       !r.otherLabels || r.otherLabels[0] !== r.after[0]
-       || r.otherLabels.length !== r.after.length,
-       JSON.stringify(r.otherLabels));
-  }
-}
-
-console.log('\n4b. the decorator does not fight the drag, or itself');
-{
-  const r = await page.evaluate(async () => {
-    const settle = () => new Promise(res => setTimeout(res, 90));
-    const w = () => document.getElementById('sub-bubbles');
-    renderSubBubbles('regular'); await settle();
-    toggleMrmsSub(); await settle();
-    w().querySelector('[data-mrms-group="severe"]').click(); await settle();
-    const rows = [...w().children].filter(e =>
-      e.classList.contains('sub-bubble') && !e.classList.contains('sb-back'));
-    if (rows.length < 3) return { skipped: true };
-
-    // A real drag is many pointermoves, not one. Each move is a mutation,
-    // which wakes the decorator, which would put the row straight back where
-    // the saved order says it goes. The single-move test above passed by
-    // luck: the order was saved before the frame ever arrived.
-    const last = rows[rows.length - 1];
-    const handle = last.querySelector('.sb-drag');
-    const top = rows[0].getBoundingClientRect().top;
-    handle.dispatchEvent(new PointerEvent('pointerdown',
-      { clientY: last.getBoundingClientRect().top + 5, bubbles: true, pointerId: 1 }));
-    const dragging = _sbDragging;
-    for (let i = 0; i < 4; i++) {
-      document.dispatchEvent(new PointerEvent('pointermove',
-        { clientY: top + 1, bubbles: true, pointerId: 1 }));
-      await settle();                    // let the decorator have its frame
-    }
-    const midDrag = [...w().children].filter(e =>
-      e.classList.contains('sub-bubble') && !e.classList.contains('sb-back'))[0];
-    document.dispatchEvent(new PointerEvent('pointerup',
-      { clientY: top + 1, bubbles: true, pointerId: 1 }));
-    await settle();
-
-    // And the pass must not wake itself: reordering is a mutation too, so an
-    // unconditional insertBefore left a rAF loop running for the life of the
-    // page with nothing on screen changing to show for it.
-    let frames = 0;
-    const stop = performance.now() + 500;
-    await new Promise(res => {
-      const tick = () => {
-        frames++;
-        if (performance.now() > stop) return res();
-        requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    });
-    return {
-      dragging, held: midDrag === last, after: _sbDragging,
-      // A spinning decorator would leave this true forever.
-      stillReordering: _sbReordering, frames,
-    };
-  });
-  if (r.skipped) {
-    ok('enough rows to drag through', false);
-  } else {
-    ok('the drag flag goes up when a row is picked up', r.dragging);
-    ok('and the row STAYS where it is dragged, move after move', r.held);
-    ok('the flag comes down when it is dropped', !r.after);
-    ok('and the reorder guard is not left stuck on', !r.stillReordering);
-  }
-}
-
-console.log('\n5. the way back out is not a layer');
+console.log('\n4. the way back out is not a layer');
 {
   const r = await page.evaluate(async () => {
     const settle = () => new Promise(res => setTimeout(res, 80));
@@ -364,12 +232,13 @@ console.log('\n5. the way back out is not a layer');
   });
   ok('there is a back pill', !!r);
   // It turns nothing on and it belongs at the top, so it has nothing to
-  // describe and nothing to reorder.
-  ok('it carries neither button', r && !r.info && !r.drag, JSON.stringify(r));
+  // describe, and it never carried a drag handle even before that was
+  // removed from every other row too.
+  ok('it carries no info button, and no drag handle', r && !r.info && !r.drag, JSON.stringify(r));
   ok('and it stays first', r && r.first, JSON.stringify(r));
 }
 
-console.log('\n6. nothing above threw');
+console.log('\n5. nothing above threw');
 {
   const real = errors.filter(e => !/Failed to fetch|NetworkError|ERR_FAILED|net::/i.test(e));
   ok('no page errors', real.length === 0, real.slice(0, 3).join(' | '));
