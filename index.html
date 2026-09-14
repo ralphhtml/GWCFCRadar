@@ -1493,7 +1493,6 @@ body {
   }
   .sub-bubble-main .sb-label { display: none; }
   .sub-bubble-main .sb-icon { font-size: 15px; }
-  .sub-bubble-main .sb-drag { display: none; }
 
   /* Active main bubble , show its label again so you can tell what's on */
   .sub-bubble-main.active {
@@ -1504,7 +1503,6 @@ body {
   }
   .sub-bubble-main.active .sb-label { display: inline; }
   .sub-bubble-main.active .sb-icon { font-size: 13px; }
-  .sub-bubble-main.active .sb-drag { display: flex; }
 
   /* Float buttons , tighter on tiny screens */
   #lqm-ai-btn { bottom: var(--fab-bottom, 80px); width: 40px; height: 40px; }
@@ -1954,25 +1952,12 @@ body {
   transform: translateY(-2px);
 }
 .sub-bubble .sb-icon { font-size: 13px; display: inline-flex; align-items: center; }
-/* Any bubble at any level can be dragged now, not just the top row. */
-.sub-bubble.dragging { opacity: 0.45; border-style: dashed; }
 /* A product the chosen radar physically cannot measure. Still tappable, so
    the tap can explain itself, but visibly not on offer. */
 .sub-bubble.unavailable { opacity: 0.4; }
 .sub-bubble.unavailable .sb-label { text-decoration: line-through; }
 .sub-bubble.unavailable:hover { opacity: 0.55; transform: none; }
-.sb-drag {
-  flex-shrink: 0; cursor: grab; touch-action: none;
-  padding: 2px 3px; margin: -4px -6px -4px 2px;
-  color: rgba(255,255,255,0.35); font-size: 12px; line-height: 0.7; letter-spacing: 1px;
-  display: flex; align-items: center;
-  /* Pinned to the first line: a label that wraps to two lines should not
-     drag its handle down the side of the pill with it. */
-  align-self: flex-start;
-}
 .sub-bubble .ov-info-btn { align-self: flex-start; }
-.sb-drag:hover { color: #ffd700; }
-.sb-drag:active { cursor: grabbing; }
 
 /* ── SATELLITE REGION SELECTOR ── */
 #sat-region-row {
@@ -7303,11 +7288,9 @@ p:last-child { margin-bottom: 0; }
 }
 .tut-bubble-row .sb-icon { display: flex; align-items: center; opacity: 0.9; }
 .tut-bubble-row .sb-label { flex: 1; }
-/* Both of these sit at the end of a real bubble, and both were missing from
-   the hand-drawn version, so it looked like a row you could neither ask
-   about nor reorder. */
+/* Sits at the end of a real bubble, and was missing from the hand-drawn
+   version, so it looked like a row you could not ask about. */
 .tut-bubble-info { display: flex; align-items: center; opacity: 0.45; }
-.tut-bubble-drag { opacity: 0.3; letter-spacing: 0; }
 .tut-bubble-empty {
   font-size: 12px;
   color: rgba(212,232,255,0.55);
@@ -26806,8 +26789,7 @@ function toggleWavesSub() {
   wrap.innerHTML = '';
   const back = document.createElement('div');
   // sb-back matters: the column decorator skips navigation rows, and without
-  // it this Back button grew an info button ("no description written") and a
-  // drag handle, and could be reordered away from the top.
+  // it this Back button grew a pointless info button ("no description written").
   back.className = 'sub-bubble sb-back';
   back.innerHTML = `<span class="sb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(180deg)><use href=#ic-arrow></use></svg></span><span class="sb-label">Back</span>`;
   back.onclick = () => { _syncParentBubble('waves'); renderSubBubbles('regular'); };
@@ -27065,8 +27047,7 @@ function toggleAirSub() {
   wrap.innerHTML = '';
   const back = document.createElement('div');
   // sb-back matters: the column decorator skips navigation rows, and without
-  // it this Back button grew an info button ("no description written") and a
-  // drag handle, and could be reordered away from the top.
+  // it this Back button grew a pointless info button ("no description written").
   back.className = 'sub-bubble sb-back';
   back.innerHTML = `<span class="sb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(180deg)><use href=#ic-arrow></use></svg></span><span class="sb-label">Back</span>`;
   back.onclick = () => { _syncParentBubble('air'); renderSubBubbles('regular'); };
@@ -27180,8 +27161,7 @@ function toggleTemperatureSub() {
   wrap.innerHTML = '';
   const back = document.createElement('div');
   // sb-back matters: the column decorator skips navigation rows, and without
-  // it this Back button grew an info button ("no description written") and a
-  // drag handle, and could be reordered away from the top.
+  // it this Back button grew a pointless info button ("no description written").
   back.className = 'sub-bubble sb-back';
   back.innerHTML = `<span class="sb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(180deg)><use href=#ic-arrow></use></svg></span><span class="sb-label">Back</span>`;
   back.onclick = () => { _syncParentBubble('temperature'); renderSubBubbles('regular'); };
@@ -27298,8 +27278,7 @@ function togglePressureSub() {
   wrap.innerHTML = '';
   const back = document.createElement('div');
   // sb-back matters: the column decorator skips navigation rows, and without
-  // it this Back button grew an info button ("no description written") and a
-  // drag handle, and could be reordered away from the top.
+  // it this Back button grew a pointless info button ("no description written").
   back.className = 'sub-bubble sb-back';
   back.innerHTML = `<span class="sb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(180deg)><use href=#ic-arrow></use></svg></span><span class="sb-label">Back</span>`;
   back.onclick = () => { _syncParentBubble('pressure'); renderSubBubbles('regular'); };
@@ -27452,8 +27431,7 @@ function toggleWindSub() {
   wrap.innerHTML = '';
   const back = document.createElement('div');
   // sb-back matters: the column decorator skips navigation rows, and without
-  // it this Back button grew an info button ("no description written") and a
-  // drag handle, and could be reordered away from the top.
+  // it this Back button grew a pointless info button ("no description written").
   back.className = 'sub-bubble sb-back';
   back.innerHTML = `<span class="sb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(180deg)><use href=#ic-arrow></use></svg></span><span class="sb-label">Back</span>`;
   back.onclick = () => { _syncParentBubble('wind'); renderSubBubbles('regular'); };
@@ -33211,28 +33189,10 @@ function hideSubBubbles() {
   if (wrap) { wrap.innerHTML = ''; wrap.style.display = 'none'; }
 }
 
-// Same fixed set of layer buttons (BASE_BUBBLES) is reused across every tab,
-// so their custom order is saved once, not per-tab, and applied here before
-// rendering.
-const SB_ORDER_KEY = 'gwcfc_bubble_order';
-function _sbApplyOrder(bubbles) {
-  let order = [];
-  try { order = JSON.parse(localStorage.getItem(SB_ORDER_KEY) || '[]'); } catch(e) {}
-  if (!Array.isArray(order) || !order.length) return bubbles;
-  const byId = new Map(bubbles.map(b => [b.id, b]));
-  const ordered = order.map(id => byId.get(id)).filter(Boolean);
-  bubbles.forEach(b => { if (!order.includes(b.id)) ordered.push(b); });
-  return ordered;
-}
-function _sbSaveOrder() {
-  const ids = Array.from(document.querySelectorAll('#sub-bubbles .sub-bubble-main')).map(el => el.id.replace(/^sub-/, ''));
-  try { localStorage.setItem(SB_ORDER_KEY, JSON.stringify(ids)); } catch(e) {}
-}
-
 function renderSubBubbles(tab) {
   const wrap = document.getElementById('sub-bubbles');
   wrap.innerHTML = '';
-  let bubbles = _sbApplyOrder(TAB_BUBBLES[tab] || []);
+  let bubbles = TAB_BUBBLES[tab] || [];
   // Lite-ning has no bubble column at all. Its radar and forecast dots turn
   // themselves on (_liteEnsureBasics), so a Radar button would be a switch
   // for something that is already, and should stay, on. All eight bubbles
@@ -33256,28 +33216,23 @@ function renderSubBubbles(tab) {
       el.classList.toggle('active', _getBubbleActive(b.id));
     };
     if (LAYER_DESCRIPTIONS[b.id]) el.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS[b.id]));
-    const drag = document.createElement('span');
-    drag.className = 'sb-drag';
-    drag.title = 'Drag to reorder';
-    drag.textContent = '⠿';
-    el.appendChild(drag);
     wrap.appendChild(el);
   });
   wrap.style.display = bubbles.length ? 'flex' : 'none';
 }
 
 
-// ── Every bubble gets an info button and a drag handle ────────────────────
+// ── Every bubble gets an info button ──────────────────────────────────────
 //
 // There are about twenty places in this file that build a bubble, and asking
-// each of them to remember two buttons is asking twenty places to stay in
-// step forever. They will not, and they did not: the top level had both, the
-// product levels had an info button only when someone had written a
-// description, and nothing below the top level could be reordered at all.
+// each of them to remember an info button is asking twenty places to stay in
+// step forever. They will not, and they did not: the top level always had
+// one, but the product levels only got one when someone had remembered to
+// write a description.
 //
 // So the column is watched instead. Whatever appears in it is decorated once,
 // wherever it came from and whenever it was built, which also means a bubble
-// added next year gets both without anyone remembering to ask.
+// added next year gets one without anyone remembering to ask.
 
 // Which entry in the descriptions table this bubble is, if any. Every level
 // spells its identity in a different dataset attribute, because every level
@@ -33343,116 +33298,20 @@ function _sbDescribe(el) {
   return _sbAutoInfo(el);
 }
 
-// A stable name for one row, so a saved order can find it again after the
-// menu is torn down and rebuilt.
-function _sbRowKey(el) {
-  const d = el.dataset || {};
-  return el.id || d.productId || (d.mrmsId && 'm:' + d.mrmsId)
-      || (d.mrmsGroup && 'g:' + d.mrmsGroup) || (d.satKind && 'k:' + d.satKind)
-      || (d.satCat && 'c:' + d.satCat) || d.product
-      || ((el.querySelector('.sb-label') || {}).textContent || '').trim();
-}
-
-// Which menu is on screen. The order of the MRMS severe products and the
-// order of the satellite categories are different lists and must be saved
-// under different names, or reordering one would shuffle the other.
-function _sbCtxKey() {
-  const w = document.getElementById('sub-bubbles');
-  if (!w) return '';
-  const d = w.dataset;
-  return ['mode:' + (d.mode || 'main'),
-          d.mrmsIn && 'mrms:' + d.mrmsIn,
-          d.satIn && 'sat:' + d.satIn,
-          d.satCatIn && 'satcat:' + d.satCatIn].filter(Boolean).join('|');
-}
-
-function _sbLoadOrder(ctx) {
-  try {
-    const raw = localStorage.getItem('gwcfc_sb_order_' + ctx);
-    const a = raw ? JSON.parse(raw) : null;
-    return Array.isArray(a) ? a : null;
-  } catch (e) { return null; }
-}
-
-function _sbStoreOrder(ctx, keys) {
-  try { localStorage.setItem('gwcfc_sb_order_' + ctx, JSON.stringify(keys)); }
-  catch (e) {}
-}
-
-// The rows a person may reorder: everything except the way back out, which
-// belongs at the top and is not a choice.
-function _sbRows() {
-  const w = document.getElementById('sub-bubbles');
-  if (!w) return [];
-  return Array.from(w.children).filter(el =>
-    el.classList && el.classList.contains('sub-bubble')
-    && !el.classList.contains('sb-back')
-    && !el.classList.contains('sb-note')
-    && !el.classList.contains('sub-bubble-main'));
-}
-
 function _sbDecorate() {
   const wrap = document.getElementById('sub-bubbles');
   if (!wrap) return;
   Array.from(wrap.querySelectorAll('.sub-bubble')).forEach(el => {
-    if (el.classList.contains('sub-bubble-main')) return;   // has both already
+    if (el.classList.contains('sub-bubble-main')) return;   // has one already
     if (el.dataset.sbDone) return;
     el.dataset.sbDone = '1';
-    // The back pill is navigation rather than a layer: nothing to describe
-    // and nothing to reorder.
+    // The back pill is navigation rather than a layer: nothing to describe.
     if (el.classList.contains('sb-back') || el.classList.contains('sb-note')) return;
     if (!el.querySelector('.ov-info-btn')) {
       el.appendChild(_makeInfoBtn(_sbDescribe(el)));
     }
-    if (!el.querySelector('.sb-drag')) {
-      const drag = document.createElement('span');
-      drag.className = 'sb-drag';
-      drag.title = 'Drag to reorder';
-      drag.textContent = '⠿';
-      el.appendChild(drag);
-    }
   });
-
-  // Then put them back in whatever order this person last left them in.
-  //
-  // Not while a drag is in progress. Every pointermove moves a row, which is
-  // a mutation, which wakes this pass, which would put the row straight back
-  // where the saved order says it goes: the drag would visibly fight the
-  // hand holding it and nothing would ever move.
-  if (_sbDragging) return;
-  const ctx = _sbCtxKey();
-  const want = _sbLoadOrder(ctx);
-  if (!want || !want.length) return;
-  const rows = _sbRows();
-  if (rows.length < 2) return;
-  const byKey = new Map(rows.map(r => [_sbRowKey(r), r]));
-  // Anything the saved order does not mention keeps its built-in place at the
-  // end, so a product added after the order was saved still appears.
-  const ordered = want.map(k => byKey.get(k)).filter(Boolean);
-  rows.forEach(r => { if (!ordered.includes(r)) ordered.push(r); });
-  // Only move what is genuinely in the wrong place.
-  //
-  // insertBefore counts as a mutation even when the node is already exactly
-  // where it is being put, so reordering unconditionally woke this pass
-  // again, which reordered again, forever: a rAF loop burning a frame's work
-  // every frame for the life of the page, with nothing on screen changing to
-  // show for it.
-  if (ordered.every((r, i) => rows[i] === r)) return;
-  // Inserted before the region row rather than appended, so the satellite
-  // sector pills stay at the bottom where they were put.
-  const anchor = wrap.querySelector('#sat-region-row');
-  _sbReordering = true;
-  try {
-    ordered.forEach(r => { wrap.insertBefore(r, anchor || null); });
-  } finally {
-    _sbReordering = false;
-  }
 }
-
-// Set while a row is being dragged and while this file is doing its own
-// reordering, so the watcher below can tell its own work from a rebuild.
-let _sbDragging = false;
-let _sbReordering = false;
 
 // Rebuilt from twenty different places, so watched rather than called from
 // each of them. One pass per frame however many mutations arrived.
@@ -33460,9 +33319,6 @@ let _sbReordering = false;
   let queued = false;
   const run = () => { queued = false; try { _sbDecorate(); } catch (e) {} };
   const kick = () => {
-    // Ignore the mutations this file just caused itself, or the pass wakes
-    // itself up again on every frame.
-    if (_sbReordering) return;
     if (!queued) { queued = true; requestAnimationFrame(run); }
   };
   const start = () => {
@@ -33474,93 +33330,6 @@ let _sbReordering = false;
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', start);
   } else { start(); }
-})();
-
-// Drag-reorder for every level below the top one. The top level has its own,
-// older, path just below, and keeps it so the order people have already saved
-// there is not thrown away.
-(function _sbSubDragInit() {
-  let drag = null;
-  function onDown(e) {
-    const handle = e.target.closest('.sb-drag'); if (!handle) return;
-    const row = handle.closest('.sub-bubble'); if (!row) return;
-    if (row.classList.contains('sub-bubble-main')) return;   // not this one
-    if (!document.getElementById('sub-bubbles').contains(row)) return;
-    e.preventDefault();
-    drag = { row };
-    // Tell the decorator to leave the column alone until this is finished,
-    // or every move would be put straight back by the saved order.
-    _sbDragging = true;
-    row.classList.add('dragging');
-    try { handle.setPointerCapture(e.pointerId); } catch (_) {}
-    document.addEventListener('pointermove', onMove);
-    document.addEventListener('pointerup', onUp, { once: true });
-    document.addEventListener('pointercancel', onUp, { once: true });
-  }
-  function onMove(e) {
-    if (!drag) return;
-    const wrap = document.getElementById('sub-bubbles'); if (!wrap) return;
-    const others = _sbRows().filter(r => r !== drag.row);
-    let placed = false;
-    for (const sib of others) {
-      const rect = sib.getBoundingClientRect();
-      if (e.clientY < rect.top + rect.height / 2) {
-        wrap.insertBefore(drag.row, sib); placed = true; break;
-      }
-    }
-    if (!placed) {
-      const anchor = wrap.querySelector('#sat-region-row');
-      wrap.insertBefore(drag.row, anchor || null);
-    }
-  }
-  function onUp() {
-    if (!drag) return;
-    drag.row.classList.remove('dragging');
-    drag = null;
-    document.removeEventListener('pointermove', onMove);
-    // Written down BEFORE the decorator is let back in, so what it re-applies
-    // is where the row was just dropped rather than where it started.
-    _sbStoreOrder(_sbCtxKey(), _sbRows().map(_sbRowKey));
-    _sbDragging = false;
-  }
-  document.addEventListener('pointerdown', onDown);
-})();
-
-// Same pointer-based drag-reorder as the overlay pills list (_ovDragInit),
-// vertical (clientY) since #sub-bubbles is a column, same as that list.
-(function _sbDragInit() {
-  let drag = null;
-  function rows() { return Array.from(document.querySelectorAll('#sub-bubbles .sub-bubble-main')); }
-  function onDown(e) {
-    const handle = e.target.closest('.sb-drag'); if (!handle) return;
-    const row = handle.closest('.sub-bubble-main'); if (!row) return;
-    e.preventDefault();
-    drag = { row };
-    row.classList.add('dragging');
-    try { handle.setPointerCapture(e.pointerId); } catch(_) {}
-    document.addEventListener('pointermove', onMove);
-    document.addEventListener('pointerup', onUp, { once: true });
-    document.addEventListener('pointercancel', onUp, { once: true });
-  }
-  function onMove(e) {
-    if (!drag) return;
-    const wrap = document.getElementById('sub-bubbles'); if (!wrap) return;
-    const others = rows().filter(r => r !== drag.row);
-    let placed = false;
-    for (const sib of others) {
-      const rect = sib.getBoundingClientRect();
-      if (e.clientY < rect.top + rect.height / 2) { wrap.insertBefore(drag.row, sib); placed = true; break; }
-    }
-    if (!placed) wrap.appendChild(drag.row);
-  }
-  function onUp() {
-    if (!drag) return;
-    drag.row.classList.remove('dragging');
-    drag = null;
-    document.removeEventListener('pointermove', onMove);
-    _sbSaveOrder();
-  }
-  document.addEventListener('pointerdown', onDown);
 })();
 
 
@@ -35624,8 +35393,12 @@ function _nwsPane() {
   if (typeof map === 'undefined' || !map) return undefined;
   if (!map.getPane('nwsPane')) {
     const p = map.createPane('nwsPane');
-    p.style.zIndex = 399;          // beside sstPane (398), under radar
-    p.style.pointerEvents = 'none';
+    p.style.zIndex = 399;          // beside sstPane (398), under radar - the
+    p.style.pointerEvents = 'none'; // default until the line below corrects it
+    // nwsPane is in the reorderable map-layer stack (Layer Order, Settings),
+    // and it is born here rather than at boot, so its saved position has to
+    // be applied the moment it exists - the same reason bordersPane does this.
+    try { if (typeof _stackApply === 'function') _stackApply(); } catch (e) {}
   }
   return 'nwsPane';
 }
@@ -36054,8 +35827,7 @@ function toggleModelsSub() {
   wrap.innerHTML = '';
   const back = document.createElement('div');
   // sb-back matters: the column decorator skips navigation rows, and without
-  // it this Back button grew an info button ("no description written") and a
-  // drag handle, and could be reordered away from the top.
+  // it this Back button grew a pointless info button ("no description written").
   back.className = 'sub-bubble sb-back';
   back.innerHTML = `<span class="sb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(180deg)><use href=#ic-arrow></use></svg></span><span class="sb-label">Back</span>`;
   back.onclick = () => { _syncParentBubble('models'); renderSubBubbles('regular'); };
@@ -52751,12 +52523,12 @@ function selectProduct(p) {
   </div>
 
   <!-- ─── LAYER ORDER: who draws on top of whom ───
-       The overlay fly-out has always let you drag its own rows, but the four
-       big picture layers underneath it (radar, satellite, ocean, borders) had
-       a fixed stacking order baked in, so turning on two of them and not
-       liking which one won was not something you could fix. Both lists live
-       here now, in one place, and the fly-out and this list are the same
-       list: dragging in either moves the same row. ─── -->
+       The overlay fly-out has always let you drag its own rows, but the big
+       picture layers underneath it (radar, satellite, ocean, NWS grids,
+       model charts, borders) had a fixed stacking order baked in, so turning
+       on two of them and not liking which one won was not something you
+       could fix. Both lists live here now, in one place, and the fly-out and
+       this list are the same list: dragging in either moves the same row. ─── -->
   <style>
     .lqm-order-list { display:flex; flex-direction:column; gap:3px; padding:4px 0 6px; }
     .lqm-order-row {
@@ -59257,14 +59029,14 @@ function lqmSetTZ(tz) {
     </div>
   </div>
 
-  <p>Each bubble opens its own menu in place of the list, with a <strong>Back</strong> row at the top to return. Every row has a <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-info></use></svg> info button explaining what it is, and a <strong>⠿ drag handle</strong> so you can reorder the column to match how you work.</p>
+  <p>Each bubble opens its own menu in place of the list, with a <strong>Back</strong> row at the top to return. Every row has a <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-info></use></svg> info button explaining what it is. To change what draws on top of what on the map, use <strong>Layer Order</strong> in Settings instead, which covers every layer and overlay in one place.</p>
 
   <!-- BUILT FROM THE APP'S OWN BUBBLE LIST, not drawn by hand.
        The hand-drawn version of this was wrong in three ways at once: it
        hung a badge on every row (NEXRAD, GOES, MARINE, AQI, SPEED, 2M,
        MSLP, 3 PANELS) and no bubble in this app has ever had a badge; it
        used sprite icons instead of the bubbles' own; and it left off the
-       info button and the drag handle that every real row carries. So
+       info button that every real row carries. So
        somebody reading it went looking for a "NEXRAD" tag that does not
        exist.
        A picture of the interface that is assembled by hand will always
@@ -62939,8 +62711,8 @@ async function _loadUserPrefs(uid) {
 // Any hand-drawn picture of an interface drifts, because nothing makes it
 // change when the interface does. This one reads BASE_BUBBLES, the same list
 // renderSubBubbles uses, and copies the real row's parts: the bubble's own
-// icon, its label, the info button and the drag handle. Add a ninth bubble
-// tomorrow and this picture grows a ninth row on its own.
+// icon, its label and the info button. Add a ninth bubble tomorrow and this
+// picture grows a ninth row on its own.
 function _tutRenderBubbleDemo() {
   const box = document.getElementById('tut-bubble-demo');
   if (!box) return;
@@ -62964,7 +62736,6 @@ function _tutRenderBubbleDemo() {
       + 'layer is">'
       + '<svg class=svgi width=1em height=1em><use href=#ic-info></use></svg>'
     + '</span>'
-    + '<span class="tut-bubble-drag" title="Drag to reorder">⠿</span>'
     + '</div>').join('');
 }
 
@@ -62982,6 +62753,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-14-g', date: 'Sep 14, 2026',
+    text: 'Layer Order in Settings is now the one place to control what draws on top of what on the map, and it covers everything: added a missing row for the NWS temperature, wind and pressure grids, which used to have no way to be restacked against radar, satellite or the rest at all. The drag handle on the left-menu layer bubbles is gone, since it only ever reordered the buttons in that menu and never the map itself, which people kept expecting it to do.' },
   { id: '2026-09-14-f', date: 'Sep 14, 2026',
     text: 'Screenshots taken by the Asturio Discord bot’s /map command now hide the whole interface, not just the parts that hang off the page directly. The compass, the right-edge tool icons, the draw and measure toolbars and a handful of other controls used to still show up in a bot screenshot even though the menus and toolbar did not; now it is map, data and overlays only, with a GWCFC title bar stamped across the top like a broadcast graphic.' },
   { id: '2026-09-14-e', date: 'Sep 14, 2026',
@@ -67048,16 +66821,18 @@ function _ovLoadOrder(){
 })();
 
 // ══════════════════════════════════════════════════════════════════════════
-// LAYER ORDER: the four big map layers, and both order lists in Settings
+// LAYER ORDER: the big map layers, and both order lists in Settings
 // ══════════════════════════════════════════════════════════════════════════
 //
 // Leaflet decides what covers what with panes: a pane is just a div, and a
 // higher z-index means it is painted later, which means on top. The overlay
-// list already reorders its own panes from 402 upward. The four layers below
-// that band had their z-values written once at boot and never moved, so with
-// radar and satellite both on you got whichever order the code happened to
-// pick. These four now read their z from a saved list instead, in the same
-// 398 to 401 band they already used, so nothing collides with the overlays.
+// list already reorders its own panes from 402 upward. The layers below that
+// band used to have their z-values written once, at whatever moment each one
+// first turned on, and never moved again, so with radar and satellite both on
+// you got whichever order the code happened to pick, and layers such as the
+// NWS grids were not represented in Settings at all. Every one of them now
+// reads its z from a saved list instead, in the band just under the
+// overlays, so nothing collides and nothing is left out.
 const MAP_STACK_KEY = 'gwcfc_map_stack_order';
 const MAP_STACK_TOP_Z = 401;            // the top row's z
 // Rows are ten apart rather than one. The gap is not decoration: the model
@@ -67074,6 +66849,10 @@ const MAP_STACK_LAYERS = [
   { id: 'models',    pane: 'modelPane',    label: 'Model Charts' },
   { id: 'radar',     pane: 'radarPane',    label: 'Radar' },
   { id: 'satellite', pane: 'satPhotoPane', label: 'Satellite' },
+  // The RTMA/NDFD grids behind Temperature, Wind, Pressure and Waves' NWS
+  // source: another whole-box field, so it defaults beside the other one
+  // (Model Charts), just above the ocean it would otherwise sit on top of.
+  { id: 'nws',       pane: 'nwsPane',      label: 'NWS Grids (Temp, Wind, Pressure)' },
   { id: 'ocean',     pane: 'sstPane',      label: 'Ocean & Sea Temperature' },
 ];
 function _stackDefault(){ return MAP_STACK_LAYERS.map(l => l.id); }

@@ -12,9 +12,11 @@
  *      applied when StormStream shows an alert, and undone when the next
  *      alert wants different things or the stream ends. Overlays the
  *      person turned on themselves are never touched.
- *   2. Every reorderable row - overlay pills, the main layer bubbles, and
- *      the product bubbles below them - carries the drag handle, and a
- *      drag really moves the row AND saves the order.
+ *   2. Every overlay pill carries the drag handle, and a drag really moves
+ *      the row AND saves the order. The layer bubbles used to carry one too,
+ *      reordering only the buttons rather than anything on the map, which
+ *      people kept mistaking for the real thing; that handle is gone now, so
+ *      this also checks that it stays gone.
  *   3. The broadcast frame wears gold (#e8b800), not yellow, and every
  *      surface in it is layered with the top-lit sheen gradient.
  */
@@ -189,7 +191,7 @@ console.log('\n4. auto still steps a tornado, and keep means keep');
   ok('Leave as-is touches nothing', r.kept.length === 0, r.kept.join());
 }
 
-console.log('\n5. the drag handles, everywhere rows can be reordered');
+console.log('\n5. the overlay pill drag handles, and no drag handle left on the bubbles');
 {
   const r = await page.evaluate(() => {
     const out = {};
@@ -211,31 +213,15 @@ console.log('\n5. the drag handles, everywhere rows can be reordered');
     out.pillSaved = JSON.parse(localStorage.getItem('gwcfc_overlay_order'))[0] === secondId;
 
     const mains = Array.from(document.querySelectorAll('#sub-bubbles .sub-bubble-main'));
-    out.mainHandles = mains.length > 1 && mains.every(m => !!m.querySelector('.sb-drag'));
+    out.noMainHandles = mains.length > 1 && mains.every(m => !m.querySelector('.sb-drag'));
     return out;
   });
   ok('every overlay pill carries the drag handle', r.pillHandles);
   ok('a drag moves the pill and saves the order', r.pillMoved && r.pillSaved);
-  ok('every layer bubble carries the drag handle', r.mainHandles);
+  ok('no layer bubble carries a drag handle any more', r.noMainHandles);
 }
 
-console.log('\n6. the handle reaches the product bubbles below the top level');
-{
-  const r = await page.evaluate(async () => {
-    toggleRadarSub();
-    await new Promise(res => setTimeout(res, 250));
-    await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
-    const rows = _sbRows();
-    const out = { n: rows.length,
-      handles: rows.length > 1 && rows.every(r2 => !!r2.querySelector('.sb-drag')) };
-    const wrap = document.getElementById('sub-bubbles');
-    wrap.innerHTML = ''; wrap.style.display = 'none'; wrap.dataset.mode = '';
-    return out;
-  });
-  ok('the product rows grew handles through the decorator', r.handles, String(r.n));
-}
-
-console.log('\n7. the frame on air is gold and gradient');
+console.log('\n6. the frame on air is gold and gradient');
 {
   const r = await page.evaluate(() => {
     const cs = getComputedStyle(document.documentElement);
@@ -251,7 +237,7 @@ console.log('\n7. the frame on air is gold and gradient');
   ok('the gold surfaces are gradients of gold', r.goldGrad);
 }
 
-console.log('\n8. nothing threw');
+console.log('\n7. nothing threw');
 ok('no uncaught page errors', errors.length === 0, errors.join(' | '));
 
 await browser.close();
