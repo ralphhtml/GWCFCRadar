@@ -8230,6 +8230,15 @@ footer {
 }
 .lqm-staff-fc input { accent-color: #4dd0e1; cursor: pointer; }
 .lqm-staff-fc input:disabled { cursor: not-allowed; }
+/* Same shape as .lqm-staff-fc, red rather than cyan since this one takes
+   something away instead of granting it. */
+.lqm-staff-block {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 3px;
+  font-family: 'Comfortaa', sans-serif; font-size: 9px; color: #ff6b6b;
+  cursor: pointer; user-select: none;
+}
+.lqm-staff-block input { accent-color: #ff6b6b; cursor: pointer; }
+.lqm-staff-block input:disabled { cursor: not-allowed; }
 .lqm-staff-note {
   font-family: 'Comfortaa', sans-serif; font-size: 10px;
   color: rgba(212,232,255,0.45); line-height: 1.5; margin: 10px 0 0;
@@ -57059,6 +57068,12 @@ const CHAT_MIN_GAP_MS = 1500;    // one message per person per 1.5s
 let _chatUnsub = null;
 let _chatMsgs = [];
 let _chatLastSent = 0;
+// Set from the signed-in account's own profile doc (see _loadUserPrefs) and
+// cleared on sign-out. A moderator setting this on someone else's document
+// while they are mid-session will not be seen until their next sign-in or
+// reload - there is no live listener on it, the same limitation staffRole
+// and forecaster already have.
+let _chatBlockedSelf = false;
 
 /* ══════════════════════════════════════════════════════════════════════════
    PINGING PEOPLE
@@ -57470,19 +57485,24 @@ function _chatSyncComposer() {
   const input = document.getElementById('lqm-chat-input');
   const btn = document.getElementById('lqm-chat-send');
   const signedIn = !!_currentUser;
+  // Blocked reads the same way signed-out does here: the composer is closed
+  // off, not just the send button, so there is nothing half-usable sitting
+  // around inviting a retry.
+  const usable = signedIn && !_chatBlockedSelf;
   if (input) {
-    input.disabled = !signedIn;
-    input.placeholder = signedIn ? 'Message…' : 'Sign in to chat';
+    input.disabled = !usable;
+    input.placeholder = signedIn ? (usable ? 'Message…' : 'You are blocked from chat') : 'Sign in to chat';
   }
-  if (btn) btn.disabled = !signedIn;
+  if (btn) btn.disabled = !usable;
   // The camera and microphone were left enabled while signed out, so they
   // recorded happily and then failed at the send. Disable them with everything
   // else instead of letting someone talk into a dead button.
   ['lqm-chat-snap','lqm-chat-dictate','lqm-chat-rec'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.disabled = !signedIn;
+    if (el) el.disabled = !usable;
   });
   if (!signedIn) _chatStatus('<a onclick="lqmCloseChat();openAuthModal(\'signin\')">Sign in</a> to join the chat. You can read without signing in.');
+  else if (_chatBlockedSelf) _chatStatus('A moderator has blocked this account from chat. You can still read along.');
   else _chatStatus('');
 }
 
@@ -58216,6 +58236,10 @@ async function _chatPostToDiscord(name, text, mentions) {
 
 async function chatSend() {
   if (!_currentUser || !_fbDb) return;
+  // The composer is already disabled for this, but the send button is one
+  // JS call away from anyone who opens the console - this is what actually
+  // stops the message rather than just hiding the invitation to try.
+  if (_chatBlockedSelf) { _chatStatus('A moderator has blocked this account from chat. You can still read along.'); return; }
   const input = document.getElementById('lqm-chat-input');
   const text = (input?.value || '').trim();
   // A picture or a voice clip is a message on its own; only block a send that
@@ -60708,6 +60732,7 @@ function _onSignedIn(user) {
 
 function _onSignedOut() {
   _currentUser = null;
+  _chatBlockedSelf = false;
   // Clear the once-per-load guard so signing in as a different account applies
   // that account's preset instead of being suppressed by the previous one.
   // The stashed Lite-ning preset goes too: it belonged to the account leaving.
@@ -61186,7 +61211,8 @@ async function lqmOpenStaffView() {
         avatarImage: v.avatarImage || '',
         emoji: v.avatarEmoji || v.emoji || '',
         staffRole: _staffRoleFor(v.email, v.staffRole),
-        forecaster: v.forecaster === true
+        forecaster: v.forecaster === true,
+        chatBlocked: v.chatBlocked === true
       };
     });
     // Names for the blank rows can often be found where the account already
@@ -61301,6 +61327,8 @@ function _staffRenderList(filter) {
         <select class="lqm-staff-sel" ${isOwnerRow ? 'disabled' : ''} onchange="staffSetRole('${u.uid}', this.value, this)">${opts}</select>
         <label class="lqm-staff-fc" title="Forecaster: may publish outlooks and alerts to everyone from the Forecasting Portal. Only you can grant this.">
           <input type="checkbox" ${isOwnerRow ? 'checked disabled' : (u.forecaster ? 'checked' : '')} onchange="staffSetForecaster('${u.uid}', this.checked, this)"> FC</label>
+        <label class="lqm-staff-block" title="Blocked from the live chat. They keep every other part of the site - this only stops them posting here.">
+          <input type="checkbox" ${isOwnerRow ? 'disabled' : (u.chatBlocked ? 'checked' : '')} onchange="staffSetChatBlock('${u.uid}', this.checked, this)"> Block chat</label>
       </div>`;
     }).join('');
   }
@@ -61335,6 +61363,35 @@ async function staffSetForecaster(uid, on, el) {
     console.warn('Set forecaster failed:', e);
     if (el) el.checked = !on;
     showToast(`Couldn't change forecaster: ${e.message || 'permission denied'}`, 4000);
+  } finally {
+    if (el) el.disabled = false;
+  }
+}
+
+// Blocks or unblocks one account from posting in the live chat, without
+// touching anything else about it: they keep the rest of the site exactly as
+// it was. The Firestore rules read this same field before accepting a
+// message with source 'radar' - this checkbox is a UI on top of that, not
+// the enforcement itself, so it only actually stops a determined bypass
+// (someone writing to Firestore directly rather than through this page)
+// once firebase/FIRESTORE_RULES.txt has been republished in the console.
+async function staffSetChatBlock(uid, on, el) {
+  if (!_isOwner() || !_fbDb) return;
+  const rec = _staffUsers.find(u => u.uid === uid);
+  if (el) el.disabled = true;
+  try {
+    await _fbDb.collection('users').doc(uid).set({
+      chatBlocked: !!on,
+      chatBlockedBy: _currentUser.email || _currentUser.uid,
+      chatBlockedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    if (rec) rec.chatBlocked = !!on;
+    showToast(`${rec ? rec.name : 'Member'} ${on ? 'is now blocked from chat'
+      : 'can post in chat again'}`, 2600);
+  } catch (e) {
+    console.warn('Set chat block failed:', e);
+    if (el) el.checked = !on;
+    showToast(`Couldn't change chat access: ${e.message || 'permission denied'}`, 4000);
   } finally {
     if (el) el.disabled = false;
   }
@@ -62622,6 +62679,11 @@ async function _loadUserPrefs(uid) {
   try { _profileSelfHeal(uid, d || {}); } catch (e) {}
   if (!d) return;
 
+  _chatBlockedSelf = d.chatBlocked === true;
+  // The composer may already be open (or opened right after this resolves)
+  // from before this account's own moderation status was known.
+  if (typeof _chatSyncComposer === 'function') _chatSyncComposer();
+
   // Queue the saved view FIRST. None of the profile or notification work below
   // affects it, and having it last meant one throw up there - a missing element,
   // Notification unavailable, a notify poll failing - silently cost the user
@@ -62769,6 +62831,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-14-k', date: 'Sep 14, 2026',
+    text: 'Manage Members can now block an account from the live chat. A new "Block chat" switch sits beside each member’s Forecaster toggle: flip it and that account keeps every other part of the site exactly as it was, it just can’t post here any more. Enforced at the database, not just hidden in the composer, so it holds even against a direct attempt to write around the page.' },
   { id: '2026-09-14-j', date: 'Sep 14, 2026',
     text: 'The Asturio Discord bot no longer shows every command twice. Registering /map, /link and the rest to a server used to leave the earlier globally-registered copies behind uncleared, so the server ended up with both at once. The bot now clears whichever scope it is not actively using, every time it starts, so switching between the two never doubles up again.' },
   { id: '2026-09-14-i', date: 'Sep 14, 2026',

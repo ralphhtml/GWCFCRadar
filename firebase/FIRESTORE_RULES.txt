@@ -57,10 +57,14 @@ service cloud.firestore {
     // Fields only the owner may ever set. forecaster is here because it is
     // what lets an account publish outlooks and alerts to everyone: a flag
     // people could write onto their own profile would be no gate at all.
+    // chatBlocked is here for the same reason: a flag that stops an account
+    // posting in the live chat is no moderation tool at all if the account
+    // can just clear it off its own document.
     function touchesRoleFields() {
       return request.resource.data.diff(resource.data).affectedKeys()
         .hasAny(['staffRole', 'staffRoleSetBy', 'staffRoleSetAt',
-                 'forecaster', 'forecasterSetBy', 'forecasterSetAt']);
+                 'forecaster', 'forecasterSetBy', 'forecasterSetAt',
+                 'chatBlocked', 'chatBlockedBy', 'chatBlockedAt']);
     }
 
     function isStaff() {
@@ -68,6 +72,14 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.staffRole
            in ['moderator', 'administrator', 'leadership']);
+    }
+
+    // Whether the SIGNED-IN account itself is blocked from chat - read off
+    // its own document, never off whatever the message being written claims.
+    function isChatBlocked() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.chatBlocked == true;
     }
 
     // Anonymous sign-in counts as signed in. The chat bridge uses it, so
@@ -111,7 +123,8 @@ service cloud.firestore {
       allow create: if isOwner()
         || (isSignedIn() && request.auth.uid == uid
             && !('staffRole' in request.resource.data)
-            && !('forecaster' in request.resource.data));
+            && !('forecaster' in request.resource.data)
+            && !('chatBlocked' in request.resource.data));
 
       allow update: if isOwner()
         || (isSignedIn() && request.auth.uid == uid && !touchesRoleFields());
@@ -224,6 +237,9 @@ service cloud.firestore {
     // signs in anonymously, so anonymous writes are accepted only for messages
     // relayed from Discord, never for ones claiming to come from the site.
     // Nothing can be edited after the fact; moderators and above can delete.
+    // An account the owner has blocked (users/{uid}.chatBlocked) cannot post
+    // one of these at all - checked server-side here, not just hidden in the
+    // composer, so the block holds even against a direct Firestore write.
     match /chat/{msgId} {
       allow read: if true;
       allow create: if request.resource.data.text is string
@@ -244,7 +260,8 @@ service cloud.firestore {
             || request.resource.data.audio.size() <= 750000)
         && (
           (request.resource.data.source == 'radar' && realAccount()
-            && request.resource.data.uid == request.auth.uid)
+            && request.resource.data.uid == request.auth.uid
+            && !isChatBlocked())
           || (request.resource.data.source == 'discord' && isSignedIn())
         )
         // Mentions are optional, and bounded when present. This list is only
@@ -412,6 +429,8 @@ service cloud.firestore {
     }
   }
 }
+
+
 -------------------------------- TO HERE -------------------------------------
 
 
@@ -429,6 +448,10 @@ WHAT THESE RULES GUARANTEE
   an account an administrator has marked as a forecaster can publish one.
 - Only the Pi's own account (or the owner) can change the address the site
   fetches radar and model files from.
+- Only the owner can block or unblock an account from the live chat, and a
+  blocked account cannot clear that flag off its own document - nor post a
+  chat message at all, even by writing to Firestore directly rather than
+  through the page.
 
 
 DIRECT MESSAGES
