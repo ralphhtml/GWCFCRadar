@@ -14590,6 +14590,195 @@ async function loadEcOutlook() {
   updateLoadStatus('');
 }
 
+// ── T-STORM TRACKER ──────────────────────────────────────────────────────
+// A dashed circle around every storm cell the radar you are currently
+// decoding turns up, colour-coded by how hard it is hitting, with a line and
+// tick marks ahead of it guessing where the same cell will be in 10, 20, 30
+// and 40 minutes if it keeps moving the way it has. The idea, and the four
+// time steps, come from a site called wxtools.org.
+//
+// The cell detector (_fxCellsFromMesh) and the motion tracker's geometry
+// (_fxKm/_fxBearing/_fxCompass/_fxProject) already exist, built for the AI
+// assistant's storm briefs. This overlay reuses both but keeps its OWN
+// history (_tstHistory) rather than sharing the assistant's (_fxHistory):
+// the assistant only ever records the literal product string 'ref' (Level 2
+// reflectivity), while this overlay tracks reflectivity from either level by
+// its FAMILY, and the two must not silently change each other's behaviour.
+//
+// It only ever sees what this page has already decoded for its own picture:
+// a Level 2 volume, or a Level 3 file read from the bucket. The Normal
+// mosaic and MRMS arrive as finished tiles with no numbers behind them, so
+// there is nothing here for a cell detector to read while either is on
+// screen - the same reason the value filter and custom radar colours stop
+// at those two sources.
+let _tstOn = false;
+let _tstLayer = null;
+let _tstHistory = [];   // [{ t, station, cells }] oldest first, mirrors _fxHistory's shape
+const TST_TIER_LABEL = { 1: 'Moderate', 2: 'Heavy', 3: 'Extreme' };
+const TST_TIER_COLOR = { 1: '#ff9500', 2: '#ff2d2d', 3: '#b83bff' };
+// wxtools.org's three bands, read off the same peak dBZ _fxCellsFromMesh
+// already returns per cell: 35 is where a cell begins existing at all (the
+// clustering threshold), 50 and 60 split it into the three tiers.
+function _tstTier(maxDbz) {
+  return maxDbz >= 60 ? 3 : maxDbz >= 50 ? 2 : 1;
+}
+
+// A frame just got decoded and drawn. Nothing happens while the overlay is
+// off, so leaving it off costs literally nothing on every radar redraw.
+function _tstOnFrame(mesh, station, product, timeMs) {
+  if (!_tstOn) return;
+  try {
+    if (!mesh || !mesh.length) return;
+    const fam = (typeof _meshFamily === 'function') ? _meshFamily(product) : null;
+    if (fam !== 'ref') return;   // tracks reflectivity, the measurement a "cell" is
+    const t = timeMs || Date.now();
+    // Same frame seen twice (the live draw, then a loop rebuild reaching the
+    // same volume) replaces rather than doubles, or a cell that has not
+    // actually moved would read as one that jumped and came straight back.
+    _tstHistory = _tstHistory.filter(f => Math.abs(f.t - t) > 30000 || f.station !== station);
+    _tstHistory.push({ t, station, cells: _fxCellsFromMesh(mesh) });
+    _tstHistory.sort((a, b) => a.t - b.t);
+    if (_tstHistory.length > FX_HISTORY_MAX) _tstHistory = _tstHistory.slice(-FX_HISTORY_MAX);
+    _tstRedraw();
+  } catch (e) { /* a redraw must never break a radar draw */ }
+}
+
+// Matches one cell backwards through this overlay's own history to read its
+// speed and heading. Identical method to the AI assistant's _fxCellMotion,
+// kept as its own copy so the two histories stay genuinely independent.
+function _tstCellMotion(cell, station) {
+  const frames = _tstHistory.filter(f => f.station === station);
+  if (frames.length < 2) return null;
+  const newest = frames[frames.length - 1];
+  const track = [{ t: newest.t, lat: cell.lat, lon: cell.lon, max: cell.max }];
+  let cur = cell;
+  for (let i = frames.length - 2; i >= 0 && track.length < 6; i--) {
+    const dtMin = (newest.t - frames[i].t) / 60000;
+    if (dtMin <= 0 || dtMin > 40) continue;
+    const radiusKm = Math.max(12, dtMin * 1.7);
+    let best = null, bestKm = radiusKm;
+    for (const c of frames[i].cells) {
+      const km = _fxKm(cur.lat, cur.lon, c.lat, c.lon);
+      if (km < bestKm) { bestKm = km; best = c; }
+    }
+    if (!best) break;
+    track.push({ t: frames[i].t, lat: best.lat, lon: best.lon, max: best.max });
+    cur = best;
+  }
+  if (track.length < 2) return null;
+  const a = track[track.length - 1], b = track[0];   // oldest, newest
+  const dtH = (b.t - a.t) / 3600000;
+  if (dtH <= 0) return null;
+  const km = _fxKm(a.lat, a.lon, b.lat, b.lon);
+  const kmh = km / dtH;
+  if (km < 2) return { frames: track.length, kmh: 0, unreliable: true };
+  const brg = _fxBearing(a.lat, a.lon, b.lat, b.lon);
+  return {
+    frames: track.length, kmh: Math.round(kmh), mph: Math.round(kmh * 0.621371),
+    bearing: Math.round(brg), toward: _fxCompass(brg),
+    trend: (b.max - a.max) >= 4 ? 'strengthening' : (b.max - a.max) <= -4 ? 'weakening' : 'steady',
+  };
+}
+
+// Mapped onto the shape the shared alert popup expects, so a tracked cell
+// reads in the same style every other overlay's popup already does.
+function _tstMapped(cell, tier, motion, frameT) {
+  const label = TST_TIER_LABEL[tier];
+  const moveLine = (motion && motion.kmh > 0 && !motion.unreliable)
+    ? `Moving ${motion.toward} at ${motion.mph} mph (${motion.kmh} km/h).`
+    : (motion && motion.unreliable)
+      ? 'Holding roughly in place over its last several scans.'
+      : 'Not tracked across enough scans yet to read a direction.';
+  const trendLine = (motion && motion.trend && motion.trend !== 'steady')
+    ? ` The core is ${motion.trend}.` : '';
+  return {
+    event: `${label} Thunderstorm Cell`,
+    areaDesc: `Peak ${cell.max} dBZ`,
+    onset: new Date(frameT).toISOString(),
+    expires: (motion && motion.kmh > 0 && !motion.unreliable)
+      ? new Date(frameT + 40 * 60000).toISOString() : null,
+    senderName: 'Tracked from the radar you are viewing',
+    severity: label,
+    urgency: (motion && motion.trend) || '',
+    headline: moveLine + trendLine,
+    description: `A cluster of reflectivity at or above 35 dBZ, peaking at ${cell.max} dBZ. `
+      + moveLine + trendLine + ' The dashed circle traces the cell as detected in the current '
+      + 'scan; the line and dots ahead of it project where the same cell would be in 10, 20, 30 '
+      + 'and 40 minutes if it keeps moving the way it has. It is a straight-line guess from recent '
+      + 'motion, not an official forecast: a cell can turn, strengthen, weaken or die out at any time.',
+  };
+}
+
+// Rebuilt from the newest frame every time one lands. Older cells are not
+// redrawn on top of it - a cell list is the whole current picture, not
+// something to accumulate.
+function _tstRedraw() {
+  if (_tstLayer) { try { map.removeLayer(_tstLayer); } catch (e) {} _tstLayer = null; }
+  if (!_tstOn || !_tstHistory.length) return;
+  const newest = _tstHistory[_tstHistory.length - 1];
+  if (!newest.cells.length) return;
+  const pane = _ovPane('tstorm-tracker');
+  const items = [];
+  newest.cells.forEach(cell => {
+    const tier = _tstTier(cell.max);
+    const color = TST_TIER_COLOR[tier];
+    // A circle sized to the cell's own detected area (never smaller than a
+    // single map click can miss, never so large a cluster of small cells
+    // reads as one storm the size of a county).
+    const radiusM = Math.max(4000, Math.min(45000,
+      Math.sqrt(cell.areaKm2 / Math.PI) * 1000 * 1.15));
+    const circle = L.circle([cell.lat, cell.lon], {
+      pane, radius: radiusM, color, weight: 2.5, dashArray: '7 5',
+      fill: true, fillColor: color, fillOpacity: 0.08,
+    });
+    const motion = _tstCellMotion(cell, newest.station);
+    circle.on('click', function (ev) {
+      L.DomEvent.stop(ev);
+      const mapped = _tstMapped(cell, tier, motion, newest.t);
+      const html = _buildAlertPopupHTML(mapped, color);
+      const pop = L.popup({ className: 'ap-popup-container', maxWidth: 340, autoPan: true, closeButton: true })
+        .setLatLng(ev.latlng).setContent(html).openOn(map);
+      setTimeout(() => {
+        const el = pop.getElement ? pop.getElement() : null;
+        if (!el) return;
+        const cw = el.querySelector('.leaflet-popup-content-wrapper');
+        if (cw) { cw.style.borderColor = color; cw.style.boxShadow = `0 4px 28px rgba(0,0,0,0.7), 0 0 0 1px ${color}33`; }
+      }, 10);
+    });
+    items.push(circle);
+    if (motion && motion.kmh > 0 && !motion.unreliable) {
+      const end = _fxProject(cell.lat, cell.lon, motion.bearing, motion.kmh * (40 / 60));
+      items.push(L.polyline([[cell.lat, cell.lon], [end.lat, end.lon]], {
+        pane, color, weight: 2.5, opacity: 0.9, interactive: false,
+      }));
+      [10, 20, 30, 40].forEach(min => {
+        const pt = _fxProject(cell.lat, cell.lon, motion.bearing, motion.kmh * (min / 60));
+        items.push(L.circleMarker([pt.lat, pt.lon], {
+          pane, radius: min === 40 ? 4 : 2.5, color, weight: 1.5,
+          fill: true, fillColor: color, fillOpacity: 0.95, interactive: false,
+        }));
+      });
+    }
+  });
+  if (!items.length) return;
+  _tstLayer = L.layerGroup(items).addTo(map);
+}
+
+function _tstToggle() {
+  _tstOn = !_tstOn;
+  if (_tstOn) {
+    _tstRedraw();
+    if (!_tstHistory.length && typeof showToast === 'function') {
+      showToast('T-Storm Tracker reads whatever single-site radar you decode here: tap a radar '
+        + 'pill for Level 2, or Level 3 for a site the browser can read, and tracked cells will '
+        + 'appear as scans come in. It does not read the Normal mosaic or MRMS.', 6500);
+    }
+  } else if (_tstLayer) {
+    try { map.removeLayer(_tstLayer); } catch (e) {}
+    _tstLayer = null;
+  }
+}
+
 // ── TORNADO TRACKS / DAMAGE ASSESSMENT (NWS Damage Assessment Toolkit) ──
 // Real, verified NOAA service: services.dat.noaa.gov hosts the official DAT
 // "DamageViewer" feature service. Layer 2 ("Damage Polygons SDE") is the
@@ -29407,6 +29596,10 @@ function toggleOverlayPill(id) {
       clearInterval(_ecOutlookTimer); _ecOutlookTimer = null;
       if (_ecOutlookLayer) { try { map.removeLayer(_ecOutlookLayer); } catch(e){} _ecOutlookLayer = null; }
     }
+  } else if (id === 'tstorm-tracker') {
+    _tstToggle();
+    const pill = document.getElementById('op-tstorm-tracker');
+    if (pill) pill.classList.toggle('active', _tstOn);
   } else if (id === 'tornado-tracks') {
     _tornadoTracksActive = !_tornadoTracksActive;
     const pill = document.getElementById('op-tornado-tracks');
@@ -42740,6 +42933,15 @@ function _l3Attach(img, result, product, station) {
   try {
     if (typeof _fxRecordFrame === 'function') {
       _fxRecordFrame(result && result.meshData, station, product,
+        img.timeIso ? Date.parse(img.timeIso) : Date.now());
+    }
+  } catch (e) {}
+  // The T-Storm Tracker overlay reads the same decoded mesh, on its own
+  // independent history, so it works whether or not the AI assistant's
+  // history is tracking this product too.
+  try {
+    if (typeof _tstOnFrame === 'function') {
+      _tstOnFrame(result && result.meshData, station, product,
         img.timeIso ? Date.parse(img.timeIso) : Date.now());
     }
   } catch (e) {}
@@ -62216,6 +62418,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-14-a', date: 'Sep 14, 2026',
+    text: 'T-Storm Tracker, a new overlay. It circles storm cells picked out of the radar you are currently decoding, colour-coded by how hard they are hitting: orange for moderate, red for heavy, purple for extreme. A line and tick marks ahead of each one project 10, 20, 30 and 40 minutes out, based on how fast that cell has actually been moving. Info button and drag handle like every other overlay pill. It reads Level 2 or Level 3, not the Normal mosaic or MRMS, since those are pictures rather than raw values.' },
   { id: '2026-09-12-c', date: 'Sep 12, 2026',
     text: 'Radar compare, tidied. The panel that listed the compared sites is gone: each strip is named by its label on the map, and a small × on that label removes it. Taking the last strip out ends the comparison. The popup above a tapped radar pill no longer repeats the station’s name, since the pill under it already says it.' },
   { id: '2026-09-12-b', date: 'Sep 12, 2026',
@@ -62460,7 +62664,7 @@ function _srchBuildCatalog() {
   const OV_ICON = {
     alerts: 'siren', 'wx-alerts': 'siren', 'eas-alerts': 'siren',
     'spc-outlook': 'storm', 'spc-reports': 'storm', 'meso-disc': 'storm',
-    'nhc-outlook': 'cyclone', 'jtwc-outlook': 'cyclone', 'storm-centers': 'storm',
+    'nhc-outlook': 'cyclone', 'jtwc-outlook': 'cyclone', 'storm-centers': 'storm', 'tstorm-tracker': 'storm',
     'wpc-outlook': 'wave', lightning: 'storm', 'wind-particles': 'wind',
     'wind-barbs': 'wind', terminator: 'moon', 'wave-particles': 'wave', cloudcam: 'camera', radio: 'antenna',
     forecasts: 'cloud-sun', fronts: 'map', spotters: 'target',
@@ -64346,6 +64550,9 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="ov-pill" id="op-storm-centers" data-ovid="storm-centers" title="Storm Centers - radar-detected TVS and hail signatures">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('storm-centers')">Storm Centers</span><span class="ov-drag" title="Drag to reorder">⠿</span>
     </div>
+    <div class="ov-pill" id="op-tstorm-tracker" data-ovid="tstorm-tracker" title="T-Storm Tracker - tracked storm cells and where they are headed, from the radar you are decoding">
+      <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('tstorm-tracker')">T-Storm Tracker</span><span class="ov-drag" title="Drag to reorder">⠿</span>
+    </div>
   </div>
   <button id="overlay-toggle-btn" onclick="toggleOverlayLauncher()" title="Toggle overlays" aria-label="Toggle overlays">
     <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -65414,6 +65621,7 @@ const OV_DESCRIPTIONS = {
   'wind-barbs':       'Station-model wind barbs on a grid across the map, reading the same Surface Wind (10m) field the Wind Particles animate. The staff points back into the wind, and the feathers on it add up to the speed in knots: half feather 5, full feather 10, solid pennant 50, so 2 pennants plus a feather and a half is 115. A circle with a dot in it means calm. Feathers sit on the low-pressure side, which flips below the equator. Where the particles show you the flow, a barb gives you a number without a colour key.',
   'wind-particles':   'An animated flow of particles that streams across the map along the real Surface Wind (10m) direction, colored by speed. Independent of the Wind layer\'s color map, both can be on together. Tune Speed, Intensity, and Thickness under Settings → Particles → Wind Particles.',
   'wave-particles':   'An animated flow of particles that streams across the ocean along real wave height and direction, colored the same way as the Waves layer. Independent of the Waves color map, both can be on together. Tune Speed, Intensity, Thickness, Density, and Opacity under Settings → Wave Particles.',
+  'tstorm-tracker':   'Storm cells picked out of the radar you are currently decoding (Level 2, or Level 3 for a site the browser can read raw), circled and colour-coded by peak reflectivity: orange for moderate (35-50 dBZ), red for heavy (50-60 dBZ), purple for extreme (60+ dBZ). A line with dots ahead of each cell projects 10, 20, 30 and 40 minutes out, spaced by how fast that cell has actually been moving over its last several scans. It is a straight-line guess from recent motion, not an official forecast: a cell can turn, strengthen, weaken or die out at any time. Needs a single-site radar picture on screen - it does not read the Normal mosaic or MRMS, since those arrive as pictures rather than raw values.',
 };
 
 function _ovInjectInfoButtons() {
