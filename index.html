@@ -13904,8 +13904,148 @@ const SPC_PROB_COLORS = {
   '0.02': '#008200', '0.05': '#8b4513', '0.10': '#ffff00',
   '0.15': '#ff0000', '0.30': '#ff00ff', '0.45': '#912cee', '0.60': '#104e8b'
 };
+// What each categorical code means, since "SLGT" tells nobody who does not
+// already know SPC's own shorthand what it actually means.
+const SPC_CAT_NAMES = {
+  TSTM: 'General Thunderstorms', MRGL: 'Marginal Risk', SLGT: 'Slight Risk',
+  ENH: 'Enhanced Risk', MDT: 'Moderate Risk', HIGH: 'High Risk',
+};
+const SPC_HAZ_NAMES = { cat: 'Categorical', torn: 'Tornado', wind: 'Wind', hail: 'Hail', prob: 'Severe Weather' };
+// SPC narrates each day's outlook in one discussion, not one per polygon -
+// Day 1-3 each publish their own; Day 4-8 share a single combined one.
+function _spcDiscUrls(dayNum) {
+  if (dayNum >= 4) return ['https://www.spc.noaa.gov/products/exper/day4-8/day4-8.txt'];
+  return [`https://www.spc.noaa.gov/products/outlook/day${Math.min(dayNum, 3)}otlk.txt`];
+}
+function _spcDiscKey(dayNum) { return dayNum >= 4 ? 'spc-4-8' : `spc-${Math.min(dayNum, 3)}`; }
 
 let _spcDay = 1, _spcHazard = 'cat';
+
+// ── OUTLOOK AREA POPUPS: the forecaster's own discussion, not just a code ──
+// SPC's "SLGT", WPC's "MDT" and NHC's risk percentage are the category a
+// polygon was coloured for, not what anyone actually wrote - the categories
+// are silent about WHY. Each of these three centres also publishes a plain
+// text discussion alongside its outlook, one per product rather than one
+// per polygon (SPC and WPC narrate the whole day's outlook in a single
+// discussion; NHC's Tropical Weather Outlook does the same per basin), so
+// tapping any area on a given outlook opens onto that same discussion -
+// which is honest, since that IS the one discussion issued for it.
+//
+// Popups open immediately with the short summary a click always had, and
+// the discussion text fills in underneath once it lands - a network fetch
+// must never make a tap wait before anything appears, the same rule every
+// other on-demand fetch in this file already follows.
+const _outlookDiscCache = new Map();   // key -> { at, text }
+const OUTLOOK_DISC_TTL_MS = 10 * 60 * 1000;
+
+// Strips the WMO/AWIPS routing header a raw NOAA text product starts with
+// (a handful of short all-caps lines: the routing code, the product code,
+// the issuing office line) before the first real paragraph, which is
+// reliably longer than any header line. HTML sources (NHC's .shtml pages)
+// are stripped down to their own text first, since this only ever expects
+// a plain discussion afterward.
+function _outlookCleanText(raw) {
+  let text = String(raw || '');
+  if (/^\s*<(!doctype|html)/i.test(text)) {
+    try { text = new DOMParser().parseFromString(text, 'text/html').body.textContent || ''; }
+    catch (e) {}
+  }
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  let start = 0;
+  while (start < lines.length && start < 8 && lines[start].trim().length < 40) start++;
+  return lines.slice(start).join('\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// Tries each URL through the same direct-then-proxy chain every other feed
+// here already uses, since none of these three sources reliably send CORS
+// headers of their own. Cached briefly per key so tapping several areas on
+// the same outlook does not re-fetch the same discussion for each one.
+async function _fetchOutlookDiscussion(key, urls) {
+  const hit = _outlookDiscCache.get(key);
+  if (hit && Date.now() - hit.at < OUTLOOK_DISC_TTL_MS) return hit.text;
+  const wrappers = [
+    u => u,
+    u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+    u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+    u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+  ];
+  for (const url of urls) {
+    for (const wrap of wrappers) {
+      try {
+        const r = await fetchWithTimeout(wrap(url), 8000);
+        if (!r.ok) continue;
+        const txt = await r.text();
+        const clean = _outlookCleanText(txt);
+        if (clean.length > 40) {
+          _outlookDiscCache.set(key, { at: Date.now(), text: clean });
+          return clean;
+        }
+      } catch (e) {}
+    }
+  }
+  return null;
+}
+
+// NHC's own text products read cleanest through the modern NWS product
+// API: a list of recent issuances, then the newest one's own body - both
+// plain JSON, both already CORS-enabled, so this is tried before falling
+// back to scraping the public .shtml page through a proxy.
+async function _nhcTwoText(code) {
+  const listUrl = `https://api.weather.gov/products/types/TWO${code}`;
+  const r = await fetchWithTimeout(listUrl, 8000);
+  if (!r.ok) return null;
+  const j = await r.json();
+  const id = j && j['@graph'] && j['@graph'][0] && j['@graph'][0].id;
+  if (!id) return null;
+  const r2 = await fetchWithTimeout(id, 8000);
+  if (!r2.ok) return null;
+  const j2 = await r2.json();
+  return (j2 && j2.productText) || null;
+}
+async function _nhcDiscussionFor(basin) {
+  const b = String(basin || '').toUpperCase();
+  const code = b.includes('EP') || b.includes('EAST') ? 'EP'
+             : b.includes('CP') || b.includes('CENTRAL') ? 'CP' : 'AT';
+  const key = 'nhc-' + code;
+  const hit = _outlookDiscCache.get(key);
+  if (hit && Date.now() - hit.at < OUTLOOK_DISC_TTL_MS) return hit.text;
+  try {
+    const txt = await _nhcTwoText(code);
+    const clean = _outlookCleanText(txt || '');
+    if (clean.length > 40) {
+      _outlookDiscCache.set(key, { at: Date.now(), text: clean });
+      return clean;
+    }
+  } catch (e) {}
+  return _fetchOutlookDiscussion(key, [`https://www.nhc.noaa.gov/text/MIATWO${code}.shtml`]);
+}
+
+// Opens the popup now, with the short summary a click into an outlook area
+// always had, and fills the discussion text in underneath once it lands -
+// or an honest line naming where to read it directly, if it could not be
+// reached. `mapped` is everything _buildAlertPopupHTML needs except
+// description, which this owns. Guarded against a second tap landing on a
+// different area while the first was still loading: a slow answer must
+// never overwrite a popup that has already moved on to something else.
+function _outlookOpenPopup(ev, mapped, color, discPromise, sourceUrl) {
+  mapped.description = 'Reading the forecast discussion…';
+  const html = _buildAlertPopupHTML(mapped, color);
+  const pop = L.popup({ className: 'ap-popup-container', maxWidth: 360, autoPan: true, closeButton: true })
+    .setLatLng(ev.latlng).setContent(html).openOn(map);
+  setTimeout(() => {
+    const el = pop.getElement ? pop.getElement() : null;
+    if (!el) return;
+    const cw = el.querySelector('.leaflet-popup-content-wrapper');
+    if (cw) { cw.style.borderColor = color; cw.style.boxShadow = `0 4px 28px rgba(0,0,0,0.7), 0 0 0 1px ${color}33`; }
+  }, 10);
+  discPromise.then(text => {
+    if (map._popup !== pop) return;   // a different area's popup is open now
+    mapped.description = text
+      ? text
+      : `Could not reach the discussion text just now. Read it directly at ${sourceUrl}.`;
+    pop.setContent(_buildAlertPopupHTML(mapped, color));
+  }).catch(() => {});
+}
 
 async function loadSPCOutlook(dayNum, hazard) {
   if (!dayNum) dayNum = _spcDay;
@@ -13954,7 +14094,25 @@ async function loadSPCOutlook(dayNum, hazard) {
       },
       onEachFeature: (f, layer) => {
         const label = f.properties.LABEL || f.properties.LABEL2 || f.properties.DN || 'Unknown';
-        layer.bindPopup(`<div class="alert-popup"><b>SPC Day ${dayLabel} ${haz.toUpperCase()}</b><br>${label}</div>`);
+        const dn = String(f.properties.DN || '').toUpperCase();
+        const color = f.properties.fill || SPC_COLORS[dn] || SPC_PROB_COLORS[f.properties.DN] || '#888';
+        const named = SPC_CAT_NAMES[label] || SPC_CAT_NAMES[dn];
+        const mapped = {
+          event: `SPC Day ${dayLabel} ${SPC_HAZ_NAMES[haz] || haz.toUpperCase()} Outlook`,
+          areaDesc: 'Continental United States',
+          senderName: 'Storm Prediction Center',
+          severity: named || label,
+          urgency: `Day ${dayLabel}`,
+          headline: named ? `${label} - ${named}` : label,
+        };
+        layer.on('click', ev => {
+          L.DomEvent.stop(ev);
+          const sourceUrl = dayNum >= 4
+            ? 'https://www.spc.noaa.gov/products/exper/day4-8/'
+            : `https://www.spc.noaa.gov/products/outlook/day${Math.min(dayNum, 3)}otlk.html`;
+          _outlookOpenPopup(ev, mapped, color,
+            _fetchOutlookDiscussion(_spcDiscKey(dayNum), _spcDiscUrls(dayNum)), sourceUrl);
+        });
       }
     }).addTo(map);
     updateLoadStatus('');
@@ -14001,6 +14159,35 @@ const WPC_ERO_COLORS = {
   'MDT':  '#e8001f',
   'HIGH': '#ff00ff',
 };
+const WPC_ERO_NAMES = { MRGL: 'Marginal', SLGT: 'Slight', MDT: 'Moderate', HIGH: 'High' };
+// Shared by the style function and the popup, so a feature's colour and its
+// popup's category can never read as two different risk levels for the
+// same polygon.
+function _wpcNorm(p) {
+  const rawVal = p.dn ?? p.DN ?? p.outlook ?? p.Outlook ?? p.OUTLOOK ??
+                 p.risk ?? p.Risk ?? p.RISK ?? p.label ?? p.LABEL ??
+                 p.cat ?? p.CAT ?? p.category ?? p.hazard ?? '';
+  const raw = String(rawVal).trim().toUpperCase();
+  const textMap = {
+    MARGINAL:'MRGL', SLIGHT:'SLGT', MODERATE:'MDT', HIGH:'HIGH',
+    'MARGINAL EXCESSIVE RAINFALL':'MRGL', 'SLIGHT EXCESSIVE RAINFALL':'SLGT',
+    'MODERATE EXCESSIVE RAINFALL':'MDT', 'HIGH EXCESSIVE RAINFALL':'HIGH',
+    MRGL:'MRGL', SLGT:'SLGT', MDT:'MDT'
+  };
+  // WPC ArcGIS dn field may be numeric probability thresholds (5/15/40/70) or ordinal (1/2/3/4)
+  const numMap = { '5':'MRGL', '15':'SLGT', '40':'MDT', '70':'HIGH',
+                   '1':'MRGL', '2':'SLGT', '3':'MDT', '4':'HIGH' };
+  return textMap[raw] || numMap[raw] || raw;
+}
+// One discussion narrates all three days at once, so every day's polygons
+// point at the same text - a few plausible URLs deep, the same resilience
+// WPC's own geojson fetch above already needs against this same host.
+function _wpcDiscUrls() {
+  return [
+    'https://www.wpc.ncep.noaa.gov/qpf/day1-3ero_da.txt',
+    'https://www.wpc.ncep.noaa.gov/discussions/nfdscc1.html',
+  ];
+}
 let _wpcOutlookActive = false, _wpcOutlookLayer = null, _wpcDay = 1;
 
 function _wpcPickDay(d) {
@@ -14054,28 +14241,29 @@ async function loadWPCOutlook(dayNum) {
     style: f => {
       const p = f.properties || {};
       if (!window._wpcDebugLogged) { window._wpcDebugLogged = true; console.log('[WPC ERO] feature props:', JSON.stringify(p)); }
-      const rawVal = p.dn ?? p.DN ?? p.outlook ?? p.Outlook ?? p.OUTLOOK ??
-                     p.risk ?? p.Risk ?? p.RISK ?? p.label ?? p.LABEL ??
-                     p.cat ?? p.CAT ?? p.category ?? p.hazard ?? '';
-      const raw = String(rawVal).trim().toUpperCase();
-      const textMap = {
-        MARGINAL:'MRGL', SLIGHT:'SLGT', MODERATE:'MDT', HIGH:'HIGH',
-        'MARGINAL EXCESSIVE RAINFALL':'MRGL', 'SLIGHT EXCESSIVE RAINFALL':'SLGT',
-        'MODERATE EXCESSIVE RAINFALL':'MDT', 'HIGH EXCESSIVE RAINFALL':'HIGH',
-        MRGL:'MRGL', SLGT:'SLGT', MDT:'MDT'
-      };
-      // WPC ArcGIS dn field may be numeric probability thresholds (5/15/40/70) or ordinal (1/2/3/4)
-      const numMap = { '5':'MRGL', '15':'SLGT', '40':'MDT', '70':'HIGH',
-                       '1':'MRGL', '2':'SLGT', '3':'MDT', '4':'HIGH' };
-      const norm = textMap[raw] || numMap[raw] || raw;
+      const norm = _wpcNorm(p);
       const fill = WPC_ERO_COLORS[norm] || '#888';
       return { color: fill, weight: 2, fillColor: fill, fillOpacity: 0.45 };
     },
     onEachFeature: (f, layer) => {
       const p = f.properties || {};
-      const rawVal = p.dn ?? p.DN ?? p.outlook ?? p.Outlook ?? p.risk ?? p.Risk ?? p.label ?? p.LABEL ?? 'Area';
-      const lbl = String(rawVal);
-      layer.bindPopup(`<div class="alert-popup"><b>WPC ERO Day ${dayNum}</b><br>${lbl.toUpperCase()} Excessive Rainfall Risk</div>`);
+      const norm = _wpcNorm(p);
+      const color = WPC_ERO_COLORS[norm] || '#888';
+      const named = WPC_ERO_NAMES[norm] || norm;
+      const mapped = {
+        event: `WPC Day ${dayNum} Excessive Rainfall Outlook`,
+        areaDesc: 'Continental United States',
+        senderName: 'Weather Prediction Center',
+        severity: named,
+        urgency: `Day ${dayNum}`,
+        headline: `${named} Excessive Rainfall Risk`,
+      };
+      layer.on('click', ev => {
+        L.DomEvent.stop(ev);
+        _outlookOpenPopup(ev, mapped, color,
+          _fetchOutlookDiscussion('wpc', _wpcDiscUrls()),
+          'https://www.wpc.ncep.noaa.gov/qpf/excessive_rainfall_outlook_ero.php');
+      });
     }
   }).addTo(map);
   updateLoadStatus('');
@@ -36403,9 +36591,27 @@ async function loadNHC5dayOutlook() {
         return { color: c, weight: 2, fillColor: c, fillOpacity: 0.28 };
       },
       onEachFeature: (f, l) => {
-        const risk = f.properties?.risk7day || 'Low';
-        const name = f.properties?.investname || '';
-        l.bindPopup(`<div class="alert-popup"><b>${name ? name + ' - ' : ''}NHC Invest Area</b><br>7-Day Dev. Chance: <b style="color:${riskColor(risk)}">${risk}</b></div>`);
+        const p = f.properties || {};
+        const risk = p.risk7day || 'Low';
+        const risk2 = p.risk2day || '';
+        const name = p.investname || '';
+        const basin = p.basin || p.BASIN || '';
+        const color = riskColor(risk);
+        const mapped = {
+          event: name || 'Tropical Disturbance',
+          areaDesc: basin || 'Atlantic / Pacific',
+          senderName: 'National Hurricane Center',
+          severity: risk,
+          urgency: risk2 ? `2-Day: ${risk2} · 7-Day: ${risk}` : `7-Day: ${risk}`,
+          headline: `${name ? name + ' - ' : ''}7-Day Development Chance: ${risk}`,
+        };
+        l.on('click', ev => {
+          L.DomEvent.stop(ev);
+          const basinCode = String(basin).toUpperCase().includes('EP') ? 'EP'
+            : String(basin).toUpperCase().includes('CP') ? 'CP' : 'AT';
+          _outlookOpenPopup(ev, mapped, color, _nhcDiscussionFor(basin),
+            `https://www.nhc.noaa.gov/text/MIATWO${basinCode}.shtml`);
+        });
       }
     }).addTo(map);
     tropicalLayers.push(nhc5dayLayer);
@@ -62766,6 +62972,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-14-e', date: 'Sep 14, 2026',
+    text: 'Tap an SPC, WPC or NHC outlook area for the real discussion now, not just the risk category it was coloured for. Each one opens the same style of popup Env. CN Outlooks already uses: the category first, then the actual forecaster’s written discussion underneath, read live from the Storm Prediction Center, the Weather Prediction Center or the National Hurricane Center.' },
   { id: '2026-09-14-d', date: 'Sep 14, 2026',
     text: 'Fixed the animation bar’s clock reading jumbled on narrow phones. On the smallest screens the clock pill was crowding the timeline down so far that its own tick times ended up crammed right against it, reading as one run of overlapping text. The pill now steps aside there, the same trade already made for the speed control, so the timeline and its tick labels always keep their room.' },
   { id: '2026-09-14-c', date: 'Sep 14, 2026',
@@ -65930,9 +66138,9 @@ const OV_DESCRIPTIONS = {
   'alerts':          'Live warnings and watches from the National Weather Service, like tornado warnings or flood watches. Tap a shape to read the full alert.',
   'wx-alerts':       'Opens a scrollable list of active NWS weather warnings and watches, as plain text instead of shapes on the map.',
   'eas-alerts':      'Opens a live feed of Emergency Alert System (EAS) broadcasts, with audio playback for each one.',
-  'spc-outlook':      "The Storm Prediction Center's forecast for severe thunderstorms over the next 8 days. Darker colors mean higher risk.",
+  'spc-outlook':      "The Storm Prediction Center's forecast for severe thunderstorms over the next 8 days. Darker colors mean higher risk. Tap an area for the forecaster's own written discussion of that day's outlook.",
   'spc-reports':      'Tornado, hail, and wind reports logged by local National Weather Service offices today.',
-  'nhc-outlook':      "The National Hurricane Center's 5 day tropical outlook, including any active hurricanes or tropical storms and their forecast tracks.",
+  'nhc-outlook':      "The National Hurricane Center's 5 day tropical outlook, including any active hurricanes or tropical storms and their forecast tracks. Tap a shaded area for the forecaster's own written Tropical Weather Outlook discussion.",
   'jtwc-outlook':     "The Joint Typhoon Warning Center's active systems, which is everything the National Hurricane Center does not cover: the western Pacific, the Indian Ocean and the southern hemisphere. That is the basin that produces the most tropical cyclones on Earth, and without this the map goes blank across it. A typhoon and a hurricane are the same thing with two names, so they are drawn with the same icons. JTWC is the US Navy rather than the National Weather Service, and it issues on a six hourly cycle. If the layer draws nothing, run _jtwcCheck() in the browser console to tell an empty basin apart from an unreachable server.",
   'gwcfc-outlook':    "Our own outlook, drawn by GWCFC forecasters on the Forecasting Portal and published from there. Everything on the published outlook appears here exactly as the forecaster composed it: development-chance areas (Low through Extreme), alert areas, storm markers, forecast cones with their centre line and time dots, and any alerts the desk has in force (unless the GWCFC Alerts overlay is on, which then owns them). Refreshes every five minutes while on. If nothing draws, no outlook is currently published.",
   'gwcfc-alerts':     "Warnings, watches and statements issued from the Forecasting Portal's alert desk: the GWCFC's own products, drawn as polygons in standard alert colours. Only alerts still in force appear, and an expired one leaves the map on its own. Tap a polygon for the product, the area it covers and when it ends. Checks for new issuances every minute while on.",
@@ -65949,7 +66157,7 @@ const OV_DESCRIPTIONS = {
   'pi-reflectivity':  "How heavy the precipitation is, in dBZ. The usual radar picture.",
   'pi-velocity':      "How fast the precipitation is moving toward or away from the antenna. Red beside green means rotation, which is what a tornado looks like on radar.",
   'pi-srvelocity':    "Same idea as Velocity, but with the storm's own motion subtracted out first, so what's left is rotation relative to the storm rather than the whole field drifting with the wind - a tighter, clearer couplet for spotting a mesocyclone.",
-  'wpc-outlook':      'Flash flood risk over the next 3 days, from the Weather Prediction Center.',
+  'wpc-outlook':      "Flash flood risk over the next 3 days, from the Weather Prediction Center. Tap an area for the forecaster's own written discussion.",
   'lightning':        'Live lightning strike data, updated as strikes happen.',
   'cloudcam':         'Upload a photo of the sky or storm damage near you, or browse photos other users have shared.',
   'radio':            'NOAA Weather Radio station locations, the stations that broadcast weather alerts over the radio.',
