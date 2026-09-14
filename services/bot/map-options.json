@@ -52,6 +52,18 @@
       "name": "JTWC Tropical Outlook"
     },
     {
+      "value": "atcf",
+      "name": "ATCF Updates"
+    },
+    {
+      "value": "ftm",
+      "name": "Forecast Time Machine"
+    },
+    {
+      "value": "ctm",
+      "name": "Climate Time Machine"
+    },
+    {
       "value": "gwcfc-outlook",
       "name": "GWCFC Outlook"
     },
@@ -128,6 +140,10 @@
       "name": "Environment Canada Weather Alerts"
     },
     {
+      "value": "ec-outlook",
+      "name": "Environment Canada Thunderstorm Outlooks"
+    },
+    {
       "value": "tornado-tracks",
       "name": "Tornado Tracks"
     },
@@ -150,6 +166,10 @@
     {
       "value": "storm-centers",
       "name": "Storm Centers"
+    },
+    {
+      "value": "tstorm-tracker",
+      "name": "T-Storm Tracker"
     }
   ],
   "basemaps": [
