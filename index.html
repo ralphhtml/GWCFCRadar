@@ -62769,6 +62769,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-14-j', date: 'Sep 14, 2026',
+    text: 'The Asturio Discord bot no longer shows every command twice. Registering /map, /link and the rest to a server used to leave the earlier globally-registered copies behind uncleared, so the server ended up with both at once. The bot now clears whichever scope it is not actively using, every time it starts, so switching between the two never doubles up again.' },
   { id: '2026-09-14-i', date: 'Sep 14, 2026',
     text: 'Fixed the Inspector reading the wrong spot. Its ring and readout used to be pinned to the dead centre of the page, on the assumption the map always fills the whole screen; the point it actually sampled was the dead centre of the map itself, which is not always the same pixel. They are the same calculation now, so the ring is always drawn on exactly the point being read.' },
   { id: '2026-09-14-h', date: 'Sep 14, 2026',

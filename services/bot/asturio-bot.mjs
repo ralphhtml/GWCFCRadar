@@ -841,9 +841,19 @@ async function registerCommands() {
   const rest = new REST({ version: '10' }).setToken(TOKEN);
   // Guild commands appear instantly; global ones can take an hour to propagate,
   // which is miserable while setting up. Set DISCORD_GUILD_ID for your server.
+  //
+  // Whichever scope is NOT being used here is cleared too, not just left
+  // alone. rest.put replaces the command set within one scope, but does
+  // nothing to the other one - so a bot first run without DISCORD_GUILD_ID
+  // (registering globally), then run again after it was set (registering to
+  // the guild instead), ended up with BOTH still live: Discord shows global
+  // and guild commands together in a server, so every single command - map,
+  // link, all of them - showed up twice rather than the new registration
+  // replacing the old.
   if (GUILD_ID) {
     await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-    console.log(`Registered /ask and /alerts to guild ${GUILD_ID}.`);
+    await rest.put(Routes.applicationCommands(CLIENT_ID), { body: [] });
+    console.log(`Registered to guild ${GUILD_ID}, and cleared any leftover global commands.`);
   } else {
     await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
     console.log('Registered globally. Can take up to an hour to show up.');
