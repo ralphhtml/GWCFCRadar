@@ -641,6 +641,15 @@ body {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
   transition: background 0.12s;
+  /* A phone squeezes this down near its min-width:0 floor (see the two
+     responsive rules below), and "01:40 PM EDT MON" does not fit in that
+     little room. A plain div wraps rather than overflowing sideways, and
+     with no overflow control here the wrapped second line spilled straight
+     out the bottom of this fixed-height pill and landed on the tick labels
+     underneath it - the exact collision this rule exists to rule out.
+     Clipped to one line with an ellipsis instead: never taller than its own
+     pill, whatever the width. */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 #anim-time-display:hover  { background: rgba(0,0,0,0.12); }
 #anim-time-display:active { background: rgba(0,0,0,0.20); }
@@ -1458,7 +1467,15 @@ body {
   #animbar { bottom: 26px; gap: 4px; }
   #speed-wrap { display: none; }
   #anim-time { min-width: 58px; }
-  #anim-time-display { font-size: 9px; padding: 0 4px; }
+  /* Same reasoning as speed-wrap above, for the same reason: there is not
+     room for everything on a phone this narrow, and something has to give.
+     The clock pill was the loser here, but silently - at 9px font "01:40 PM
+     EDT MON" squeezed the timeline down so far that its own tick labels
+     ended up crowded right against it, reading as jumbled, overlapping
+     text. The time is not lost: the tick labels under the track still show
+     it, and the hold-to-change-timezone gesture this pill also offered has
+     a full equivalent in Settings -> Timezone. */
+  #anim-time-display { display: none; }
 
   /* Sub bubbles and right menu , tighter vertical stack */
   #sub-bubbles { gap: 4px; }
@@ -62749,6 +62766,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-14-d', date: 'Sep 14, 2026',
+    text: 'Fixed the animation bar’s clock reading jumbled on narrow phones. On the smallest screens the clock pill was crowding the timeline down so far that its own tick times ended up crammed right against it, reading as one run of overlapping text. The pill now steps aside there, the same trade already made for the speed control, so the timeline and its tick labels always keep their room.' },
   { id: '2026-09-14-c', date: 'Sep 14, 2026',
     text: 'T-Storm Tracker’s circles now always fully contain the storm cell they are drawn for. They used to be sized from the cell’s total area, which undersells anything that is not roughly round, a squall line most of all. The circle is now the smallest one that still reaches every edge of the cell as actually detected, with a little slack added for the fact a sampled point stands for the ground around it, not one bare pixel.' },
   { id: '2026-09-14-b', date: 'Sep 14, 2026',
