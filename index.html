@@ -4717,33 +4717,99 @@ body.lite-mode #export-toolbar { display: none !important; }
 }
 .dtb-del-d:hover { background: rgba(255,60,60,0.18); color: #fff; }
 @media (max-width: 480px) { #dist-toolbar { left: 8px; transform: none; } }
-/* Same shell as #dist-toolbar - only one of the two is ever open at once, so
-   sharing the exact spot is not a collision, it is one docked slot on screen
-   that whichever measuring tool is active gets to use. */
-#brg-toolbar {
+/* ── RADAR COMPASS ── a full-screen sensor-driven dial, not a docked
+   toolbar panel like the tools around it - it needs the whole screen to
+   be legible while you are holding the phone up and turning with it. */
+#radc-overlay {
   display: none;
-  position: absolute;
-  bottom: calc(90px + env(safe-area-inset-bottom, 0px));
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1100;
-  background: rgb(14,18,24);
-  border: 1px solid rgba(0,140,186,0.35);
-  border-radius: 12px;
-  padding: 6px 10px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.7);
-  white-space: nowrap;
-  flex-wrap: nowrap;
-  user-select: none;
-  max-width: calc(100vw - 16px);
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  align-items: flex-start;
-  gap: 6px;
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  background: radial-gradient(ellipse at center, #0c1620 0%, #05080c 75%);
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
 }
-#brg-toolbar.visible { display: flex; }
-@media (max-width: 480px) { #brg-toolbar { left: 8px; transform: none; } }
+#radc-overlay.open { display: flex; }
+#radc-close {
+  position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); right: 14px;
+  width: 34px; height: 34px; border-radius: 50%;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.2);
+  color: #fff; font-size: 15px; cursor: pointer; z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+}
+#radc-close:hover { background: rgba(255,60,60,0.25); border-color: rgba(255,60,60,0.6); }
+#radc-status {
+  position: absolute; top: calc(16px + env(safe-area-inset-top, 0px)); left: 16px; right: 60px;
+  font-family: var(--mono); font-size: 11px; color: rgba(255,200,120,0.9);
+  min-height: 14px;
+}
+#radc-permission {
+  display: none;
+  flex-direction: column; align-items: center; gap: 14px;
+  max-width: 320px; text-align: center; padding: 0 20px;
+  color: rgba(212,232,255,0.9);
+}
+#radc-permission.show { display: flex; }
+#radc-permission svg { color: #e8b800; }
+#radc-permission p { font-family: var(--sans); font-size: 13px; line-height: 1.5; margin: 0; }
+#radc-dial-wrap {
+  display: none;
+  position: relative;
+  width: min(88vw, 62vh, 480px);
+  height: min(88vw, 62vh, 480px);
+}
+#radc-dial-wrap.show { display: block; }
+#radc-wedge-canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  border-radius: 50%;
+}
+#radc-dial-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.radc-bezel { fill: none; stroke: rgba(255,255,255,0.5); stroke-width: 1.5; }
+.radc-ring  { fill: none; stroke: rgba(255,255,255,0.14); stroke-width: 1; }
+#radc-center-dot { fill: #4dd0e1; stroke: rgba(0,0,0,0.6); stroke-width: 1; }
+.radc-tick { stroke: rgba(255,255,255,0.55); stroke-width: 1; }
+.radc-tick.major { stroke: rgba(255,255,255,0.85); stroke-width: 1.6; }
+.radc-deg-lbl {
+  font-family: var(--mono); font-size: 9px; fill: rgba(212,232,255,0.75);
+  text-anchor: middle; dominant-baseline: middle;
+}
+.radc-card-lbl {
+  font-family: var(--display); font-weight: 700; font-size: 15px; fill: #fff;
+  text-anchor: middle; dominant-baseline: middle;
+}
+#radc-range-labels {
+  position: absolute; inset: 0; pointer-events: none;
+}
+.radc-range-lbl {
+  position: absolute;
+  font-family: var(--mono); font-size: 10px; color: rgba(212,232,255,0.8);
+  background: rgba(5,8,12,0.7); padding: 1px 4px; border-radius: 3px;
+  transform: translate(-50%, -50%);
+}
+.radc-range-lbl.active { color: #4dd0e1; font-weight: 700; }
+#radc-pointer {
+  position: absolute; top: -22px; left: 50%; transform: translateX(-50%);
+  color: #ff5555; font-size: 22px; line-height: 1;
+  filter: drop-shadow(0 0 4px rgba(255,60,60,0.7));
+}
+#radc-heading-readout {
+  position: absolute; top: -46px; left: 50%; transform: translateX(-50%);
+  font-family: var(--mono); font-weight: 700; font-size: 20px; color: #fff;
+  background: rgba(5,8,12,0.75); border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px; padding: 3px 10px; white-space: nowrap;
+}
+#radc-range-readout {
+  margin-top: 18px;
+  font-family: var(--mono); font-size: 11px; color: rgba(212,232,255,0.75);
+  text-align: center;
+}
+#radc-tilt-debug {
+  margin-top: 4px;
+  font-family: var(--mono); font-size: 9px; color: rgba(212,232,255,0.35);
+}
+
 /* ── MAP ROTATION ── */
 #map {
   transform-origin: center center;
@@ -10114,7 +10180,6 @@ body.clean-mode #text-toolbar,
 body.clean-mode #stormcone-toolbar,
 body.clean-mode #radius-toolbar,
 body.clean-mode #dist-toolbar,
-body.clean-mode #brg-toolbar,
 body.clean-mode #poly-toolbar {
   opacity: 0 !important;
   pointer-events: none !important;
@@ -10124,7 +10189,7 @@ body.clean-mode #poly-toolbar {
 #right-menu, #sub-bubbles, #top-search-bar, #lqm-profile-btn, #lqm-ai-btn,
 #overlay-launcher, #overlay-toggle-btn,
 #map-compass, #map-reset-bearing,
-#draw-toolbar, #text-toolbar, #stormcone-toolbar, #radius-toolbar, #dist-toolbar, #brg-toolbar, #poly-toolbar {
+#draw-toolbar, #text-toolbar, #stormcone-toolbar, #radius-toolbar, #dist-toolbar, #poly-toolbar {
   transition: opacity 0.35s ease;
 }
 /* Tiny restore hint visible only in clean mode */
@@ -10808,24 +10873,6 @@ body.clean-mode #clean-hint { opacity: 1; }
   <div id="dtb-list"></div>
 </div>
 
-<!-- BEARING TOOLBAR -->
-<div id="brg-toolbar">
-  <div class="dtb-top-row-d">
-    <div class="dtb-drag" id="brg-drag-handle" title="Drag to move">⠿</div>
-    <span class="dtb-title-d">
-      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="9.25"/><line x1="12" y1="1.8" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.2"/><line x1="1.8" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22.2" y2="12"/><path d="M12 5.3 L14.4 12 L12 12 Z" fill="currentColor" stroke="none"/><path d="M12 5.3 L9.6 12 L12 12 Z" fill="currentColor" fill-opacity="0.3" stroke="none"/><path d="M12 18.7 L14.4 12 L12 12 Z" fill="currentColor" fill-opacity="0.3" stroke="none"/><path d="M12 18.7 L9.6 12 L12 12 Z" fill="currentColor" stroke="none"/></svg>
-      BEARING
-    </span>
-    <div class="dtb-sep"></div>
-    <button class="dtb-btn-d" onclick="_brgClearAll()" title="Remove all">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M9 6V4h6v2"/></svg>
-    </button>
-    <div class="dtb-sep"></div>
-    <button id="brg-close-btn" onclick="_brgClose()">&#x2715;</button>
-  </div>
-  <div id="brg-list"></div>
-</div>
-
 <div id="poly-toolbar">
   <div class="dtb-drag" id="poly-drag" title="Drag to move">⠿</div>
   <span class="dtb-label">
@@ -10870,6 +10917,45 @@ body.clean-mode #clean-hint { opacity: 1; }
   <button id="ptb-close" onclick="deactivateTool()" title="Exit polygon tool"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-close></use></svg></button>
 </div>
 <div id="ptb-stats"></div>
+
+<!-- RADAR COMPASS: a full-screen dial that turns with the phone's own
+     compass sensor and paints a wedge of the real radar picture toward
+     wherever it is pointed. Tilting the phone steps through range rings. -->
+<div id="radc-overlay">
+  <button id="radc-close" onclick="_radcClose()" title="Close">&#x2715;</button>
+  <div id="radc-status"></div>
+
+  <div id="radc-permission">
+    <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.4">
+      <circle cx="12" cy="12" r="9.25"/>
+      <path d="M12 5.3 L14.4 12 L12 12 Z" fill="currentColor" stroke="none"/>
+      <path d="M12 5.3 L9.6 12 L12 12 Z" fill="currentColor" fill-opacity="0.3" stroke="none"/>
+      <path d="M12 18.7 L14.4 12 L12 12 Z" fill="currentColor" fill-opacity="0.3" stroke="none"/>
+      <path d="M12 18.7 L9.6 12 L12 12 Z" fill="currentColor" stroke="none"/>
+    </svg>
+    <p>Radar Compass needs your phone's compass and your location to point at the real radar picture around you.</p>
+    <button class="tm-btn tm-btn-go" onclick="_radcRequestPermission()">Enable Compass</button>
+  </div>
+
+  <div id="radc-dial-wrap">
+    <canvas id="radc-wedge-canvas" width="640" height="640"></canvas>
+    <svg id="radc-dial-svg" viewBox="0 0 220 220">
+      <circle class="radc-bezel" cx="110" cy="110" r="104"/>
+      <circle class="radc-ring" cx="110" cy="110" r="26"/>
+      <circle class="radc-ring" cx="110" cy="110" r="52"/>
+      <circle class="radc-ring" cx="110" cy="110" r="78"/>
+      <circle class="radc-ring" cx="110" cy="110" r="104"/>
+      <g id="radc-rotating"></g>
+      <circle id="radc-center-dot" cx="110" cy="110" r="4.5"/>
+    </svg>
+    <div id="radc-range-labels"></div>
+    <div id="radc-pointer">&#9660;</div>
+    <div id="radc-heading-readout">--&deg;</div>
+  </div>
+
+  <div id="radc-range-readout"></div>
+  <div id="radc-tilt-debug"></div>
+</div>
 
     <!-- Animation Bar -->
     <div id="recenter-float" onclick="recenterMap()" style="display:none"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-target></use></svg> Tap to recenter</div>
@@ -10963,10 +11049,12 @@ body.clean-mode #clean-hint { opacity: 1; }
     </svg>
   </button>
 
-  <!-- 4b: Bearing , a real compass face: bezel, the four cardinal ticks,
-       and a pinwheel needle alternating solid/light the way a physical
-       compass needle actually reads, not a plain arrow. -->
-  <button class="tool-btn" id="tool-bearing" onclick="startBearingTool()" title="Bearing , click two points for the compass direction between them">
+  <!-- 4b: Radar Compass , a real compass face: bezel, the four cardinal
+       ticks, and a pinwheel needle alternating solid/light the way a
+       physical compass needle actually reads. Opens a full-screen dial
+       that turns with the phone's own compass, tilts through range rings,
+       and paints a wedge of real radar data toward wherever it is pointed. -->
+  <button class="tool-btn" id="tool-radar-compass" onclick="startRadarCompassTool()" title="Radar Compass , point your phone to see the radar in that direction">
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
       <circle cx="12" cy="12" r="9.25"/>
       <line x1="12" y1="1.8" x2="12" y2="4"/>
@@ -37962,8 +38050,6 @@ function _clearListeners() {
   map.off('click',       _onDistClick);
   map.off('mousemove',   _onDistMove);
   map.off('dblclick',    _onDistDbl);
-  map.off('click',       _onBrgClick);
-  map.off('mousemove',   _onBrgMove);
   map.off('click',       _onTextClick);
   map.off('mousemove',   _onScMove);
   map.off('click',       _onScClick);
@@ -38001,7 +38087,6 @@ function clearAllDrawings() {
   if (_polyFinal)    { map.removeLayer(_polyFinal);    _polyFinal    = null; }
   if (_polyPreview)  { map.removeLayer(_polyPreview);  _polyPreview  = null; }
   _dtbClearAll();
-  _brgClearAll();
   _txtClear();
   if (typeof _scClearAll === 'function') _scClearAll(); // remove all storm cones
   // Clear polygon spatial filter
@@ -38011,6 +38096,7 @@ function clearAllDrawings() {
 function _onRightClick(e) { L.DomEvent.preventDefault(e); deactivateTool(); }
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') deactivateTool();
+  if (e.key === 'Escape' && typeof _radcOn !== 'undefined' && _radcOn) _radcClose();
   // Z = zoom in, X = zoom out (skip if typing in an input)
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   if (e.key === 'z' || e.key === 'Z') {
@@ -42476,172 +42562,379 @@ function _onDistDbl(e) {
   _dtbFinalize();
 }
 
-// ── BEARING ──
-// ── BEARING TOOL (compass direction between two points) ──
-//
-// Two clicks, not the open-ended path Distance draws: a bearing is only a
-// meaningful thing to ask about two points, start and end, and stopping
-// after the second click means there is no double-click or Esc needed to
-// close a measurement out - it finishes itself, and the very next click
-// starts the next one.
-const _BRG_COLORS = ['#e8b800','#ff6b6b','#54a0ff','#1dd1a1','#ff9f43','#48dbfb','#ff9ff3'];
-// The 16-point compass rose, in 22.5-degree slices centred on each name.
-const BRG_CARDINALS = ['N','NNE','NE','ENE','E','ESE','SE','SSE',
-                        'S','SSW','SW','WSW','W','WNW','NW','NNW'];
-let _brgMeasurements = [];
-let _brgNextId = 1;
-let _brgActive = null;   // { id, color, pts: [start] or [start,end], layers, deg }
+// ── RADAR COMPASS ──
+// A full-screen dial driven by the phone's own compass and tilt sensors,
+// painting a wedge of the real radar picture toward wherever the phone is
+// pointed. Rotation direction and the tilt-to-range mapping follow the
+// documented sensor conventions (iOS's webkitCompassHeading, Android's
+// absolute deviceorientation alpha), but nothing in this sandbox owns a
+// gyroscope to check them against a real phone with - if the dial turns
+// the wrong way, or a tilt jumps to the wrong ring, that is the first
+// place to look, and RADC_TILT_THRESHOLDS below is where to retune it.
+const RADC_RANGES_KM = [10, 25, 50, 100];
+const RADC_CARDINALS = ['N','NNE','NE','ENE','E','ESE','SE','SSE',
+                         'S','SSW','SW','WSW','W','WNW','NW','NNW'];
+let _radcOn = false;
+let _radcHeading = null;        // last known heading, degrees clockwise from true north
+let _radcRangeIdx = 2;          // index into RADC_RANGES_KM - starts at 50 km
+let _radcLoc = null;            // { lat, lon }
+let _radcOrientEvent = null;    // which DOM event name is actually listening, for cleanup
+let _radcOrientHandler = null;
+let _radcWedgeTimer = null;
+let _radcLastWedgeHeading = null;
+let _radcDialBuilt = false;
 
-// Initial bearing (great-circle, not a flat-map angle) from a to b, in
-// degrees clockwise from true north. The same formula every marine and
-// aviation bearing calculator uses.
-function _brgOf(a, b) {
+function _radcRangeKm() { return RADC_RANGES_KM[_radcRangeIdx]; }
+function _radcCardinalFor(deg) { return RADC_CARDINALS[Math.round(deg / 22.5) % 16]; }
+
+function _radcSetStatus(msg) {
+  const el = document.getElementById('radc-status');
+  if (el) el.textContent = msg || '';
+}
+
+function _radcFmtRange(km) {
+  const useKm = (typeof _units !== 'undefined' && _units.dist === 'km');
+  return useKm ? Math.round(km) + ' km' : Math.round(km * 0.621371) + ' mi';
+}
+
+// Destination point at a given true bearing and distance from a lat/lon -
+// the standard great-circle formula.
+function _radcDestPoint(lat, lon, bearingDeg, distKm) {
+  const R = 6371;
   const toRad = d => d * Math.PI / 180, toDeg = r => r * 180 / Math.PI;
-  const lat1 = toRad(a.lat), lat2 = toRad(b.lat), dLon = toRad(b.lng - a.lng);
-  const y = Math.sin(dLon) * Math.cos(lat2);
-  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
-  return (toDeg(Math.atan2(y, x)) + 360) % 360;
-}
-function _brgCardinal(deg) { return BRG_CARDINALS[Math.round(deg / 22.5) % 16]; }
-function _brgFmt(deg) { return String(Math.round(deg)).padStart(3, '0') + '° ' + _brgCardinal(deg); }
-// The same silhouette a plain CSS triangle drew before - apex at the top,
-// base at the bottom where it pins to the endpoint - but split down the
-// middle into two shades, the way a real compass needle reads (its far
-// half always duller than the half pointing the way it is reading). Rests
-// point-up (0deg, north) and rotates clockwise by the bearing - the same
-// direction degrees already run in, so the rotation is the bearing itself
-// with nothing to invert.
-function _brgArrowHtml(color, deg) {
-  return `<svg width="14" height="14" viewBox="0 0 14 14" `
-    + `style="transform:rotate(${deg}deg);transform-origin:50% 100%;overflow:visible;">`
-    + `<path d="M7 0 L14 14 L7 14 Z" fill="${color}"/>`
-    + `<path d="M7 0 L0 14 L7 14 Z" fill="${color}" fill-opacity="0.35"/>`
-    + `</svg>`;
+  const br = toRad(bearingDeg), la1 = toRad(lat), lo1 = toRad(lon);
+  const la2 = Math.asin(Math.sin(la1) * Math.cos(distKm / R)
+    + Math.cos(la1) * Math.sin(distKm / R) * Math.cos(br));
+  const lo2 = lo1 + Math.atan2(Math.sin(br) * Math.sin(distKm / R) * Math.cos(la1),
+    Math.cos(distKm / R) - Math.sin(la1) * Math.sin(la2));
+  return { lat: toDeg(la2), lng: ((toDeg(lo2) + 540) % 360) - 180 };
 }
 
-function startBearingTool() {
-  if (activeTool === 'bearing') { _brgClose(); return; }
+async function startRadarCompassTool() {
+  if (_radcOn) { _radcClose(); return; }
   deactivateTool();
-  activeTool = 'bearing';
-  _setBtn('tool-bearing');
-  map.dragging.enable();
-  map.on('click', _onBrgClick);
-  map.on('mousemove', _onBrgMove);
-  map.on('contextmenu', _onRightClick);
-  _brgShow();
-  _brgActive = null;
+  const overlay = document.getElementById('radc-overlay');
+  if (!overlay) return;
+  overlay.classList.add('open');
+  _radcOn = true;
+  _setBtn('tool-radar-compass');
+  document.getElementById('radc-dial-wrap')?.classList.remove('show');
+  document.getElementById('radc-permission')?.classList.remove('show');
+  if (!_radcDialBuilt) { _radcBuildDial(); _radcDialBuilt = true; }
+  _radcBuildRangeLabels();
+
+  // iOS 13+ Safari refuses raw sensor events until asked, and that ask has
+  // to happen from inside a tap - this button press is that tap. Every
+  // other browser just starts listening, no dialog involved.
+  const needsIOSPermission = typeof DeviceOrientationEvent !== 'undefined'
+    && typeof DeviceOrientationEvent.requestPermission === 'function';
+  if (needsIOSPermission) {
+    document.getElementById('radc-permission')?.classList.add('show');
+    return; // _radcRequestPermission() takes it from here, on the next tap
+  }
+  await _radcActuallyStart();
 }
 
-function _brgShow() { document.getElementById('brg-toolbar')?.classList.add('visible'); }
-function _brgHide() { document.getElementById('brg-toolbar')?.classList.remove('visible'); }
-function _brgClose() {
-  _brgClearAll();
-  _brgHide();
-  if (activeTool === 'bearing') deactivateTool();
-}
-
-function _onBrgClick(e) {
-  if (activeTool !== 'bearing') return;
-  L.DomEvent.stopPropagation(e);
-  if (!_brgActive) {
-    const color = _BRG_COLORS[(_brgNextId - 1) % _BRG_COLORS.length];
-    const m = L.circleMarker(e.latlng,
-      { radius: 5, color, fillColor: color, fillOpacity: 1, weight: 1.5 }).addTo(map);
-    _brgActive = { id: _brgNextId++, color, pts: [e.latlng],
-                   layers: { line: null, preview: null, markers: [m], arrow: null, label: null } };
-    _brgRebuildList();
+async function _radcRequestPermission() {
+  try {
+    const res = await DeviceOrientationEvent.requestPermission();
+    if (res !== 'granted') {
+      _radcSetStatus('Compass access was not granted. Turn it on in your browser’s site settings and try again.');
+      return;
+    }
+  } catch (e) {
+    _radcSetStatus('Could not ask for compass access: ' + (e.message || e));
     return;
   }
-  _brgFinalize(e.latlng);
+  document.getElementById('radc-permission')?.classList.remove('show');
+  await _radcActuallyStart();
 }
 
-function _brgFinalize(endLatLng) {
-  const da = _brgActive;
-  if (!da) return;
-  if (da.layers.preview) { map.removeLayer(da.layers.preview); da.layers.preview = null; }
-  const a = da.pts[0], b = endLatLng;
-  const deg = _brgOf(a, b);
-  const m2 = L.circleMarker(b,
-    { radius: 5, color: da.color, fillColor: da.color, fillOpacity: 1, weight: 1.5 }).addTo(map);
-  const line = L.polyline([a, b], { color: da.color, weight: 2.5, opacity: 0.9 }).addTo(map);
-  const arrow = L.marker(b, { icon: L.divIcon({ className: '', html: _brgArrowHtml(da.color, deg),
-    iconSize: [14, 14], iconAnchor: [7, 14] }), interactive: false }).addTo(map);
-  const mid = L.latLng((a.lat + b.lat) / 2, (a.lng + b.lng) / 2);
-  const label = L.marker(mid, { icon: L.divIcon({ className: 'tool-label', html: _brgFmt(deg),
-    iconAnchor: [30, 22] }), interactive: false }).addTo(map);
-  da.pts.push(b);
-  da.layers.markers.push(m2);
-  da.layers.line = line;
-  da.layers.arrow = arrow;
-  da.layers.label = label;
-  da.deg = deg;
-  [line, arrow, label, ...da.layers.markers].forEach(l => _allToolLayers.push(l));
-  _brgMeasurements.push(da);
-  _brgActive = null;
-  _brgRebuildList();
-}
-
-function _onBrgMove(e) {
-  if (activeTool !== 'bearing' || !_brgActive || _brgActive.pts.length !== 1) return;
-  if (_brgActive.layers.preview) map.removeLayer(_brgActive.layers.preview);
-  _brgActive.layers.preview = L.polyline([_brgActive.pts[0], e.latlng],
-    { color: _brgActive.color, weight: 1.5, dashArray: '5,5', opacity: 0.55 }).addTo(map);
-}
-
-function _brgRemoveLayers(m) {
-  [m.layers.line, m.layers.arrow, m.layers.label, ...m.layers.markers].forEach(l => {
-    if (!l) return;
-    try { map.removeLayer(l); } catch (e) {}
-    const i = _allToolLayers.indexOf(l); if (i !== -1) _allToolLayers.splice(i, 1);
-  });
-}
-
-function _brgDelete(id) {
-  const idx = _brgMeasurements.findIndex(m => m.id === id);
-  if (idx === -1) return;
-  _brgRemoveLayers(_brgMeasurements[idx]);
-  _brgMeasurements.splice(idx, 1);
-  _brgRebuildList();
-}
-
-function _brgCancelDrawOnly() {
-  if (!_brgActive) return;
-  const l = _brgActive.layers;
-  if (l.preview) { try { map.removeLayer(l.preview); } catch (e) {} }
-  l.markers.forEach(m => { try { map.removeLayer(m); } catch (e) {} });
-  _brgActive = null;
-  _brgRebuildList();
-}
-
-function _brgClearAll() {
-  _brgCancelDrawOnly();
-  _brgMeasurements.forEach(_brgRemoveLayers);
-  _brgMeasurements = [];
-  _brgRebuildList();
-}
-
-function _brgRebuildList() {
-  const list = document.getElementById('brg-list');
-  if (!list) return;
-  list.innerHTML = '';
-  _brgMeasurements.forEach(m => {
-    const row = document.createElement('div');
-    row.className = 'dtb-row-d';
-    row.innerHTML =
-      `<span class="dtb-id-d" style="color:${m.color}">&#x25CF;</span>` +
-      `<span class="dtb-dist-val">${_brgFmt(m.deg)}</span>` +
-      `<button class="dtb-del-d" onclick="_brgDelete(${m.id})" title="Delete">&#x2715;</button>`;
-    list.appendChild(row);
-  });
-  if (_brgActive) {
-    const row = document.createElement('div');
-    row.className = 'dtb-row-d drawing';
-    row.innerHTML =
-      `<span class="dtb-id-d" style="color:${_brgActive.color}">&#x25CF;</span>` +
-      `<span class="dtb-dist-val">Click where it is headed…</span>` +
-      `<button class="dtb-del-d" onclick="_brgCancelDrawOnly()" title="Cancel">&#x2715;</button>`;
-    list.appendChild(row);
+async function _radcActuallyStart() {
+  document.getElementById('radc-dial-wrap')?.classList.add('show');
+  _radcSetStatus('Finding your location…');
+  _radcLoc = await _radcGetLocation();
+  if (!_radcLoc) {
+    const c = (typeof map !== 'undefined' && map) ? map.getCenter() : null;
+    _radcLoc = c ? { lat: c.lat, lon: c.lng } : { lat: 0, lon: 0 };
+    _radcSetStatus('Could not get your exact location - showing the map’s current center instead.');
+  } else {
+    _radcSetStatus('');
   }
+  if (typeof _inspEnsureReadableTiles === 'function') _inspEnsureReadableTiles();
+  _radcStartSensors();
+  _radcRenderRangeLabels();
+  _radcScheduleWedge(true);
+}
+
+// Reuses the GPS Nav fix if one is already live and fresh rather than
+// asking twice; otherwise asks fresh, the same options and fallback shape
+// the welcome flow already uses elsewhere in this file.
+async function _radcGetLocation() {
+  try {
+    if (typeof _lastGpsPos !== 'undefined' && _lastGpsPos) {
+      return { lat: _lastGpsPos.coords.latitude, lon: _lastGpsPos.coords.longitude };
+    }
+  } catch (e) {}
+  if (!navigator.geolocation) return null;
+  return new Promise(res => {
+    let done = false;
+    const finish = v => { if (!done) { done = true; res(v); } };
+    setTimeout(() => finish(null), 9000);
+    try {
+      navigator.geolocation.getCurrentPosition(
+        p => finish({ lat: p.coords.latitude, lon: p.coords.longitude }),
+        () => finish(null),
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
+    } catch (e) { finish(null); }
+  });
+}
+
+function _radcStartSensors() {
+  _radcOrientHandler = _radcHandleOrientation;
+  // deviceorientationabsolute (Chrome/Android) reports a true compass
+  // heading in .alpha; plain deviceorientation is the only event iOS ever
+  // fires, and there .webkitCompassHeading is the real compass reading -
+  // .alpha on iOS is relative to wherever the phone happened to be
+  // pointed when the page loaded, not north, so it is never used once the
+  // webkit-specific field is present (see _radcComputeHeading).
+  _radcOrientEvent = ('ondeviceorientationabsolute' in window)
+    ? 'deviceorientationabsolute' : 'deviceorientation';
+  window.addEventListener(_radcOrientEvent, _radcOrientHandler);
+}
+
+function _radcStopSensors() {
+  if (_radcOrientHandler && _radcOrientEvent) {
+    window.removeEventListener(_radcOrientEvent, _radcOrientHandler);
+  }
+  _radcOrientHandler = null;
+  _radcOrientEvent = null;
+}
+
+// The compass heading itself: degrees clockwise from true north, 0-360.
+function _radcComputeHeading(e) {
+  if (typeof e.webkitCompassHeading === 'number' && isFinite(e.webkitCompassHeading)) {
+    return e.webkitCompassHeading;
+  }
+  if (typeof e.alpha === 'number' && isFinite(e.alpha)) {
+    let screenAngle = 0;
+    try {
+      if (screen.orientation && typeof screen.orientation.angle === 'number') screenAngle = screen.orientation.angle;
+      else if (typeof window.orientation === 'number') screenAngle = window.orientation;
+    } catch (err) {}
+    const h = 360 - e.alpha - screenAngle;
+    return ((h % 360) + 360) % 360;
+  }
+  return null;
+}
+
+// Tilt (front-back pitch, .beta) decides which range ring is "active".
+// Held up like a camera aimed at the horizon, beta usually sits near 90;
+// tipping the top of the phone DOWN toward the ground - looking at
+// something closer - raises it toward 180, tipping it UP toward the sky
+// lowers it toward 0.
+const RADC_TILT_THRESHOLDS = [60, 80, 100]; // three cut points make four bands
+function _radcRangeIdxForBeta(beta) {
+  if (beta == null || !isFinite(beta)) return _radcRangeIdx; // hold last known
+  const b = Math.abs(beta);
+  if (b < RADC_TILT_THRESHOLDS[0]) return 3; // farthest ring
+  if (b < RADC_TILT_THRESHOLDS[1]) return 2;
+  if (b < RADC_TILT_THRESHOLDS[2]) return 1;
+  return 0; // nearest ring
+}
+
+function _radcHandleOrientation(e) {
+  if (!_radcOn) return;
+  const heading = _radcComputeHeading(e);
+  if (heading != null) {
+    _radcHeading = heading;
+    _radcApplyHeading(heading);
+  }
+  const newIdx = _radcRangeIdxForBeta(e.beta);
+  if (newIdx !== _radcRangeIdx) {
+    _radcRangeIdx = newIdx;
+    _radcRenderRangeLabels();
+    _radcScheduleWedge(true);
+  }
+  const dbg = document.getElementById('radc-tilt-debug');
+  if (dbg && typeof e.beta === 'number') dbg.textContent = `tilt ${Math.round(e.beta)}°`;
+  _radcScheduleWedge(false);
+}
+
+function _radcApplyHeading(heading) {
+  const g = document.getElementById('radc-rotating');
+  if (g) g.setAttribute('transform', `rotate(${-heading} 110 110)`);
+  const readout = document.getElementById('radc-heading-readout');
+  if (readout) readout.textContent = Math.round(heading) + '° ' + _radcCardinalFor(heading);
+}
+
+// Ticks, degree numbers and the four cardinal letters - built once into
+// #radc-rotating, since only their rotation ever changes after this. 0deg
+// is drawn at the top so an unrotated dial reads as "facing north".
+function _radcBuildDial() {
+  const g = document.getElementById('radc-rotating');
+  if (!g) return;
+  const cx = 110, cy = 110, r = 104;
+  const NS = 'http://www.w3.org/2000/svg';
+  const frag = document.createDocumentFragment();
+  for (let deg = 0; deg < 360; deg += 10) {
+    const major = deg % 30 === 0;
+    const rad = (deg - 90) * Math.PI / 180;
+    const rOuter = r, rInner = r - (major ? 9 : 5);
+    const x1 = cx + rOuter * Math.cos(rad), y1 = cy + rOuter * Math.sin(rad);
+    const x2 = cx + rInner * Math.cos(rad), y2 = cy + rInner * Math.sin(rad);
+    const line = document.createElementNS(NS, 'line');
+    line.setAttribute('x1', x1.toFixed(2)); line.setAttribute('y1', y1.toFixed(2));
+    line.setAttribute('x2', x2.toFixed(2)); line.setAttribute('y2', y2.toFixed(2));
+    line.setAttribute('class', 'radc-tick' + (major ? ' major' : ''));
+    frag.appendChild(line);
+    if (major) {
+      const rLbl = r - 18;
+      const lx = cx + rLbl * Math.cos(rad), ly = cy + rLbl * Math.sin(rad);
+      const t = document.createElementNS(NS, 'text');
+      t.setAttribute('x', lx.toFixed(2)); t.setAttribute('y', ly.toFixed(2));
+      t.setAttribute('class', 'radc-deg-lbl');
+      t.textContent = String(deg).padStart(3, '0');
+      frag.appendChild(t);
+    }
+  }
+  [['N', 0], ['E', 90], ['S', 180], ['W', 270]].forEach(([label, deg]) => {
+    const rad = (deg - 90) * Math.PI / 180;
+    const rLbl = r - 32;
+    const lx = cx + rLbl * Math.cos(rad), ly = cy + rLbl * Math.sin(rad);
+    const t = document.createElementNS(NS, 'text');
+    t.setAttribute('x', lx.toFixed(2)); t.setAttribute('y', ly.toFixed(2));
+    t.setAttribute('class', 'radc-card-lbl');
+    t.textContent = label;
+    frag.appendChild(t);
+  });
+  g.appendChild(frag);
+}
+
+// Screen position for each range ring's label: fixed along one diagonal so
+// they never overlap the wedge or the dial's own rotating degree numbers,
+// whichever way the phone is currently facing.
+function _radcBuildRangeLabels() {
+  const host = document.getElementById('radc-range-labels');
+  if (!host) return;
+  host.innerHTML = '';
+  RADC_RANGES_KM.forEach((km, i) => {
+    const el = document.createElement('div');
+    el.className = 'radc-range-lbl';
+    el.dataset.idx = i;
+    const frac = (i + 1) / RADC_RANGES_KM.length; // matches the ring radii in the SVG
+    const pct = 50 + frac * 46 * Math.SQRT1_2; // along the down-right diagonal
+    el.style.left = pct + '%';
+    el.style.top = pct + '%';
+    host.appendChild(el);
+  });
+  _radcRenderRangeLabels();
+}
+
+function _radcRenderRangeLabels() {
+  document.querySelectorAll('.radc-range-lbl').forEach(el => {
+    const i = Number(el.dataset.idx);
+    el.textContent = _radcFmtRange(RADC_RANGES_KM[i]);
+    el.classList.toggle('active', i === _radcRangeIdx);
+  });
+  const readout = document.getElementById('radc-range-readout');
+  if (readout) readout.textContent = 'Showing out to ' + _radcFmtRange(_radcRangeKm())
+    + ' · tilt the phone to change range';
+}
+
+// The wedge: real radar colour sampled in a fan around the current
+// heading, out to the active range ring, painted straight up from centre
+// since "up" is always wherever the phone is currently pointed. Recomputed
+// on a throttle rather than on every orientation event (which can fire
+// dozens of times a second) - immediately the first time, then only once
+// the heading has moved enough to matter or the active range changed.
+const RADC_WEDGE_HALF_DEG = 24;
+const RADC_WEDGE_ANGLE_STEPS = 9;
+const RADC_WEDGE_RANGE_STEPS = 6;
+const RADC_WEDGE_MIN_HEADING_DELTA = 4;
+const RADC_WEDGE_THROTTLE_MS = 400;
+
+function _radcScheduleWedge(force) {
+  if (!_radcOn) return;
+  if (!force && _radcLastWedgeHeading != null && _radcHeading != null) {
+    let d = Math.abs(_radcHeading - _radcLastWedgeHeading);
+    if (d > 180) d = 360 - d;
+    if (d < RADC_WEDGE_MIN_HEADING_DELTA) return;
+  }
+  if (_radcWedgeTimer) return;
+  _radcWedgeTimer = setTimeout(() => {
+    _radcWedgeTimer = null;
+    _radcDrawWedge();
+  }, RADC_WEDGE_THROTTLE_MS);
+}
+
+function _radcDrawWedge() {
+  const canvas = document.getElementById('radc-wedge-canvas');
+  if (!canvas || !_radcOn || !_radcLoc || _radcHeading == null) return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (typeof map === 'undefined' || !map) return;
+  const heading = _radcHeading;
+  _radcLastWedgeHeading = heading;
+  const rect = map.getContainer().getBoundingClientRect();
+  const rangeKm = _radcRangeKm();
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const rOuter = Math.min(cx, cy) - 4;
+  let anySample = false;
+  for (let a = 0; a < RADC_WEDGE_ANGLE_STEPS; a++) {
+    const frac = RADC_WEDGE_ANGLE_STEPS === 1 ? 0.5 : a / (RADC_WEDGE_ANGLE_STEPS - 1);
+    const screenDeg = frac * (RADC_WEDGE_HALF_DEG * 2) - RADC_WEDGE_HALF_DEG;
+    const bearing = heading + screenDeg;
+    for (let r = 1; r <= RADC_WEDGE_RANGE_STEPS; r++) {
+      const rFrac = r / RADC_WEDGE_RANGE_STEPS;
+      const distKm = rFrac * rangeKm;
+      const pt = _radcDestPoint(_radcLoc.lat, _radcLoc.lon, bearing, distKm);
+      let color = null;
+      try {
+        const cp = map.latLngToContainerPoint([pt.lat, pt.lng]);
+        const s = _inspSampleRadarColor(rect.left + cp.x, rect.top + cp.y);
+        if (s && !s.tainted && !s.transparent) {
+          const meta = _inspColorToDbz(s.r, s.g, s.b);
+          if (meta) color = meta.hex;
+        }
+      } catch (e) {}
+      if (!color) continue;
+      anySample = true;
+      const halfCellDeg = RADC_WEDGE_HALF_DEG * 2 / RADC_WEDGE_ANGLE_STEPS / 2;
+      const rad0 = (screenDeg - 90 - halfCellDeg) * Math.PI / 180;
+      const rad1 = (screenDeg - 90 + halfCellDeg) * Math.PI / 180;
+      const rInner = (r - 1) / RADC_WEDGE_RANGE_STEPS * rOuter;
+      const rCellOuter = r / RADC_WEDGE_RANGE_STEPS * rOuter;
+      ctx.beginPath();
+      ctx.moveTo(cx + rInner * Math.cos(rad0), cy + rInner * Math.sin(rad0));
+      ctx.arc(cx, cy, rCellOuter, rad0, rad1);
+      ctx.lineTo(cx + rInner * Math.cos(rad1), cy + rInner * Math.sin(rad1));
+      ctx.arc(cx, cy, rInner, rad1, rad0, true);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.85;
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+  const status = document.getElementById('radc-status');
+  if (status && status.textContent === '' && !anySample
+      && (typeof activeLayers === 'undefined' || !activeLayers.nexrad)) {
+    _radcSetStatus('Turn on Radar to see it painted here.');
+  }
+}
+
+function _radcClose() {
+  _radcOn = false;
+  _radcStopSensors();
+  if (_radcWedgeTimer) { clearTimeout(_radcWedgeTimer); _radcWedgeTimer = null; }
+  document.getElementById('radc-overlay')?.classList.remove('open');
+  document.getElementById('radc-dial-wrap')?.classList.remove('show');
+  document.getElementById('radc-permission')?.classList.remove('show');
+  _radcSetStatus('');
+  const canvas = document.getElementById('radc-wedge-canvas');
+  if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  _setBtn(null);
 }
 
 // ── TRACK MAKER ──
@@ -63065,6 +63358,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-15-b', date: 'Sep 15, 2026',
+    text: 'The Bearing tool is now Radar Compass: point your phone and a full-screen dial turns with its real compass sensor, painting a wedge of the actual radar picture toward wherever you are facing. Tilt the phone up or down to step through four range rings, from 10 km up close to 100 km out.' },
   { id: '2026-09-15-a', date: 'Sep 15, 2026',
     text: 'The Bearing tool actually looks like a compass now: a bezel with tick marks at north, east, south and west, and a needle shaded light on one side and dark on the other, the way a real compass needle reads. The line it draws on the map got the same needle treatment where it points.' },
   { id: '2026-09-14-l', date: 'Sep 14, 2026',
@@ -64568,7 +64863,6 @@ document.addEventListener('DOMContentLoaded', () => {
   _makeDraggable(document.getElementById('spaghetti-models-panel'), document.getElementById('spaghetti-models-drag'));
   _makeDraggable(document.getElementById('ai-cyclones-panel'), document.getElementById('ai-cyclones-drag'));
   _makeDraggable(document.getElementById('dist-toolbar'),        document.getElementById('dist-drag-handle'));
-  _makeDraggable(document.getElementById('brg-toolbar'),         document.getElementById('brg-drag-handle'));
   _makeDraggable(document.getElementById('spc-controls'),        document.getElementById('spc-drag'));
   _makeDraggable(document.getElementById('wpc-controls'),        document.getElementById('wpc-drag'));
   _makeDraggable(document.getElementById('fw-controls'),         document.getElementById('fw-drag'));
@@ -66947,7 +67241,7 @@ const TOOL_LABELS = {
   'tool-text':      'Text',
   'tool-polygon':   'Polygon',
   'tool-distance':  'Measure Distance',
-  'tool-bearing':   'Bearing',
+  'tool-radar-compass': 'Radar Compass',
   'tool-radius':    'Radius Maker',
   'tool-stormcone': 'Storm Cone',
   'tool-inspector': 'Inspector',
@@ -66959,7 +67253,7 @@ const TOOL_DESCRIPTIONS = {
   'tool-text':      'Adds a text label you can place and edit anywhere on the map.',
   'tool-polygon':   'Draws a custom shape by clicking each corner point.',
   'tool-distance':  'Measures the straight-line distance between two points you click.',
-  'tool-bearing':   'Click a starting point, then where it is headed, and it draws the line with an arrowhead and reads off the compass direction between them - e.g. 065° ENE.',
+  'tool-radar-compass': 'Turns with your phone’s own compass and shows the real radar in whichever direction you point it. Tilt the phone up or down to step through range rings.',
   'tool-radius':    'Click to place a center point, then set a radius to draw a circle around it.',
   'tool-stormcone': 'Click and drag to draw a cone-shaped threat area with hurricane-category icons and speed per point, lists the cities inside it with ETA, and can animate the storm moving along its path.',
   'tool-inspector': 'Shows the radar value at the exact center of the map, and updates live as you pan.',
@@ -68281,7 +68575,7 @@ function closeCredits() {
    was the loudest of them, a solid cyan strip across the bottom of a red
    application. */
 #animbar,
-#export-toolbar, #xsec-toolbar, #radius-toolbar, #dist-toolbar, #brg-toolbar,
+#export-toolbar, #xsec-toolbar, #radius-toolbar, #dist-toolbar,
 #poly-toolbar, #draw-toolbar, #text-toolbar, #stormcone-toolbar,
 #tt-toolbar, #cs-toolbar,
 #top-search-bar,

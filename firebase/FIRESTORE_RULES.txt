@@ -26,14 +26,16 @@ HOW TO PUBLISH THEM
 4. Replace what is there with everything between the two lines below
 5. Press Publish
 
-This is the COMPLETE ruleset: it is kept byte-for-byte in step with
-firebase/firestore.rules in the repo and covers every collection the apps
-use (users, chat, guests, cloudcam, sharedAlerts, analytics, discordLinks,
-asturioSync, modelCache, omBudget, piEndpoint, chatBridge, outlooks). It
-fully REPLACES whatever is in the console, nothing needs to be merged by
-hand. If you add a collection later, add a block for it in
-firebase/firestore.rules first, then re-paste here - Firestore denies
-anything not explicitly allowed.
+This is the COMPLETE ruleset for everything the console currently needs to
+know about: it covers every collection the apps use (users, chat, guests,
+cloudcam, sharedAlerts, analytics, discordLinks, asturioSync, modelCache,
+omBudget, piEndpoint, chatBridge, chatRoster, outlooks). It fully REPLACES
+whatever is in the console, nothing needs to be merged by hand. It is kept
+in step with firebase/firestore.rules with one deliberate exception, the
+dms and dmDirectory blocks, explained further down in this file. If you
+add a collection later, add a block for it in firebase/firestore.rules
+first, then re-paste here - Firestore denies anything not explicitly
+allowed.
 
 
 ------------------------------- COPY FROM HERE -------------------------------
