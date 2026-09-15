@@ -42837,6 +42837,12 @@ function _radcApplyHeading(heading) {
   if (g) g.setAttribute('transform', `rotate(${-heading} 110 110)`);
   const readout = document.getElementById('radc-heading-readout');
   if (readout) readout.textContent = Math.round(heading) + '° ' + _radcCardinalFor(heading);
+  // The dial's own ring turns to bring the faced direction to the top; the
+  // real map underneath has to turn by that same amount, or the terrain
+  // showing through it would stay north-up while everything drawn over it
+  // spins - the whole point of painting this over the live map is that both
+  // move together, the way turning a phone's own AR compass would.
+  if (typeof _mapSetBearing === 'function') _mapSetBearing(-heading);
 }
 
 // Ticks, degree numbers and the four cardinal letters - built once into
@@ -42939,6 +42945,33 @@ function _radcScheduleWedge(force) {
   }, RADC_WEDGE_THROTTLE_MS);
 }
 
+// Leaflet's own latLngToContainerPoint() has no idea the map's whole DOM
+// element is visually spun by the CSS rotation Radar Compass now drives
+// (see _radcApplyHeading) - its coordinates are always in the unrotated
+// layout. getBoundingClientRect() on a rotated element reports the rotated
+// shape's own axis-aligned box, whose center is the one point that never
+// moves (CSS rotation pivots around transform-origin: center center), so
+// the fix is: find the offset from the unrotated center, spin that offset
+// by the same angle the map itself was spun, then place it relative to the
+// rotated box's real on-screen center. At bearing 0 this reduces to plain
+// rect.left + cp.x, exactly what the math did before there was a bearing.
+function _radcProjectToScreen(lat, lng) {
+  const cp = map.latLngToContainerPoint([lat, lng]);
+  const size = map.getSize();
+  const domRect = map.getContainer().getBoundingClientRect();
+  const centerX = domRect.left + domRect.width / 2;
+  const centerY = domRect.top + domRect.height / 2;
+  const dx = cp.x - size.x / 2;
+  const dy = cp.y - size.y / 2;
+  const bearing = (typeof _mapGetBearing === 'function') ? _mapGetBearing() : 0;
+  const rad = bearing * Math.PI / 180;
+  const cosT = Math.cos(rad), sinT = Math.sin(rad);
+  return {
+    x: centerX + (dx * cosT - dy * sinT),
+    y: centerY + (dx * sinT + dy * cosT),
+  };
+}
+
 function _radcDrawWedge() {
   const canvas = document.getElementById('radc-wedge-canvas');
   if (!canvas || !_radcOn || !_radcLoc || _radcHeading == null) return;
@@ -42947,7 +42980,6 @@ function _radcDrawWedge() {
   if (typeof map === 'undefined' || !map) return;
   const heading = _radcHeading;
   _radcLastWedgeHeading = heading;
-  const rect = map.getContainer().getBoundingClientRect();
   const rangeKm = _radcRangeKm();
   const cx = canvas.width / 2, cy = canvas.height / 2;
   const rOuter = Math.min(cx, cy) - 4;
@@ -42962,8 +42994,8 @@ function _radcDrawWedge() {
       const pt = _radcDestPoint(_radcLoc.lat, _radcLoc.lon, bearing, distKm);
       let color = null;
       try {
-        const cp = map.latLngToContainerPoint([pt.lat, pt.lng]);
-        const s = _inspSampleRadarColor(rect.left + cp.x, rect.top + cp.y);
+        const sp = _radcProjectToScreen(pt.lat, pt.lng);
+        const s = _inspSampleRadarColor(sp.x, sp.y);
         if (s && !s.tainted && !s.transparent) {
           const meta = _inspColorToDbz(s.r, s.g, s.b);
           if (meta) color = meta.hex;
@@ -42999,6 +43031,11 @@ function _radcClose() {
   _radcOn = false;
   _radcStopSensors();
   _radcUnlockMapView();
+  // Back to north-up. The compass owned the bearing while it was open, the
+  // same way the manual 3-finger gesture owns it the rest of the time, so
+  // closing hands it back rather than leaving the map tilted to whatever it
+  // last faced.
+  if (typeof _mapSetBearing === 'function') _mapSetBearing(0);
   if (_radcWedgeTimer) { clearTimeout(_radcWedgeTimer); _radcWedgeTimer = null; }
   document.getElementById('radc-overlay')?.classList.remove('open');
   document.getElementById('radc-dial-wrap')?.classList.remove('show');
@@ -52006,6 +52043,12 @@ function selectProduct(p) {
     _applyBearing(0);
   }
   window._mapResetBearing = _mapResetBearing;
+  // Radar Compass drives the map by the same rotation this gesture uses, so
+  // it needs a way in (and a way to read the angle back out for its own
+  // screen-position math) without duplicating the transform/needle/reset-
+  // button logic above a second time.
+  window._mapSetBearing = _applyBearing;
+  window._mapGetBearing = function () { return _rotBearing; };
 
   const mc = document.getElementById('map');
   if (!mc) return;
@@ -63546,6 +63589,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-15-e', date: 'Sep 15, 2026',
+    text: 'The real map now turns with Radar Compass, not just the dial drawn on top of it. Turn to face a new direction and the terrain underneath spins to match, the way a real phone AR compass looks, then hands the map back to north-up the moment you close it.' },
   { id: '2026-09-15-d', date: 'Sep 15, 2026',
     text: 'Settings now follow your account, not just the browser they were set in. Units, opacities, particle look, colors and the toggle switches all sync automatically to every device you sign into, no save button to remember. GPS tracking stays per device on purpose, so turning it on for your phone will not pop a location prompt on your desktop.' },
   { id: '2026-09-15-c', date: 'Sep 15, 2026',
