@@ -42964,11 +42964,16 @@ function _radcProjectToScreen(lat, lng) {
   const dx = cp.x - size.x / 2;
   const dy = cp.y - size.y / 2;
   const bearing = (typeof _mapGetBearing === 'function') ? _mapGetBearing() : 0;
+  // The map is scaled up around its own center to guarantee coverage at
+  // any rotation (see _neededScale() in the rotation module) - an offset
+  // from center grows by that same factor once painted on screen, same as
+  // rotating it turns by the same angle.
+  const scale = (typeof _mapGetScale === 'function') ? _mapGetScale() : 1;
   const rad = bearing * Math.PI / 180;
   const cosT = Math.cos(rad), sinT = Math.sin(rad);
   return {
-    x: centerX + (dx * cosT - dy * sinT),
-    y: centerY + (dx * sinT + dy * cosT),
+    x: centerX + (dx * cosT - dy * sinT) * scale,
+    y: centerY + (dx * sinT + dy * cosT) * scale,
   };
 }
 
@@ -52009,6 +52014,7 @@ function selectProduct(p) {
 // ── 3-FINGER MAP ROTATION ──
 (function() {
   let _rotBearing = 0;       // current map rotation in degrees
+  let _rotScale = 1;         // current compensating zoom, see _neededScale() below
   let _rotStart = null;       // angle at gesture start
   let _rotStartBearing = 0;
   let _rotActive = false;
@@ -52019,10 +52025,61 @@ function selectProduct(p) {
     return Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX) * 180 / Math.PI;
   }
 
+  // A phone screen is much taller than it is wide. Spin that whole tall
+  // rectangle anywhere near 90 degrees and its reach collapses to its own
+  // (much shorter) width, so the rotated map stops covering the corners -
+  // or, with Radar Compass sitting well off-center in a mostly-empty
+  // screen, stops covering part of the dial itself. Scaling the map up
+  // around its own center before rotating keeps every point that needs to
+  // stay covered - the dial, wherever it actually sits - inside the circle
+  // the rotated rectangle can always reach, at any angle.
+  function _neededScale() {
+    const mapEl = document.getElementById('map');
+    if (!mapEl) return 1;
+    // clientWidth/clientHeight are pure layout size - unlike
+    // getBoundingClientRect(), a CSS transform never touches them, so they
+    // are the one place to read the map's TRUE width and height back out
+    // no matter what rotation or scale is already applied.
+    const baseW = mapEl.clientWidth, baseH = mapEl.clientHeight;
+    if (!baseW || !baseH) return 1;
+    // The center IS still safe to read off getBoundingClientRect(): both
+    // rotation and scale pivot around transform-origin: center center, so
+    // whatever that box currently reports, its middle is the one point
+    // that never moved.
+    const mapRect = mapEl.getBoundingClientRect();
+    const mapCenterX = mapRect.left + mapRect.width / 2;
+    const mapCenterY = mapRect.top + mapRect.height / 2;
+    // Rotating a W x H rectangle about its own center reaches min(W,H)/2 in
+    // every direction no matter the angle - that is the one guarantee to
+    // build on. What has to stay inside that guaranteed reach is whichever
+    // circle needs the map behind it: the compass dial while Radar Compass
+    // is open, or otherwise just the screen's own center.
+    const dialEl = document.getElementById('radc-dial-wrap');
+    const dialShown = dialEl && dialEl.classList.contains('show');
+    let neededRadius, targetX, targetY;
+    if (dialShown) {
+      const dr = dialEl.getBoundingClientRect();
+      targetX = dr.left + dr.width / 2;
+      targetY = dr.top + dr.height / 2;
+      neededRadius = dr.width / 2;
+    } else {
+      targetX = mapCenterX;
+      targetY = mapCenterY;
+      neededRadius = 0;
+    }
+    const centerOffset = Math.hypot(targetX - mapCenterX, targetY - mapCenterY);
+    const margin = 24; // a soft buffer past the dial's own edge
+    const need = (neededRadius + centerOffset + margin) * 2;
+    const have = Math.min(baseW, baseH);
+    const scale = need / have;
+    return Math.max(1, Math.min(2.5, scale));
+  }
+
   function _applyBearing(deg) {
     _rotBearing = ((deg % 360) + 360) % 360;
+    _rotScale = (_rotBearing === 0) ? 1 : _neededScale();
     const mapEl = document.getElementById('map');
-    if (mapEl) mapEl.style.transform = `rotate(${_rotBearing}deg)`;
+    if (mapEl) mapEl.style.transform = `rotate(${_rotBearing}deg) scale(${_rotScale})`;
 
     // Rotate compass needle counter to bearing so N always points north
     const needle = document.getElementById('map-compass-needle');
@@ -52044,11 +52101,12 @@ function selectProduct(p) {
   }
   window._mapResetBearing = _mapResetBearing;
   // Radar Compass drives the map by the same rotation this gesture uses, so
-  // it needs a way in (and a way to read the angle back out for its own
-  // screen-position math) without duplicating the transform/needle/reset-
-  // button logic above a second time.
+  // it needs a way in (and a way to read the angle/scale back out for its
+  // own screen-position math) without duplicating the transform/needle/
+  // reset-button logic above a second time.
   window._mapSetBearing = _applyBearing;
   window._mapGetBearing = function () { return _rotBearing; };
+  window._mapGetScale = function () { return _rotScale; };
 
   const mc = document.getElementById('map');
   if (!mc) return;
@@ -63589,6 +63647,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-15-f', date: 'Sep 15, 2026',
+    text: 'Fixed a gap in Radar Compass where the real map would stop covering part of the dial at some rotation angles, leaving a bare patch instead of terrain. The map now scales itself up just enough whenever it turns to keep the whole dial covered, no matter which way the phone is facing.' },
   { id: '2026-09-15-e', date: 'Sep 15, 2026',
     text: 'The real map now turns with Radar Compass, not just the dial drawn on top of it. Turn to face a new direction and the terrain underneath spins to match, the way a real phone AR compass looks, then hands the map back to north-up the moment you close it.' },
   { id: '2026-09-15-d', date: 'Sep 15, 2026',

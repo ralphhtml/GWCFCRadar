@@ -96,7 +96,13 @@ console.log('\n4. the heading, tilt and wedge math read correctly');
   ok('closing hands the bearing back to north-up',
      /function _radcClose\(\)[\s\S]{0,600}_mapSetBearing\(0\)/.test(PAGE));
   ok('the wedge samples through a rotation-aware projection, not raw rect math',
-     /function _radcProjectToScreen\(lat, lng\)[\s\S]{0,700}dx \* cosT - dy \* sinT/.test(PAGE));
+     /function _radcProjectToScreen\(lat, lng\)[\s\S]{0,1000}dx \* cosT - dy \* sinT/.test(PAGE));
+  ok('the map scales up around its own center so a rotated tall screen still covers the dial',
+     /function _neededScale\(\)[\s\S]{0,2200}Math\.max\(1, Math\.min\(2\.5, scale\)\)/.test(PAGE));
+  ok('the transform carries both the rotation and the compensating scale together',
+     /mapEl\.style\.transform = `rotate\(\$\{_rotBearing\}deg\) scale\(\$\{_rotScale\}\)`;/.test(PAGE));
+  ok('the wedge projection multiplies by that same scale, not just the rotation',
+     /\(dx \* cosT - dy \* sinT\) \* scale/.test(PAGE));
   ok('no em dashes anywhere in the new code or this test',
      !PAGE.slice(PAGE.indexOf('const RADC_RANGES_KM'), PAGE.indexOf('_radcClose()') + 400)
        .includes(String.fromCharCode(0x2014))
@@ -211,7 +217,36 @@ console.log('\n6b. the real map turns by the same amount, in the same direction,
   // Heading 90 from the previous section should have left the map rotated
   // by -90, normalized into 0-360 by _applyBearing.
   ok('_mapGetBearing() matches -heading, normalized to 0-360', r.bearing === 270, JSON.stringify(r));
-  ok('the #map element itself carries that rotation', r.transform === 'rotate(270deg)', r.transform);
+  // The exact scale is viewport-dependent (see the next section), so only
+  // the rotation itself is pinned down here.
+  ok('the #map element itself carries that rotation', r.transform.startsWith('rotate(270deg)'), r.transform);
+}
+
+console.log('\n6b2. a tall phone-shaped screen gets scaled up enough to keep the dial covered');
+{
+  const before = await p.evaluate(() => ({ scale: _mapGetScale() }));
+  ok('on this desktop-shaped viewport no extra scale was needed', before.scale === 1, JSON.stringify(before));
+
+  await p.setViewportSize({ width: 400, height: 860 }); // a typical tall phone
+  const r = await p.evaluate(() => new Promise(resolve => {
+    // Force a fresh bearing computation against the new, much taller/
+    // narrower viewport rather than reusing whatever was cached at 1000x800.
+    _mapSetBearing(0);
+    _mapSetBearing(272); // close to sideways - the worst case for a tall rectangle
+    resolve({
+      scale: _mapGetScale(),
+      transform: document.getElementById('map').style.transform,
+    });
+  }));
+  ok('a rotation near 90/270 on a tall phone screen now scales the map up',
+     r.scale > 1, JSON.stringify(r));
+  ok('capped at a sane maximum rather than growing without bound',
+     r.scale <= 2.5, JSON.stringify(r));
+  ok('the transform carries both the rotation and that scale',
+     r.transform === `rotate(272deg) scale(${r.scale})`, r.transform);
+
+  await p.setViewportSize({ width: 1000, height: 800 }); // back to normal for the rest of the suite
+  await p.evaluate(() => _mapSetBearing(90));
 }
 
 console.log('\n6c. the wedge\'s screen projection accounts for that rotation correctly');
