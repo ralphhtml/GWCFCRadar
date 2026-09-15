@@ -50,8 +50,10 @@ console.log('\n2. nothing reaches CSS without being rebuilt');
   // Both helpers hang off window, so the scope they run in has to have one.
   const C = new Function('window', clean + '\nreturn window._themeClean;')({});
   ok('a plain hex passes', C('#A1B2C3') === '#a1b2c3');
+  ok('an eight-digit hex - a colour plus an alpha byte - passes too',
+     C('#A1B2C380') === '#a1b2c380');
   for (const bad of ['red', '#fff', 'rgb(1,2,3)', 'url(x)', '#12345g', null, 42,
-                     '#ff0000;background:url(//evil)', 'var(--x)', '']) {
+                     '#ff0000;background:url(//evil)', 'var(--x)', '', '#a1b2c380;x']) {
     ok('rejects ' + JSON.stringify(bad), C(bad) === null, String(C(bad)));
   }
   const S = new Function('window', clean + '\n' + surf
@@ -410,6 +412,75 @@ else {
     }
     odd.remove();
 
+    // ── Transparency ──
+    out.fullyOpaqueStaysSixDigit = _themeWithAlpha('#112233', 100) === '#112233';
+    out.halfAlphaHex = _themeWithAlpha('#112233', 50);
+    out.alphaOfHalf = _themeAlphaOf(out.halfAlphaHex);
+    out.rgbOfHalf = _themeRgbOf(out.halfAlphaHex);
+    out.alphaOfPlainSix = _themeAlphaOf('#112233');
+
+    // _themePairValue has to read the OTHER input's LIVE value off the DOM,
+    // not whatever was baked into this handler string at the last render -
+    // themeSetToken deliberately skips a re-render on every drag tick, so a
+    // stale reference would let one half of the pair silently overwrite
+    // whatever the other half had just been set to.
+    const pairWrap = document.createElement('span');
+    pairWrap.className = 'lqm-theme-pair';
+    const pairColor = document.createElement('input');
+    pairColor.type = 'color'; pairColor.value = '#00ff00';
+    const pairAlpha = document.createElement('input');
+    pairAlpha.type = 'range'; pairAlpha.value = '40';
+    pairWrap.appendChild(pairColor); pairWrap.appendChild(pairAlpha);
+    document.body.appendChild(pairWrap);
+    out.pairFromColorInput = _themePairValue(pairColor);
+    out.pairFromAlphaInput = _themePairValue(pairAlpha);
+    // Now drag just the color - the alpha slider was never touched, so its
+    // live DOM value (40) must still be the one read back, not 100.
+    pairColor.value = '#ff00ff';
+    out.pairAfterColorOnlyChange = _themePairValue(pairColor);
+    pairWrap.remove();
+
+    // The rendered panel actually carries a slider next to every swatch.
+    out.tokenAlphaSliders = document.querySelectorAll('#lqm-theme-tokens .lqm-theme-alpha').length;
+    out.partAlphaSlidersOnFirstCard =
+      document.querySelectorAll('#lqm-theme-parts .lqm-theme-block:first-child .lqm-theme-alpha').length;
+
+    // Driven the way a person drives it: through the real rendered inputs
+    // for one part's border, not by calling the setter directly.
+    const bub2 = document.createElement('div');
+    bub2.className = 'sub-bubble sub-bubble-main';
+    document.body.appendChild(bub2);
+    themePartColor('bubble-main', 'border', '#00aaff');
+    await settled();
+    // Found by its label rather than by position: which row is last shifts
+    // once "Back to default" appears, and a gradient part shows a stops row
+    // where a solid one shows a single Fill row.
+    const borderRow = Array.from(document.querySelectorAll('#part-bubble-main .lqm-settings-row'))
+      .find(row => (row.querySelector('.lqm-settings-lbl') || {}).textContent === 'Border');
+    const borderPair = borderRow.querySelector('.lqm-theme-pair');
+    const borderColorInput = borderPair.querySelector('input[type=color]');
+    const borderAlphaInput = borderPair.querySelector('input[type=range]');
+    out.borderColorInputValue = borderColorInput.value;
+    borderAlphaInput.value = '25';
+    borderAlphaInput.dispatchEvent(new Event('input', { bubbles: true }));
+    // .sub-bubble carries its own "transition: all 0.18s ease" for hover -
+    // that also animates border-color, so reading it back too soon catches
+    // the colour still sliding toward its target rather than having arrived.
+    await new Promise(res => setTimeout(res, 250));
+    out.bubbleBorderWithAlpha = getComputedStyle(bub2).borderColor;
+    out.themeBorderStored = _theme.parts['bubble-main'].border;
+    bub2.remove();
+    themePartClear('bubble-main');
+
+    // Export/import round trip keeps the alpha byte, not just the RGB.
+    themeSetToken('--accent', _themeWithAlpha('#a1b2c3', 33));
+    themeExport();
+    const alphaText = document.getElementById('lqm-theme-io').value;
+    themeReset();
+    document.getElementById('lqm-theme-io').value = alphaText;
+    themeImport();
+    out.accentAfterAlphaImport = read('--accent');
+
     themeReset();
     await settled();
     out.itemsAfterResetAll = Object.keys(_theme.items || {}).length;
@@ -467,6 +538,32 @@ else {
      /Odd thing/.test(r.autoLabel || ''), String(r.autoLabel));
   ok('  and colouring it actually paints it',
      /255, 136, 0/.test(r.autoBg || ''), (r.autoBg || '').slice(0, 50));
+
+  console.log('\n4b. transparency');
+  ok('fully opaque stores as plain six digits, not a pointless ff suffix',
+     r.fullyOpaqueStaysSixDigit);
+  ok('50% comes back out as an eight-digit hex', /^#[0-9a-f]{8}$/.test(r.halfAlphaHex), r.halfAlphaHex);
+  ok('and its alpha half rounds back to 50', r.alphaOfHalf === 50, String(r.alphaOfHalf));
+  ok('and its colour half is unchanged', r.rgbOfHalf === '#112233', r.rgbOfHalf);
+  ok('a plain six-digit colour reads as fully opaque', r.alphaOfPlainSix === 100, String(r.alphaOfPlainSix));
+  ok('_themePairValue reads the same combined value from either half of the pair',
+     r.pairFromColorInput === r.pairFromAlphaInput, r.pairFromColorInput + ' vs ' + r.pairFromAlphaInput);
+  ok('and that combined value is the color plus the alpha, not just the color',
+     r.pairFromColorInput === '#00ff0066', r.pairFromColorInput);
+  ok('dragging only the color leaves the alpha slider\'s own live value in the result',
+     r.pairAfterColorOnlyChange === '#ff00ff66', r.pairAfterColorOnlyChange);
+  ok('every token swatch has its own opacity slider', r.tokenAlphaSliders === 12, String(r.tokenAlphaSliders));
+  ok('a part card has one for fill, text and border alike',
+     r.partAlphaSlidersOnFirstCard >= 3, String(r.partAlphaSlidersOnFirstCard));
+  ok('the border swatch reflects the opaque colour just set',
+     r.borderColorInputValue === '#00aaff', r.borderColorInputValue);
+  ok('dragging the real rendered opacity slider actually changes what is on screen',
+     /rgba\(0, 170, 255, 0\.2/.test(r.bubbleBorderWithAlpha), r.bubbleBorderWithAlpha);
+  ok('and the stored value carries the alpha byte',
+     /^#00aaff[0-9a-f]{2}$/.test(r.themeBorderStored), r.themeBorderStored);
+  ok('an alpha value survives the copy out and paste in round trip too',
+     r.accentAfterAlphaImport === '#a1b2c354', r.accentAfterAlphaImport);
+
   ok('no uncaught page errors', errs.length === 0, errs.join(' | '));
 }
 
