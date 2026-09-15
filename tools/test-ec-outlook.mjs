@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 /*
- * Env. CN Outlooks: Environment Canada's thunderstorm outlooks as an overlay.
+ * ECCC Outlooks: Environment and Climate Change Canada's thunderstorm
+ * outlooks as an overlay, with a floating legend panel like SPC Outlook's.
  *
  *     node tools/test-ec-outlook.mjs
  *
- * The pill, its info button and drag handle, and the layer it draws, held
- * down against a stand-in GeoMet answer: three outlook polygons (severe
- * likely, severe possible, ordinary thunderstorms) plus one that expired
- * yesterday, served in place of api.weather.gc.ca with everything else
- * off. What is checked is which URL is asked, which polygons are drawn in
- * which colours, what the popup says, and that the layer comes down.
+ * The pill, its info button and drag handle, its floating panel, and the
+ * layer it draws, held down against a stand-in GeoMet answer: three outlook
+ * polygons (severe likely, severe possible, ordinary thunderstorms) plus
+ * one that expired yesterday, served in place of api.weather.gc.ca with
+ * everything else off. What is checked is which URL is asked, which
+ * polygons are drawn in which colours, what the popup says, and that the
+ * layer (and the panel) come down.
  */
 
 import { readFileSync } from 'node:fs';
@@ -27,15 +29,21 @@ const ok = (name, cond, extra) => {
 
 console.log('\n1. the pieces are in the page');
 {
-  ok('the pill is in the Overlays row, named for Environment Canada',
+  ok('the pill is in the Overlays row, named ECCC Outlooks',
      /id="op-ec-outlook" data-ovid="ec-outlook"/.test(PAGE)
-     && /toggleOverlayPill\('ec-outlook'\)">Env\. CN Outlooks</.test(PAGE));
+     && /toggleOverlayPill\('ec-outlook'\)">ECCC Outlooks</.test(PAGE));
   ok('with a drag handle in its markup',
      /id="op-ec-outlook"[\s\S]{0,400}?class="ov-drag"/.test(PAGE));
   ok('the collection read is the thunderstorm outlook, as GeoJSON, in English',
      /thunderstorm_outlook\/items\?f=json&limit=\d+&lang=en/.test(PAGE));
   ok('it refreshes on a timer and the switch-off clears it',
      /id === 'ec-outlook'[\s\S]*?setInterval\(loadEcOutlook, 15 \* 60 \* 1000\)[\s\S]*?map\.removeLayer\(_ecOutlookLayer\)/.test(PAGE));
+  ok('it has its own floating panel, like SPC/WPC/CPC/Fire Weather do',
+     /<div id="ec-controls">/.test(PAGE)
+     && /ec-float-title[\s\S]{0,100}ECCC Outlooks/.test(PAGE)
+     && /_makeDraggable\(document\.getElementById\('ec-controls'\),\s*document\.getElementById\('ec-drag'\)\)/.test(PAGE));
+  ok('the panel shows and hides with the pill',
+     /id === 'ec-outlook'\) \{[\s\S]{0,500}getElementById\('ec-controls'\)[\s\S]{0,150}display = _ecOutlookOn \? 'flex' : 'none'/.test(PAGE));
   const EM = String.fromCharCode(0x2014);
   ok('no em dashes here or in the page',
      !PAGE.includes(EM)
@@ -127,11 +135,11 @@ console.log('\n2. the pill, with both of its controls');
     };
   });
   ok('the pill exists in Overlays under its own id', r && r.ovid === 'ec-outlook', r && r.ovid);
-  ok('named Env. CN Outlooks', r && r.name === 'Env. CN Outlooks', r && r.name);
+  ok('named ECCC Outlooks', r && r.name === 'ECCC Outlooks', r && r.name);
   ok('it has a drag handle', r && r.drag);
   ok('and an info button', r && r.info);
   ok('which explains the colours and where the data comes from',
-     r && /Environment Canada/.test(r.desc) && /Yellow/.test(r.desc) && /red/i.test(r.desc) && /GeoMet/.test(r.desc),
+     r && /ECCC/.test(r.desc) && /Yellow/.test(r.desc) && /red/i.test(r.desc) && /GeoMet/.test(r.desc),
      String(r && r.desc.length));
 }
 
@@ -141,7 +149,9 @@ console.log('\n3. turning it on draws the outlooks that are in effect');
     toggleOverlayPill('ec-outlook');
     await new Promise(res => setTimeout(res, 900));
     const out = { on: _ecOutlookOn, pillOn: document.getElementById('op-ec-outlook').classList.contains('active'),
-                  layer: !!_ecOutlookLayer, polys: [] };
+                  layer: !!_ecOutlookLayer,
+                  panelShown: document.getElementById('ec-controls').style.display === 'flex',
+                  polys: [] };
     if (_ecOutlookLayer) {
       _ecOutlookLayer.eachLayer(g => g.eachLayer(l => {
         if (!l.feature || !l.options || l.options.fill === false) return;
@@ -152,6 +162,7 @@ console.log('\n3. turning it on draws the outlooks that are in effect');
     return out;
   });
   ok('the layer turns on and the pill lights', r.on && r.pillOn && r.layer, JSON.stringify(r));
+  ok('and its floating legend panel shows, the same as SPC/WPC/CPC/Fire Weather', r.panelShown, JSON.stringify(r));
   ok('the collection was asked for once', asked.length === 1 && /thunderstorm_outlook\/items/.test(asked[0]), asked.join(' | '));
   const by = Object.fromEntries(r.polys.map(x => [x.id, x]));
   ok('three outlooks in effect are drawn; the one that expired yesterday is not',
@@ -193,7 +204,7 @@ console.log('\n4. the popup says what the forecasters said');
   });
   ok('the category, the region, the sender and the notes are all there',
      /Severe thunderstorms likely/i.test(r.text) && /Southern Ontario/.test(r.text)
-     && /Environment Canada/.test(r.text) && /line of storms/.test(r.text), r.text.slice(0, 200));
+     && /ECCC/.test(r.text) && /line of storms/.test(r.text), r.text.slice(0, 200));
   ok('a day-2 outlook under different field names still reads as one',
      /Thunderstorms possible/i.test(r.text2) && /Nova Scotia/.test(r.text2) && /Day 2/.test(r.text2), r.text2.slice(0, 200));
 }
@@ -205,9 +216,11 @@ console.log('\n5. off, and a dead API');
     await new Promise(res => setTimeout(res, 100));
     return { on: _ecOutlookOn, layer: !!_ecOutlookLayer,
              pillOn: document.getElementById('op-ec-outlook').classList.contains('active'),
-             onMap: !!document.querySelector('.leaflet-ovp-ec-outlook-pane path') };
+             onMap: !!document.querySelector('.leaflet-ovp-ec-outlook-pane path'),
+             panelHidden: document.getElementById('ec-controls').style.display === 'none' };
   });
   ok('switching off takes the layer down', !r.on && !r.layer && !r.pillOn && !r.onMap, JSON.stringify(r));
+  ok('and its floating panel too', r.panelHidden, JSON.stringify(r));
   serve = false;
   const d = await p.evaluate(async () => {
     const seen = [];
