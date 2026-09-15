@@ -88,6 +88,15 @@ console.log('\n4. the heading, tilt and wedge math read correctly');
      /function _radcSyncMapView\(\)[\s\S]{0,700}Math\.log2\(metersPerPixelAtZ0 \/ metersPerPixel\)/.test(PAGE));
   ok('tilting to a new range ring re-zooms the map too, not just the ring labels',
      /_radcRenderRangeLabels\(\);\s*_radcSyncMapView\(\);\s*_radcScheduleWedge\(true\);/.test(PAGE));
+  ok('the 3-finger rotate gesture exposes a setter and getter for Radar Compass to share',
+     /window\._mapSetBearing = _applyBearing;/.test(PAGE)
+     && /window\._mapGetBearing = function \(\) \{ return _rotBearing; \};/.test(PAGE));
+  ok('every heading update turns the real map by the same amount as the dial',
+     /function _radcApplyHeading\(heading\)[\s\S]{0,700}_mapSetBearing\(-heading\)/.test(PAGE));
+  ok('closing hands the bearing back to north-up',
+     /function _radcClose\(\)[\s\S]{0,600}_mapSetBearing\(0\)/.test(PAGE));
+  ok('the wedge samples through a rotation-aware projection, not raw rect math',
+     /function _radcProjectToScreen\(lat, lng\)[\s\S]{0,700}dx \* cosT - dy \* sinT/.test(PAGE));
   ok('no em dashes anywhere in the new code or this test',
      !PAGE.slice(PAGE.indexOf('const RADC_RANGES_KM'), PAGE.indexOf('_radcClose()') + 400)
        .includes(String.fromCharCode(0x2014))
@@ -193,6 +202,43 @@ console.log('\n6. a computed Android-style heading rotates the dial the right wa
      r.readout === '90° E', r.readout);
 }
 
+console.log('\n6b. the real map turns by the same amount, in the same direction, as the dial');
+{
+  const r = await p.evaluate(() => ({
+    bearing: _mapGetBearing(),
+    transform: document.getElementById('map').style.transform,
+  }));
+  // Heading 90 from the previous section should have left the map rotated
+  // by -90, normalized into 0-360 by _applyBearing.
+  ok('_mapGetBearing() matches -heading, normalized to 0-360', r.bearing === 270, JSON.stringify(r));
+  ok('the #map element itself carries that rotation', r.transform === 'rotate(270deg)', r.transform);
+}
+
+console.log('\n6c. the wedge\'s screen projection accounts for that rotation correctly');
+{
+  const r = await p.evaluate(() => {
+    const savedMap = map; // `map` is a top-level `let`, not a window property
+    // 200x200 unrotated container, sitting on the page at (300,300)-(500,500)
+    // once rotated. A point 50px right and 50px up from its own center.
+    map = {
+      latLngToContainerPoint: () => ({ x: 150, y: 50 }),
+      getSize: () => ({ x: 200, y: 200 }),
+      getContainer: () => ({ getBoundingClientRect: () => ({ left: 300, top: 300, width: 200, height: 200 }) }),
+    };
+    _mapSetBearing(0);
+    const unrotated = _radcProjectToScreen(0, 0);
+    _mapSetBearing(90);
+    const rotated90 = _radcProjectToScreen(0, 0);
+    map = savedMap;
+    _mapSetBearing(0);
+    return { unrotated, rotated90 };
+  });
+  ok('at bearing 0 it reduces to plain rect.left/top + containerPoint math',
+     r.unrotated.x === 450 && r.unrotated.y === 350, JSON.stringify(r.unrotated));
+  ok('rotated 90deg clockwise, a point that was up-right of center lands down-right of it',
+     r.rotated90.x === 450 && r.rotated90.y === 450, JSON.stringify(r.rotated90));
+}
+
 console.log('\n7. an iOS-style webkitCompassHeading is used as-is, never recomputed');
 {
   const r = await p.evaluate(() => new Promise(resolve => {
@@ -252,6 +298,7 @@ console.log('\n9. the wedge draws and hints to turn Radar on when there is nothi
 console.log('\n10. closing resets everything, by button and by Escape');
 {
   const closedByButton = await p.evaluate(() => {
+    _mapSetBearing(123); // as if the compass left the map facing some direction
     _radcClose();
     return {
       overlayOpen: document.getElementById('radc-overlay').classList.contains('open'),
@@ -259,6 +306,7 @@ console.log('\n10. closing resets everything, by button and by Escape');
       orientEvent: _radcOrientEvent,
       status: document.getElementById('radc-status').textContent,
       prevViewCleared: _radcPrevMapView === null,
+      bearing: _mapGetBearing(),
     };
   });
   ok('the overlay closed', !closedByButton.overlayOpen, JSON.stringify(closedByButton));
@@ -267,6 +315,7 @@ console.log('\n10. closing resets everything, by button and by Escape');
   ok('the status line cleared', closedByButton.status === '', JSON.stringify(closedByButton));
   ok('the map\'s saved prior view was consumed (restored and cleared)',
      closedByButton.prevViewCleared, JSON.stringify(closedByButton));
+  ok('the map handed its bearing back to north-up', closedByButton.bearing === 0, JSON.stringify(closedByButton));
 
   const closedByEscape = await p.evaluate(() => new Promise(resolve => {
     _lastGpsPos = { coords: { latitude: 27.9, longitude: -82.3 } };
