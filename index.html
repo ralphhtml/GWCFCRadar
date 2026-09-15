@@ -10813,7 +10813,7 @@ body.clean-mode #clean-hint { opacity: 1; }
   <div class="dtb-top-row-d">
     <div class="dtb-drag" id="brg-drag-handle" title="Drag to move">⠿</div>
     <span class="dtb-title-d">
-      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><polygon points="12,5 14.2,12 12,19 9.8,12" fill="currentColor" stroke="none"/></svg>
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="9.25"/><line x1="12" y1="1.8" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.2"/><line x1="1.8" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22.2" y2="12"/><path d="M12 5.3 L14.4 12 L12 12 Z" fill="currentColor" stroke="none"/><path d="M12 5.3 L9.6 12 L12 12 Z" fill="currentColor" fill-opacity="0.3" stroke="none"/><path d="M12 18.7 L14.4 12 L12 12 Z" fill="currentColor" fill-opacity="0.3" stroke="none"/><path d="M12 18.7 L9.6 12 L12 12 Z" fill="currentColor" stroke="none"/></svg>
       BEARING
     </span>
     <div class="dtb-sep"></div>
@@ -10963,11 +10963,20 @@ body.clean-mode #clean-hint { opacity: 1; }
     </svg>
   </button>
 
-  <!-- 4b: Bearing , compass ring with a needle, click two points -->
+  <!-- 4b: Bearing , a real compass face: bezel, the four cardinal ticks,
+       and a pinwheel needle alternating solid/light the way a physical
+       compass needle actually reads, not a plain arrow. -->
   <button class="tool-btn" id="tool-bearing" onclick="startBearingTool()" title="Bearing , click two points for the compass direction between them">
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
-      <circle cx="12" cy="12" r="9"/>
-      <polygon points="12,5 14.2,12 12,19 9.8,12" fill="currentColor" stroke="none"/>
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+      <circle cx="12" cy="12" r="9.25"/>
+      <line x1="12" y1="1.8" x2="12" y2="4"/>
+      <line x1="12" y1="20" x2="12" y2="22.2"/>
+      <line x1="1.8" y1="12" x2="4" y2="12"/>
+      <line x1="20" y1="12" x2="22.2" y2="12"/>
+      <path d="M12 5.3 L14.4 12 L12 12 Z" fill="currentColor" stroke="none"/>
+      <path d="M12 5.3 L9.6 12 L12 12 Z" fill="currentColor" fill-opacity="0.3" stroke="none"/>
+      <path d="M12 18.7 L14.4 12 L12 12 Z" fill="currentColor" fill-opacity="0.3" stroke="none"/>
+      <path d="M12 18.7 L9.6 12 L12 12 Z" fill="currentColor" stroke="none"/>
     </svg>
   </button>
 
@@ -42495,13 +42504,19 @@ function _brgOf(a, b) {
 }
 function _brgCardinal(deg) { return BRG_CARDINALS[Math.round(deg / 22.5) % 16]; }
 function _brgFmt(deg) { return String(Math.round(deg)).padStart(3, '0') + '° ' + _brgCardinal(deg); }
-// A plain CSS triangle, resting point-up (0deg, north) and rotated
-// clockwise by the bearing - the same direction degrees already run in, so
-// the rotation is the bearing itself with nothing to invert.
+// The same silhouette a plain CSS triangle drew before - apex at the top,
+// base at the bottom where it pins to the endpoint - but split down the
+// middle into two shades, the way a real compass needle reads (its far
+// half always duller than the half pointing the way it is reading). Rests
+// point-up (0deg, north) and rotates clockwise by the bearing - the same
+// direction degrees already run in, so the rotation is the bearing itself
+// with nothing to invert.
 function _brgArrowHtml(color, deg) {
-  return `<div style="width:0;height:0;border-left:7px solid transparent;`
-    + `border-right:7px solid transparent;border-bottom:14px solid ${color};`
-    + `transform:rotate(${deg}deg);transform-origin:50% 100%;"></div>`;
+  return `<svg width="14" height="14" viewBox="0 0 14 14" `
+    + `style="transform:rotate(${deg}deg);transform-origin:50% 100%;overflow:visible;">`
+    + `<path d="M7 0 L14 14 L7 14 Z" fill="${color}"/>`
+    + `<path d="M7 0 L0 14 L7 14 Z" fill="${color}" fill-opacity="0.35"/>`
+    + `</svg>`;
 }
 
 function startBearingTool() {
@@ -63050,6 +63065,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-15-a', date: 'Sep 15, 2026',
+    text: 'The Bearing tool actually looks like a compass now: a bezel with tick marks at north, east, south and west, and a needle shaded light on one side and dark on the other, the way a real compass needle reads. The line it draws on the map got the same needle treatment where it points.' },
   { id: '2026-09-14-l', date: 'Sep 14, 2026',
     text: 'A new Bearing tool on the toolbar. Click a starting point, then where it is headed, and it draws the line with an arrowhead and reads off the real compass direction between them, like 065° ENE, the same way the Measure Distance tool already reads off the distance.' },
   { id: '2026-09-14-k', date: 'Sep 14, 2026',
