@@ -6538,6 +6538,14 @@ body.shot-mode #map-wrap > div:not(#map) {
   border: 1px solid rgba(255,255,255,0.22); border-radius: 5px;
   background: none; flex-shrink: 0;
 }
+/* The swatch and its opacity slider read as one control, not two - a native
+   colour input has no alpha dial of its own, so this is what stands in
+   for it. */
+.lqm-theme-pair { display: inline-flex; align-items: center; gap: 5px; }
+.lqm-theme-alpha {
+  width: 48px; height: 14px; flex-shrink: 0; cursor: pointer;
+  accent-color: var(--accent2, #008cba);
+}
 .lqm-theme-block {
   border: 1px solid rgba(255,255,255,0.1); border-radius: 7px;
   padding: 5px 7px; margin-bottom: 7px;
@@ -10060,8 +10068,13 @@ body.gwcfc-crosshair #map::after {
 // It is deliberately tiny and dependency-free for the same reason: it is on
 // the critical path of every load.
 window.THEME_KEY = 'gwcfc_theme';
+// The trailing AA byte is transparency: #rrggbb was always opaque, and
+// #rrggbbaa is the exact same colour with a slice taken off its opacity.
+// Every browser that runs this page already accepts 8-digit hex anywhere a
+// colour is, so nothing downstream needs to change once this lets one
+// through - it just paints a little more of what is behind it.
 window._themeClean = function (c) {
-  return /^#[0-9a-fA-F]{6}$/.test(String(c || '')) ? String(c).toLowerCase() : null;
+  return /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(String(c || '')) ? String(c).toLowerCase() : null;
 };
 // A surface is a solid colour or a gradient. Both end up as a background
 // IMAGE so one property can hold either, which is what lets a surface switch
@@ -53856,6 +53869,42 @@ const THEME_PARTS = [
   { id: 'popup',       l: 'Map popups',         sel: '.leaflet-popup-content-wrapper' },
 ];
 
+// ── TRANSPARENCY ─────────────────────────────────────────────────────────
+// Every colour in this editor is a plain hex string, and a native
+// <input type=color> only ever hands back six digits - the browser itself
+// has no opacity dial. These three turn that string into the two things a
+// slider next to the swatch actually needs (the opaque colour to show the
+// native picker, and a 0-100 to show the slider) and back again.
+function _themeAlphaOf(hex) {
+  const s = String(hex || '');
+  return /^#[0-9a-fA-F]{8}$/.test(s) ? Math.round(parseInt(s.slice(7, 9), 16) / 255 * 100) : 100;
+}
+function _themeRgbOf(hex) {
+  const s = String(hex || '');
+  return /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(s) ? '#' + s.slice(1, 7).toLowerCase() : '#000000';
+}
+function _themeWithAlpha(rgb6, alphaPct) {
+  const clean = /^#[0-9a-fA-F]{6}$/.test(rgb6) ? rgb6.toLowerCase() : '#000000';
+  const a = Math.max(0, Math.min(100, Math.round(Number(alphaPct))));
+  // Fully opaque is stored as a plain six digits, same as every colour here
+  // always was, rather than every color the whole app ships with growing a
+  // pointless ff the moment this shipped.
+  return a >= 100 ? clean : clean + Math.round(a / 100 * 255).toString(16).padStart(2, '0');
+}
+// The swatch and its slider fire oninput continuously while being dragged,
+// and several of the setters below deliberately skip a full re-render on
+// every one of those events to keep the drag smooth - so a value baked into
+// an onclick string at the last render would go stale the instant the OTHER
+// half of this same pair was touched first. Reading both live elements
+// fresh, at the moment of the event, is what keeps a colour drag from
+// quietly resetting whatever opacity was just set, and vice versa.
+function _themePairValue(el) {
+  const wrap = el.closest('.lqm-theme-pair');
+  const c = wrap.querySelector('input[type=color]');
+  const a = wrap.querySelector('input[type=range]');
+  return _themeWithAlpha(c.value, a.value);
+}
+
 // One stylesheet, rewritten whole. Appending rules would pile up a new one on
 // every colour drag, and the last-wins nature of CSS would hide the leak
 // until the sheet was thousands of rules long.
@@ -54423,13 +54472,21 @@ function _themeBlockHtml(o) {
   h += '<div class="lqm-theme-prev" style="background-image:' + prev + '"></div>';
   if (isSolid) {
     h += '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Fill</span>'
-      + '<input type="color" class="lqm-theme-sw" value="' + bg.color
-      + '" oninput="' + q(o.fnBg, ', { color: this.value })') + '"></div>';
+      + '<span class="lqm-theme-pair">'
+      + '<input type="color" class="lqm-theme-sw" value="' + _themeRgbOf(bg.color)
+      + '" oninput="' + q(o.fnBg, ', { color: _themePairValue(this) })') + '">'
+      + '<input type="range" class="lqm-theme-alpha" min="0" max="100" value="' + _themeAlphaOf(bg.color)
+      + '" title="Opacity" oninput="' + q(o.fnBg, ', { color: _themePairValue(this) })') + '">'
+      + '</span></div>';
   } else {
     h += '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Fill stops</span>'
-      + '<div style="display:flex;gap:5px;align-items:center;">'
-      + bg.stops.map((c, i) => '<input type="color" class="lqm-theme-sw" value="' + c
-          + '" oninput="' + q(o.fnStop, ', ' + i + ', this.value)') + '">').join('')
+      + '<div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;">'
+      + bg.stops.map((c, i) => '<span class="lqm-theme-pair">'
+          + '<input type="color" class="lqm-theme-sw" value="' + _themeRgbOf(c)
+          + '" oninput="' + q(o.fnStop, ', ' + i + ', _themePairValue(this))') + '">'
+          + '<input type="range" class="lqm-theme-alpha" min="0" max="100" value="' + _themeAlphaOf(c)
+          + '" title="Opacity" oninput="' + q(o.fnStop, ', ' + i + ', _themePairValue(this))') + '">'
+          + '</span>').join('')
       + '</div></div>'
       + '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Angle</span>'
       + '<div style="display:flex;align-items:center;gap:6px;">'
@@ -54439,11 +54496,19 @@ function _themeBlockHtml(o) {
       + bg.angle + 'deg</span></div></div>';
   }
   h += '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Text</span>'
-    + '<input type="color" class="lqm-theme-sw" value="' + (o.cfg.text || '#ffffff')
-    + '" oninput="' + q(o.fnColor, ", 'text', this.value)") + '"></div>'
+    + '<span class="lqm-theme-pair">'
+    + '<input type="color" class="lqm-theme-sw" value="' + _themeRgbOf(o.cfg.text || '#ffffff')
+    + '" oninput="' + q(o.fnColor, ", 'text', _themePairValue(this))") + '">'
+    + '<input type="range" class="lqm-theme-alpha" min="0" max="100" value="' + _themeAlphaOf(o.cfg.text || '#ffffff')
+    + '" title="Opacity" oninput="' + q(o.fnColor, ", 'text', _themePairValue(this))") + '">'
+    + '</span></div>'
     + '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Border</span>'
-    + '<input type="color" class="lqm-theme-sw" value="' + (o.cfg.border || '#000000')
-    + '" oninput="' + q(o.fnColor, ", 'border', this.value)") + '"></div>';
+    + '<span class="lqm-theme-pair">'
+    + '<input type="color" class="lqm-theme-sw" value="' + _themeRgbOf(o.cfg.border || '#000000')
+    + '" oninput="' + q(o.fnColor, ", 'border', _themePairValue(this))") + '">'
+    + '<input type="range" class="lqm-theme-alpha" min="0" max="100" value="' + _themeAlphaOf(o.cfg.border || '#000000')
+    + '" title="Opacity" oninput="' + q(o.fnColor, ", 'border', _themePairValue(this))") + '">'
+    + '</span></div>';
   if (o.on) {
     h += '<div class="lqm-settings-row"><button class="lqm-settings-btn" onclick="'
       + q(o.fnClear) + '">Back to default</button></div>';
@@ -54495,13 +54560,21 @@ function _themeRenderParts() {
     h += '<div class="lqm-theme-prev" style="background-image:' + prev + '"></div>';
     if (isSolid) {
       h += '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Fill</span>'
-        + '<input type="color" class="lqm-theme-sw" value="' + bg.color
-        + '" oninput="themePartBg(\'' + pt.id + '\', { color: this.value })"></div>';
+        + '<span class="lqm-theme-pair">'
+        + '<input type="color" class="lqm-theme-sw" value="' + _themeRgbOf(bg.color)
+        + '" oninput="themePartBg(\'' + pt.id + '\', { color: _themePairValue(this) })">'
+        + '<input type="range" class="lqm-theme-alpha" min="0" max="100" value="' + _themeAlphaOf(bg.color)
+        + '" title="Opacity" oninput="themePartBg(\'' + pt.id + '\', { color: _themePairValue(this) })">'
+        + '</span></div>';
     } else {
       h += '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Fill stops</span>'
-        + '<div style="display:flex;gap:5px;align-items:center;">'
-        + bg.stops.map((c, i) => '<input type="color" class="lqm-theme-sw" value="' + c
-            + '" oninput="themePartStop(\'' + pt.id + '\', ' + i + ', this.value)">').join('')
+        + '<div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;">'
+        + bg.stops.map((c, i) => '<span class="lqm-theme-pair">'
+            + '<input type="color" class="lqm-theme-sw" value="' + _themeRgbOf(c)
+            + '" oninput="themePartStop(\'' + pt.id + '\', ' + i + ', _themePairValue(this))">'
+            + '<input type="range" class="lqm-theme-alpha" min="0" max="100" value="' + _themeAlphaOf(c)
+            + '" title="Opacity" oninput="themePartStop(\'' + pt.id + '\', ' + i + ', _themePairValue(this))">'
+            + '</span>').join('')
         + '</div></div>'
         + '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Angle</span>'
         + '<div style="display:flex;align-items:center;gap:6px;">'
@@ -54511,11 +54584,19 @@ function _themeRenderParts() {
         + bg.angle + 'deg</span></div></div>';
     }
     h += '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Text</span>'
-      + '<input type="color" class="lqm-theme-sw" value="' + (cfg.text || '#ffffff')
-      + '" oninput="themePartColor(\'' + pt.id + '\', \'text\', this.value)"></div>'
+      + '<span class="lqm-theme-pair">'
+      + '<input type="color" class="lqm-theme-sw" value="' + _themeRgbOf(cfg.text || '#ffffff')
+      + '" oninput="themePartColor(\'' + pt.id + '\', \'text\', _themePairValue(this))">'
+      + '<input type="range" class="lqm-theme-alpha" min="0" max="100" value="' + _themeAlphaOf(cfg.text || '#ffffff')
+      + '" title="Opacity" oninput="themePartColor(\'' + pt.id + '\', \'text\', _themePairValue(this))">'
+      + '</span></div>'
       + '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Border</span>'
-      + '<input type="color" class="lqm-theme-sw" value="' + (cfg.border || '#000000')
-      + '" oninput="themePartColor(\'' + pt.id + '\', \'border\', this.value)"></div>';
+      + '<span class="lqm-theme-pair">'
+      + '<input type="color" class="lqm-theme-sw" value="' + _themeRgbOf(cfg.border || '#000000')
+      + '" oninput="themePartColor(\'' + pt.id + '\', \'border\', _themePairValue(this))">'
+      + '<input type="range" class="lqm-theme-alpha" min="0" max="100" value="' + _themeAlphaOf(cfg.border || '#000000')
+      + '" title="Opacity" oninput="themePartColor(\'' + pt.id + '\', \'border\', _themePairValue(this))">'
+      + '</span></div>';
     if (on) {
       h += '<div class="lqm-settings-row"><button class="lqm-settings-btn" onclick="themePartClear(\''
         + pt.id + '\')">Back to default</button></div>';
@@ -54537,8 +54618,12 @@ function _themeRender() {
     tw.innerHTML = THEME_TOKENS.map(t => {
       const cur = _theme.tokens[t.v] || t.d;
       return '<div class="lqm-settings-row"><span class="lqm-settings-lbl">'
-        + t.l + '</span><input type="color" class="lqm-theme-sw" value="' + cur
-        + '" oninput="themeSetToken(\'' + t.v + '\', this.value)"></div>';
+        + t.l + '</span><span class="lqm-theme-pair">'
+        + '<input type="color" class="lqm-theme-sw" value="' + _themeRgbOf(cur)
+        + '" oninput="themeSetToken(\'' + t.v + '\', _themePairValue(this))">'
+        + '<input type="range" class="lqm-theme-alpha" min="0" max="100" value="' + _themeAlphaOf(cur)
+        + '" title="Opacity" oninput="themeSetToken(\'' + t.v + '\', _themePairValue(this))">'
+        + '</span></div>';
     }).join('');
   }
   const sw = document.getElementById('lqm-theme-surfaces');
@@ -54556,13 +54641,21 @@ function _themeRender() {
     body += '<div class="lqm-theme-prev" style="background-image:' + preview + '"></div>';
     if (isSolid) {
       body += '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Color</span>'
-        + '<input type="color" class="lqm-theme-sw" value="' + sf.color
-        + '" oninput="themeSetSurface(\'' + t.v + '\', { color: this.value })"></div>';
+        + '<span class="lqm-theme-pair">'
+        + '<input type="color" class="lqm-theme-sw" value="' + _themeRgbOf(sf.color)
+        + '" oninput="themeSetSurface(\'' + t.v + '\', { color: _themePairValue(this) })">'
+        + '<input type="range" class="lqm-theme-alpha" min="0" max="100" value="' + _themeAlphaOf(sf.color)
+        + '" title="Opacity" oninput="themeSetSurface(\'' + t.v + '\', { color: _themePairValue(this) })">'
+        + '</span></div>';
     } else {
       body += '<div class="lqm-settings-row"><span class="lqm-settings-lbl">Stops</span>'
-        + '<div style="display:flex;gap:5px;align-items:center;">'
-        + sf.stops.map((c, i) => '<input type="color" class="lqm-theme-sw" value="' + c
-            + '" oninput="themeSetSurfaceStop(\'' + t.v + '\', ' + i + ', this.value)">').join('')
+        + '<div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;">'
+        + sf.stops.map((c, i) => '<span class="lqm-theme-pair">'
+            + '<input type="color" class="lqm-theme-sw" value="' + _themeRgbOf(c)
+            + '" oninput="themeSetSurfaceStop(\'' + t.v + '\', ' + i + ', _themePairValue(this))">'
+            + '<input type="range" class="lqm-theme-alpha" min="0" max="100" value="' + _themeAlphaOf(c)
+            + '" title="Opacity" oninput="themeSetSurfaceStop(\'' + t.v + '\', ' + i + ', _themePairValue(this))">'
+            + '</span>').join('')
         + '<select class="lqm-settings-select" style="width:52px;" onchange="themeSurfaceStops(\''
         + t.v + "', this.value)\">"
         + [2, 3, 4].map(n => '<option value="' + n + '"'
@@ -63630,6 +63723,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-15-h', date: 'Sep 15, 2026',
+    text: 'App Colors can make things see-through now. Every color swatch in the editor - tokens, panels, buttons, and each of the twelve elements you can recolor one at a time, the animation bar and its outline included - got an opacity slider right next to it.' },
   { id: '2026-09-15-g', date: 'Sep 15, 2026',
     text: 'The last Radar Compass fix for the map gap did not go far enough - it could still leave a bare patch at some angles. Replaced it with a sturdier version that guarantees full coverage no matter which way the phone is facing, not just the angles already tested.' },
   { id: '2026-09-15-f', date: 'Sep 15, 2026',
