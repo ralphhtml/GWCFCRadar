@@ -52042,37 +52042,20 @@ function selectProduct(p) {
     // no matter what rotation or scale is already applied.
     const baseW = mapEl.clientWidth, baseH = mapEl.clientHeight;
     if (!baseW || !baseH) return 1;
-    // The center IS still safe to read off getBoundingClientRect(): both
-    // rotation and scale pivot around transform-origin: center center, so
-    // whatever that box currently reports, its middle is the one point
-    // that never moved.
-    const mapRect = mapEl.getBoundingClientRect();
-    const mapCenterX = mapRect.left + mapRect.width / 2;
-    const mapCenterY = mapRect.top + mapRect.height / 2;
-    // Rotating a W x H rectangle about its own center reaches min(W,H)/2 in
-    // every direction no matter the angle - that is the one guarantee to
-    // build on. What has to stay inside that guaranteed reach is whichever
-    // circle needs the map behind it: the compass dial while Radar Compass
-    // is open, or otherwise just the screen's own center.
-    const dialEl = document.getElementById('radc-dial-wrap');
-    const dialShown = dialEl && dialEl.classList.contains('show');
-    let neededRadius, targetX, targetY;
-    if (dialShown) {
-      const dr = dialEl.getBoundingClientRect();
-      targetX = dr.left + dr.width / 2;
-      targetY = dr.top + dr.height / 2;
-      neededRadius = dr.width / 2;
-    } else {
-      targetX = mapCenterX;
-      targetY = mapCenterY;
-      neededRadius = 0;
-    }
-    const centerOffset = Math.hypot(targetX - mapCenterX, targetY - mapCenterY);
-    const margin = 24; // a soft buffer past the dial's own edge
-    const need = (neededRadius + centerOffset + margin) * 2;
-    const have = Math.min(baseW, baseH);
-    const scale = need / have;
-    return Math.max(1, Math.min(2.5, scale));
+    // A first version of this only scaled up enough to keep a circle the
+    // dial's own size covered, measured off the dial's actual position -
+    // which depended on getting that measurement exactly right, and in
+    // practice still left a gap on a real phone. This is deliberately the
+    // blunter, harder-to-get-wrong version: whatever angle turns the
+    // rectangle's SHORT side to point at one of its own CORNERS is the
+    // worst case for covering that corner, and a scale of
+    // diagonal / shortest-side is exactly enough to cover it regardless of
+    // rotation angle. Guaranteeing the map's own full rectangle stays
+    // covered guarantees anything sitting inside it - the dial, wherever it
+    // happens to be positioned - stays covered too, with no dependency on
+    // measuring the dial itself at all.
+    const scale = Math.sqrt(baseW * baseW + baseH * baseH) / Math.min(baseW, baseH);
+    return Math.max(1, Math.min(3, scale));
   }
 
   function _applyBearing(deg) {
@@ -63647,6 +63630,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-15-g', date: 'Sep 15, 2026',
+    text: 'The last Radar Compass fix for the map gap did not go far enough - it could still leave a bare patch at some angles. Replaced it with a sturdier version that guarantees full coverage no matter which way the phone is facing, not just the angles already tested.' },
   { id: '2026-09-15-f', date: 'Sep 15, 2026',
     text: 'Fixed a gap in Radar Compass where the real map would stop covering part of the dial at some rotation angles, leaving a bare patch instead of terrain. The map now scales itself up just enough whenever it turns to keep the whole dial covered, no matter which way the phone is facing.' },
   { id: '2026-09-15-e', date: 'Sep 15, 2026',
