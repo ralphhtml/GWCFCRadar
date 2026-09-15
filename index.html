@@ -61332,6 +61332,10 @@ function _onSignedIn(user) {
 function _onSignedOut() {
   _currentUser = null;
   _chatBlockedSelf = false;
+  // A pending settings push belongs to the account that just left - sending
+  // it after sign-out would write this browser's settings onto whichever
+  // account (or nobody's) signs in next.
+  if (_settingsSyncTimer) { clearTimeout(_settingsSyncTimer); _settingsSyncTimer = null; }
   // Clear the once-per-load guard so signing in as a different account applies
   // that account's preset instead of being suppressed by the previous one.
   // The stashed Lite-ning preset goes too: it belonged to the account leaving.
@@ -63046,6 +63050,112 @@ async function authSaveHomeRegion() {
   }
 }
 
+// ── SETTINGS SYNC ACROSS DEVICES ─────────────────────────────
+// Everything in the Settings panel - units, opacities, particle look, colors,
+// the toggles - already lives in localStorage, which is per browser: sign in
+// on a phone and none of it follows. This makes it follow, automatically,
+// with nothing to click. Every write to one of the keys below is mirrored to
+// this account's own document, and every sign-in pulls the cloud copy back
+// down before anything reads localStorage for its starting values.
+//
+// Deliberately NOT everything in localStorage: gwcfc_guest_id and
+// gwcfc_navfab_pos describe this browser, not a preference; gwcfc_last_errors
+// and gwcfc_srch_recent are logs, not settings; and whether GPS tracking is
+// currently on (lqm_location/follow/gpshud/breadcrumb) is left per device on
+// purpose - turning it on for your phone should not start a location prompt
+// on your desktop the next time it loads.
+const SETTINGS_SYNC_KEYS = new Set([
+  'gwcfc_ai_speak', 'gwcfc_cyc_genesis', 'gwcfc_cyc_variant', 'gwcfc_l2_site',
+  'gwcfc_loop_len', 'gwcfc_navvoice', 'gwcfc_poly_color', 'gwcfc_pr_level',
+  'gwcfc_pr_looplen', 'gwcfc_pr_product', 'gwcfc_pr_site', 'gwcfc_pr_tilt',
+  'gwcfc_sc_mode', 'gwcfc_snd_source', 'gwcfc_sst_source', 'gwcfc_sst_variant',
+  'gwcfc_tz', 'gwcfc_zoomstep',
+  'lqm_airopacity', 'lqm_alertopacity', 'lqm_autoplay', 'lqm_citynamesize',
+  'lqm_dbltapmenu', 'lqm_loopspeed', 'lqm_modelopacity', 'lqm_pressureopacity',
+  'lqm_radaropacity', 'lqm_temperatureopacity', 'lqm_waveptdensity',
+  'lqm_waveptintensity', 'lqm_waveptopacity', 'lqm_waveptspeed',
+  'lqm_waveptthickness', 'lqm_wavesopacity', 'lqm_windlayeropacity',
+  'lqm_windptdensity', 'lqm_windptintensity', 'lqm_windptopacity',
+  'lqm_windptspeed', 'lqm_windptthickness', 'lqm_smooth', 'lqm_labels',
+  'lqm_citylabels', 'lqm_stateborders', 'lqm_countyborders',
+  'lqm_provinceborders', 'lqm_coastborders',
+]);
+// Suffixed per-variant, so matched by prefix rather than listed one by one.
+const SETTINGS_SYNC_PREFIXES = ['lqm_unit_', 'gwcfc_sst_ramp_'];
+
+function _isSyncableSettingKey(key) {
+  if (typeof key !== 'string') return false;
+  if (SETTINGS_SYNC_KEYS.has(key)) return true;
+  return SETTINGS_SYNC_PREFIXES.some(p => key.startsWith(p));
+}
+
+let _settingsSyncTimer = null;
+// Set while a cloud snapshot is being written INTO localStorage, so that
+// write does not turn straight around and schedule a push of the exact
+// thing that was just pulled.
+let _applyingSyncedSettings = false;
+
+(function _installSettingsSyncWatcher() {
+  const origSetItem = localStorage.setItem.bind(localStorage);
+  localStorage.setItem = function (key, value) {
+    origSetItem(key, value);
+    if (!_applyingSyncedSettings && _isSyncableSettingKey(key)) _scheduleSettingsSync();
+  };
+})();
+
+function _scheduleSettingsSync() {
+  // Guests and the chat bridge's anonymous session have no account to
+  // follow them to another device, so there is nothing to sync.
+  if (!_currentUser || _currentUser.isAnonymous || !_fbDb) return;
+  if (_settingsSyncTimer) clearTimeout(_settingsSyncTimer);
+  _settingsSyncTimer = setTimeout(_pushSettingsToCloud, 1500);
+}
+
+function _snapshotSyncableSettings() {
+  const out = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (_isSyncableSettingKey(k)) out[k] = localStorage.getItem(k);
+  }
+  return out;
+}
+
+async function _pushSettingsToCloud() {
+  _settingsSyncTimer = null;
+  if (!_currentUser || _currentUser.isAnonymous || !_fbDb) return;
+  try {
+    await _fbDb.collection('users').doc(_currentUser.uid).set({
+      syncedSettings: _snapshotSyncableSettings(),
+      syncedSettingsAt: firebase.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  } catch (e) { console.warn('settings sync push:', e); }
+}
+
+// Pulled on every sign-in, before anything else reads localStorage for a
+// starting value (see _loadUserPrefs). Only keys actually present in the
+// cloud copy are touched, so a brand-new account or a first sync that has
+// not landed yet leaves this device's own defaults exactly as they were,
+// rather than wiping them with an empty snapshot.
+function _applySyncedSettings(synced) {
+  if (!synced || typeof synced !== 'object') return;
+  _applyingSyncedSettings = true;
+  try {
+    Object.entries(synced).forEach(([k, v]) => {
+      if (typeof v !== 'string' || !_isSyncableSettingKey(k)) return;
+      // Units have a live setter already, used elsewhere for the same job
+      // (the Settings panel's own unit dropdowns) - reusing it here means
+      // a unit synced from another device is drawn correctly on screen
+      // right away, not just waiting in localStorage for the next reload.
+      if (k.indexOf('lqm_unit_') === 0 && typeof setUnitPref === 'function') {
+        try { setUnitPref(k.slice('lqm_unit_'.length), v); return; } catch (e) {}
+      }
+      try { localStorage.setItem(k, v); } catch (e) {}
+    });
+  } finally {
+    _applyingSyncedSettings = false;
+  }
+}
+
 // Snapshot of everything currently switched on: the sub-menu layers, the
 // overlay pills, the active tool, and the basemap. Overlay ids are read from
 // the DOM (every pill carries data-ovid) rather than a hardcoded list, so
@@ -63278,6 +63388,12 @@ async function _loadUserPrefs(uid) {
   try { _profileSelfHeal(uid, d || {}); } catch (e) {}
   if (!d) return;
 
+  // Pulled as early as possible, on the same reasoning as the comment below:
+  // auth resolves long before init() gets around to reading localStorage for
+  // a starting value, so landing this first is what lets a brand-new device
+  // open already showing this account's own units, opacities and colors.
+  try { _applySyncedSettings(d.syncedSettings); } catch (e) { console.warn('applySyncedSettings:', e); }
+
   _chatBlockedSelf = d.chatBlocked === true;
   // The composer may already be open (or opened right after this resolves)
   // from before this account's own moderation status was known.
@@ -63430,6 +63546,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-15-d', date: 'Sep 15, 2026',
+    text: 'Settings now follow your account, not just the browser they were set in. Units, opacities, particle look, colors and the toggle switches all sync automatically to every device you sign into, no save button to remember. GPS tracking stays per device on purpose, so turning it on for your phone will not pop a location prompt on your desktop.' },
   { id: '2026-09-15-c', date: 'Sep 15, 2026',
     text: 'Radar Compass now sits right on top of the real map instead of a plain dark screen, matching an actual AR compass view: the live map centers under the dial and zooms itself as you tilt to a farther or closer range ring, with the radar wedge painted straight over the real terrain.' },
   { id: '2026-09-15-b', date: 'Sep 15, 2026',
