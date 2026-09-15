@@ -78,6 +78,16 @@ console.log('\n4. the heading, tilt and wedge math read correctly');
      /const RADC_TILT_THRESHOLDS = \[60, 80, 100\];/.test(PAGE));
   ok('four preset ranges, nearest to farthest',
      /const RADC_RANGES_KM = \[10, 25, 50, 100\];/.test(PAGE));
+  ok('the overlay is see-through over the map near the dial, not an opaque backdrop',
+     /#radc-overlay \{[\s\S]{0,700}transparent 0%, transparent 38%/.test(PAGE));
+  ok('opening the tool locks the real map so it cannot be dragged out from under the dial',
+     /function _radcLockMapView\(\)[\s\S]{0,400}map\.dragging\.disable\(\)/.test(PAGE));
+  ok('closing restores whatever view the map was on before',
+     /function _radcUnlockMapView\(\)[\s\S]{0,600}map\.setView\(_radcPrevMapView\.center, _radcPrevMapView\.zoom/.test(PAGE));
+  ok('the map is re-zoomed so the outer ring matches its real-world distance',
+     /function _radcSyncMapView\(\)[\s\S]{0,700}Math\.log2\(metersPerPixelAtZ0 \/ metersPerPixel\)/.test(PAGE));
+  ok('tilting to a new range ring re-zooms the map too, not just the ring labels',
+     /_radcRenderRangeLabels\(\);\s*_radcSyncMapView\(\);\s*_radcScheduleWedge\(true\);/.test(PAGE));
   ok('no em dashes anywhere in the new code or this test',
      !PAGE.slice(PAGE.indexOf('const RADC_RANGES_KM'), PAGE.indexOf('_radcClose()') + 400)
        .includes(String.fromCharCode(0x2014))
@@ -151,6 +161,15 @@ console.log('\n5. opening it starts sensors and does not block on geolocation');
   ok('sensors are listening for whichever event this browser actually fires',
      r.orientEvent === 'deviceorientationabsolute' || r.orientEvent === 'deviceorientation',
      r.orientEvent);
+}
+
+console.log('\n5b. the underlying map gets locked and its prior view remembered');
+{
+  const r = await p.evaluate(() => ({
+    prevSaved: !!_radcPrevMapView,
+  }));
+  ok('opening the tool captured the map\'s view before taking it over',
+     r.prevSaved, JSON.stringify(r));
 }
 
 console.log('\n6. a computed Android-style heading rotates the dial the right way');
@@ -239,12 +258,15 @@ console.log('\n10. closing resets everything, by button and by Escape');
       on: _radcOn,
       orientEvent: _radcOrientEvent,
       status: document.getElementById('radc-status').textContent,
+      prevViewCleared: _radcPrevMapView === null,
     };
   });
   ok('the overlay closed', !closedByButton.overlayOpen, JSON.stringify(closedByButton));
   ok('_radcOn is false', closedByButton.on === false);
   ok('sensors were unhooked', closedByButton.orientEvent === null, JSON.stringify(closedByButton));
   ok('the status line cleared', closedByButton.status === '', JSON.stringify(closedByButton));
+  ok('the map\'s saved prior view was consumed (restored and cleared)',
+     closedByButton.prevViewCleared, JSON.stringify(closedByButton));
 
   const closedByEscape = await p.evaluate(() => new Promise(resolve => {
     _lastGpsPos = { coords: { latitude: 27.9, longitude: -82.3 } };

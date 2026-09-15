@@ -4725,7 +4725,13 @@ body.lite-mode #export-toolbar { display: none !important; }
   position: fixed;
   inset: 0;
   z-index: 4000;
-  background: radial-gradient(ellipse at center, #0c1620 0%, #05080c 75%);
+  /* Clear over the live map near the middle, where the dial sits, so the
+     real terrain shows through exactly like a phone's own AR overlay would;
+     dims toward the edges so the readouts in the corners stay legible over
+     whatever the map happens to look like underneath. */
+  background: radial-gradient(circle at center,
+    transparent 0%, transparent 38%,
+    rgba(5,8,12,0.55) 75%, rgba(5,8,12,0.88) 100%);
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -4742,14 +4748,18 @@ body.lite-mode #export-toolbar { display: none !important; }
 #radc-close:hover { background: rgba(255,60,60,0.25); border-color: rgba(255,60,60,0.6); }
 #radc-status {
   position: absolute; top: calc(16px + env(safe-area-inset-top, 0px)); left: 16px; right: 60px;
-  font-family: var(--mono); font-size: 11px; color: rgba(255,200,120,0.9);
+  font-family: var(--mono); font-size: 11px; color: rgba(255,200,120,0.95);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.9);
   min-height: 14px;
 }
 #radc-permission {
   display: none;
   flex-direction: column; align-items: center; gap: 14px;
-  max-width: 320px; text-align: center; padding: 0 20px;
+  max-width: 320px; text-align: center; padding: 24px 20px;
   color: rgba(212,232,255,0.9);
+  background: rgba(5,8,12,0.82);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 16px;
 }
 #radc-permission.show { display: flex; }
 #radc-permission svg { color: #e8b800; }
@@ -4766,18 +4776,27 @@ body.lite-mode #export-toolbar { display: none !important; }
   border-radius: 50%;
 }
 #radc-dial-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.radc-bezel { fill: none; stroke: rgba(255,255,255,0.5); stroke-width: 1.5; }
-.radc-ring  { fill: none; stroke: rgba(255,255,255,0.14); stroke-width: 1; }
+.radc-bezel { fill: none; stroke: rgba(255,255,255,0.7); stroke-width: 1.5;
+  filter: drop-shadow(0 0 3px rgba(0,0,0,0.8)); }
+.radc-ring  { fill: none; stroke: rgba(255,255,255,0.3); stroke-width: 1;
+  filter: drop-shadow(0 0 2px rgba(0,0,0,0.7)); }
 #radc-center-dot { fill: #4dd0e1; stroke: rgba(0,0,0,0.6); stroke-width: 1; }
-.radc-tick { stroke: rgba(255,255,255,0.55); stroke-width: 1; }
-.radc-tick.major { stroke: rgba(255,255,255,0.85); stroke-width: 1.6; }
+.radc-tick { stroke: rgba(255,255,255,0.65); stroke-width: 1;
+  filter: drop-shadow(0 0 2px rgba(0,0,0,0.8)); }
+.radc-tick.major { stroke: rgba(255,255,255,0.9); stroke-width: 1.6;
+  filter: drop-shadow(0 0 2px rgba(0,0,0,0.8)); }
+/* Real map underneath means real terrain colors behind every label, so each
+   one gets a dark halo (paint the stroke first, then the fill on top)
+   instead of trusting a flat dark backdrop to still be there. */
 .radc-deg-lbl {
-  font-family: var(--mono); font-size: 9px; fill: rgba(212,232,255,0.75);
+  font-family: var(--mono); font-size: 9px; fill: rgba(212,232,255,0.9);
   text-anchor: middle; dominant-baseline: middle;
+  paint-order: stroke; stroke: rgba(5,8,12,0.85); stroke-width: 3px; stroke-linejoin: round;
 }
 .radc-card-lbl {
   font-family: var(--display); font-weight: 700; font-size: 15px; fill: #fff;
   text-anchor: middle; dominant-baseline: middle;
+  paint-order: stroke; stroke: rgba(5,8,12,0.85); stroke-width: 4px; stroke-linejoin: round;
 }
 #radc-range-labels {
   position: absolute; inset: 0; pointer-events: none;
@@ -4802,12 +4821,16 @@ body.lite-mode #export-toolbar { display: none !important; }
 }
 #radc-range-readout {
   margin-top: 18px;
-  font-family: var(--mono); font-size: 11px; color: rgba(212,232,255,0.75);
+  font-family: var(--mono); font-size: 11px; color: rgba(212,232,255,0.85);
   text-align: center;
+  background: rgba(5,8,12,0.7); border-radius: 6px; padding: 3px 10px;
+  display: inline-block;
 }
 #radc-tilt-debug {
   margin-top: 4px;
-  font-family: var(--mono); font-size: 9px; color: rgba(212,232,255,0.35);
+  font-family: var(--mono); font-size: 9px; color: rgba(212,232,255,0.5);
+  background: rgba(5,8,12,0.6); border-radius: 4px; padding: 2px 6px;
+  display: inline-block;
 }
 
 /* ── MAP ROTATION ── */
@@ -42583,6 +42606,7 @@ let _radcOrientHandler = null;
 let _radcWedgeTimer = null;
 let _radcLastWedgeHeading = null;
 let _radcDialBuilt = false;
+let _radcPrevMapView = null;    // { center, zoom } to restore once the tool closes
 
 function _radcRangeKm() { return RADC_RANGES_KM[_radcRangeIdx]; }
 function _radcCardinalFor(deg) { return RADC_CARDINALS[Math.round(deg / 22.5) % 16]; }
@@ -42662,9 +42686,55 @@ async function _radcActuallyStart() {
     _radcSetStatus('');
   }
   if (typeof _inspEnsureReadableTiles === 'function') _inspEnsureReadableTiles();
+  _radcLockMapView();
+  _radcSyncMapView();
   _radcStartSensors();
   _radcRenderRangeLabels();
   _radcScheduleWedge(true);
+}
+
+// The dial now sits directly over the live map (see #radc-overlay's
+// background) rather than a plain dark backdrop, so it needs the real map
+// centered under it and held still - otherwise a stray drag would slide the
+// map out from under the rings and nothing would line up any more.
+function _radcLockMapView() {
+  if (typeof map === 'undefined' || !map) return;
+  _radcPrevMapView = { center: map.getCenter(), zoom: map.getZoom() };
+  try { map.dragging.disable(); } catch (e) {}
+  try { map.doubleClickZoom.disable(); } catch (e) {}
+  try { map.scrollWheelZoom.disable(); } catch (e) {}
+  try { if (map.touchZoom) map.touchZoom.disable(); } catch (e) {}
+  window.addEventListener('resize', _radcSyncMapView);
+}
+
+function _radcUnlockMapView() {
+  if (typeof map === 'undefined' || !map) return;
+  try { map.dragging.enable(); } catch (e) {}
+  try { map.doubleClickZoom.enable(); } catch (e) {}
+  try { map.scrollWheelZoom.enable(); } catch (e) {}
+  try { if (map.touchZoom) map.touchZoom.enable(); } catch (e) {}
+  window.removeEventListener('resize', _radcSyncMapView);
+  if (_radcPrevMapView) {
+    try { map.setView(_radcPrevMapView.center, _radcPrevMapView.zoom, { animate: true }); } catch (e) {}
+    _radcPrevMapView = null;
+  }
+}
+
+// Zooms the real map so the outer ring's real-world radius lines up with the
+// ring actually drawn on screen. Tilting to a farther range zooms the map
+// out the same amount, the same way stepping back from binoculars would.
+function _radcSyncMapView() {
+  if (typeof map === 'undefined' || !map || !_radcLoc) return;
+  const dialEl = document.getElementById('radc-dial-wrap');
+  if (!dialEl || !dialEl.clientWidth) return;
+  const pixelRadius = dialEl.clientWidth / 2 * 0.94; // just inside the bezel
+  const rangeKm = _radcRangeKm();
+  const metersPerPixel = (rangeKm * 1000) / pixelRadius;
+  const metersPerPixelAtZ0 = 156543.03392 * Math.cos(_radcLoc.lat * Math.PI / 180);
+  if (!(metersPerPixelAtZ0 > 0) || !(metersPerPixel > 0)) return;
+  let zoom = Math.log2(metersPerPixelAtZ0 / metersPerPixel);
+  zoom = Math.max(3, Math.min(17, zoom));
+  map.setView([_radcLoc.lat, _radcLoc.lon], zoom, { animate: true });
 }
 
 // Reuses the GPS Nav fix if one is already live and fresh rather than
@@ -42754,6 +42824,7 @@ function _radcHandleOrientation(e) {
   if (newIdx !== _radcRangeIdx) {
     _radcRangeIdx = newIdx;
     _radcRenderRangeLabels();
+    _radcSyncMapView();
     _radcScheduleWedge(true);
   }
   const dbg = document.getElementById('radc-tilt-debug');
@@ -42927,6 +42998,7 @@ function _radcDrawWedge() {
 function _radcClose() {
   _radcOn = false;
   _radcStopSensors();
+  _radcUnlockMapView();
   if (_radcWedgeTimer) { clearTimeout(_radcWedgeTimer); _radcWedgeTimer = null; }
   document.getElementById('radc-overlay')?.classList.remove('open');
   document.getElementById('radc-dial-wrap')?.classList.remove('show');
@@ -63358,6 +63430,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-15-c', date: 'Sep 15, 2026',
+    text: 'Radar Compass now sits right on top of the real map instead of a plain dark screen, matching an actual AR compass view: the live map centers under the dial and zooms itself as you tilt to a farther or closer range ring, with the radar wedge painted straight over the real terrain.' },
   { id: '2026-09-15-b', date: 'Sep 15, 2026',
     text: 'The Bearing tool is now Radar Compass: point your phone and a full-screen dial turns with its real compass sensor, painting a wedge of the actual radar picture toward wherever you are facing. Tilt the phone up or down to step through four range rings, from 10 km up close to 100 km out.' },
   { id: '2026-09-15-a', date: 'Sep 15, 2026',
