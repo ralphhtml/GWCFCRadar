@@ -97,8 +97,8 @@ console.log('\n4. the heading, tilt and wedge math read correctly');
      /function _radcClose\(\)[\s\S]{0,600}_mapSetBearing\(0\)/.test(PAGE));
   ok('the wedge samples through a rotation-aware projection, not raw rect math',
      /function _radcProjectToScreen\(lat, lng\)[\s\S]{0,1000}dx \* cosT - dy \* sinT/.test(PAGE));
-  ok('the map scales up around its own center so a rotated tall screen still covers the dial',
-     /function _neededScale\(\)[\s\S]{0,2200}Math\.max\(1, Math\.min\(2\.5, scale\)\)/.test(PAGE));
+  ok('the map scales up around its own center by diagonal / shortest side, guaranteeing full coverage at any angle',
+     /const scale = Math\.sqrt\(baseW \* baseW \+ baseH \* baseH\) \/ Math\.min\(baseW, baseH\);\s*\n\s*return Math\.max\(1, Math\.min\(3, scale\)\);/.test(PAGE));
   ok('the transform carries both the rotation and the compensating scale together',
      /mapEl\.style\.transform = `rotate\(\$\{_rotBearing\}deg\) scale\(\$\{_rotScale\}\)`;/.test(PAGE));
   ok('the wedge projection multiplies by that same scale, not just the rotation',
@@ -222,37 +222,61 @@ console.log('\n6b. the real map turns by the same amount, in the same direction,
   ok('the #map element itself carries that rotation', r.transform.startsWith('rotate(270deg)'), r.transform);
 }
 
-console.log('\n6b2. a tall phone-shaped screen gets scaled up enough to keep the dial covered');
+console.log('\n6b2. the compensating scale is exactly diagonal / shortest side, at any aspect ratio');
 {
-  const before = await p.evaluate(() => ({ scale: _mapGetScale() }));
-  ok('on this desktop-shaped viewport no extra scale was needed', before.scale === 1, JSON.stringify(before));
-
-  await p.setViewportSize({ width: 400, height: 860 }); // a typical tall phone
-  const r = await p.evaluate(() => new Promise(resolve => {
-    // Force a fresh bearing computation against the new, much taller/
-    // narrower viewport rather than reusing whatever was cached at 1000x800.
-    _mapSetBearing(0);
-    _mapSetBearing(272); // close to sideways - the worst case for a tall rectangle
-    resolve({
-      scale: _mapGetScale(),
-      transform: document.getElementById('map').style.transform,
+  // Expected value computed the same way _neededScale() computes it, from
+  // whatever #map's own live clientWidth/clientHeight actually are in this
+  // browser - not a hand-guessed constant, which is exactly what went wrong
+  // trying to predict a real phone's exact layout from a desktop test run.
+  async function expectAndActualScale(w, h) {
+    await p.setViewportSize({ width: w, height: h });
+    return p.evaluate(() => {
+      const mapEl = document.getElementById('map');
+      const bw = mapEl.clientWidth, bh = mapEl.clientHeight;
+      _mapSetBearing(0);       // clear any scale left over from a previous angle
+      _mapSetBearing(272);     // any non-zero angle exercises the same fixed scale
+      const expected = Math.min(3, Math.sqrt(bw * bw + bh * bh) / Math.min(bw, bh));
+      return { expected, actual: _mapGetScale(), bw, bh,
+               transform: document.getElementById('map').style.transform };
     });
-  }));
-  ok('a rotation near 90/270 on a tall phone screen now scales the map up',
-     r.scale > 1, JSON.stringify(r));
+  }
+
+  const desktop = await expectAndActualScale(1000, 800);
+  ok('desktop-shaped viewport: scale matches diagonal / shortest side exactly',
+     Math.abs(desktop.actual - desktop.expected) < 0.001, JSON.stringify(desktop));
+
+  const phone = await expectAndActualScale(400, 860); // a typical tall phone
+  ok('tall phone viewport: scale matches diagonal / shortest side exactly',
+     Math.abs(phone.actual - phone.expected) < 0.001, JSON.stringify(phone));
+  ok('and that is meaningfully bigger than the desktop case, as a narrower screen needs',
+     phone.actual > desktop.actual, JSON.stringify({ desktop, phone }));
   ok('capped at a sane maximum rather than growing without bound',
-     r.scale <= 2.5, JSON.stringify(r));
+     phone.actual <= 3, JSON.stringify(phone));
+  // Parsed rather than string-matched: the browser can reformat a CSS
+  // value's decimal digits when serializing style.transform back out, so
+  // comparing against a freshly-interpolated template literal is fragile
+  // even when the underlying numbers agree.
+  const m = phone.transform.match(/^rotate\(272deg\) scale\(([\d.]+)\)$/);
   ok('the transform carries both the rotation and that scale',
-     r.transform === `rotate(272deg) scale(${r.scale})`, r.transform);
+     !!m && Math.abs(parseFloat(m[1]) - phone.actual) < 0.01, phone.transform);
 
   await p.setViewportSize({ width: 1000, height: 800 }); // back to normal for the rest of the suite
   await p.evaluate(() => _mapSetBearing(90));
 }
 
-console.log('\n6c. the wedge\'s screen projection accounts for that rotation correctly');
+console.log('\n6c. the wedge\'s screen projection accounts for rotation, in isolation from whatever scale a real screen needs');
 {
   const r = await p.evaluate(() => {
     const savedMap = map; // `map` is a top-level `let`, not a window property
+    const savedGetBearing = _mapGetBearing, savedGetScale = _mapGetScale;
+    // Isolate the rotation math itself from _neededScale()'s own real
+    // measurements of the actual page (asserted separately in 6b2) - bearing
+    // and scale are stubbed directly rather than driven through
+    // _mapSetBearing(), which would pull in whatever this desktop test
+    // window's own real #map dimensions happen to need.
+    let fakeBearing = 0;
+    _mapGetBearing = () => fakeBearing;
+    _mapGetScale = () => 1;
     // 200x200 unrotated container, sitting on the page at (300,300)-(500,500)
     // once rotated. A point 50px right and 50px up from its own center.
     map = {
@@ -260,18 +284,24 @@ console.log('\n6c. the wedge\'s screen projection accounts for that rotation cor
       getSize: () => ({ x: 200, y: 200 }),
       getContainer: () => ({ getBoundingClientRect: () => ({ left: 300, top: 300, width: 200, height: 200 }) }),
     };
-    _mapSetBearing(0);
+    fakeBearing = 0;
     const unrotated = _radcProjectToScreen(0, 0);
-    _mapSetBearing(90);
+    fakeBearing = 90;
     const rotated90 = _radcProjectToScreen(0, 0);
+    fakeBearing = 0;
+    _mapGetScale = () => 2; // a plain scale-only case, no rotation
+    const scaledOnly = _radcProjectToScreen(0, 0);
     map = savedMap;
-    _mapSetBearing(0);
-    return { unrotated, rotated90 };
+    _mapGetBearing = savedGetBearing;
+    _mapGetScale = savedGetScale;
+    return { unrotated, rotated90, scaledOnly };
   });
-  ok('at bearing 0 it reduces to plain rect.left/top + containerPoint math',
+  ok('at bearing 0, scale 1, it reduces to plain rect.left/top + containerPoint math',
      r.unrotated.x === 450 && r.unrotated.y === 350, JSON.stringify(r.unrotated));
   ok('rotated 90deg clockwise, a point that was up-right of center lands down-right of it',
      r.rotated90.x === 450 && r.rotated90.y === 450, JSON.stringify(r.rotated90));
+  ok('scaled 2x with no rotation, the same point lands twice as far from center',
+     r.scaledOnly.x === 500 && r.scaledOnly.y === 300, JSON.stringify(r.scaledOnly));
 }
 
 console.log('\n7. an iOS-style webkitCompassHeading is used as-is, never recomputed');
