@@ -8,10 +8,12 @@
  * ray marcher, ported here without a GPU: OpenStorm's own reflectivity and
  * velocity colour ramps, this page's own (more accurate) beam-height math
  * for where a gate actually sits, and a plain 2D canvas standing in for the
- * shader. Most of what matters is checked the same way Cross Section's own
- * test does: the colour math is right independent of this code, a fake
- * decoder proves a real point cloud gets built and drawn, and the tool
- * cannot take the map down whether it succeeds or fails.
+ * shader. It opens from the map's own double-click/long-press menu rather
+ * than a toolbar button, already knowing which station to show. Most of
+ * what matters is checked the same way Cross Section's own test does: the
+ * colour math is right independent of this code, a fake decoder proves a
+ * real point cloud gets built and drawn, and the tool cannot take the map
+ * down whether it succeeds or fails.
  */
 
 import { readFileSync } from 'node:fs';
@@ -27,27 +29,32 @@ const ok = (name, cond, extra) => {
   else { fail++; console.log('  FAIL ' + name + (extra ? '  <' + extra + '>' : '')); }
 };
 
-console.log('\n1. it is a tool in the rail, with its own bar and panel');
+console.log('\n1. it is not a toolbar tool, but a floating panel opened from the map menu');
 {
-  ok('the toolbar button exists',
-     /<button class="tool-btn" id="tool-r3d" onclick="toggleRadar3D\(\)"/.test(PAGE));
-  ok('the toolbar and panel exist',
-     PAGE.includes('id="r3d-toolbar"') && PAGE.includes('id="r3d-panel"'));
+  ok('there is no toolbar button for it any more',
+     !/id="tool-r3d"/.test(PAGE));
+  ok('there is no separate r3d-toolbar, just one r3d-panel',
+     !PAGE.includes('id="r3d-toolbar"') && PAGE.includes('id="r3d-panel"'));
   ok('the panel reuses the same .xs-* chrome Cross Section uses',
      /<div id="r3d-panel">[\s\S]{0,80}<div class="xs-head">/.test(PAGE));
-  ok('it has a product and a site picker, a status line, an info and a close button',
-     PAGE.includes('id="r3d-product"') && PAGE.includes('id="r3d-site"')
-     && PAGE.includes('id="r3d-status"') && PAGE.includes('id="r3d-info-btn"')
-     && PAGE.includes('id="r3d-close"'));
+  ok('it has a product picker, a status line, an info and a close button',
+     PAGE.includes('id="r3d-product"') && PAGE.includes('id="r3d-status"')
+     && PAGE.includes('id="r3d-info-btn"') && /class="xs-x" title="Close"/.test(PAGE));
+  ok('there is no site picker any more - the map menu already knows the station',
+     !PAGE.includes('id="r3d-site"'));
+  ok('it has the two new sliders: Show above and Up to',
+     PAGE.includes('id="r3d-filter"') && PAGE.includes('id="r3d-filter-label"')
+     && PAGE.includes('id="r3d-height"') && PAGE.includes('id="r3d-height-label"'));
   ok('it has a time control: play, a slider, a time label',
      PAGE.includes('id="r3d-play"') && PAGE.includes('id="r3d-slider"')
      && PAGE.includes('id="r3d-time-label"'));
-  ok('the hover flyout and info popout both know it',
-     /'tool-r3d':\s*'Radar 3D'/.test(PAGE)
-     && /'tool-r3d':\s*'A storm/.test(PAGE));
+  ok('its own info popout has something real to say',
+     /'tool-r3d':\s*'A storm/.test(PAGE));
+  ok('the double-click/long-press map menu has a row for it',
+     /_cmRadar3DHere\(\)/.test(PAGE) && /View in 3D here/.test(PAGE));
   const EM = String.fromCharCode(0x2014);
   ok('no em dashes in the feature or in this test file',
-     !PAGE.slice(PAGE.indexOf('RADAR 3D\n   ─'), PAGE.indexOf('TOOLBAR (#right-menu) HOVER FLYOUT')).includes(EM)
+     !PAGE.slice(PAGE.indexOf('RADAR 3D PANEL'), PAGE.indexOf('TOOLBAR (#right-menu) HOVER FLYOUT')).includes(EM)
      && !readFileSync(join(ROOT, 'tools/test-radar-3d.mjs'), 'utf8').includes(EM));
 }
 
@@ -85,7 +92,30 @@ await p.goto('file://' + join(ROOT, 'index.html'), { waitUntil: 'domcontentloade
 await p.waitForTimeout(4200);
 ok('the page boots clean', errs.length === 0, errs[0]);
 
-console.log('\n2. the colour ramps, checked against the numbers ported from OpenStorm');
+console.log('\n2. the map menu opens it, centred on the clicked point');
+{
+  const r = await p.evaluate(() => {
+    _cmOpen({ latlng: L.latLng(36.1, -95.9) });
+    const row = Array.from(document.querySelectorAll('#map-ctx-menu .cm-item'))
+      .find(el => /View in 3D here/i.test(el.textContent));
+    if (row) row.click();
+    const out = {
+      rowExists: !!row,
+      on: _r3dOn,
+      station: _r3dStation,
+      panelOpen: document.getElementById('r3d-panel').classList.contains('open'),
+      menuClosed: !document.getElementById('map-ctx-menu').classList.contains('open'),
+    };
+    _r3dClose();
+    return out;
+  });
+  ok('the row is really in the menu', r.rowExists);
+  ok('clicking it opens the panel', r.on && r.panelOpen);
+  ok('it picked some real nearby station, not nothing', !!r.station, String(r.station));
+  ok('and the map menu itself closes on the way', r.menuClosed);
+}
+
+console.log('\n3. the colour ramps, checked against the numbers ported from OpenStorm');
 {
   const r = await p.evaluate(() => ({
     grayLow: _r3dReflectivityColor(-15),
@@ -107,15 +137,37 @@ console.log('\n2. the colour ramps, checked against the numbers ported from Open
   ok('70-80 dBZ reads near white (bright, low saturation)',
      r.white[0] > 200 && r.white[1] > 200 && r.white[2] > 200,
      JSON.stringify(r.white));
-  ok('near-zero velocity is nearly invisible', r.calmVel[3] < 0.2, JSON.stringify(r.calmVel));
+  ok('near-zero velocity sits at the alpha floor, well under a strong one',
+     r.calmVel[3] <= 0.41 && r.calmVel[3] < r.solidRed[3], JSON.stringify(r));
   ok('strong inbound is solid green', r.solidGreen[1] > r.solidGreen[0],
      JSON.stringify(r.solidGreen));
   ok('strong outbound is solid red', r.solidRed[0] > r.solidRed[1],
      JSON.stringify(r.solidRed));
   ok('stronger reflectivity is less transparent', r.alphaRises);
+  ok('neither ramp goes anywhere near fully see-through any more',
+     r.red[3] >= 0.6 && r.solidRed[3] >= 0.4, JSON.stringify({ red: r.red, solidRed: r.solidRed }));
 }
 
-console.log('\n3. a gate becomes a point in the right place');
+console.log('\n4. the value filter, in real units the two sliders can show');
+{
+  const r = await p.evaluate(() => ({
+    refAt0: _r3dFilterValue('ref', 0),
+    refAt100: _r3dFilterValue('ref', 100),
+    refAtHalf: _r3dFilterValue('ref', 50),
+    velAt0: _r3dFilterValue('vel', 0),
+    velAt50: _r3dFilterValue('vel', 50),
+  }));
+  ok('reflectivity: 0 on the slider means -20 dBZ (show everything)',
+     r.refAt0 === -20, String(r.refAt0));
+  ok('reflectivity: 100 on the slider means 80 dBZ (only the strongest core)',
+     r.refAt100 === 80, String(r.refAt100));
+  ok('reflectivity: the middle of the slider is the middle of the range',
+     r.refAtHalf === 30, String(r.refAtHalf));
+  ok('velocity: the slider is already in kt, 0 means show everything',
+     r.velAt0 === 0 && r.velAt50 === 50, JSON.stringify(r));
+}
+
+console.log('\n5. a gate becomes a point in the right place');
 {
   const r = await p.evaluate(() => {
     // A site at the origin and a gate due north: bearing 0, so it should
@@ -139,7 +191,7 @@ console.log('\n3. a gate becomes a point in the right place');
   ok('with real height off the ground, not zero', r.z > 0, r.z.toFixed(3));
 }
 
-console.log('\n4. building a frame from a volume that is stood in for');
+console.log('\n6. building a frame from a volume that is stood in for');
 {
   const r = await p.evaluate(async () => {
     // A fake volume: two elevations, gates on a small grid with a strong
@@ -196,13 +248,61 @@ console.log('\n4. building a frame from a volume that is stood in for');
      r.maxAbsValue.toFixed(1));
 }
 
-console.log('\n5. it refuses to build rather than breaking, when it must');
+console.log('\n7. the height slider actually hides the points above its cap');
+{
+  const r = await p.evaluate(() => {
+    // The panel has to actually be open (not display:none) for the canvas
+    // to have real pixels to draw into.
+    _r3dOpen('kfws');
+    const KFT = R3D_KFT_PER_KM;
+    // Two points, same spot on the ground, one low (5 kft) and one high
+    // (50 kft), both a strong 55 dBZ - so only the Up to slider decides
+    // whether the high one is drawn.
+    const lowKm = 5 / KFT, highKm = 50 / KFT;
+    const pts = new Float32Array([0, 0, lowKm, 55, 0, 0, highKm, 55]);
+    const frame = { pts, count: 2, centerZ: (lowKm + highKm) / 2, time: null, cuts: 2 };
+    _r3dFrames = [frame];
+    _r3dFrameIdx = 0;
+    _r3dFilterPct = 0;
+    _r3dCam.yaw = 0; _r3dCam.pitch = 0; _r3dCam.dist = 30;
+
+    // The ground plane always draws one faint dot per frame point plus the
+    // station dot, no matter what the height cap is - so counting the arcs
+    // a render call makes, minus those 3 fixed ones, is exactly the number
+    // of real 3D points that made it through this render's height cap.
+    const origArc = CanvasRenderingContext2D.prototype.arc;
+    let arcCalls = 0;
+    CanvasRenderingContext2D.prototype.arc = function (...args) {
+      arcCalls++;
+      return origArc.apply(this, args);
+    };
+    const countDrawnPoints = () => {
+      arcCalls = 0;
+      _r3dRender();
+      return Math.max(0, arcCalls - 3);
+    };
+
+    _r3dHeightMaxKft = 60;
+    const withBoth = countDrawnPoints();
+    _r3dHeightMaxKft = 20;                    // excludes the 50 kft point only
+    const withLowOnly = countDrawnPoints();
+
+    CanvasRenderingContext2D.prototype.arc = origArc;
+    _r3dClose();
+    return { withBoth, withLowOnly };
+  });
+  ok('with the cap high, both points draw', r.withBoth === 2, JSON.stringify(r));
+  ok('capping the height lower draws only the point still under the cap',
+     r.withLowOnly === 1, JSON.stringify(r));
+}
+
+console.log('\n8. it refuses to build rather than breaking, when it must');
 {
   const r = await p.evaluate(async () => {
-    toggleRadar3D();          // _r3dFillMenus picks a real nearby station on its own
+    _r3dOpen('kfws');
     const realWorker = window._workerProcess;
     window._workerProcess = undefined;
-    await _r3dBuild();
+    await _r3dLoadStation('kfws');
     const noDecoder = document.getElementById('r3d-status').textContent;
     window._workerProcess = realWorker;
 
@@ -210,15 +310,15 @@ console.log('\n5. it refuses to build rather than breaking, when it must');
     window._fetchVolumeDirect = async () => { throw new Error('no volume'); };
     const keepCache = window._l2VolCache;
     _l2VolCache = { station: null, at: 0, buf: null };
-    await _r3dBuild();
+    await _r3dLoadStation('kfws');
     const noVolume = document.getElementById('r3d-status').textContent;
     window._fetchVolumeDirect = keepFetch;
     _l2VolCache = keepCache;
 
-    const stillOpen = document.getElementById('r3d-toolbar').classList.contains('visible');
+    const stillOpen = document.getElementById('r3d-panel').classList.contains('open');
     const mapAlive = !!(window.map && typeof map.getCenter === 'function'
                         && isFinite(map.getCenter().lat));
-    toggleRadar3D();
+    _r3dClose();
     return { noDecoder, noVolume, stillOpen, mapAlive };
   });
   ok('a build with no decoder says so in words', /decoder/i.test(r.noDecoder), r.noDecoder);
@@ -228,13 +328,12 @@ console.log('\n5. it refuses to build rather than breaking, when it must');
   ok('and the map is still alive', r.mapAlive);
 }
 
-console.log('\n6. opening, closing, and the orbit camera respond to input');
+console.log('\n9. opening, closing, the orbit camera, and the two sliders all respond to input');
 {
   const r = await p.evaluate(async () => {
     const sleep = ms => new Promise(res => setTimeout(res, ms));
-    toggleRadar3D();
+    _r3dOpen('kfws');
     const openState = {
-      bar: document.getElementById('r3d-toolbar').classList.contains('visible'),
       panel: document.getElementById('r3d-panel').classList.contains('open'),
     };
     const cv = document.getElementById('r3d-canvas');
@@ -248,25 +347,34 @@ console.log('\n6. opening, closing, and the orbit camera respond to input');
     cv.dispatchEvent(new WheelEvent('wheel', { deltaY: 200, bubbles: true, cancelable: true }));
     await sleep(50);
     const afterZoom = { dist: _r3dCam.dist };
-    toggleRadar3D();
+
+    // The two sliders.
+    const filter = document.getElementById('r3d-filter');
+    const height = document.getElementById('r3d-height');
+    filter.value = '40'; filter.dispatchEvent(new Event('input', { bubbles: true }));
+    height.value = '20'; height.dispatchEvent(new Event('input', { bubbles: true }));
+    const sliders = { filterPct: _r3dFilterPct, heightKft: _r3dHeightMaxKft };
+
+    _r3dClose();
     const after = {
-      bar: document.getElementById('r3d-toolbar').classList.contains('visible'),
       panel: document.getElementById('r3d-panel').classList.contains('open'),
     };
-    return { openState, before, afterDrag, afterZoom, after };
+    return { openState, before, afterDrag, afterZoom, sliders, after };
   });
-  ok('opening shows the bar and the panel', r.openState.bar && r.openState.panel,
-     JSON.stringify(r.openState));
+  ok('opening shows the panel', r.openState.panel, JSON.stringify(r.openState));
   ok('dragging the canvas changes yaw and pitch',
      r.afterDrag.yaw !== r.before.yaw && r.afterDrag.pitch !== r.before.pitch,
      JSON.stringify({ before: r.before, after: r.afterDrag }));
   ok('scrolling changes the camera distance', r.afterZoom.dist !== r.before.dist,
      JSON.stringify({ before: r.before.dist, after: r.afterZoom.dist }));
-  ok('closing puts the bar and the panel away', !r.after.bar && !r.after.panel,
-     JSON.stringify(r.after));
+  ok('dragging Show above updates the filter percent', r.sliders.filterPct === 40,
+     JSON.stringify(r.sliders));
+  ok('dragging Up to updates the height cap', r.sliders.heightKft === 20,
+     JSON.stringify(r.sliders));
+  ok('closing puts the panel away', !r.after.panel, JSON.stringify(r.after));
 }
 
-console.log('\n7. nothing above threw');
+console.log('\n10. nothing above threw');
 {
   const real = errs.filter(e => !/Failed to fetch|NetworkError|ERR_FAILED|net::/i.test(e));
   ok('no page errors', real.length === 0, real.slice(0, 3).join(' | '));
