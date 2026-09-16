@@ -11338,7 +11338,7 @@ body.clean-mode #clean-hint { opacity: 1; }
       <span id="r3d-time-label"></span>
     </div>
   </div>
-  <div class="xs-note">Drag to orbit, scroll or pinch to zoom. Only Level 2 sites: this is the browser's own decoder, the same one Cross Section and Level 2 use, run once per tilt.</div>
+  <div class="xs-note">Drag to orbit, scroll or pinch to zoom. Uses this browser's own decoder, the same one Cross Section and Level 2 use, run once per tilt. Sites with no Level 2 archive (like a terminal TDWR at an airport) build the same shape from Level 3 tilt files instead, as one frame with no time slider.</div>
 </div>
 
     </div>
@@ -63957,6 +63957,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-16-h', date: 'Sep 16, 2026',
+    text: 'Radar 3D now works at terminal (TDWR) radars too, the small airport radars that never publish a Level 2 archive: it builds the same 3D shape from their separate Level 3 tilt files instead, one file per elevation rather than one file with all of them. A regular NEXRAD site falls back to this too if its live Level 2 feed happens to be down. The only difference is no time slider on a Level 3 build, just the one live frame.' },
   { id: '2026-09-16-g', date: 'Sep 16, 2026',
     text: 'Redesigned Radar 3D: it is no longer a tool rail button, it opens from the double-click / long-press map menu ("View in 3D here") already centered on whichever radar you tapped. Added a Show above slider to hide weak returns and an Up to slider to cap how high it draws, both adjustable without reloading. Raised the point limit and lowered the transparency so a storm reads more like a solid shape, and it now draws inside a wireframe box with height marked in thousands of feet and a ground-plane texture underneath, closer to how the OpenStorm desktop viewer that inspired it looks.' },
   { id: '2026-09-16-f', date: 'Sep 16, 2026',
@@ -68108,6 +68110,55 @@ function _r3dVelocityColor(kt) {
 // great-circle distance and a flat bearing off the centroid, against the
 // station's own known site position. Height is the real 4/3-earth-radius
 // beam height, at the sweep's one elevation angle, same as Cross Section.
+// Turns one decoded sweep's mesh into points appended onto the running
+// lon/lat-free x/y/z/value arrays a frame is built from, shared by the real
+// Level 2 volume path and the Level 3 tilt-by-tilt path below - both end up
+// with the same shape of mesh from the same worker, just fetched
+// differently. Returns the sum of the z values it added, so the caller can
+// keep a running centerZ without a second pass over the arrays.
+function _r3dConsumeMesh(mesh, elevAngle, sitePos, isVel, xs, ys, zs, vs) {
+  const angle = isFinite(elevAngle) ? elevAngle : 0.5;
+  // Only a true noise/clear-air floor here, not a "show me the strong
+  // stuff" cutoff - that is what the Show Above slider is for, at render
+  // time, so it can be turned back down without a re-decode.
+  const minV = isVel ? -Infinity : R3D_MIN_DBZ;
+  let zSum = 0;
+  for (let i = 0; i < mesh.length; i += 9) {
+    const v = mesh[i + 8];
+    if (v !== v) continue;                            // NaN, a range fold
+    if (isVel ? Math.abs(v) < R3D_MIN_KT : v < minV) continue;
+    const lon = (mesh[i] + mesh[i + 2] + mesh[i + 4] + mesh[i + 6]) / 4;
+    const lat = (mesh[i + 1] + mesh[i + 3] + mesh[i + 5] + mesh[i + 7]) / 4;
+    const rangeKm = sitePos ? _xsKm(sitePos, { lat, lng: lon }) : 0;
+    const bearingDeg = sitePos ? _fxBearing(sitePos.lat, sitePos.lng, lat, lon) : 0;
+    const br = bearingDeg * Math.PI / 180;
+    const z = _xsBeamHeightKm(rangeKm, angle, 0);
+    xs.push(rangeKm * Math.sin(br));
+    ys.push(rangeKm * Math.cos(br));
+    zs.push(z);
+    vs.push(v);
+    zSum += z;
+  }
+  return zSum;
+}
+
+// Downsamples the running arrays into the frame's final Float32Array and
+// packages it up. Shared by both build paths for the same reason as above.
+function _r3dFinishFrame(xs, ys, zs, vs, zSum, timeIso, cuts) {
+  if (!xs.length) return null;
+  // Downsample by an even stride rather than truncating, so a thin frame
+  // still shows structure from every tilt instead of just the low ones that
+  // happened to be decoded first.
+  const stride = Math.max(1, Math.ceil(xs.length / R3D_MAX_POINTS));
+  const n = Math.ceil(xs.length / stride);
+  const pts = new Float32Array(n * 4);
+  let j = 0;
+  for (let i = 0; i < xs.length; i += stride, j += 4) {
+    pts[j] = xs[i]; pts[j + 1] = ys[i]; pts[j + 2] = zs[i]; pts[j + 3] = vs[i];
+  }
+  return { pts, count: n, centerZ: zSum / xs.length, time: timeIso || null, cuts };
+}
+
 async function _r3dBuildFrame(buf, layer, sitePos, token) {
   let first;
   try { first = await _workerProcess(buf.slice(0), layer, undefined); }
@@ -68117,35 +68168,15 @@ async function _r3dBuildFrame(buf, layer, sitePos, token) {
   const elevs = Array.isArray(meta.availableElevations) && meta.availableElevations.length
     ? meta.availableElevations.slice(0, R3D_MAX_TILTS)
     : [meta.elevationNumber || 1];
+  const isVel = layer === 'VEL';
 
   const xs = [], ys = [], zs = [], vs = [];
   let zSum = 0;
 
   const consume = (res) => {
     if (!res || !res.meshData || !res.bounds) return;
-    const angle = res.metadata && res.metadata.elevationAngle;
-    const elevAngle = isFinite(angle) ? angle : 0.5;
-    const mesh = res.meshData;
-    // Only a true noise/clear-air floor here, not a "show me the strong
-    // stuff" cutoff - that is what the Show Above slider is for, at render
-    // time, so it can be turned back down without a re-decode.
-    const minV = layer === 'VEL' ? -Infinity : R3D_MIN_DBZ;
-    for (let i = 0; i < mesh.length; i += 9) {
-      const v = mesh[i + 8];
-      if (v !== v) continue;                          // NaN, a range fold
-      if (layer === 'VEL' ? Math.abs(v) < R3D_MIN_KT : v < minV) continue;
-      const lon = (mesh[i] + mesh[i + 2] + mesh[i + 4] + mesh[i + 6]) / 4;
-      const lat = (mesh[i + 1] + mesh[i + 3] + mesh[i + 5] + mesh[i + 7]) / 4;
-      const rangeKm = sitePos ? _xsKm(sitePos, { lat, lng: lon }) : 0;
-      const bearingDeg = sitePos ? _fxBearing(sitePos.lat, sitePos.lng, lat, lon) : 0;
-      const br = bearingDeg * Math.PI / 180;
-      const z = _xsBeamHeightKm(rangeKm, elevAngle, 0);
-      xs.push(rangeKm * Math.sin(br));
-      ys.push(rangeKm * Math.cos(br));
-      zs.push(z);
-      vs.push(v);
-      zSum += z;
-    }
+    zSum += _r3dConsumeMesh(res.meshData, res.metadata && res.metadata.elevationAngle,
+                             sitePos, isVel, xs, ys, zs, vs);
   };
   consume(first);
   for (let k = 0; k < elevs.length; k++) {
@@ -68158,24 +68189,51 @@ async function _r3dBuildFrame(buf, layer, sitePos, token) {
     consume(res);
     await new Promise(r => setTimeout(r, 0));           // let the page breathe between cuts
   }
-  if (!xs.length) return null;
+  return _r3dFinishFrame(xs, ys, zs, vs, zSum, meta.timeIso, elevs.length);
+}
 
-  // Downsample by an even stride rather than truncating, so a thin frame
-  // still shows structure from every tilt instead of just the low ones that
-  // happened to be decoded first.
-  const stride = Math.max(1, Math.ceil(xs.length / R3D_MAX_POINTS));
-  const n = Math.ceil(xs.length / stride);
-  const pts = new Float32Array(n * 4);
-  let j = 0;
-  for (let i = 0; i < xs.length; i += stride, j += 4) {
-    pts[j] = xs[i]; pts[j + 1] = ys[i]; pts[j + 2] = zs[i]; pts[j + 3] = vs[i];
+// A pseudo-volume for sites with no raw Level 2 archive at all - every
+// terminal TDWR, plus a NEXRAD whose live Level 2 feed happens to be down.
+// Level 3 has no single file with every elevation in it the way a Level 2
+// volume does: each cut (N0B/N1B/N2B/N3B for reflectivity, and the matching
+// TDWR TZ*/TV* codes) is published as its own separate file. So each one is
+// fetched and decoded on its own, and the same mesh-to-points step above
+// combines them into one frame exactly as if they had come from one volume.
+async function _r3dBuildFrameL3(site, product, sitePos, token) {
+  const family = PR_BUCKET[product === 'vel' ? 'velocity' : 'reflectivity'];
+  if (!family) return null;
+  const isTdwr = typeof _isTdwrSite === 'function' && _isTdwrSite(site);
+  const allCodes = isTdwr ? family.t : family.k;
+  if (!allCodes || !allCodes.length) return null;
+  // TZL is a longer-range repeat of TZ0's own tilt, not a distinct elevation
+  // - skip it so two cuts never land on top of each other in the same frame.
+  const codes = allCodes.filter(c => c !== 'TZL').slice(0, R3D_MAX_TILTS);
+  const isVel = product === 'vel';
+
+  const sweeps = await Promise.all(codes.map(async (code) => {
+    try {
+      const url = await _l3BucketNewest(site, code);
+      if (!url) return null;
+      const buf = await fetch(url, { signal: _abortSignal(20000) })
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); });
+      if (token !== _r3dToken) return null;
+      return await _workerProcess(buf, code);
+    } catch (e) { return null; }                       // one missing tilt costs one cut, not the frame
+  }));
+  if (token !== _r3dToken) return null;
+
+  const xs = [], ys = [], zs = [], vs = [];
+  let zSum = 0, cuts = 0, timeIso = null;
+  for (const res of sweeps) {
+    if (!res || !res.meshData) continue;
+    const meta = res.metadata || {};
+    if (!isFinite(meta.elevationAngle)) continue;      // no real angle, no honest height
+    zSum += _r3dConsumeMesh(res.meshData, meta.elevationAngle, sitePos, isVel, xs, ys, zs, vs);
+    if (meta.timeIso) timeIso = meta.timeIso;
+    cuts++;
   }
-  return {
-    pts, count: n,
-    centerZ: zSum / xs.length,
-    time: meta.timeIso || null,
-    cuts: elevs.length,
-  };
+  if (!cuts) return null;
+  return _r3dFinishFrame(xs, ys, zs, vs, zSum, timeIso, cuts);
 }
 
 function _r3dMaxRangeKm(frame) {
@@ -68205,23 +68263,46 @@ async function _r3dLoadStation(stationId) {
   try {
     const layer = product === 'vel' ? 'VEL' : 'REF';
     const sitePos = _xsSiteLatLon(site);
-    _r3dSay('getting the volume for ' + site.toUpperCase(), 'busy');
-    let buf = null;
-    if (typeof _l2VolCache !== 'undefined' && _l2VolCache
-        && _l2VolCache.station === site && _l2VolCache.buf
-        && Date.now() - _l2VolCache.at < 120000) {
-      buf = _l2VolCache.buf;
-    } else if (typeof _fetchVolumeDirect === 'function') {
-      buf = await _fetchVolumeDirect(site);
-      if (token !== _r3dToken) return;
-      try { _l2VolCache = { station: site, at: Date.now(), buf: buf.slice(0) }; } catch (e) {}
-    }
-    if (!buf) throw new Error('no volume for ' + site.toUpperCase());
+    const isTdwr = typeof _isTdwrSite === 'function' && _isTdwrSite(site);
+    let frame = null;
 
-    _r3dSay('decoding tilts', 'busy');
-    const frame = await _r3dBuildFrame(buf, layer, sitePos, token);
-    if (token !== _r3dToken) return;
-    if (!frame) throw new Error('no usable gates in this volume');
+    // Level 2 first, for anything that might actually have it: one file with
+    // every tilt already in it, and often already sitting in cache from the
+    // picture already on the map. A TDWR terminal radar never publishes a
+    // Level 2 archive at all, so it skips straight to Level 3 below rather
+    // than spending a round trip finding that out the hard way.
+    if (!isTdwr) {
+      try {
+        _r3dSay('getting the volume for ' + site.toUpperCase(), 'busy');
+        let buf = null;
+        if (typeof _l2VolCache !== 'undefined' && _l2VolCache
+            && _l2VolCache.station === site && _l2VolCache.buf
+            && Date.now() - _l2VolCache.at < 120000) {
+          buf = _l2VolCache.buf;
+        } else if (typeof _fetchVolumeDirect === 'function') {
+          buf = await _fetchVolumeDirect(site);
+          if (token !== _r3dToken) return;
+          try { _l2VolCache = { station: site, at: Date.now(), buf: buf.slice(0) }; } catch (e) {}
+        }
+        if (buf) {
+          _r3dSay('decoding tilts', 'busy');
+          frame = await _r3dBuildFrame(buf, layer, sitePos, token);
+        }
+      } catch (e) { /* no Level 2 to be had - Level 3 below is the fallback */ }
+      if (token !== _r3dToken) return;
+    }
+
+    // No raw Level 2 (every terminal radar, or a NEXRAD whose live feed is
+    // down) or nothing usable came out of it: build the same shape from the
+    // site's own Level 3 tilt files instead - up to four separate files, one
+    // elevation each, in place of the one multi-tilt volume.
+    const usedL3 = !frame;
+    if (usedL3) {
+      _r3dSay('no Level 2 archive, trying Level 3 tilts for ' + site.toUpperCase(), 'busy');
+      frame = await _r3dBuildFrameL3(site, product, sitePos, token);
+      if (token !== _r3dToken) return;
+    }
+    if (!frame) throw new Error('no usable data for ' + site.toUpperCase());
 
     _r3dFrames = [frame];
     _r3dFrameIdx = 0;
@@ -68230,15 +68311,19 @@ async function _r3dLoadStation(stationId) {
     // lost in the middle of the view.
     _r3dCam.dist = Math.max(R3D_DIST_MIN, Math.min(R3D_DIST_MAX,
       _r3dMaxRangeKm(frame) * 1.6 + 30));
-    _r3dSay(`${frame.count.toLocaleString()} points · ${frame.cuts} cuts`);
+    _r3dSay(`${frame.count.toLocaleString()} points · ${frame.cuts} cuts`
+            + (usedL3 ? ' · Level 3' : ''));
     _r3dUpdateLegend(product);
     _r3dUpdateSlider();
     _r3dDirty = true;
 
     // The shown frame owns the map alone at first; the rest of the time
     // control's history joins moments later, same idea as the NWS and Level
-    // 2 loops already use elsewhere on this page.
-    if (typeof _fetchRecentVolumes === 'function') {
+    // 2 loops already use elsewhere on this page. Level 3's own history
+    // would mean juggling up to four separate per-tilt archives that do not
+    // scan at quite the same moment, so for now the time slider is a Level 2
+    // thing only - a Level 3 frame stands alone as the one live picture.
+    if (!usedL3 && typeof _fetchRecentVolumes === 'function') {
       _fetchRecentVolumes(site, R3D_FRAMES).then(async (bufs) => {
         if (token !== _r3dToken || !bufs || bufs.length < 2) return;
         const older = bufs.slice(1);                    // [0] is the one already shown
@@ -68597,7 +68682,7 @@ const TOOL_DESCRIPTIONS = {
   'tool-inspector': 'Shows the radar value at the exact center of the map, and updates live as you pan.',
   'tool-export':    'Downloads what is on screen: the current picture as a PNG, or the whole loop as a video.',
   'tool-xsec':      'Cuts a vertical slice through a storm. A radar picture is one thin cone and says nothing about how tall the weather is, but a volume scan sweeps the same circle at rising angles, so sampling every one of them along a line on the ground stacks them into a side-on view. Drag the two ends of the line, press the arrow, and it shows where the core sits, whether it leans, and whether there is an overhang. Uses the volume already downloaded for the radar picture, so it costs no extra download.',
-  'tool-r3d':       'A storm’s real shape in three dimensions, not one flat slice through it. Double-click or long-press the map and choose View in 3D here to open it over whichever radar you tapped. Every gate becomes a point in space, coloured for reflectivity or velocity, drawn from a volume decoded the same way Cross Section and Level 2 already are, inside a box sized to the volume with height marked in thousands of feet. The Show above slider hides weak points, the Up to slider caps how high it draws, and dragging orbits the view while scroll or pinch zooms.',
+  'tool-r3d':       'A storm’s real shape in three dimensions, not one flat slice through it. Double-click or long-press the map and choose View in 3D here to open it over whichever radar you tapped. Every gate becomes a point in space, coloured for reflectivity or velocity, drawn from a volume decoded the same way Cross Section and Level 2 already are, inside a box sized to the volume with height marked in thousands of feet. A site with no Level 2 archive, like a terminal TDWR at an airport, builds the same shape from its separate Level 3 tilt files instead, as a single frame with no time slider. The Show above slider hides weak points, the Up to slider caps how high it draws, and dragging orbits the view while scroll or pinch zooms.',
 };
 
 let _tbFlyoutHideTimer = null;
