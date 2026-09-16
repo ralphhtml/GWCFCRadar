@@ -33893,6 +33893,11 @@ function _startLocationTracking() {
     if (typeof _navOnPosition === 'function') {
       try { _navOnPosition(lat, lng, acc); } catch (e) {}
     }
+    // Same one watch, one more listener: keeps Radar Compass's dial locked
+    // to this exact fix rather than a stale snapshot from when it opened.
+    if (typeof _radcOnPosition === 'function') {
+      try { _radcOnPosition(lat, lng); } catch (e) {}
+    }
   }, err => {
     _stopLocationTracking();
     try { localStorage.removeItem('gwcfc_location'); } catch(e) {}
@@ -42794,6 +42799,8 @@ let _radcWedgeTimer = null;
 let _radcLastWedgeHeading = null;
 let _radcDialBuilt = false;
 let _radcPrevMapView = null;    // { center, zoom } to restore once the tool closes
+let _radcBetaSmoothed = null;   // running average of the raw tilt reading
+let _radcOwnsLocationWatch = false; // true if Compass itself turned My Location on
 
 function _radcRangeKm() { return RADC_RANGES_KM[_radcRangeIdx]; }
 function _radcCardinalFor(deg) { return RADC_CARDINALS[Math.round(deg / 22.5) % 16]; }
@@ -42872,12 +42879,39 @@ async function _radcActuallyStart() {
   } else {
     _radcSetStatus('');
   }
+  // A one-time fix here is not enough to KEEP the dial centered on the
+  // person - it is only where they were the instant this opened. The blue
+  // "my location" dot keeps moving as GPS refines or they actually walk,
+  // and the dial used to just sit there getting further from it. Riding the
+  // same live watch that dot already uses (started here if nothing had
+  // already turned it on) is what keeps the two locked together; see
+  // _radcOnPosition, called from the same watchPosition callback.
+  _radcOwnsLocationWatch = (typeof _locWatchId !== 'undefined' && _locWatchId === null);
+  if (typeof _startLocationTracking === 'function') _startLocationTracking();
   if (typeof _inspEnsureReadableTiles === 'function') _inspEnsureReadableTiles();
   _radcLockMapView();
   _radcSyncMapView();
   _radcStartSensors();
   _radcRenderRangeLabels();
   _radcScheduleWedge(true);
+}
+
+// Called from the live location watch (_startLocationTracking) on every new
+// fix while Radar Compass is open, so the dial's center never goes stale
+// the way a one-shot location snapshot would.
+function _radcOnPosition(lat, lon) {
+  if (!_radcOn) return;
+  const prev = _radcLoc;
+  _radcLoc = { lat, lon };
+  // Skip the resync, and the animated pan it would trigger, for GPS jitter
+  // of a few metres while standing still - only a real, human-scale move
+  // is worth re-centering for.
+  if (prev) {
+    const dLat = (lat - prev.lat) * 111320;
+    const dLon = (lon - prev.lon) * 111320 * Math.cos(lat * Math.PI / 180);
+    if (Math.hypot(dLat, dLon) < 8) return;
+  }
+  _radcSyncMapView();
 }
 
 // The dial now sits directly over the live map (see #radc-overlay's
@@ -42991,13 +43025,28 @@ function _radcComputeHeading(e) {
 // something closer - raises it toward 180, tipping it UP toward the sky
 // lowers it toward 0.
 const RADC_TILT_THRESHOLDS = [60, 80, 100]; // three cut points make four bands
-function _radcRangeIdxForBeta(beta) {
-  if (beta == null || !isFinite(beta)) return _radcRangeIdx; // hold last known
+// A raw orientation reading jitters a degree or two even on a hand held
+// still, and every one of those readings used to be tried against the
+// threshold directly: hovering right at 80° flickered the range (and
+// re-triggered an animated map zoom) back and forth many times a second.
+// Two fixes, applied together: the angle fed in is a smoothed running
+// average rather than the instant reading (_radcHandleOrientation), and
+// leaving the CURRENT band takes a deliberate tilt past its threshold by
+// this many degrees, not just touching it - a dead zone, the same idea a
+// thermostat's hysteresis uses to stop short-cycling near its setpoint.
+const RADC_TILT_HYSTERESIS = 4;
+const RADC_BETA_SMOOTHING = 0.18; // 0-1, higher = snappier, lower = steadier
+function _radcRangeIdxForBeta(beta, currentIdx) {
+  if (beta == null || !isFinite(beta)) return currentIdx; // hold last known
   const b = Math.abs(beta);
-  if (b < RADC_TILT_THRESHOLDS[0]) return 3; // farthest ring
-  if (b < RADC_TILT_THRESHOLDS[1]) return 2;
-  if (b < RADC_TILT_THRESHOLDS[2]) return 1;
-  return 0; // nearest ring
+  let idx = currentIdx;
+  // Move toward the nearest ring: needs b to climb past the boundary above
+  // the current band, plus the hysteresis margin.
+  while (idx > 0 && b >= RADC_TILT_THRESHOLDS[3 - idx] + RADC_TILT_HYSTERESIS) idx--;
+  // Move toward the farthest ring: needs b to drop below the boundary
+  // below the current band, minus the same margin.
+  while (idx < 3 && b < RADC_TILT_THRESHOLDS[2 - idx] - RADC_TILT_HYSTERESIS) idx++;
+  return idx;
 }
 
 function _radcHandleOrientation(e) {
@@ -43007,7 +43056,14 @@ function _radcHandleOrientation(e) {
     _radcHeading = heading;
     _radcApplyHeading(heading);
   }
-  const newIdx = _radcRangeIdxForBeta(e.beta);
+  // A running average of the raw reading, not the reading itself - the
+  // thing that made a still hand's natural tremor visible as the range
+  // ring hopping around on its own.
+  if (typeof e.beta === 'number' && isFinite(e.beta)) {
+    _radcBetaSmoothed = _radcBetaSmoothed == null
+      ? e.beta : _radcBetaSmoothed + (e.beta - _radcBetaSmoothed) * RADC_BETA_SMOOTHING;
+  }
+  const newIdx = _radcRangeIdxForBeta(_radcBetaSmoothed, _radcRangeIdx);
   if (newIdx !== _radcRangeIdx) {
     _radcRangeIdx = newIdx;
     _radcRenderRangeLabels();
@@ -43015,7 +43071,7 @@ function _radcHandleOrientation(e) {
     _radcScheduleWedge(true);
   }
   const dbg = document.getElementById('radc-tilt-debug');
-  if (dbg && typeof e.beta === 'number') dbg.textContent = `tilt ${Math.round(e.beta)}°`;
+  if (dbg && _radcBetaSmoothed != null) dbg.textContent = `tilt ${Math.round(_radcBetaSmoothed)}°`;
   _radcScheduleWedge(false);
 }
 
@@ -43223,6 +43279,14 @@ function _radcClose() {
   _radcOn = false;
   _radcStopSensors();
   _radcUnlockMapView();
+  _radcBetaSmoothed = null;
+  // Compass turning live tracking on as a side effect of opening should not
+  // leave it running (and the blue dot on screen, and the battery draw)
+  // after closing, when the person never asked for it separately.
+  if (_radcOwnsLocationWatch && typeof _stopLocationTracking === 'function') {
+    _stopLocationTracking();
+  }
+  _radcOwnsLocationWatch = false;
   // Back to north-up. The compass owned the bearing while it was open, the
   // same way the manual 3-finger gesture owns it the rest of the time, so
   // closing hands it back rather than leaving the map tilted to whatever it
@@ -63897,6 +63961,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-16-f', date: 'Sep 16, 2026',
+    text: 'Fixed Radar Compass drifting off your real location: it used to grab your GPS fix once when it opened and never look again, so the dial slowly fell out of sync with the live blue dot as the fix refined or you actually moved. It now rides that same live location feed the whole time it is open. Tilt-to-distance is steadier too: the raw sensor reading is smoothed and each range ring now has a small dead zone at its edge, so a hand tremor near a threshold no longer flickers the range back and forth.' },
   { id: '2026-09-16-e', date: 'Sep 16, 2026',
     text: 'Added Radar 3D: a storm’s real shape in three dimensions, inspired by the desktop viewer OpenStorm. Every radar gate above a threshold becomes a colored point in space, built from the same volume decoder Cross Section and Level 2 already use, no extra download. Drag to orbit, scroll or pinch to zoom, and step through the last few volumes with the time slider. Also moved Cross Section off the tool rail and into the double-click / long-press map menu, where it now starts centered on whichever point you pick instead of always the middle of the view.' },
   { id: '2026-09-16-d', date: 'Sep 16, 2026',

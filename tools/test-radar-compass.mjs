@@ -94,7 +94,7 @@ console.log('\n4. the heading, tilt and wedge math read correctly');
   ok('every heading update turns the real map by the same amount as the dial',
      /function _radcApplyHeading\(heading\)[\s\S]{0,700}_mapSetBearing\(-heading\)/.test(PAGE));
   ok('closing hands the bearing back to north-up',
-     /function _radcClose\(\)[\s\S]{0,600}_mapSetBearing\(0\)/.test(PAGE));
+     /function _radcClose\(\)[\s\S]{0,900}_mapSetBearing\(0\)/.test(PAGE));
   ok('the wedge samples through a rotation-aware projection, not raw rect math',
      /function _radcProjectToScreen\(lat, lng\)[\s\S]{0,1000}dx \* cosT - dy \* sinT/.test(PAGE));
   ok('the map scales up around its own center by diagonal / shortest side, guaranteeing full coverage at any angle',
@@ -185,6 +185,37 @@ console.log('\n5b. the underlying map gets locked and its prior view remembered'
   }));
   ok('opening the tool captured the map\'s view before taking it over',
      r.prevSaved, JSON.stringify(r));
+}
+
+console.log('\n5c. the dial stays centred on live GPS updates, not a one-time snapshot');
+{
+  // The reported bug: the dial used to capture _radcLoc once at startup and
+  // never touch it again, so it drifted away from the live "my location"
+  // blue dot as the GPS fix improved or the phone actually moved. It is
+  // fixed by riding the same watchPosition feed the blue dot uses
+  // (_radcOnPosition, called from _startLocationTracking's own callback).
+  const r = await p.evaluate(() => {
+    let syncCalls = 0;
+    const realSync = _radcSyncMapView;
+    window._radcSyncMapView = function (...args) { syncCalls++; return realSync.apply(this, args); };
+    const before = { lat: _radcLoc.lat, lon: _radcLoc.lon };
+    // A real, human-scale move: about 50 m north.
+    _radcOnPosition(before.lat + 0.00045, before.lon);
+    const afterMove = { loc: { lat: _radcLoc.lat, lon: _radcLoc.lon }, syncCalls };
+    // Then a tiny jitter, well under the 8 m dead zone.
+    _radcOnPosition(afterMove.loc.lat + 0.00001, afterMove.loc.lon);
+    const afterJitter = { loc: { lat: _radcLoc.lat, lon: _radcLoc.lon }, syncCalls };
+    window._radcSyncMapView = realSync;
+    return { before, afterMove, afterJitter, ownsWatch: _radcOwnsLocationWatch };
+  });
+  ok('a real move updates the dial\'s centre and triggers a resync',
+     r.afterMove.loc.lat !== r.before.lat && r.afterMove.syncCalls === 1,
+     JSON.stringify(r));
+  ok('a sub-threshold jitter still updates the stored point but skips the resync',
+     r.afterJitter.loc.lat !== r.afterMove.loc.lat && r.afterJitter.syncCalls === r.afterMove.syncCalls,
+     JSON.stringify(r));
+  ok('Radar Compass started live tracking itself, since nothing else had',
+     r.ownsWatch === true, JSON.stringify(r));
 }
 
 console.log('\n6. a computed Android-style heading rotates the dial the right way');
@@ -319,6 +350,11 @@ console.log('\n7. an iOS-style webkitCompassHeading is used as-is, never recompu
 
 console.log('\n8. tilting the phone steps through the four preset range rings');
 {
+  // A held tilt, not one instant reading: the raw angle is smoothed
+  // (RADC_BETA_SMOOTHING) precisely so a single jittery sample can no
+  // longer flip the range on its own, so proving a SUSTAINED tilt gets
+  // there means firing enough repeats for that average to converge, the
+  // same as a real hand actually holding the phone at that angle would.
   const cases = [
     { beta: 40, want: 3, label: '100 km (farthest, phone tipped up)' },
     { beta: 70, want: 2, label: '50 km' },
@@ -327,14 +363,38 @@ console.log('\n8. tilting the phone steps through the four preset range rings');
   ];
   for (const c of cases) {
     const r = await p.evaluate(beta => new Promise(resolve => {
-      const ev = new Event(_radcOrientEvent);
-      Object.defineProperty(ev, 'webkitCompassHeading', { value: 213, configurable: true });
-      Object.defineProperty(ev, 'beta', { value: beta, configurable: true });
-      window.dispatchEvent(ev);
+      for (let i = 0; i < 30; i++) {
+        const ev = new Event(_radcOrientEvent);
+        Object.defineProperty(ev, 'webkitCompassHeading', { value: 213, configurable: true });
+        Object.defineProperty(ev, 'beta', { value: beta, configurable: true });
+        window.dispatchEvent(ev);
+      }
       setTimeout(() => resolve({ idx: _radcRangeIdx, dbg: document.getElementById('radc-tilt-debug').textContent }), 50);
     }), c.beta);
     ok(`beta ${c.beta} selects ${c.label}`, r.idx === c.want, JSON.stringify(r));
   }
+}
+
+console.log('\n8b. a single jittery reading near a threshold no longer flips the range');
+{
+  const r = await p.evaluate(() => new Promise(resolve => {
+    // Settle on 25 km (idx 1) first, the same way the previous section left
+    // off, then fire one lone reading right at the 80 boundary - the kind
+    // of single noisy sample a hand tremor produces - and confirm it alone
+    // does not move the range.
+    for (let i = 0; i < 30; i++) {
+      const ev = new Event(_radcOrientEvent);
+      Object.defineProperty(ev, 'beta', { value: 90, configurable: true });
+      window.dispatchEvent(ev);
+    }
+    const before = _radcRangeIdx;
+    const jitter = new Event(_radcOrientEvent);
+    Object.defineProperty(jitter, 'beta', { value: 80, configurable: true });
+    window.dispatchEvent(jitter);
+    setTimeout(() => resolve({ before, after: _radcRangeIdx }), 30);
+  }));
+  ok('one noisy sample at the boundary does not flip the band',
+     r.before === r.after, JSON.stringify(r));
 }
 
 console.log('\n9. the wedge draws and hints to turn Radar on when there is nothing to sample');
