@@ -48,12 +48,17 @@ console.log('\n1. the bubble drag-reorder machinery is gone');
      /Every bubble gets an info button/.test(PAGE));
 }
 
-console.log('\n2. the NWS grids are a real row in the map-layer stack');
+console.log('\n2. Waves/Air/Wind/Temperature/Pressure are each a real row in the map-layer stack');
 {
-  ok("MAP_STACK_LAYERS lists 'nws' pointing at nwsPane",
-     /\{ id: 'nws',\s*pane: 'nwsPane'/.test(PAGE));
-  ok('_nwsPane() applies the saved stack order the moment its pane is created',
-     /function _nwsPane\(\)[\s\S]{0,700}?_stackApply\(\)/.test(PAGE));
+  const stackBlock = (PAGE.match(/const MAP_STACK_LAYERS = \[([\s\S]*?)\n\];/) || [, ''])[1];
+  ['waves', 'air', 'wind', 'temperature', 'pressure'].forEach(id => {
+    ok(`MAP_STACK_LAYERS lists '${id}' pointing at its own pane`,
+       new RegExp(`\\{ id: '${id}',\\s*pane: '${id}Pane'`).test(stackBlock));
+  });
+  ok('_bubblePane() applies the saved stack order the moment a pane is created',
+     /function _bubblePane\(bubble\)[\s\S]{0,700}?_stackApply\(\)/.test(PAGE));
+  ok('radar reuses radarPane rather than getting a row of its own: exactly one radarPane row',
+     (stackBlock.match(/pane: 'radarPane'/g) || []).length === 1);
   const EM = String.fromCharCode(0x2014);
   ok('no em dashes here or in the page',
      !PAGE.includes(EM)
@@ -111,43 +116,59 @@ console.log('\n3. the bubble column renders with no drag handles');
   ok('they still carry an info button', r.infoCount > 0, JSON.stringify(r));
 }
 
-console.log('\n4. the NWS row is really in the stack and really moves the pane');
+console.log('\n4. each of the five bubble rows is really in the stack and really moves its own pane');
 {
   const r = await p.evaluate(() => {
-    // Create the pane the way turning an NWS layer on would, then read the
-    // Settings list and confirm the row exists and is wired to it.
-    const paneName = typeof _nwsPane === 'function' ? _nwsPane() : null;
+    // Create the panes the way turning each bubble's layer on would, then
+    // read the Settings list and confirm a row exists for each, wired to a
+    // pane that is not shared with any of the others.
+    const ids = ['waves', 'air', 'wind', 'temperature', 'pressure'];
+    const panes = ids.map(id => typeof _bubblePane === 'function' ? _bubblePane(id) : null);
     if (typeof _stackRender === 'function') _stackRender();
-    const row = document.querySelector('#lqm-stack-list .lqm-order-row[data-stackid="nws"]');
+    const rows = ids.map(id => document.querySelector(`#lqm-stack-list .lqm-order-row[data-stackid="${id}"]`));
     return {
-      paneName,
-      rowExists: !!row,
-      rowLabel: row ? row.querySelector('.lqm-order-name').textContent : null,
-      zBefore: paneName ? map.getPane(paneName).style.zIndex : null,
+      panes,
+      allDistinct: new Set(panes).size === panes.length,
+      allExist: rows.every(Boolean),
+      labels: rows.map(row => row ? row.querySelector('.lqm-order-name').textContent : null),
     };
   });
-  ok('turning an NWS layer on creates nwsPane', r.paneName === 'nwsPane', JSON.stringify(r));
-  ok('Settings -> Layer Order shows a row for it', r.rowExists, JSON.stringify(r));
-  ok('labelled recognisably as the NWS grids', /NWS/.test(r.rowLabel || ''), JSON.stringify(r));
+  ok('turning each bubble’s layer on creates its own pane', r.panes.every(p2 => !!p2), JSON.stringify(r.panes));
+  ok('and none of the five share a pane with each other', r.allDistinct, JSON.stringify(r.panes));
+  ok('Settings -> Layer Order shows a row for every one of them', r.allExist, JSON.stringify(r.labels));
+  ok('each labelled recognisably as its own bubble',
+     r.labels[0] === 'Waves' && r.labels[1] === 'Air' && r.labels[2] === 'Wind'
+     && r.labels[3] === 'Temperature' && r.labels[4] === 'Pressure',
+     JSON.stringify(r.labels));
 
-  // Move it to the very top with the up arrow, repeatedly, and confirm the
-  // real pane's z-index actually changes to match - not just the list.
+  // Move Temperature's row to the very top with the up arrow, repeatedly,
+  // and confirm the real pane's z-index actually changes to match - not
+  // just the list. The whole stack re-indexes on any reorder (each row's z
+  // is its position, not an independent number), so Wind's own z-index is
+  // expected to shift too; what has to stay true is that it stays a
+  // DIFFERENT pane from Temperature's, still present, still its own row.
   const moved = await p.evaluate(() => {
-    let row = document.querySelector('#lqm-stack-list .lqm-order-row[data-stackid="nws"]');
-    for (let i = 0; i < 6 && row && !row.previousElementSibling === false; i++) {
+    let row = document.querySelector('#lqm-stack-list .lqm-order-row[data-stackid="temperature"]');
+    // Ten rows now (borders, models, radar, satellite, the five split-out
+    // bubbles, ocean), so walking clear to the top can take up to nine clicks.
+    for (let i = 0; i < 10 && row && !row.previousElementSibling === false; i++) {
       const upBtn = row.querySelector('.lqm-order-btn[data-move="up"]');
       if (!upBtn || upBtn.classList.contains('off')) break;
       upBtn.click();
-      row = document.querySelector('#lqm-stack-list .lqm-order-row[data-stackid="nws"]');
+      row = document.querySelector('#lqm-stack-list .lqm-order-row[data-stackid="temperature"]');
     }
     const rows = Array.from(document.querySelectorAll('#lqm-stack-list .lqm-order-row'));
     const idx = rows.indexOf(row);
-    const z = map.getPane('nwsPane').style.zIndex;
-    return { idx, z, topZ: rows[0] === row };
+    const z = map.getPane('temperaturePane').style.zIndex;
+    const windRow = document.querySelector('#lqm-stack-list .lqm-order-row[data-stackid="wind"]');
+    const windZ = map.getPane('windPane').style.zIndex;
+    return { idx, z, topZ: rows[0] === row, windStillThere: !!windRow, windZ };
   });
   ok('walking it up with the arrow puts it first in the list', moved.topZ, JSON.stringify(moved));
   ok('and the real pane on the map is now the highest of the stack layers',
      Number(moved.z) === 401, JSON.stringify(moved));
+  ok("Wind kept its own row and its own pane, distinct from Temperature's",
+     moved.windStillThere && moved.windZ !== moved.z, JSON.stringify(moved));
   ok('nothing threw across the whole run', errs.length === 0, errs.slice(0, 3).join(' | '));
 }
 

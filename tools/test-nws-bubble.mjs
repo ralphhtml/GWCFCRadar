@@ -199,7 +199,10 @@ console.log('\n3. NDFD draws, loops, and owns the quiet animation bar');
     out.stepH = (_nwsLoop.frames[1].time - _nwsLoop.frames[0].time) / 3600000;
     out.allFuture = _nwsLoop.frames.every(f => f.time > Date.now() - 3600000);
     out.layerCount = _nwsLayers.length;
-    out.paneMade = !!map.getPane('nwsPane');
+    // Radar's NDFD rows share radarPane rather than getting a pane of their
+    // own - Radar already has its own Layer Order row, and Precip Chance is
+    // still the same radar picture a person is choosing a source for.
+    out.paneMade = !!map.getPane('radarPane');
     out.loopActive = _nwsLoopActive();
     out.animSource = _animSource().id;
     out.ready = _animationReady();

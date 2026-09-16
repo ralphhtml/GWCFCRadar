@@ -489,8 +489,8 @@ if (!chromium) {
        r.slotsAfter.every(v => v > r.reordered.models
                             && v < r.reordered.borders),
        JSON.stringify(r.slotsAfter) + ' vs ' + JSON.stringify(r.reordered));
-    ok('an order saved before models existed puts them back in their place',
-       r.migrated.join(',') === 'borders,models,radar,satellite,ocean',
+    ok('an order saved before models (and the five split-out NWS bubbles) existed puts them back in their place',
+       r.migrated.join(',') === 'borders,models,radar,satellite,waves,air,wind,temperature,pressure,ocean',
        r.migrated.join(','));
   }
 }

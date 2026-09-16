@@ -26272,9 +26272,10 @@ function _buildInterpolatedCanvas(grid, cols, rows, bounds, isAngle, colorFn) {
 
 // Builds the canvas, paints it, and returns a fixed-bounds image overlay.
 // Used directly by Air (no land mask needed - AQI is meaningful over land).
-function _paintInterpolatedOverlay(grid, cols, rows, bounds, isAngle, colorFn, opacity) {
+function _paintInterpolatedOverlay(grid, cols, rows, bounds, isAngle, colorFn, opacity, pane) {
   const canvas = _buildInterpolatedCanvas(grid, cols, rows, bounds, isAngle, colorFn);
-  return L.imageOverlay(canvas.toDataURL('image/png'), bounds, { opacity: opacity == null ? 1 : opacity, interactive: false });
+  return L.imageOverlay(canvas.toDataURL('image/png'), bounds,
+    { opacity: opacity == null ? 1 : opacity, interactive: false, pane });
 }
 
 // ── LAND MASK (Waves only) ───────────────────────────────────────────────────
@@ -26331,7 +26332,7 @@ function _rasterizeLandMask(geojson, bounds, W, H) {
 }
 // Waves-specific version of _paintInterpolatedOverlay that also punches land
 // out of the finished canvas before wrapping it as an image overlay.
-async function _paintWavesOverlay(grid, cols, rows, bounds, isAngle, colorFn, opacity) {
+async function _paintWavesOverlay(grid, cols, rows, bounds, isAngle, colorFn, opacity, pane) {
   const canvas = _buildInterpolatedCanvas(grid, cols, rows, bounds, isAngle, colorFn);
   const geojson = await _loadLandGeoJSON();
   if (geojson) {
@@ -26343,7 +26344,8 @@ async function _paintWavesOverlay(grid, cols, rows, bounds, isAngle, colorFn, op
       ctx.globalCompositeOperation = 'source-over';
     } catch(e) { console.warn('Land mask rasterize failed:', e); }
   }
-  return L.imageOverlay(canvas.toDataURL('image/png'), bounds, { opacity: opacity == null ? 1 : opacity, interactive: false });
+  return L.imageOverlay(canvas.toDataURL('image/png'), bounds,
+    { opacity: opacity == null ? 1 : opacity, interactive: false, pane });
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -27226,7 +27228,7 @@ async function _paintAndShowWaves(allGrids, token) {
   const field = WAVES_FIELD[_wavesProduct] || 'wave_height';
   const grid = allGrids.grids[field];
   const isAngle = _wavesProduct === 'wave-dir';
-  const layer = await _paintWavesOverlay(grid, allGrids.cols, allGrids.rows, WORLD_MAP_BOUNDS, isAngle, v => _waveColorFor(_wavesProduct, v), _wavesOpacity);
+  const layer = await _paintWavesOverlay(grid, allGrids.cols, allGrids.rows, WORLD_MAP_BOUNDS, isAngle, v => _waveColorFor(_wavesProduct, v), _wavesOpacity, _bubblePane('waves'));
   if (token !== _wavesLoadToken) return; // superseded while awaiting the land-mask fetch/rasterize
   _wavesGridCache = { grid, cols: allGrids.cols, rows: allGrids.rows, isAngle };
   if (_wavesLayer) { try { map.removeLayer(_wavesLayer); } catch(e){} }
@@ -27348,7 +27350,7 @@ function _paintAndShowAir(allGrids, token) {
   const field = AIR_FIELD[_airProduct] || 'us_aqi';
   const grid = allGrids.grids[field];
   _airGridCache = { grid, cols: allGrids.cols, rows: allGrids.rows, isAngle: false };
-  const layer = _paintInterpolatedOverlay(grid, allGrids.cols, allGrids.rows, WORLD_MAP_BOUNDS, false, v => _airColorFor(_airProduct, v), _airOpacity);
+  const layer = _paintInterpolatedOverlay(grid, allGrids.cols, allGrids.rows, WORLD_MAP_BOUNDS, false, v => _airColorFor(_airProduct, v), _airOpacity, _bubblePane('air'));
   if (token !== _airLoadToken) return;
   if (_airLayer) { try { map.removeLayer(_airLayer); } catch(e){} }
   _airLayer = layer.addTo(map);
@@ -27467,7 +27469,7 @@ function _paintAndShowTemperature(allGrids, token) {
   const field = TEMPERATURE_FIELD[_temperatureProduct] || 'temperature_2m';
   const grid = allGrids.grids[field];
   _temperatureGridCache = { grid, cols: allGrids.cols, rows: allGrids.rows, isAngle: false };
-  const layer = _paintInterpolatedOverlay(grid, allGrids.cols, allGrids.rows, WORLD_MAP_BOUNDS, false, v => _temperatureColorFor(_temperatureProduct, v), _temperatureOpacity);
+  const layer = _paintInterpolatedOverlay(grid, allGrids.cols, allGrids.rows, WORLD_MAP_BOUNDS, false, v => _temperatureColorFor(_temperatureProduct, v), _temperatureOpacity, _bubblePane('temperature'));
   if (token !== _temperatureLoadToken) return;
   if (_temperatureLayer) { try { map.removeLayer(_temperatureLayer); } catch(e){} }
   _temperatureLayer = layer.addTo(map);
@@ -27578,7 +27580,7 @@ function _paintAndShowPressure(allGrids, token) {
   const field = PRESSURE_FIELD[_pressureProduct] || 'pressure_msl';
   const grid = allGrids.grids[field];
   _pressureGridCache = { grid, cols: allGrids.cols, rows: allGrids.rows, isAngle: false };
-  const layer = _paintInterpolatedOverlay(grid, allGrids.cols, allGrids.rows, WORLD_MAP_BOUNDS, false, v => _pressureColorFor(_pressureProduct, v), _pressureOpacity);
+  const layer = _paintInterpolatedOverlay(grid, allGrids.cols, allGrids.rows, WORLD_MAP_BOUNDS, false, v => _pressureColorFor(_pressureProduct, v), _pressureOpacity, _bubblePane('pressure'));
   if (token !== _pressureLoadToken) return;
   if (_pressureLayer) { try { map.removeLayer(_pressureLayer); } catch(e){} }
   _pressureLayer = layer.addTo(map);
@@ -27739,7 +27741,7 @@ async function _loadWindLayer(forceRefresh) {
 }
 
 function _paintAndShowWind(token) {
-  const layer = _paintInterpolatedOverlay(_windGridCache.grid, WIND_COLS, WIND_ROWS, WORLD_MAP_BOUNDS, false, _windColorFor, _windLayerOpacity);
+  const layer = _paintInterpolatedOverlay(_windGridCache.grid, WIND_COLS, WIND_ROWS, WORLD_MAP_BOUNDS, false, _windColorFor, _windLayerOpacity, _bubblePane('wind'));
   if (token !== _windLoadToken) return;
   if (_windLayer) { try { map.removeLayer(_windLayer); } catch(e){} }
   _windLayer = layer.addTo(map);
@@ -35619,18 +35621,33 @@ let _nwsLoop = { frames: [], idx: -1 };
 let _nwsLayers = [];               // the Leaflet layers currently up
 let _nwsGen = 0;                   // stale async builds bail
 
-function _nwsPane() {
+// Which Leaflet pane each whole-box "Open-Meteo bubble" layer paints into -
+// both its own Open-Meteo grid and, when picked instead, the shared RTMA/NDFD
+// source underneath it (_nwsBuildRtma/_nwsBuildNdfd). Every one of these is
+// now its own row in Layer Order, so each needs its own pane: two bubbles
+// sharing one pane can never be independently restacked against each other,
+// only against everything outside that pane. Radar is the one exception -
+// it reuses radarPane rather than getting one of its own, because an NDFD
+// precip overlay under Radar is still the same radar picture a person is
+// choosing a source for, not a separate layer nobody would expect a new row
+// for.
+const BUBBLE_PANE_NAMES = {
+  waves: 'wavesPane', air: 'airPane', wind: 'windPane',
+  temperature: 'temperaturePane', pressure: 'pressurePane', radar: 'radarPane',
+};
+function _bubblePane(bubble) {
   if (typeof map === 'undefined' || !map) return undefined;
-  if (!map.getPane('nwsPane')) {
-    const p = map.createPane('nwsPane');
-    p.style.zIndex = 399;          // beside sstPane (398), under radar - the
-    p.style.pointerEvents = 'none'; // default until the line below corrects it
-    // nwsPane is in the reorderable map-layer stack (Layer Order, Settings),
-    // and it is born here rather than at boot, so its saved position has to
-    // be applied the moment it exists - the same reason bordersPane does this.
+  const name = BUBBLE_PANE_NAMES[bubble];
+  if (!name || name === 'radarPane') return name; // radarPane already exists and is already stacked
+  if (!map.getPane(name)) {
+    const p = map.createPane(name);
+    p.style.zIndex = 399;          // placeholder until the line below corrects it
+    p.style.pointerEvents = 'none';
+    // Born here rather than at boot, so its saved position has to be applied
+    // the moment it exists - the same reason bordersPane does this.
     try { if (typeof _stackApply === 'function') _stackApply(); } catch (e) {}
   }
-  return 'nwsPane';
+  return name;
 }
 
 // One playback source, same contract as the MRMS loop: Active gates the
@@ -35739,7 +35756,7 @@ async function _nwsBuildRtma(field, gen) {
   if (gen !== _nwsGen) return;
   const model = index && index.models && index.models.rtma;
   if (!model || !model.regions) throw new Error('Pi has no RTMA');
-  const pane = _nwsPane();
+  const pane = _bubblePane(_nwsOn.bubble);
   const regionNames = Object.keys(model.regions);
   // All four domains asked at once: waited on in turn, Puerto Rico's
   // manifest was queued behind Alaska's and the first paint paid for it.
@@ -35798,7 +35815,7 @@ function _nwsRunMs(run) {
 function _nwsBuildNdfd(field, gen) {
   const layerName = NDFD_LAYERS[field];
   if (!layerName) throw new Error('unknown NDFD field ' + field);
-  const pane = _nwsPane();
+  const pane = _bubblePane(_nwsOn.bubble);
   const stepMs = NWS_NDFD_STEP_H * 3600000;
   const first = Math.ceil(Date.now() / stepMs) * stepMs;
   const p2 = n => String(n).padStart(2, '0');
@@ -39935,7 +39952,7 @@ function _inspNwsRow(cx, cy) {
     const d = new Date(f.time);
     return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}Z`;
   })() : '';
-  const s = _inspSampleColorFrom(map.getPane('nwsPane'), cx, cy);
+  const s = _inspSampleColorFrom(map.getPane(_bubblePane(_nwsOn.bubble)), cx, cy);
   if (!s) return { label, value: 'No data', unit: when, color: 'rgba(120,120,120,0.5)' };
   if (s.tainted) return { label, value: 'reading…', unit: when, color: 'rgba(120,120,120,0.5)' };
   if (s.transparent) return { label, value: 'Nothing here', unit: when, color: 'rgba(120,120,120,0.35)' };
@@ -63748,6 +63765,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-16-d', date: 'Sep 16, 2026',
+    text: 'Waves, Air, Wind, Temperature and Pressure each got their own row in Settings → Layer Order, so every menu bubble can now be restacked against the others individually instead of five of them sharing one combined row.' },
   { id: '2026-09-16-c', date: 'Sep 16, 2026',
     text: 'Removed Canada CAPPI, the single-site Canadian radar source added earlier today. The existing Canada Radar composite mosaic is untouched.' },
   { id: '2026-09-15-i', date: 'Sep 15, 2026',
@@ -67887,11 +67906,19 @@ const MAP_STACK_LAYERS = [
   { id: 'models',    pane: 'modelPane',    label: 'Model Charts' },
   { id: 'radar',     pane: 'radarPane',    label: 'Radar' },
   { id: 'satellite', pane: 'satPhotoPane', label: 'Satellite' },
-  // The RTMA/NDFD grids behind Temperature, Wind, Pressure and Waves' NWS
-  // source: another whole-box field, so it defaults beside the other one
-  // (Model Charts), just above the ocean it would otherwise sit on top of.
-  { id: 'nws',       pane: 'nwsPane',      label: 'NWS Grids (Temp, Wind, Pressure)' },
-  { id: 'ocean',     pane: 'sstPane',      label: 'Ocean & Sea Temperature' },
+  // Each of these five used to share one "NWS Grids" row and one pane, which
+  // meant they could never be restacked against EACH OTHER, only against
+  // everything else - not a real problem while only one of them is ever on
+  // screen at a time, but it also meant every menu bubble did not have its
+  // own row here the way Radar, Satellite and Models do. Same default
+  // position the old shared row held (beside Model Charts, above the ocean),
+  // just split five ways, one pane and one row per bubble now.
+  { id: 'waves',       pane: 'wavesPane',       label: 'Waves' },
+  { id: 'air',         pane: 'airPane',         label: 'Air' },
+  { id: 'wind',        pane: 'windPane',        label: 'Wind' },
+  { id: 'temperature', pane: 'temperaturePane', label: 'Temperature' },
+  { id: 'pressure',    pane: 'pressurePane',    label: 'Pressure' },
+  { id: 'ocean',       pane: 'sstPane',         label: 'Ocean & Sea Temperature' },
 ];
 function _stackDefault(){ return MAP_STACK_LAYERS.map(l => l.id); }
 // Reads the saved order, then repairs it. A stored list can be stale in two
