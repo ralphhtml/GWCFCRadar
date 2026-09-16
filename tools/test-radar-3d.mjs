@@ -374,7 +374,112 @@ console.log('\n9. opening, closing, the orbit camera, and the two sliders all re
   ok('closing puts the panel away', !r.after.panel, JSON.stringify(r.after));
 }
 
-console.log('\n10. nothing above threw');
+console.log('\n10. Level 3 builds the same shape from separate tilt files');
+{
+  const r = await p.evaluate(async () => {
+    const N = 12, step = 0.03, lon0 = -97.3, lat0 = 35.2;
+    const makeMesh = (val) => {
+      const mesh = new Float32Array(N * N * 9);
+      let k = 0;
+      for (let gy = 0; gy < N; gy++) {
+        for (let gx = 0; gx < N; gx++) {
+          const x = lon0 + gx * step, y = lat0 + gy * step;
+          mesh[k++] = x;        mesh[k++] = y;
+          mesh[k++] = x + step; mesh[k++] = y;
+          mesh[k++] = x + step; mesh[k++] = y + step;
+          mesh[k++] = x;        mesh[k++] = y + step;
+          mesh[k++] = val;
+        }
+      }
+      return mesh;
+    };
+    // Level 3 reflectivity's four elevation codes, each its own file rather
+    // than a cut inside one shared volume.
+    const ANGLES = { N0B: 0.5, N1B: 1.5, N2B: 2.4, N3B: 3.4 };
+    const askedCodes = [];
+    const realBucketNewest = window._l3BucketNewest;
+    const realFetch = window.fetch;
+    const realWorker = window._workerProcess;
+    window._l3BucketNewest = async (site, code) => {
+      askedCodes.push(code);
+      return ANGLES[code] != null ? `fake://${site}/${code}` : null;
+    };
+    window.fetch = async (url, opts) => {
+      if (String(url).startsWith('fake://')) return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) };
+      return realFetch(url, opts);
+    };
+    window._workerProcess = async (buf, code) => {
+      const angle = ANGLES[code];
+      if (angle == null) throw new Error('unknown Level 3 code ' + code);
+      return {
+        meshData: makeMesh(50), bounds: [lon0, lat0, lon0 + N * step, lat0 + N * step],
+        metadata: { elevationAngle: angle, timeIso: new Date().toISOString() },
+      };
+    };
+
+    const sitePos = { lat: 35.0, lng: -97.3 };
+    const token = ++_r3dToken;
+    const frame = await _r3dBuildFrameL3('kfws', 'ref', sitePos, token);
+
+    window._l3BucketNewest = realBucketNewest;
+    window.fetch = realFetch;
+    window._workerProcess = realWorker;
+
+    return {
+      askedCodes,
+      count: frame ? frame.count : 0,
+      cuts: frame ? frame.cuts : 0,
+      allFinite: frame ? Array.from(frame.pts).every(Number.isFinite) : false,
+    };
+  });
+  ok('it asked for the four reflectivity tilt codes, in order',
+     r.askedCodes.join(',') === 'N0B,N1B,N2B,N3B', r.askedCodes.join(','));
+  ok('and built real points from all four separate files', r.count > 0 && r.cuts === 4,
+     JSON.stringify(r));
+  ok('every point is a finite number', r.allFinite);
+}
+
+console.log('\n11. the load path reaches for Level 3 exactly when it should');
+{
+  const r = await p.evaluate(async () => {
+    const realFetchDirect = window._fetchVolumeDirect;
+    const realBuildL3 = window._r3dBuildFrameL3;
+    const l3Calls = [];
+    window._r3dBuildFrameL3 = async (site) => {
+      l3Calls.push(site);
+      return { pts: new Float32Array([0, 0, 1, 40]), count: 1, centerZ: 1, time: null, cuts: 1 };
+    };
+
+    // A TDWR terminal radar has no Level 2 archive at all - the load should
+    // never even try _fetchVolumeDirect for one.
+    let fetchDirectCalled = false;
+    window._fetchVolumeDirect = async () => { fetchDirectCalled = true; throw new Error('should not be called'); };
+    await _r3dLoadStation('tdal');
+    const tdwr = { status: document.getElementById('r3d-status').textContent,
+                   fetchDirectCalled };
+
+    // A NEXRAD site still tries Level 2 first, and only falls back to Level
+    // 3 when that attempt genuinely fails.
+    fetchDirectCalled = false;
+    window._fetchVolumeDirect = async () => { fetchDirectCalled = true; throw new Error('no volume'); };
+    await _r3dLoadStation('kfws');
+    const nexrad = { status: document.getElementById('r3d-status').textContent,
+                      fetchDirectCalled };
+
+    window._fetchVolumeDirect = realFetchDirect;
+    window._r3dBuildFrameL3 = realBuildL3;
+    _r3dClose();
+    return { l3Calls, tdwr, nexrad };
+  });
+  ok('a TDWR site skips the Level 2 attempt entirely', !r.tdwr.fetchDirectCalled, JSON.stringify(r.tdwr));
+  ok('and goes straight to the Level 3 build', r.l3Calls.includes('tdal'), r.l3Calls.join(','));
+  ok('its status names Level 3', /Level 3/.test(r.tdwr.status), r.tdwr.status);
+  ok('a NEXRAD site still tries Level 2 first', r.nexrad.fetchDirectCalled);
+  ok('and falls back to Level 3 once that attempt fails',
+     r.l3Calls.includes('kfws') && /Level 3/.test(r.nexrad.status), JSON.stringify(r.nexrad));
+}
+
+console.log('\n12. nothing above threw');
 {
   const real = errs.filter(e => !/Failed to fetch|NetworkError|ERR_FAILED|net::/i.test(e));
   ok('no page errors', real.length === 0, real.slice(0, 3).join(' | '));
