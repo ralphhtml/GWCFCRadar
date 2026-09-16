@@ -4452,19 +4452,10 @@ body.lite-mode #export-toolbar { display: none !important; }
 
 /* Radar 3D reuses every .xs-* class above (head, title, legend, plot, note,
    the big/close buttons) - same panel language as Cross Section, since it is
-   the same kind of thing: a second view of a volume already on the map.
-   Only the toolbar/panel's own position and the canvas/orbit controls need
-   rules of their own. */
-#r3d-toolbar {
-  display: none; position: absolute;
-  bottom: calc(90px + env(safe-area-inset-bottom, 0px));
-  left: 50%; transform: translateX(-50%); z-index: 1100;
-  background: rgb(14,18,24); border: 1px solid rgba(0,140,186,0.35);
-  border-radius: 12px; padding: 6px 10px; align-items: center; gap: 6px;
-  width: max-content; max-width: calc(100vw - 20px); flex-wrap: wrap;
-  box-shadow: 0 6px 22px rgba(0,0,0,0.5);
-}
-#r3d-toolbar.visible { display: flex; }
+   the same kind of thing: a second view of a volume already on the map. It
+   has no toolbar of its own any more: it opens already knowing its station,
+   so only the panel's own position and the canvas/slider/orbit controls
+   need rules of their own. */
 #r3d-status {
   font-family: var(--mono); font-size: 9px; color: rgba(255,255,255,0.55);
   letter-spacing: 0.5px; white-space: nowrap;
@@ -4472,15 +4463,24 @@ body.lite-mode #export-toolbar { display: none !important; }
 }
 #r3d-status.busy { color: var(--accent2); }
 #r3d-status.bad { color: #ffb4a2; }
-#r3d-close {
-  width:30px; height:30px; border-radius:8px;
-  background:transparent; border:1px solid rgba(255,255,255,0.12);
-  color:rgba(255,255,255,0.5); cursor:pointer; font-size:16px; line-height:1;
-  flex-shrink:0; transition: background 0.12s;
-  display:flex; align-items:center; justify-content:center;
-  -webkit-tap-highlight-color: transparent;
+#r3d-panel .r3d-controls {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px 0;
 }
-#r3d-close:hover { background: rgba(255,90,70,0.3); color:#fff; }
+#r3d-panel .r3d-controls .dtb-btn {
+  width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0;
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18);
+  color: #e8edf5; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.r3d-sliders { padding: 6px 10px 0; display: flex; flex-direction: column; gap: 4px; }
+.r3d-slider-row {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 9.5px; color: rgba(255,255,255,0.7);
+}
+.r3d-slider-row span:first-child { width: 56px; flex-shrink: 0; }
+.r3d-slider-row input[type=range] { flex: 1 1 auto; }
+.r3d-slider-row span:last-child { width: 46px; flex-shrink: 0; text-align: right; }
 #r3d-panel {
   position: fixed; left: 12px; bottom: 186px; z-index: 1150; display: none;
   width: min(560px, calc(100vw - 24px));
@@ -11226,14 +11226,10 @@ body.clean-mode #clean-hint { opacity: 1; }
        always the middle of the view, and the tool rail was for things you
        reach for constantly, not a once-in-a-while measurement. -->
 
-  <!-- Radar 3D , a storm's real shape rather than one flat slice through it -->
-  <button class="tool-btn" id="tool-r3d" onclick="toggleRadar3D()" title="Radar 3D , a storm's shape in three dimensions">
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 2l9 5v10l-9 5-9-5V7z"/>
-      <path d="M3 7l9 5 9-5"/>
-      <path d="M12 12v10"/>
-    </svg>
-  </button>
+  <!-- Radar 3D moved to the double-click / long-press map menu
+       (_cmRadar3DHere), same reasoning as Cross Section: it opens centred on
+       whichever station you are actually looking at (or the one nearest a
+       spot you tap), not a rail button for a once-in-a-while view. -->
 
 </div>
 
@@ -11302,37 +11298,36 @@ body.clean-mode #clean-hint { opacity: 1; }
   <div class="xs-note"></div>
 </div>
 
-<!-- ─── RADAR 3D TOOLBAR ─── -->
-<!-- Same recipe as Cross Section's own bar: a draggable strip with a label,
-     its controls, an info button and a close. -->
-<div id="r3d-toolbar">
-  <div class="dtb-drag" id="r3d-drag" title="Drag to move">⠿</div>
-  <span class="dtb-label">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5"/></svg>
-    RADAR 3D
-  </span>
-  <div class="dtb-sep"></div>
-  <select class="xsec-sel" id="r3d-product" title="Which measurement to render"></select>
-  <select class="xsec-sel" id="r3d-site" title="Which radar to render"></select>
-  <div class="dtb-sep"></div>
-  <button class="dtb-btn" id="r3d-build-btn" onclick="_r3dBuild()" title="Load this radar's volume">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
-  </button>
-  <div class="dtb-sep"></div>
-  <span id="r3d-status"></span>
-  <div class="dtb-sep"></div>
-  <button class="dtb-btn" id="r3d-info-btn" title="What this does" type="button"></button>
-  <button id="r3d-close" onclick="toggleRadar3D()" title="Close Radar 3D"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-close></use></svg></button>
-</div>
-
 <!-- ─── RADAR 3D PANEL ─── -->
+<!-- No separate toolbar any more: it opens from the double-click / long-press
+     map menu already knowing which station to show, so there is no site
+     picker or "build" button left to put on one - everything that remains
+     (product, the two sliders, close) lives on the one panel. -->
 <div id="r3d-panel">
   <div class="xs-head">
     <span class="xs-title">Radar 3D</span>
-    <span class="xs-where"></span>
+    <span class="xs-where" id="r3d-where"></span>
     <div class="xs-spacer"></div>
     <button class="xs-big" title="Expand">&#11036;</button>
     <button class="xs-x" title="Close">&#10005;</button>
+  </div>
+  <div class="r3d-controls">
+    <select class="xsec-sel" id="r3d-product" title="Which measurement to render"></select>
+    <span id="r3d-status"></span>
+    <div class="xs-spacer"></div>
+    <button class="dtb-btn" id="r3d-info-btn" title="What this does" type="button"></button>
+  </div>
+  <div class="r3d-sliders">
+    <label class="r3d-slider-row">
+      <span>Show above</span>
+      <input type="range" id="r3d-filter" min="0" max="100" value="0" step="1" title="Hide weak values below this">
+      <span id="r3d-filter-label"></span>
+    </label>
+    <label class="r3d-slider-row">
+      <span>Up to</span>
+      <input type="range" id="r3d-height" min="5" max="60" value="60" step="1" title="Show only up to this height">
+      <span id="r3d-height-label">60 kft</span>
+    </label>
   </div>
   <div class="xs-legend" id="r3d-legend"></div>
   <div class="xs-plot">
@@ -41683,6 +41678,7 @@ function _cmOpen(e) {
     <div class="cm-item" onclick="_cmSoundingHere()">${ic('chart-up')} Sounding here</div>
     ${pm ? `<div class="cm-item" onclick="_cmModelSoundingHere()">${ic('chart-up')} Model sounding: ${esc(pm.label)} &middot; F+${String(pm.fhr).padStart(3, '0')}</div>` : ''}
     <div class="cm-item" onclick="_cmCrossSectionHere()">${ic('ruler')} Cross section here</div>
+    <div class="cm-item" onclick="_cmRadar3DHere()">${ic('hex')} View in 3D here</div>
     <div class="cm-item" onclick="_cmRadiusHere()">${ic('target')} 50 mi radius here</div>
     <div class="cm-item" onclick="_cmSetRecenter()">${ic('compass')} Set as recenter</div>
     <div class="cm-item" onclick="_cmSetLoadSpot()">${ic('flag')} Set as load spot</div>
@@ -63961,6 +63957,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-16-g', date: 'Sep 16, 2026',
+    text: 'Redesigned Radar 3D: it is no longer a tool rail button, it opens from the double-click / long-press map menu ("View in 3D here") already centered on whichever radar you tapped. Added a Show above slider to hide weak returns and an Up to slider to cap how high it draws, both adjustable without reloading. Raised the point limit and lowered the transparency so a storm reads more like a solid shape, and it now draws inside a wireframe box with height marked in thousands of feet and a ground-plane texture underneath, closer to how the OpenStorm desktop viewer that inspired it looks.' },
   { id: '2026-09-16-f', date: 'Sep 16, 2026',
     text: 'Fixed Radar Compass drifting off your real location: it used to grab your GPS fix once when it opened and never look again, so the dial slowly fell out of sync with the live blue dot as the fix refined or you actually moved. It now rides that same live location feed the whole time it is open. Tilt-to-distance is steadier too: the raw sensor reading is smoothed and each range ring now has a small dead zone at its edge, so a hand tremor near a threshold no longer flickers the range back and forth.' },
   { id: '2026-09-16-e', date: 'Sep 16, 2026',
@@ -67897,10 +67895,11 @@ function _xsDraw(slice, errText) {
 */
 
 const R3D_MAX_TILTS = 10;        // decoding is seconds each, same cap as Cross Section
-const R3D_MAX_POINTS = 15000;    // render budget; the rest are dropped by even stride
+const R3D_MAX_POINTS = 70000;    // render budget; the rest are dropped by even stride
 const R3D_FRAMES = 6;            // recent volumes kept for the time control
-const R3D_MIN_DBZ = 10;          // clear air below this is not drawn at all
-const R3D_MIN_KT = 3;            // near-zero velocity is not drawn at all
+const R3D_MIN_DBZ = -10;         // true clear-air/noise floor - the value slider does the real filtering now
+const R3D_MIN_KT = 1;            // dead-zero noise floor - same idea
+const R3D_KFT_PER_KM = 3.28084;  // km -> thousands of feet
 
 const R3D_PRODUCTS = [
   { id: 'ref', label: 'Reflectivity' },
@@ -67910,6 +67909,7 @@ const R3D_PRODUCTS = [
 let _r3dOn = false;
 let _r3dBuilding = false;
 let _r3dToken = 0;
+let _r3dStation = null;          // the station currently loaded, lowercase id
 let _r3dFrames = [];             // oldest first, same convention as _l2Loop
 let _r3dFrameIdx = -1;
 let _r3dPlayTimer = null;
@@ -67918,6 +67918,12 @@ let _r3dLoopStarted = false;
 let _r3dCam = { yaw: 0.6, pitch: 0.5, dist: 190 };
 const R3D_DIST_MIN = 25, R3D_DIST_MAX = 500;
 const R3D_PITCH_MIN = -0.15, R3D_PITCH_MAX = 1.45;
+// The two sliders: "Show above" (0-100, mapped to an actual dBZ/kt cutoff
+// per product below) and "Up to" (a height ceiling in kft). Both are read
+// live in the render loop, not baked into the stored points, so dragging
+// either just redraws instantly with no new decode.
+let _r3dFilterPct = 0;
+let _r3dHeightMaxKft = 60;
 
 function _r3dEl(id) { return document.getElementById(id); }
 function _r3dSay(msg, kind) {
@@ -67927,44 +67933,75 @@ function _r3dSay(msg, kind) {
   el.className = kind || '';
 }
 
-function toggleRadar3D() {
-  try {
-    _r3dOn ? _r3dDisable() : _r3dEnable();
-  } catch (e) {
-    console.warn('[r3d] toggle failed:', e);
-    _r3dSay('radar 3d could not start', 'bad');
-  }
+// The value the "Show above" slider actually means, in the active
+// product's own units - reflectivity's ramp runs -20 to 80 dBZ, velocity's
+// runs 0 to 100 kt either side of zero, so the same 0-100 slider covers
+// each product's whole real range.
+function _r3dFilterValue(product, pct) {
+  return product === 'vel' ? pct : (-20 + pct);
+}
+function _r3dUpdateFilterLabel() {
+  const el = _r3dEl('r3d-filter-label');
+  if (!el) return;
+  const product = (_r3dEl('r3d-product') || {}).value || 'ref';
+  const v = _r3dFilterValue(product, _r3dFilterPct);
+  el.textContent = product === 'vel' ? Math.round(v) + ' kt' : Math.round(v) + ' dBZ';
+}
+function _r3dUpdateHeightLabel() {
+  const el = _r3dEl('r3d-height-label');
+  if (el) el.textContent = _r3dHeightMaxKft + ' kft';
 }
 
-function _r3dEnable() {
+// Called from the double-click / long-press map menu. Opening for the first
+// time shows whichever station is already up elsewhere on the page (the
+// Level 2/3 view you were just looking at); tapping a different spot while
+// it is already open jumps straight to that spot's own nearest station,
+// same as picking a new line for Cross Section.
+function _cmRadar3DHere() {
+  const ll = _cmLatLng;
+  _cmClose();
+  if (!ll) return;
+  let stationId = null;
+  if (_r3dOn) {
+    const near = _r3dNearestStation(ll.lat, ll.lng);
+    if (near) stationId = near.id;
+  } else {
+    stationId = _r3dCurrentStationId();
+    if (!stationId) {
+      const near = _r3dNearestStation(ll.lat, ll.lng);
+      if (near) stationId = near.id;
+    }
+  }
+  if (!stationId) return; // nothing near enough to show - quietly do nothing
+  _r3dOpen(stationId);
+}
+
+// The station already on screen elsewhere in the app, if any - Level 2's
+// own site first, then a Pi/Level 3 one.
+function _r3dCurrentStationId() {
+  if (typeof _l2Site !== 'undefined' && _l2Site) return _l2Site;
+  if (typeof _l3Station !== 'undefined' && _l3Station) return _l3Station;
+  return null;
+}
+
+function _r3dNearestStation(lat, lng) {
+  const stations = (typeof NEXRAD_STATIONS !== 'undefined' && NEXRAD_STATIONS) || [];
+  let best = null, bestKm = Infinity;
+  stations.forEach(s => {
+    const km = _xsKm({ lat, lng }, { lat: s.lat, lng: s.lon });
+    if (km < bestKm) { bestKm = km; best = s; }
+  });
+  return best ? { id: best.id, km: bestKm } : null;
+}
+
+function _r3dOpen(stationId) {
   if (typeof map === 'undefined' || !map) {
     if (typeof showToast === 'function') showToast('The map is still loading.', 2500);
     return;
   }
   _r3dOn = true;
-  const bar = _r3dEl('r3d-toolbar');
-  if (bar) bar.classList.add('visible');
   const panel = _r3dEl('r3d-panel');
   if (panel) panel.classList.add('open');
-  _r3dFillMenus();
-  _r3dSay('press the arrow to load a volume');
-  if (!_r3dLoopStarted) { _r3dLoopStarted = true; _r3dTick(); }
-  _r3dDirty = true;
-}
-
-function _r3dDisable() {
-  _r3dOn = false;
-  _r3dToken++;
-  if (_r3dPlayTimer) { clearInterval(_r3dPlayTimer); _r3dPlayTimer = null; }
-  const bar = _r3dEl('r3d-toolbar');
-  if (bar) bar.classList.remove('visible');
-  const panel = _r3dEl('r3d-panel');
-  if (panel) { panel.classList.remove('open'); panel.classList.remove('big'); }
-  _r3dFrames = [];
-  _r3dFrameIdx = -1;
-}
-
-function _r3dFillMenus() {
   const ps = _r3dEl('r3d-product');
   if (ps && !ps.options.length) {
     R3D_PRODUCTS.forEach(p => {
@@ -67973,29 +68010,29 @@ function _r3dFillMenus() {
       ps.appendChild(o);
     });
   }
-  const ss = _r3dEl('r3d-site');
-  if (!ss) return;
-  // Nearest handful of radars to the middle of the map, same idea as Cross
-  // Section's own station list.
-  let mid;
-  try { const c = map.getCenter(); mid = { lat: c.lat, lng: c.lng }; }
-  catch (e) { mid = { lat: 35.3, lng: -97.3 }; }
-  const stations = (typeof NEXRAD_STATIONS !== 'undefined' && NEXRAD_STATIONS) || [];
-  const near = stations.map(s => ({
-    id: s.id,
-    km: _xsKm({ lat: mid.lat, lng: mid.lng }, { lat: s.lat, lng: s.lon }),
-  })).sort((a, b) => a.km - b.km).slice(0, 8);
-  const keep = ss.value;
-  ss.innerHTML = '';
-  near.forEach(s => {
-    const o = document.createElement('option');
-    o.value = s.id;
-    o.textContent = `${s.id.toUpperCase()} · ${s.km.toFixed(0)} km`;
-    ss.appendChild(o);
-  });
-  if (keep && near.some(s => s.id === keep)) ss.value = keep;
-  else if (typeof _l2Site !== 'undefined' && _l2Site
-           && near.some(s => s.id === _l2Site)) ss.value = _l2Site;
+  const filter = _r3dEl('r3d-filter'), height = _r3dEl('r3d-height');
+  if (filter) filter.value = String(_r3dFilterPct);
+  if (height) height.value = String(_r3dHeightMaxKft);
+  _r3dUpdateFilterLabel();
+  _r3dUpdateHeightLabel();
+  _r3dUpdateLegend((ps || {}).value || 'ref');
+  if (!_r3dLoopStarted) { _r3dLoopStarted = true; _r3dTick(); }
+  _r3dLoadStation(stationId);
+}
+
+// Wired to the panel's own close (X) button. Deliberately does not disable
+// Radar or any other layer on the way out - Radar 3D was asked to sit
+// alongside the regular picture, not replace it, so it only tears down its
+// own state.
+function _r3dClose() {
+  _r3dOn = false;
+  _r3dToken++;
+  if (_r3dPlayTimer) { clearInterval(_r3dPlayTimer); _r3dPlayTimer = null; }
+  const panel = _r3dEl('r3d-panel');
+  if (panel) { panel.classList.remove('open'); panel.classList.remove('big'); }
+  _r3dFrames = [];
+  _r3dFrameIdx = -1;
+  _r3dStation = null;
 }
 
 // ── Colour ramps, ported from OpenStorm's RadarColorIndex.cpp ──────────────
@@ -68042,7 +68079,11 @@ function _r3dReflectivityColor(dbz) {
   const band = R3D_REF_BANDS.find(b => v >= b[6] && v <= b[7]) || R3D_REF_BANDS[R3D_REF_BANDS.length - 1];
   const t = (v - band[6]) / (band[7] - band[6] || 1);
   const [r, g, b] = _r3dLerpHsl(band, t);
-  const alpha = Math.max(0.12, Math.min(1, (v + 20) / 100 * 1.6));
+  // A discrete point cloud reads as "weird dots" unless most of it is fairly
+  // solid, so the floor here is high on purpose - a real ray march earns its
+  // transparency by blending hundreds of samples along one ray, which a
+  // single drawn circle never gets to do.
+  const alpha = Math.max(0.6, Math.min(1, (v + 20) / 100 * 1.6));
   return [r, g, b, alpha];
 }
 const R3D_VEL_BANDS = [
@@ -68056,7 +68097,7 @@ function _r3dVelocityColor(kt) {
   const band = R3D_VEL_BANDS.find(b => v >= b[6] && v <= b[7]) || R3D_VEL_BANDS[R3D_VEL_BANDS.length - 1];
   const t = (v - band[6]) / (band[7] - band[6] || 1);
   const [r, g, b] = _r3dLerpHsl(band, t);
-  const alpha = Math.max(0, Math.min(1, Math.abs(v) / 100 * 2 + 0.1));
+  const alpha = Math.max(0.4, Math.min(1, Math.abs(v) / 100 * 2 + 0.3));
   return [r, g, b, alpha];
 }
 
@@ -68085,6 +68126,9 @@ async function _r3dBuildFrame(buf, layer, sitePos, token) {
     const angle = res.metadata && res.metadata.elevationAngle;
     const elevAngle = isFinite(angle) ? angle : 0.5;
     const mesh = res.meshData;
+    // Only a true noise/clear-air floor here, not a "show me the strong
+    // stuff" cutoff - that is what the Show Above slider is for, at render
+    // time, so it can be turned back down without a re-decode.
     const minV = layer === 'VEL' ? -Infinity : R3D_MIN_DBZ;
     for (let i = 0; i < mesh.length; i += 9) {
       const v = mesh[i + 8];
@@ -68144,13 +68188,16 @@ function _r3dMaxRangeKm(frame) {
   return Math.sqrt(max);
 }
 
-async function _r3dBuild() {
-  if (_r3dBuilding) { _r3dSay('already loading a volume, one moment', 'busy'); return; }
-  const ps = _r3dEl('r3d-product'), ss = _r3dEl('r3d-site');
+async function _r3dLoadStation(stationId) {
+  const ps = _r3dEl('r3d-product');
   const product = (ps || {}).value || 'ref';
-  const site = ((ss || {}).value || '').toLowerCase();
+  const site = String(stationId || '').toLowerCase();
   if (!site) { _r3dSay('no radar chosen', 'bad'); return; }
   if (typeof _workerProcess !== 'function') { _r3dSay('this build has no radar decoder', 'bad'); return; }
+  _r3dStation = site;
+  const where = _r3dEl('r3d-where');
+  if (where) where.textContent = site.toUpperCase();
+  if (_r3dBuilding) { _r3dSay('already loading a volume, one moment', 'busy'); return; }
   const token = ++_r3dToken;
   _r3dBuilding = true;
   _r3dFrames = [];
@@ -68304,34 +68351,64 @@ function _r3dRender() {
   const rl = Math.hypot(rx, ry, rz) || 1; rx /= rl; ry /= rl; rz /= rl;
   const ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
   const focal = h * 1.15;
+  const product = ((_r3dEl('r3d-product') || {}).value) || 'ref';
+  const colorFor = product === 'vel' ? _r3dVelocityColor : _r3dReflectivityColor;
+  const heightMaxKm = _r3dHeightMaxKft / R3D_KFT_PER_KM;
+  const filterMinV = _r3dFilterValue(product, _r3dFilterPct);
 
-  _r3dDrawGround(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal);
+  _r3dDrawGround(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, frame, colorFor, dpr, heightMaxKm);
 
   if (!frame) {
     ctx.fillStyle = 'rgba(255,255,255,0.4)';
     ctx.font = '12px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Pick a station and press the arrow to load a volume', w / 2, h / 2);
+    ctx.fillText("Open this from the map's double-click menu to load a volume", w / 2, h / 2);
     return;
   }
-  const product = ((_r3dEl('r3d-product') || {}).value) || 'ref';
-  const colorFor = product === 'vel' ? _r3dVelocityColor : _r3dReflectivityColor;
   const pts = frame.pts, n = frame.count;
   const sx = new Float32Array(n), sy = new Float32Array(n), depth = new Float32Array(n);
   const order = new Int32Array(n);
   let m = 0;
+  let minDepth = Infinity, maxDepth = 0;
   for (let i = 0, p = 0; i < n; i++, p += 4) {
+    const v = pts[p + 3];
+    if (pts[p + 2] > heightMaxKm) continue;
+    if (product === 'vel' ? Math.abs(v) < filterMinV : v < filterMinV) continue;
     const dx = pts[p] - camX, dy = pts[p + 1] - camY, dz = pts[p + 2] - camZ;
     const zc = dx * fx + dy * fy + dz * fz;
     if (zc <= 1) continue;
     const xc = dx * rx + dy * ry + dz * rz, yc = dx * ux + dy * uy + dz * uz;
     const px = w / 2 + xc / zc * focal, py = h / 2 - yc / zc * focal;
     if (px < -40 || px > w + 40 || py < -40 || py > h + 40) continue;
-    sx[m] = px; sy[m] = py; depth[m] = zc; order[m] = p; m++;
+    sx[m] = px; sy[m] = py; depth[m] = zc; order[m] = p;
+    if (zc < minDepth) minDepth = zc;
+    if (zc > maxDepth) maxDepth = zc;
+    m++;
   }
-  const idx = Array.from({ length: m }, (_, i) => i).sort((a, b) => depth[b] - depth[a]);
+  // Bucketed (counting-sort) painter's algorithm instead of a comparator
+  // sort: O(n) rather than O(n log n), so dragging to orbit stays smooth
+  // even with up to R3D_MAX_POINTS on screen at once.
+  const BUCKETS = 512;
+  const span = Math.max(1, maxDepth - minDepth);
+  const bucketCounts = new Int32Array(BUCKETS);
+  const bucketOf = new Int32Array(m);
+  for (let i = 0; i < m; i++) {
+    let b = Math.floor((depth[i] - minDepth) / span * BUCKETS);
+    if (b < 0) b = 0; else if (b >= BUCKETS) b = BUCKETS - 1;
+    bucketOf[i] = b;
+    bucketCounts[b]++;
+  }
+  // Farthest bucket first so nearer points land on top - the same result a
+  // descending depth sort gives, without the comparator overhead.
+  const bucketStart = new Int32Array(BUCKETS);
+  let acc = 0;
+  for (let b = BUCKETS - 1; b >= 0; b--) { bucketStart[b] = acc; acc += bucketCounts[b]; }
+  const painted = new Int32Array(m);
+  const cursor = bucketStart.slice();
+  for (let i = 0; i < m; i++) { const b = bucketOf[i]; painted[cursor[b]++] = i; }
+
   for (let k = 0; k < m; k++) {
-    const i = idx[k];
+    const i = painted[k];
     const v = pts[order[i] + 3];
     const [r, g, b, a] = colorFor(v);
     const radius = Math.max(0.6, Math.min(7, focal * 0.012 / depth[i] * dpr));
@@ -68340,10 +68417,13 @@ function _r3dRender() {
   }
 }
 
-// A faint ground reference so the eye has something to orbit around: range
-// rings every 50 km and the station itself at the centre, drawn with the
-// same projection the points use so they never drift apart.
-function _r3dDrawGround(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal) {
+// A wireframe box the size of the loaded volume, with a faint ground-plane
+// texture made from the frame's own points flattened to the floor (so the
+// box floor reads like a radar map, not empty black) and height labels in
+// kft climbing one corner - the same reference frame the OpenStorm desktop
+// viewer draws around its own storm, redrawn with this page's own
+// projection so it never drifts apart from the real points.
+function _r3dDrawGround(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, frame, colorFor, dpr, heightMaxKm) {
   const project = (x, y, z) => {
     const dx = x - camX, dy = y - camY, dz = z - camZ;
     const zc = dx * fx + dy * fy + dz * fz;
@@ -68351,18 +68431,53 @@ function _r3dDrawGround(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx,
     return [w / 2 + (dx * rx + dy * ry + dz * rz) / zc * focal,
             h / 2 - (dx * ux + dy * uy + dz * uz) / zc * focal];
   };
-  ctx.strokeStyle = 'rgba(0,140,186,0.35)'; ctx.lineWidth = 1;
-  [50, 100, 150, 200].forEach(km => {
+  const R = Math.max(60, frame ? _r3dMaxRangeKm(frame) : 150);
+  const top = Math.max(1, heightMaxKm);
+
+  if (frame) {
+    const pts = frame.pts, n = frame.count;
+    const stride = Math.max(1, Math.floor(n / 6000));
+    for (let i = 0; i < n; i += stride) {
+      const p = i * 4;
+      const proj = project(pts[p], pts[p + 1], 0);
+      if (!proj) continue;
+      const [r, g, b] = colorFor(pts[p + 3]);
+      ctx.fillStyle = `rgba(${r},${g},${b},0.25)`;
+      ctx.beginPath(); ctx.arc(proj[0], proj[1], 1.6 * dpr, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  const corners = [[-R, -R], [R, -R], [R, R], [-R, R]];
+  ctx.strokeStyle = 'rgba(232,184,0,0.55)'; ctx.lineWidth = 1;
+  const drawLoop = (z) => {
     ctx.beginPath();
     let started = false;
-    for (let a = 0; a <= 360; a += 4) {
-      const rad = a * Math.PI / 180;
-      const p = project(km * Math.sin(rad), km * Math.cos(rad), 0);
-      if (!p) { started = false; continue; }
+    corners.forEach(([x, y]) => {
+      const p = project(x, y, z);
+      if (!p) { started = false; return; }
       if (!started) { ctx.moveTo(p[0], p[1]); started = true; } else ctx.lineTo(p[0], p[1]);
-    }
+    });
+    if (started) ctx.closePath();
     ctx.stroke();
+  };
+  drawLoop(0);
+  drawLoop(top);
+  corners.forEach(([x, y]) => {
+    const p0 = project(x, y, 0), p1 = project(x, y, top);
+    if (!p0 || !p1) return;
+    ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.stroke();
   });
+
+  const topKft = top * R3D_KFT_PER_KM;
+  const step = topKft > 30 ? 10 : 5;
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.font = `${Math.round(10 * dpr)}px monospace`;
+  ctx.textAlign = 'left';
+  for (let kft = 0; kft <= topKft + 0.01; kft += step) {
+    const p = project(-R, -R, kft / R3D_KFT_PER_KM);
+    if (p) ctx.fillText(Math.round(kft) + 'k', p[0] + 4 * dpr, p[1] + 3 * dpr);
+  }
+
   const site = project(0, 0, 0);
   if (site) {
     ctx.fillStyle = '#e8b800';
@@ -68428,7 +68543,7 @@ function _r3dDrawGround(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx,
   const panel = _r3dEl('r3d-panel');
   if (!panel) return;
   const x = panel.querySelector('.xs-x');
-  if (x) x.onclick = () => toggleRadar3D();
+  if (x) x.onclick = () => _r3dClose();
   const big = panel.querySelector('.xs-big');
   if (big) big.onclick = () => {
     panel.classList.toggle('big');
@@ -68444,9 +68559,11 @@ function _r3dDrawGround(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx,
   const play = _r3dEl('r3d-play');
   if (play) play.onclick = () => _r3dPlayToggle();
   const ps = _r3dEl('r3d-product');
-  if (ps) ps.onchange = () => { _r3dUpdateLegend(ps.value); if (_r3dFrames.length) _r3dBuild(); };
-  const ss = _r3dEl('r3d-site');
-  if (ss) ss.onchange = () => { if (_r3dFrames.length) _r3dBuild(); };
+  if (ps) ps.onchange = () => { _r3dUpdateLegend(ps.value); _r3dUpdateFilterLabel(); if (_r3dStation) _r3dLoadStation(_r3dStation); };
+  const filter = _r3dEl('r3d-filter');
+  if (filter) filter.oninput = () => { _r3dFilterPct = Number(filter.value); _r3dUpdateFilterLabel(); _r3dDirty = true; };
+  const height = _r3dEl('r3d-height');
+  if (height) height.oninput = () => { _r3dHeightMaxKft = Number(height.value); _r3dUpdateHeightLabel(); _r3dDirty = true; };
 })();
 
 // ── TOOLBAR (#right-menu) HOVER FLYOUT ──
@@ -68480,7 +68597,7 @@ const TOOL_DESCRIPTIONS = {
   'tool-inspector': 'Shows the radar value at the exact center of the map, and updates live as you pan.',
   'tool-export':    'Downloads what is on screen: the current picture as a PNG, or the whole loop as a video.',
   'tool-xsec':      'Cuts a vertical slice through a storm. A radar picture is one thin cone and says nothing about how tall the weather is, but a volume scan sweeps the same circle at rising angles, so sampling every one of them along a line on the ground stacks them into a side-on view. Drag the two ends of the line, press the arrow, and it shows where the core sits, whether it leans, and whether there is an overhang. Uses the volume already downloaded for the radar picture, so it costs no extra download.',
-  'tool-r3d':       'A storm’s real shape in three dimensions, not one flat slice through it. Every radar gate above a threshold becomes a point in space, coloured for reflectivity or velocity, drawn from a volume decoded the same way Cross Section and Level 2 already are. Drag to orbit, scroll or pinch to zoom, and step the slider through the last few volumes to watch it move.',
+  'tool-r3d':       'A storm’s real shape in three dimensions, not one flat slice through it. Double-click or long-press the map and choose View in 3D here to open it over whichever radar you tapped. Every gate becomes a point in space, coloured for reflectivity or velocity, drawn from a volume decoded the same way Cross Section and Level 2 already are, inside a box sized to the volume with height marked in thousands of feet. The Show above slider hides weak points, the Up to slider caps how high it draws, and dragging orbits the view while scroll or pinch zooms.',
 };
 
 let _tbFlyoutHideTimer = null;
@@ -69805,7 +69922,7 @@ function closeCredits() {
    was the loudest of them, a solid cyan strip across the bottom of a red
    application. */
 #animbar,
-#export-toolbar, #xsec-toolbar, #r3d-toolbar, #radius-toolbar, #dist-toolbar,
+#export-toolbar, #xsec-toolbar, #radius-toolbar, #dist-toolbar,
 #poly-toolbar, #draw-toolbar, #text-toolbar, #stormcone-toolbar,
 #tt-toolbar, #cs-toolbar,
 #top-search-bar,
