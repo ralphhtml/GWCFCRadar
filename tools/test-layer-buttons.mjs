@@ -164,12 +164,9 @@ const walk = await p.evaluate(async () => {
      JSON.stringify(subs.filter(r => r.err).slice(0, 3)) + ' ' + errs.slice(0, 2).join(' | '));
   // A row that neither opened a level, nor lit, nor opened a modal, must be
   // one that needs the Pi: RTMA (id sub-nws-*, or the RTMA choice on a
-  // two-source screen), a Pi-built sea temperature field (sub-sstvar-*), or
-  // Canada CAPPI's status line, which needs a real fetch to dd.weather.gc.ca
-  // to do anything and is a status line rather than a layer either way.
+  // two-source screen) or a Pi-built sea temperature field (sub-sstvar-*).
   const needsPi = r => /^sub-nws-/.test(r.id) || /^sub-sstvar-/.test(r.id)
-    || /> RTMA$/.test(r.name) || /^radar > Level 3 >/.test(r.name)
-    || /^radar > Canada CAPPI >/.test(r.name);
+    || /> RTMA$/.test(r.name) || /^radar > Level 3 >/.test(r.name);
   const dead = subs.filter(r => !r.navigated && !r.lit && !r.modal && !needsPi(r));
   ok('every other row opened a level, lit up, or opened its modal',
      dead.length === 0, JSON.stringify(dead.map(r => r.name).slice(0, 8)));

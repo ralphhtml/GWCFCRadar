@@ -5905,39 +5905,6 @@ body.lite-mode #export-toolbar { display: none !important; }
   box-shadow: 0 0 10px rgba(0,229,255,0.9);
 }
 
-/* Same pill-label mechanics as .nexrad-label (US radar sites) - Canada flag
-   red so a CASxx pin never reads as just another NEXRAD dot. */
-.ca-cappi-label {
-  position: absolute;
-  left: 0; top: 0;
-  transform: translate(-50%, -50%);
-  transform-origin: center center;
-  background: #d52b1e;
-  border: 1.5px solid rgba(0,0,0,0.55);
-  color: #fff;
-  font-family: 'Comfortaa', sans-serif;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  padding: 2px 6px;
-  border-radius: 8px;
-  white-space: nowrap;
-  cursor: pointer;
-  box-shadow: 0 0 6px rgba(213,43,30,0.55);
-  transition: transform 0.15s, box-shadow 0.15s;
-}
-.ca-cappi-label:hover {
-  transform: translate(-50%, -50%) scale(1.2);
-  box-shadow: 0 0 12px rgba(213,43,30,1);
-  z-index: 1000;
-}
-.ca-cappi-label.active-station {
-  background: #e8b800;
-  border-color: rgba(0,0,0,0.55);
-  color: #1a1200;
-  box-shadow: 0 0 8px rgba(232,184,0,0.75);
-}
-
 /* ── THE SITE POPUP ── two choices, floated above a tapped radar pill */
 #site-pop {
   position: fixed; z-index: 3100; display: none; flex-direction: column; gap: 4px;
@@ -29613,16 +29580,6 @@ function _disableRadar() {
   _canadaLayerPool.forEach(l => { if (l) l.setOpacity(0); });
   // Clear any active-station highlight on NEXRAD site labels
   if (typeof _refreshNexradSiteStyles === 'function') _refreshNexradSiteStyles();
-  // A different radar source was just picked, so any Canada CAPPI station on
-  // screen is no longer the picture being shown - same one-source-at-a-time
-  // rule Level 2/3 already follow.
-  if (typeof _caCappiTeardown === 'function') _caCappiTeardown();
-  if (typeof _caCappiStation !== 'undefined' && _caCappiStation) {
-    _caCappiStation = null;
-    if (typeof _refreshCaCappiSiteStyles === 'function') _refreshCaCappiSiteStyles();
-    if (typeof _caCappiHidePanel === 'function') _caCappiHidePanel();
-  }
-  if (typeof hideCaCappiSites === 'function') hideCaCappiSites();
   // The mosaic's time machine belongs to the mosaic. Off means live next
   // time, and the PAST badge comes down with the picture it described.
   if (typeof _tmMosaicAt !== 'undefined' && _tmMosaicAt != null) {
@@ -30034,7 +29991,6 @@ const LAYER_DESCRIPTIONS = {
   'radar-l2':     'Level 2 is the raw feed straight off a single radar, the sharpest picture the radar makes. Decoded from the live feed, with the full set of dual-pol products, for every NEXRAD and airport terminal radar in the country.',
   'radar-l3':     'Level 3 is a single radar\'s lighter, pre-processed feed: slightly coarser than Level 2 but faster, with extra derived products like storm totals, VIL, and echo tops.',
   'radar-mrms':   'MRMS is a national mosaic NOAA builds by merging every radar together, then computing things no single radar can: rotation tracks, hail swaths, rainfall totals, lightning probability and more. Your Pi builds the pictures; the whole catalogue lives in here.',
-  'radar-ca':     "A single Canadian radar's own CAPPI picture, straight off Environment and Climate Change Canada's Datamart, rather than the blended national mosaic. Pick any of the 31 CASxx station pins on the map to see that radar's own 240 km view.",
   'timemachine': 'Travel the radar back to any moment. Pick a date and time, or jump by a day, a month or a year. A single site redraws as it looked then (Level 3 product files back to March 2022, the Level 2 tape archive before that, to 2008), with its own scrubbable loop around that moment. The mosaic travels too: with no single site on screen, the national NEXRAD composite Iowa Mesonet has kept every five minutes since November 2010 is what moves, since the MRMS 1 km mosaic only keeps its last few hours. A radar that was down that day has nothing to show and will say so.',
   // The Models row's two doors.
   'run-models':      'Forecast model charts - GFS, ECMWF, HRRR, NAM and more - browsable by product and forecast hour, with an Ensemble Spread view that shows where the models disagree.',
@@ -32790,13 +32746,6 @@ const RADAR_SOURCE_BUBBLES = [
   // and the description already written for it both still find it.
   { id:'radar-mrms', icon:'<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-hex></use></svg>',
     label:'Composite', action: () => toggleMrmsSub() },
-  // A raw single-site picture, the same idea as Level 2/3, but off ECCC's
-  // Datamart instead of NOAA's: one CAPPI GIF per Canadian station, already
-  // rendered rather than decoded here. Its own source rather than a Level 3
-  // variant because nothing here is fetched, tilted or decoded the way a
-  // NEXRAD volume is; it is a plain image, picked by its own set of pins.
-  { id:'radar-ca', icon:'<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-flag></use></svg>',
-    label:'Canada CAPPI', action: () => toggleRadarCaSub() },
 ];
 
 // ── MRMS product menu ──────────────────────────────────────────────────────
@@ -33149,7 +33098,6 @@ function toggleRadarSub() {
   });
   RADAR_SOURCE_BUBBLES.forEach(b => {
     const on = b.id === 'radar-normal' ? (!_prOn && !!activeLayers.nexrad)
-             : b.id === 'radar-ca' ? (_radarSource === 'ca' && !!_caCappiStation)
              : (_prOn && _prLevel === (b.id === 'radar-l2' ? 'l2' : 'l3'));
     const el = document.createElement('div');
     el.className = 'sub-bubble' + (on ? ' active' : '');
@@ -33432,33 +33380,6 @@ function toggleRadarPiRefresh() {
     const el = document.getElementById('sub-' + b.id);
     if (el) el.classList.toggle('active', _prOn && _prProduct === b.product);
   });
-  _syncParentBubble('radar');
-}
-
-// Canada CAPPI: one image per station, picked on the map the same way Level
-// 2 and Level 3 stations are. There is only one product (there is no dual-pol
-// or velocity in a CAPPI GIF), so this row carries no product pills at all,
-// just a status line that names whichever station is showing.
-function toggleRadarCaSub() {
-  const wrap = document.getElementById('sub-bubbles');
-  wrap.innerHTML = '';
-  _radarBackBubble(wrap, () => toggleRadarSub());
-  _radarSource = 'ca';
-  if (typeof showCaCappiSites === 'function') showCaCappiSites();
-  const el = document.createElement('div');
-  el.className = 'sub-bubble';
-  el.id = 'sub-radar-ca-hint';
-  el.innerHTML = '<span class="sb-label">'
-    + (_caCappiStation
-        ? `Viewing ${_caCappiStation.id} - tap its pin again to close`
-        : 'Pick a CAS station pin on the map')
-    + '</span>';
-  el.onclick = () => { if (typeof showToast === 'function')
-    showToast(_caCappiStation
-      ? `${_caCappiStation.id} is on screen. Use the panel's arrows to step through recent frames, or tap its pin again to close it.`
-      : 'Pick a CAS station pin on the map to view its live CAPPI image.', 4500); };
-  wrap.appendChild(el);
-  wrap.style.display = 'flex';
   _syncParentBubble('radar');
 }
 
@@ -44327,49 +44248,6 @@ const NEXRAD_STATIONS = [
   {id:'thou',lat:29.516,lon:-95.242,tdwr:true}
 ];
 
-// ── Canada single-site radar (ECCC CAPPI) station list ──────────────────────
-// The 31 CASxx sites that publish raw CAPPI GIF images on the MSC Datamart
-// (dd.weather.gc.ca/today/radar/CAPPI/GIF/{id}/), as opposed to the national
-// composite mosaic (CANADA_WMS/CANADA_LAYER above) which blends all of them
-// into one picture. Coordinates come from Environment and Climate Change
-// Canada's own radar site list (radars_list.pdf, MSC collaboration site,
-// revision 2022-04-06); a few (marked approx) fall back to the station's town
-// centre where the exact tower coordinate could not be confirmed, which is a
-// negligible error against a 240 km display range.
-const CA_CAPPI_STATIONS = [
-  {id:'CASAG',lat:49.016441,lon:-122.487357,name:'Aldergrove',prov:'BC'},
-  {id:'CASHP',lat:49.527035,lon:-123.853712,name:'Halfmoon Peak',prov:'BC'},
-  {id:'CASPG',lat:53.615390,lon:-122.954690,name:'Prince George',prov:'BC'},
-  {id:'CASSS',lat:50.3695,lon:-119.0644,name:'Silver Star',prov:'BC'},
-  {id:'CASCV',lat:53.56061,lon:-114.14447,name:'Carvel',prov:'AB'},
-  {id:'CASCL',lat:54.465,lon:-110.182,name:'Cold Lake',prov:'AB'},
-  {id:'CASSU',lat:50.312503,lon:-110.195362,name:'Schuler',prov:'AB'},
-  {id:'CASSR',lat:55.694942,lon:-119.230432,name:'Spirit River',prov:'AB'},
-  {id:'CASSM',lat:51.20613,lon:-113.399366,name:'Strathmore',prov:'AB'},
-  {id:'CASBE',lat:50.571232,lon:-105.182848,name:'Bethune',prov:'SK'},
-  {id:'CASRA',lat:52.520480,lon:-107.442690,name:'Radisson',prov:'SK'},
-  {id:'CASFW',lat:50.548748,lon:-101.08563,name:'Foxwarren',prov:'MB'},
-  {id:'CASWL',lat:50.153001,lon:-97.780482,name:'Woodlands',prov:'MB'},
-  {id:'CASBI',lat:45.79309,lon:-80.53414,name:'Britt',prov:'ON'},
-  {id:'CASDR',lat:49.858047,lon:-92.797566,name:'Dryden',prov:'ON'},
-  {id:'CASET',lat:43.3722,lon:-81.37748,name:'Exeter',prov:'ON'},
-  {id:'CASFT',lat:45.04115,lon:-76.11638,name:'Franktown',prov:'ON'},
-  {id:'CASKR',lat:43.96366,lon:-79.57288,name:'King City',prov:'ON'},
-  {id:'CASMR',lat:47.247807,lon:-84.596686,name:'Montreal River',prov:'ON'},
-  {id:'CASRF',lat:49.283,lon:-81.633,name:'Smooth Rock Falls',prov:'ON'},
-  {id:'CASSN',lat:48.596001,lon:-89.100038,name:'Shuniah',prov:'ON'},
-  {id:'CASMA',lat:47.977908,lon:-71.430833,name:'Mont Apica',prov:'QC'},
-  {id:'CASLA',lat:48.551355,lon:-77.808086,name:'Landrienne',prov:'QC'},
-  {id:'CASBV',lat:45.70628,lon:-73.85892,name:'Blainville',prov:'QC'},
-  {id:'CASVD',lat:48.480468,lon:-67.601036,name:"Val d'Irene",prov:'QC'},
-  {id:'CASSF',lat:46.449476,lon:-71.913832,name:'Villeroy/Ste-Francoise',prov:'QC'},
-  {id:'CASCM',lat:46.222378,lon:-65.699294,name:'Chipman',prov:'NB'},
-  {id:'CASGO',lat:45.09818,lon:-63.70494,name:'Gore',prov:'NS'},
-  {id:'CASMB',lat:45.949718,lon:-60.205246,name:'Marion Bridge',prov:'NS'},
-  {id:'CASHR',lat:47.326604,lon:-53.12667,name:'Holyrood',prov:'NL'},
-  {id:'CASMM',lat:48.930228,lon:-57.834579,name:'Marble Mountain',prov:'NL'}
-];
-
 // Return the nearest WSR-88D station ID to a given lat/lon (skips TDWR)
 function _nearestStation(lat, lon) {
   let best = NEXRAD_STATIONS[0], bestDist = Infinity;
@@ -47864,312 +47742,6 @@ function _syncNexradSites() {
                                  || _l3Overlay != null));
   if (radarOn) showNexradSites();
   else         hideNexradSites();
-}
-
-// ── CANADA SINGLE-SITE RADAR (ECCC CAPPI) ───────────────────────────────────
-// Each CASxx station publishes a plain, already-rendered GIF every few
-// minutes at a fixed 240 km range - there is no volume to decode, so this is
-// closer to the satellite image overlays than to the Level 2/3 pipeline
-// above it. Picking a station probes the Datamart directly for the newest
-// file that exists (there is no directory listing API to ask instead), the
-// same "try it and see" approach _switchSlotToWms uses for a missed tile.
-const CA_CAPPI_STEP_MIN = 6;     // ECCC's publishing cadence
-const CA_CAPPI_LAG_MIN  = 8;     // headroom before a just-started slot is up
-const CA_CAPPI_RANGE_KM = 240;   // ECCC's own published display range
-// [altitude, precip type] pairs to try at each timestamp, most likely first.
-// A station only ever seems to publish the pair that matches the season, so
-// every candidate is tried rather than picked from a guess about the weather.
-const CA_CAPPI_COMBOS = [['1.5','RAIN'], ['1.0','SNOW'], ['1.5','SNOW'], ['1.0','RAIN']];
-
-function _caCappiUrl(id, ts, alt, type) {
-  const p2 = n => String(n).padStart(2, '0');
-  const stamp = `${ts.getUTCFullYear()}${p2(ts.getUTCMonth() + 1)}${p2(ts.getUTCDate())}`
-              + `${p2(ts.getUTCHours())}${p2(ts.getUTCMinutes())}`;
-  return `https://dd.weather.gc.ca/today/radar/CAPPI/GIF/${id}/${stamp}_${id}_CAPPI_${alt}_${type}.gif`;
-}
-
-function _caCappiSlotTime(slotsBack) {
-  const stepMs = CA_CAPPI_STEP_MIN * 60000, lagMs = CA_CAPPI_LAG_MIN * 60000;
-  const base = Math.floor((Date.now() - lagMs) / stepMs) * stepMs;
-  return new Date(base - slotsBack * stepMs);
-}
-
-// Tries every [altitude, type] combo for one timestamp; resolves the first
-// image that actually loads, or null if none of them exist.
-function _caCappiProbeSlot(id, ts) {
-  return new Promise(resolve => {
-    let i = 0;
-    const tryNext = () => {
-      if (i >= CA_CAPPI_COMBOS.length) { resolve(null); return; }
-      const [alt, type] = CA_CAPPI_COMBOS[i++];
-      const url = _caCappiUrl(id, ts, alt, type);
-      const img = new Image();
-      img.onload = () => resolve({ url, time: ts });
-      img.onerror = tryNext;
-      img.src = url;
-    };
-    tryNext();
-  });
-}
-
-// Walks backward in CA_CAPPI_STEP_MIN steps until it has collected up to
-// maxFrames real images (oldest first), or given up after CA_CAPPI_MAX_SLOTS
-// with nothing at all - a station that is down for maintenance publishes
-// nothing at any slot, and this is what tells the difference from a station
-// that is merely between updates.
-const CA_CAPPI_MAX_SLOTS = 20;
-
-async function _caCappiFindFrames(id, maxFrames) {
-  const frames = [];
-  for (let slot = 0; slot < CA_CAPPI_MAX_SLOTS && frames.length < maxFrames; slot++) {
-    const f = await _caCappiProbeSlot(id, _caCappiSlotTime(slot));
-    if (f) frames.push(f);
-  }
-  return frames.reverse(); // oldest -> newest
-}
-
-// ECCC only publishes the CAPPI as one flat picture with its own basemap,
-// range ring, coastline and text baked right into the pixels - unlike a
-// NEXRAD volume, which this app decodes itself onto a transparent canvas and
-// so never had any of that to begin with. To match the same "just the radar
-// pixels" look, the picture is redrawn here with everything that is not
-// plausibly echo colour made transparent: the basemap and range ring are
-// flat gray or near-black, and the labels are near-white, while every real
-// reflectivity colour in ECCC's ramp is a clearly saturated colour somewhere
-// in the middle of the brightness range. Same drawImage/getImageData/
-// putImageData shape as _recolorImage above, just keyed on saturation
-// instead of a known lookup table, because there is no published palette to
-// match against exactly.
-const CA_CAPPI_MIN_SAT    = 30;   // how colourful a pixel must be to count as echo
-const CA_CAPPI_MIN_BRIGHT = 45;   // below this is the near-black basemap fill
-const CA_CAPPI_MAX_BRIGHT = 248;  // above this is white text, gridlines and the range ring
-
-function _caCappiStripBasemap(imgUrl) {
-  return new Promise(resolve => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try {
-        const c = document.createElement('canvas');
-        c.width = img.naturalWidth; c.height = img.naturalHeight;
-        const ctx = c.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        const imgData = ctx.getImageData(0, 0, c.width, c.height);
-        const px = imgData.data;
-        for (let i = 0; i < px.length; i += 4) {
-          if (px[i + 3] === 0) continue; // already transparent, leave it
-          const r = px[i], g = px[i + 1], b = px[i + 2];
-          const max = Math.max(r, g, b), min = Math.min(r, g, b);
-          const sat = max - min;
-          const keep = sat >= CA_CAPPI_MIN_SAT
-                    && max >= CA_CAPPI_MIN_BRIGHT && max <= CA_CAPPI_MAX_BRIGHT;
-          if (!keep) px[i + 3] = 0;
-        }
-        ctx.putImageData(imgData, 0, 0);
-        resolve(c.toDataURL('image/png'));
-      } catch (e) {
-        // A tainted canvas (the Datamart did not send a CORS header) or any
-        // other read failure: show the untouched picture rather than nothing.
-        resolve(imgUrl);
-      }
-    };
-    img.onerror = () => resolve(imgUrl);
-    img.src = imgUrl;
-  });
-}
-
-function _caCappiBounds(lat, lon, radiusKm) {
-  const dLat = (radiusKm * 1000) / 111320;
-  const dLon = (radiusKm * 1000) / (111320 * Math.cos(lat * Math.PI / 180));
-  return [[lat - dLat, lon - dLon], [lat + dLat, lon + dLon]];
-}
-
-let _caCappiSiteLayer = null, _caCappiSiteMarkers = {};
-let _caCappiOverlay = null, _caCappiStation = null;
-let _caCappiFrames = [], _caCappiFrameIdx = -1, _caCappiRefreshTimer = null;
-
-function _buildCaCappiSiteMarkers() {
-  if (_caCappiSiteLayer) return;
-  _caCappiSiteLayer = L.layerGroup();
-  CA_CAPPI_STATIONS.forEach(s => {
-    const icon = L.divIcon({
-      className: 'ca-cappi-label-marker',
-      html: `<div class="ca-cappi-label" id="cacappi-lbl-${s.id}">${s.id}</div>`,
-      iconSize: [0, 0], iconAnchor: [0, 0]
-    });
-    const label = L.marker([s.lat, s.lon], { icon, zIndexOffset: 300 });
-    label.on('click', () => _caCappiMarkerClick(s));
-    label.addTo(_caCappiSiteLayer);
-    _caCappiSiteMarkers[s.id] = { label };
-  });
-}
-
-function showCaCappiSites() {
-  _buildCaCappiSiteMarkers();
-  if (!map.hasLayer(_caCappiSiteLayer)) _caCappiSiteLayer.addTo(map);
-  _refreshCaCappiSiteStyles();
-}
-function hideCaCappiSites() {
-  if (_caCappiSiteLayer && map.hasLayer(_caCappiSiteLayer)) map.removeLayer(_caCappiSiteLayer);
-}
-function _refreshCaCappiSiteStyles() {
-  Object.keys(_caCappiSiteMarkers).forEach(id => {
-    const el = document.getElementById('cacappi-lbl-' + id);
-    if (el) el.classList.toggle('active-station', !!_caCappiStation && _caCappiStation.id === id);
-  });
-}
-
-function _caCappiMarkerClick(station) {
-  if (_caCappiStation && _caCappiStation.id === station.id) { _caCappiClose(); return; }
-  _disableSatellite();
-  _disableRadar();
-  if (typeof _clearSingleSiteRef === 'function') _clearSingleSiteRef();
-  _radarSource = 'ca';
-  showCaCappiSites();
-  _caCappiLoadLatest(station);
-  if (typeof toggleRadarCaSub === 'function' &&
-      document.getElementById('sub-radar-ca-hint')) toggleRadarCaSub();
-}
-
-async function _caCappiLoadLatest(station) {
-  _caCappiTeardown();
-  _caCappiStation = station;
-  _refreshCaCappiSiteStyles();
-  _caCappiShowPanel(station, null, true);
-  const frames = await _caCappiFindFrames(station.id, 6);
-  // The station may have been closed, or a different one picked, while this
-  // was still probing the network - do not attach a stale answer.
-  if (!_caCappiStation || _caCappiStation.id !== station.id) return;
-  if (!frames.length) {
-    _caCappiStation = null;
-    _refreshCaCappiSiteStyles();
-    _caCappiHidePanel();
-    if (typeof showToast === 'function')
-      showToast(`${station.id} has not published a CAPPI image in the last two hours. It is most likely down for maintenance.`, 5000);
-    return;
-  }
-  _caCappiFrames = frames;
-  _caCappiFrameIdx = frames.length - 1;
-  const shown = frames[_caCappiFrameIdx];
-  shown.filteredUrl = await _caCappiStripBasemap(shown.url);
-  // Same staleness guard as above - the filtering itself is a second await.
-  if (!_caCappiStation || _caCappiStation.id !== station.id) return;
-  const bounds = _caCappiBounds(station.lat, station.lon, CA_CAPPI_RANGE_KM);
-  _caCappiOverlay = L.imageOverlay(shown.filteredUrl, bounds,
-    { opacity: typeof radarOpacity === 'number' ? radarOpacity : 0.85,
-      zIndex: 10, pane: 'radarPane' }).addTo(map);
-  _caCappiShowPanel(station, shown.time, false);
-  _caCappiRefreshTimer = setInterval(_caCappiRefreshCheck, 120000);
-}
-
-// While a station is on screen, checks every two minutes for a newer slot
-// and swaps the image in place - the same idea as the Pi refresh timer, just
-// against the Datamart instead.
-async function _caCappiRefreshCheck() {
-  if (!_caCappiStation) return;
-  const newest = _caCappiFrames[_caCappiFrames.length - 1];
-  const wantTs = _caCappiSlotTime(0);
-  if (newest && newest.time.getTime() >= wantTs.getTime()) return;
-  const f = await _caCappiProbeSlot(_caCappiStation.id, wantTs);
-  if (!_caCappiStation || !f) return;
-  if (!newest || f.time.getTime() > newest.time.getTime()) {
-    _caCappiFrames.push(f);
-    if (_caCappiFrames.length > 6) _caCappiFrames.shift();
-    _caCappiSetFrame(_caCappiFrames.length - 1);
-  }
-}
-
-async function _caCappiSetFrame(idx) {
-  const f = _caCappiFrames[idx];
-  if (!_caCappiOverlay || !f) return;
-  _caCappiFrameIdx = idx;
-  if (!f.filteredUrl) f.filteredUrl = await _caCappiStripBasemap(f.url);
-  // Prev/Next again, or the station closed, while this frame was filtering.
-  if (_caCappiFrameIdx !== idx || !_caCappiOverlay) return;
-  _caCappiOverlay.setUrl(f.filteredUrl);
-  _caCappiUpdatePanelTime(f.time);
-}
-function _caCappiPrev() { if (_caCappiFrameIdx > 0) _caCappiSetFrame(_caCappiFrameIdx - 1); }
-function _caCappiNext() {
-  if (_caCappiFrameIdx < _caCappiFrames.length - 1) _caCappiSetFrame(_caCappiFrameIdx + 1);
-}
-
-function _caCappiFmtTime(d) {
-  try { return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' local'; }
-  catch (e) { return ''; }
-}
-
-function _caCappiShowPanel(station, time, loading) {
-  let p = document.getElementById('ca-cappi-panel');
-  if (!p) {
-    p = document.createElement('div');
-    p.id = 'ca-cappi-panel';
-    p.style.cssText =
-      'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);' +
-      'background:rgba(8,12,16,0.95);border:1px solid var(--border2);' +
-      'color:var(--text);font-family:var(--mono);font-size:11px;' +
-      'padding:6px 10px;border-radius:8px;z-index:9998;display:flex;' +
-      'align-items:center;gap:8px;white-space:nowrap;';
-    document.body.appendChild(p);
-  }
-  p.innerHTML = '';
-  const name = document.createElement('span');
-  name.style.fontWeight = 'bold';
-  name.textContent = (station.name ? station.name + ' ' : '') + station.id;
-  p.appendChild(name);
-  const btnCss = 'background:none;border:1px solid var(--border2);color:var(--text);' +
-                 'border-radius:4px;cursor:pointer;padding:2px 6px;font-family:var(--mono);';
-  if (loading) {
-    const l = document.createElement('span');
-    l.textContent = 'loading…';
-    p.appendChild(l);
-  } else {
-    const prev = document.createElement('button');
-    prev.textContent = '‹'; prev.title = 'Earlier frame';
-    prev.style.cssText = btnCss;
-    prev.onclick = () => _caCappiPrev();
-    p.appendChild(prev);
-    const t = document.createElement('span');
-    t.id = 'ca-cappi-panel-time';
-    t.textContent = time ? _caCappiFmtTime(time) : '';
-    p.appendChild(t);
-    const next = document.createElement('button');
-    next.textContent = '›'; next.title = 'Later frame';
-    next.style.cssText = btnCss;
-    next.onclick = () => _caCappiNext();
-    p.appendChild(next);
-  }
-  const close = document.createElement('button');
-  close.textContent = '✕'; close.title = 'Close';
-  close.style.cssText = 'background:none;border:none;color:var(--text);cursor:pointer;padding:2px 4px;';
-  close.onclick = () => _caCappiClose();
-  p.appendChild(close);
-  p.style.display = 'flex';
-}
-function _caCappiUpdatePanelTime(time) {
-  const t = document.getElementById('ca-cappi-panel-time');
-  if (t) t.textContent = _caCappiFmtTime(time);
-}
-function _caCappiHidePanel() {
-  const p = document.getElementById('ca-cappi-panel');
-  if (p) p.style.display = 'none';
-}
-
-// Clears the overlay, the refresh timer and the frame history, but leaves
-// the station pins themselves on the map - used both by a real close and as
-// the first step of loading a different station.
-function _caCappiTeardown() {
-  if (_caCappiRefreshTimer) { clearInterval(_caCappiRefreshTimer); _caCappiRefreshTimer = null; }
-  if (_caCappiOverlay) { try { map.removeLayer(_caCappiOverlay); } catch (e) {} _caCappiOverlay = null; }
-  _caCappiFrames = []; _caCappiFrameIdx = -1;
-}
-function _caCappiClose() {
-  _caCappiTeardown();
-  _caCappiStation = null;
-  _refreshCaCappiSiteStyles();
-  _caCappiHidePanel();
-  if (document.getElementById('sub-radar-ca-hint') && typeof toggleRadarCaSub === 'function')
-    toggleRadarCaSub();
 }
 
 // ── MRMS NATIONAL MOSAIC , NOAA Multi-Radar Multi-Sensor via NCEP GeoServer ──
@@ -64176,10 +63748,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
-  { id: '2026-09-16-b', date: 'Sep 16, 2026',
-    text: 'Canada CAPPI now shows only the radar echo, the same way the American Level 2/3 sites do. ECCC only publishes each station’s picture with its own basemap, range ring and text labels baked right in, so that picture now gets cleaned up in the browser: anything that is not a real reflectivity colour is made see-through before it goes on the map.' },
-  { id: '2026-09-16-a', date: 'Sep 16, 2026',
-    text: 'Added Canada single-site radar: a new Canada CAPPI source next to Level 2/3 with pins for all 31 Canadian CASxx radar stations. Tap one to see that radar’s own live picture straight from Environment and Climate Change Canada, separate from the existing blended Canada Radar mosaic.' },
+  { id: '2026-09-16-c', date: 'Sep 16, 2026',
+    text: 'Removed Canada CAPPI, the single-site Canadian radar source added earlier today. The existing Canada Radar composite mosaic is untouched.' },
   { id: '2026-09-15-i', date: 'Sep 15, 2026',
     text: 'Env. CN Outlooks is now ECCC Outlooks, with its own floating legend panel to match SPC Outlook. Canada Alerts is now ECCC Alerts, recolored to match Environment and Climate Change Canada’s own Minor/Moderate/High/Extreme risk scale, Extreme drawn with the same dotted red pattern ECCC uses rather than a flat fill.' },
   { id: '2026-09-15-h', date: 'Sep 15, 2026',
@@ -67405,7 +66975,6 @@ const OV_DESCRIPTIONS = {
   'l2-sw':            "Spectrum width: how much the velocities inside one gate disagree. High values mean turbulence, which marks the shear zones and the boundary of a mesocyclone.",
   'radar-l3':         "Level 3 is what the Weather Service makes from Level 2: one product, already quality controlled, on a coarser grid and about 30 KB. Cheaper and slightly later, and it arrives even when a Level 2 volume is missing.",
   'radar-mrms':       "MRMS merges every radar in the country into one grid and derives products no single site can: rotation tracks, hail swaths, rainfall totals, echo tops, lightning probability. Built on your Pi, grouped by what each one is for.",
-  'radar-ca':         "A single Canadian radar's own CAPPI picture straight off ECCC's Datamart, rather than the blended national mosaic. Pick any of the 31 CASxx station pins on the map.",
   'pi-reflectivity':  "How heavy the precipitation is, in dBZ. The usual radar picture.",
   'pi-velocity':      "How fast the precipitation is moving toward or away from the antenna. Red beside green means rotation, which is what a tornado looks like on radar.",
   'pi-srvelocity':    "Same idea as Velocity, but with the storm's own motion subtracted out first, so what's left is rotation relative to the storm rather than the whole field drifting with the wind - a tighter, clearer couplet for spotting a mesocyclone.",
