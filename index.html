@@ -47928,6 +47928,56 @@ async function _caCappiFindFrames(id, maxFrames) {
   return frames.reverse(); // oldest -> newest
 }
 
+// ECCC only publishes the CAPPI as one flat picture with its own basemap,
+// range ring, coastline and text baked right into the pixels - unlike a
+// NEXRAD volume, which this app decodes itself onto a transparent canvas and
+// so never had any of that to begin with. To match the same "just the radar
+// pixels" look, the picture is redrawn here with everything that is not
+// plausibly echo colour made transparent: the basemap and range ring are
+// flat gray or near-black, and the labels are near-white, while every real
+// reflectivity colour in ECCC's ramp is a clearly saturated colour somewhere
+// in the middle of the brightness range. Same drawImage/getImageData/
+// putImageData shape as _recolorImage above, just keyed on saturation
+// instead of a known lookup table, because there is no published palette to
+// match against exactly.
+const CA_CAPPI_MIN_SAT    = 30;   // how colourful a pixel must be to count as echo
+const CA_CAPPI_MIN_BRIGHT = 45;   // below this is the near-black basemap fill
+const CA_CAPPI_MAX_BRIGHT = 248;  // above this is white text, gridlines and the range ring
+
+function _caCappiStripBasemap(imgUrl) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const imgData = ctx.getImageData(0, 0, c.width, c.height);
+        const px = imgData.data;
+        for (let i = 0; i < px.length; i += 4) {
+          if (px[i + 3] === 0) continue; // already transparent, leave it
+          const r = px[i], g = px[i + 1], b = px[i + 2];
+          const max = Math.max(r, g, b), min = Math.min(r, g, b);
+          const sat = max - min;
+          const keep = sat >= CA_CAPPI_MIN_SAT
+                    && max >= CA_CAPPI_MIN_BRIGHT && max <= CA_CAPPI_MAX_BRIGHT;
+          if (!keep) px[i + 3] = 0;
+        }
+        ctx.putImageData(imgData, 0, 0);
+        resolve(c.toDataURL('image/png'));
+      } catch (e) {
+        // A tainted canvas (the Datamart did not send a CORS header) or any
+        // other read failure: show the untouched picture rather than nothing.
+        resolve(imgUrl);
+      }
+    };
+    img.onerror = () => resolve(imgUrl);
+    img.src = imgUrl;
+  });
+}
+
 function _caCappiBounds(lat, lon, radiusKm) {
   const dLat = (radiusKm * 1000) / 111320;
   const dLon = (radiusKm * 1000) / (111320 * Math.cos(lat * Math.PI / 180));
@@ -48000,11 +48050,15 @@ async function _caCappiLoadLatest(station) {
   }
   _caCappiFrames = frames;
   _caCappiFrameIdx = frames.length - 1;
+  const shown = frames[_caCappiFrameIdx];
+  shown.filteredUrl = await _caCappiStripBasemap(shown.url);
+  // Same staleness guard as above - the filtering itself is a second await.
+  if (!_caCappiStation || _caCappiStation.id !== station.id) return;
   const bounds = _caCappiBounds(station.lat, station.lon, CA_CAPPI_RANGE_KM);
-  _caCappiOverlay = L.imageOverlay(frames[_caCappiFrameIdx].url, bounds,
+  _caCappiOverlay = L.imageOverlay(shown.filteredUrl, bounds,
     { opacity: typeof radarOpacity === 'number' ? radarOpacity : 0.85,
       zIndex: 10, pane: 'radarPane' }).addTo(map);
-  _caCappiShowPanel(station, frames[_caCappiFrameIdx].time, false);
+  _caCappiShowPanel(station, shown.time, false);
   _caCappiRefreshTimer = setInterval(_caCappiRefreshCheck, 120000);
 }
 
@@ -48025,11 +48079,14 @@ async function _caCappiRefreshCheck() {
   }
 }
 
-function _caCappiSetFrame(idx) {
+async function _caCappiSetFrame(idx) {
   const f = _caCappiFrames[idx];
   if (!_caCappiOverlay || !f) return;
   _caCappiFrameIdx = idx;
-  _caCappiOverlay.setUrl(f.url);
+  if (!f.filteredUrl) f.filteredUrl = await _caCappiStripBasemap(f.url);
+  // Prev/Next again, or the station closed, while this frame was filtering.
+  if (_caCappiFrameIdx !== idx || !_caCappiOverlay) return;
+  _caCappiOverlay.setUrl(f.filteredUrl);
   _caCappiUpdatePanelTime(f.time);
 }
 function _caCappiPrev() { if (_caCappiFrameIdx > 0) _caCappiSetFrame(_caCappiFrameIdx - 1); }
@@ -64119,6 +64176,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-16-b', date: 'Sep 16, 2026',
+    text: 'Canada CAPPI now shows only the radar echo, the same way the American Level 2/3 sites do. ECCC only publishes each station’s picture with its own basemap, range ring and text labels baked right in, so that picture now gets cleaned up in the browser: anything that is not a real reflectivity colour is made see-through before it goes on the map.' },
   { id: '2026-09-16-a', date: 'Sep 16, 2026',
     text: 'Added Canada single-site radar: a new Canada CAPPI source next to Level 2/3 with pins for all 31 Canadian CASxx radar stations. Tap one to see that radar’s own live picture straight from Environment and Climate Change Canada, separate from the existing blended Canada Radar mosaic.' },
   { id: '2026-09-15-i', date: 'Sep 15, 2026',

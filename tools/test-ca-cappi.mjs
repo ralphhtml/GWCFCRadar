@@ -46,6 +46,11 @@ console.log('\n1. the station list, read straight out of the page');
   ok('the menu carries its own bubble and description',
      /id:'radar-ca',[\s\S]{0,200}label:'Canada CAPPI'/.test(PAGE)
      && PAGE.includes("'radar-ca':") );
+  ok('every place a frame is shown runs it through the basemap filter first',
+     PAGE.includes('shown.filteredUrl = await _caCappiStripBasemap(shown.url);')
+     && PAGE.includes('f.filteredUrl = await _caCappiStripBasemap(f.url);')
+     && PAGE.includes('_caCappiOverlay = L.imageOverlay(shown.filteredUrl, bounds,')
+     && PAGE.includes('_caCappiOverlay.setUrl(f.filteredUrl);'));
 }
 
 console.log('\n2. the math a browser never has to touch a network to get right');
@@ -109,6 +114,40 @@ console.log('\n3. the pure math, run for real inside the browser');
   ok('the timestamp is UTC and zero-padded',
      r.url === 'https://dd.weather.gc.ca/today/radar/CAPPI/GIF/CASET/202609160006_CASET_CAPPI_1.5_RAIN.gif',
      r.url);
+}
+
+console.log('\n3b. the basemap-stripping filter, fed a picture it can actually read');
+{
+  // A tiny hand-built picture standing in for a real CAPPI GIF: a near-black
+  // basemap pixel, a gray range-ring pixel, a near-white text pixel, and one
+  // clearly saturated "echo" pixel (orange, the kind of colour real
+  // reflectivity ramps use). A data: URL never taints the canvas, so this
+  // exercises the real pixel loop without needing the network at all.
+  const r = await p.evaluate(async () => {
+    const c = document.createElement('canvas');
+    c.width = 4; c.height = 1;
+    const ctx = c.getContext('2d');
+    const put = (x, r, g, b) => { ctx.fillStyle = `rgb(${r},${g},${b})`; ctx.fillRect(x, 0, 1, 1); };
+    put(0, 10, 10, 12);      // basemap: near-black
+    put(1, 150, 150, 150);   // range ring / coastline: flat gray
+    put(2, 245, 245, 245);   // label text: near-white
+    put(3, 230, 120, 20);    // radar echo: saturated orange
+    const dataUrl = c.toDataURL('image/png');
+    const out = await _caCappiStripBasemap(dataUrl);
+    const img = new Image();
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = out; });
+    const oc = document.createElement('canvas');
+    oc.width = 4; oc.height = 1;
+    const octx = oc.getContext('2d');
+    octx.drawImage(img, 0, 0);
+    const d = octx.getImageData(0, 0, 4, 1).data;
+    return { alphas: [d[3], d[7], d[11], d[15]], echo: [d[12], d[13], d[14]] };
+  });
+  ok('the basemap, the range ring and the label text all turn transparent',
+     r.alphas[0] === 0 && r.alphas[1] === 0 && r.alphas[2] === 0, JSON.stringify(r.alphas));
+  ok('the actual echo pixel survives, in its real colour',
+     r.alphas[3] > 0 && r.echo[0] === 230 && r.echo[1] === 120 && r.echo[2] === 20,
+     JSON.stringify(r));
 }
 
 console.log('\n4. opening the row shows the pins, and a pin does something honest offline');
