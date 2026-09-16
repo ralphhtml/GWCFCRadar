@@ -67,7 +67,7 @@ await page.goto('file://' + join(ROOT, 'index.html'), { waitUntil: 'domcontentlo
 await page.waitForTimeout(4200);
 await page.evaluate(() => { if (typeof closeTutorial === 'function') closeTutorial(); });
 
-console.log('\n1. it is a tool like the others, not a bolted-on panel');
+console.log('\n1. it opens from the map menu now, not the tool column');
 {
   const r = await page.evaluate(() => {
     const btn = document.getElementById('tool-xsec');
@@ -76,40 +76,61 @@ console.log('\n1. it is a tool like the others, not a bolted-on panel');
     const sibs = Array.from(document.querySelectorAll('#right-menu .tool-btn'))
       .map(b => b.id);
     return {
-      inMenu: sibs.includes('tool-xsec'),
-      sameClass: !!btn && btn.classList.contains('tool-btn'),
+      goneFromToolbar: !btn && !sibs.includes('tool-xsec'),
       hasBar: !!bar, hasPanel: !!panel,
       // The bar is built from the same pieces every other tool bar is.
       barParts: bar ? ['dtb-drag', 'dtb-label', 'dtb-sep', 'dtb-btn']
         .filter(c => !bar.querySelector('.' + c)) : ['no bar'],
       hasClose: !!(bar && bar.querySelector('#xsec-close')),
       hasInfo: !!(bar && bar.querySelector('#xsec-info-btn')),
-      label: (typeof TOOL_LABELS === 'object') && TOOL_LABELS['tool-xsec'],
+      // Its entry point is now a row in the double-click/long-press map menu.
+      cmHandlerExists: typeof _cmCrossSectionHere === 'function',
       desc: (typeof TOOL_DESCRIPTIONS === 'object')
         && (TOOL_DESCRIPTIONS['tool-xsec'] || '').length,
       menus: bar ? Array.from(bar.querySelectorAll('select')).map(s => s.id) : [],
     };
   });
-  ok('the button sits in the tool column with the rest',
-     r.inMenu && r.sameClass);
-  ok('it has a toolbar and a panel', r.hasBar && r.hasPanel);
+  ok('the toolbar button is gone', r.goneFromToolbar);
+  ok('it still has a toolbar and a panel', r.hasBar && r.hasPanel);
   ok('and the toolbar is built from the same pieces as the others',
      r.barParts.length === 0, r.barParts.join(','));
   ok('with a close button and an info button',
      r.hasClose && r.hasInfo);
-  // The flyout is the little tag that extends from an icon-only button. Every
-  // other tool has one; a new tool without one looks unfinished.
-  ok('the hover flyout knows its name', r.label === 'Cross Section', String(r.label));
+  ok('the map menu handler exists', r.cmHandlerExists);
+  // The panel's own info button still reads this, so it has to survive the
+  // move even though nothing hovers a toolbar icon for it anymore.
   ok('and has something real to say in the info popout',
      r.desc > 120, String(r.desc));
   ok('its menus are there', r.menus.join(',') === 'xsec-product,xsec-site',
      r.menus.join(','));
 }
 
+console.log('\n1b. the map menu really does open it, centred on the clicked point');
+{
+  const r = await page.evaluate(() => {
+    _cmOpen({ latlng: L.latLng(36.1, -95.9) });
+    const row = Array.from(document.querySelectorAll('#map-ctx-menu .cm-item'))
+      .find(el => /Cross section here/i.test(el.textContent));
+    if (row) row.click();
+    const line = _xsLine ? { lat: (_xsLine.a.lat + _xsLine.b.lat) / 2,
+                              lng: (_xsLine.a.lng + _xsLine.b.lng) / 2 } : null;
+    const out = { rowExists: !!row, on: _xsOn, line,
+                  menuClosed: !document.getElementById('map-ctx-menu').classList.contains('open') };
+    toggleCrossSection();
+    return out;
+  });
+  ok('the row is really in the menu', r.rowExists);
+  ok('clicking it opens the tool', r.on);
+  ok('centred close to the point that was clicked',
+     r.line && Math.abs(r.line.lat - 36.1) < 0.01 && Math.abs(r.line.lng - -95.9) < 0.01,
+     JSON.stringify(r.line));
+  ok('and the map menu itself closes on the way', r.menuClosed);
+}
+
 console.log('\n2. opening and closing leaves the map as it found it');
 {
   const r = await page.evaluate(() => {
-    toggleCrossSection();
+    _xsEnable({ lat: 35.4, lng: -97.5 });    // the map menu's own entry point
     // The tool's own three layers, held onto so the question after closing
     // can be "are THESE gone" rather than "did the total change", which any
     // unrelated thing the page loads meanwhile would answer wrongly.
@@ -117,28 +138,26 @@ console.log('\n2. opening and closing leaves the map as it found it');
     const openState = {
       on: document.getElementById('xsec-toolbar').classList.contains('visible'),
       panel: document.getElementById('xsec-panel').classList.contains('open'),
-      lit: document.getElementById('tool-xsec').classList.contains('active'),
       onMap: mine.filter(l => l && map.hasLayer(l)).length,
       hasLine: !!document.querySelector('.xs-handle'),
     };
-    toggleCrossSection();
+    toggleCrossSection();                    // closing still toggles, same as ever
     const after = {
       on: document.getElementById('xsec-toolbar').classList.contains('visible'),
       panel: document.getElementById('xsec-panel').classList.contains('open'),
-      lit: document.getElementById('tool-xsec').classList.contains('active'),
       onMap: mine.filter(l => l && map.hasLayer(l)).length,
       handles: document.querySelectorAll('.xs-handle').length,
       cleared: _xsLayers === null,
     };
     return { openState, after };
   });
-  ok('opening shows the bar, the panel and lights the button',
-     r.openState.on && r.openState.panel && r.openState.lit,
+  ok('opening shows the bar and the panel',
+     r.openState.on && r.openState.panel,
      JSON.stringify(r.openState));
   ok('and puts a draggable line on the map', r.openState.hasLine);
   ok('the line really is three layers on the map, not decoration',
      r.openState.onMap === 3, String(r.openState.onMap));
-  ok('closing puts all three back', !r.after.on && !r.after.panel && !r.after.lit);
+  ok('closing puts both back', !r.after.on && !r.after.panel);
   // The thing that makes a tool a nuisance rather than a feature: leaving
   // its markers on the map after it is shut.
   ok('and takes every one of its own layers off the map again',
@@ -253,7 +272,7 @@ console.log('\n5. it refuses to build rather than breaking, when it must');
     const out = {};
     const status = () => document.getElementById('xsec-status').textContent;
 
-    toggleCrossSection();                      // on
+    _xsEnable({ lat: 35.4, lng: -97.5 });      // on, from the map menu's own entry point
 
     // No decoder in this build at all. The tool has to say so.
     const realWorker = window._workerProcess;
@@ -353,7 +372,7 @@ console.log('\n6. a slice really is drawn, from a volume that is stood in for');
     const realCache = _l2VolCache;
     _l2VolCache = { station: 'ktlx', at: Date.now(), buf: new ArrayBuffer(64) };
 
-    toggleCrossSection();
+    _xsEnable({ lat: 35.0, lng: -97.8 });     // from the map menu's own entry point
     document.getElementById('xsec-site').value = 'ktlx';
     document.getElementById('xsec-product').value = 'ref';
     // A line straight through the middle of the fake echo.

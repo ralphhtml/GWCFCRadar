@@ -4450,6 +4450,79 @@ body.lite-mode #export-toolbar { display: none !important; }
   .xs-plot canvas { height: 200px; }
 }
 
+/* Radar 3D reuses every .xs-* class above (head, title, legend, plot, note,
+   the big/close buttons) - same panel language as Cross Section, since it is
+   the same kind of thing: a second view of a volume already on the map.
+   Only the toolbar/panel's own position and the canvas/orbit controls need
+   rules of their own. */
+#r3d-toolbar {
+  display: none; position: absolute;
+  bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+  left: 50%; transform: translateX(-50%); z-index: 1100;
+  background: rgb(14,18,24); border: 1px solid rgba(0,140,186,0.35);
+  border-radius: 12px; padding: 6px 10px; align-items: center; gap: 6px;
+  width: max-content; max-width: calc(100vw - 20px); flex-wrap: wrap;
+  box-shadow: 0 6px 22px rgba(0,0,0,0.5);
+}
+#r3d-toolbar.visible { display: flex; }
+#r3d-status {
+  font-family: var(--mono); font-size: 9px; color: rgba(255,255,255,0.55);
+  letter-spacing: 0.5px; white-space: nowrap;
+  max-width: 150px; overflow: hidden; text-overflow: ellipsis;
+}
+#r3d-status.busy { color: var(--accent2); }
+#r3d-status.bad { color: #ffb4a2; }
+#r3d-close {
+  width:30px; height:30px; border-radius:8px;
+  background:transparent; border:1px solid rgba(255,255,255,0.12);
+  color:rgba(255,255,255,0.5); cursor:pointer; font-size:16px; line-height:1;
+  flex-shrink:0; transition: background 0.12s;
+  display:flex; align-items:center; justify-content:center;
+  -webkit-tap-highlight-color: transparent;
+}
+#r3d-close:hover { background: rgba(255,90,70,0.3); color:#fff; }
+#r3d-panel {
+  position: fixed; left: 12px; bottom: 186px; z-index: 1150; display: none;
+  width: min(560px, calc(100vw - 24px));
+  background:
+    linear-gradient(180deg, rgba(14,20,32,0.94) 0%, rgba(8,11,19,0.96) 100%);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  border: 1px solid rgba(0,140,186,0.35);
+  border-radius: 14px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+  font-family: var(--sans); color: #e8edf5; overflow: hidden;
+}
+#r3d-panel.open { display: block; }
+#r3d-panel.big { width: min(1100px, calc(100vw - 24px)); }
+#r3d-panel .xs-plot { padding: 8px 10px 4px; position: relative; }
+#r3d-panel canvas {
+  display: block; width: 100%; height: 300px; border-radius: 8px;
+  background: #050810; cursor: grab; touch-action: none;
+}
+#r3d-panel canvas.r3d-dragging { cursor: grabbing; }
+#r3d-panel.big canvas { height: min(60vh, 560px); }
+.r3d-timebar {
+  display: flex; align-items: center; gap: 8px; margin-top: 6px;
+}
+.r3d-timebar button {
+  width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0;
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18);
+  color: #e8edf5; cursor: pointer; font-size: 11px;
+  display: flex; align-items: center; justify-content: center;
+}
+.r3d-timebar button:hover { background: rgba(255,255,255,0.16); }
+.r3d-timebar input[type=range] { flex: 1 1 auto; }
+.r3d-timebar input[type=range]:disabled { opacity: 0.35; }
+#r3d-time-label {
+  font-family: var(--mono); font-size: 9.5px; opacity: 0.65;
+  min-width: 46px; text-align: right; flex-shrink: 0;
+}
+@media (max-width: 640px) {
+  #r3d-panel { left: 8px; right: 8px; width: auto; bottom: 108px; }
+  #r3d-panel canvas { height: 220px; }
+}
+
 /* ── HD Models panel ── */
 #hd-panel {
   position: fixed; left: 12px; bottom: 132px; z-index: 900; display: none;
@@ -11148,14 +11221,17 @@ body.clean-mode #clean-hint { opacity: 1; }
        map rather than TO it, and the rail is for the drawing tools. -->
 
 
-  <!-- Cross Section , a vertical slice through the storm along a line you draw -->
-  <button class="tool-btn" id="tool-xsec" onclick="toggleCrossSection()" title="Cross Section , a vertical slice through the storm">
+  <!-- Cross Section moved to the double-click / long-press map menu
+       (_cmCrossSectionHere): it starts on a point you pick rather than
+       always the middle of the view, and the tool rail was for things you
+       reach for constantly, not a once-in-a-while measurement. -->
+
+  <!-- Radar 3D , a storm's real shape rather than one flat slice through it -->
+  <button class="tool-btn" id="tool-r3d" onclick="toggleRadar3D()" title="Radar 3D , a storm's shape in three dimensions">
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M3 19h18"/>
-      <path d="M4 15c2.5-6 5-8 8-8s5.5 2 8 8"/>
-      <line x1="3" y1="19" x2="3" y2="6"/>
-      <circle cx="7" cy="19" r="1.6" fill="currentColor" stroke="none"/>
-      <circle cx="17" cy="19" r="1.6" fill="currentColor" stroke="none"/>
+      <path d="M12 2l9 5v10l-9 5-9-5V7z"/>
+      <path d="M3 7l9 5 9-5"/>
+      <path d="M12 12v10"/>
     </svg>
   </button>
 
@@ -11224,6 +11300,50 @@ body.clean-mode #clean-hint { opacity: 1; }
   <div class="xs-legend"></div>
   <div class="xs-plot"><canvas id="xsec-canvas"></canvas></div>
   <div class="xs-note"></div>
+</div>
+
+<!-- ─── RADAR 3D TOOLBAR ─── -->
+<!-- Same recipe as Cross Section's own bar: a draggable strip with a label,
+     its controls, an info button and a close. -->
+<div id="r3d-toolbar">
+  <div class="dtb-drag" id="r3d-drag" title="Drag to move">⠿</div>
+  <span class="dtb-label">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5"/></svg>
+    RADAR 3D
+  </span>
+  <div class="dtb-sep"></div>
+  <select class="xsec-sel" id="r3d-product" title="Which measurement to render"></select>
+  <select class="xsec-sel" id="r3d-site" title="Which radar to render"></select>
+  <div class="dtb-sep"></div>
+  <button class="dtb-btn" id="r3d-build-btn" onclick="_r3dBuild()" title="Load this radar's volume">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+  </button>
+  <div class="dtb-sep"></div>
+  <span id="r3d-status"></span>
+  <div class="dtb-sep"></div>
+  <button class="dtb-btn" id="r3d-info-btn" title="What this does" type="button"></button>
+  <button id="r3d-close" onclick="toggleRadar3D()" title="Close Radar 3D"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-close></use></svg></button>
+</div>
+
+<!-- ─── RADAR 3D PANEL ─── -->
+<div id="r3d-panel">
+  <div class="xs-head">
+    <span class="xs-title">Radar 3D</span>
+    <span class="xs-where"></span>
+    <div class="xs-spacer"></div>
+    <button class="xs-big" title="Expand">&#11036;</button>
+    <button class="xs-x" title="Close">&#10005;</button>
+  </div>
+  <div class="xs-legend" id="r3d-legend"></div>
+  <div class="xs-plot">
+    <canvas id="r3d-canvas"></canvas>
+    <div class="r3d-timebar">
+      <button id="r3d-play" title="Play recent volumes">&#9654;</button>
+      <input type="range" id="r3d-slider" min="0" max="0" value="0" step="1" title="Scrub through recent volumes">
+      <span id="r3d-time-label"></span>
+    </div>
+  </div>
+  <div class="xs-note">Drag to orbit, scroll or pinch to zoom. Only Level 2 sites: this is the browser's own decoder, the same one Cross Section and Level 2 use, run once per tilt.</div>
 </div>
 
     </div>
@@ -41557,6 +41677,7 @@ function _cmOpen(e) {
     <div class="cm-item" onclick="_cmInspectHere()">${ic('search')} Inspect values here</div>
     <div class="cm-item" onclick="_cmSoundingHere()">${ic('chart-up')} Sounding here</div>
     ${pm ? `<div class="cm-item" onclick="_cmModelSoundingHere()">${ic('chart-up')} Model sounding: ${esc(pm.label)} &middot; F+${String(pm.fhr).padStart(3, '0')}</div>` : ''}
+    <div class="cm-item" onclick="_cmCrossSectionHere()">${ic('ruler')} Cross section here</div>
     <div class="cm-item" onclick="_cmRadiusHere()">${ic('target')} 50 mi radius here</div>
     <div class="cm-item" onclick="_cmSetRecenter()">${ic('compass')} Set as recenter</div>
     <div class="cm-item" onclick="_cmSetLoadSpot()">${ic('flag')} Set as load spot</div>
@@ -41579,6 +41700,17 @@ function _cmSoundingHere() {
   const lat = _cmLatLng.lat, lng = _cmLatLng.lng;
   _cmClose();
   if (typeof openSounding === 'function') openSounding(lat, lng);
+}
+
+// Opens Cross Section centered on the clicked point, moved here from its old
+// toolbar button. Calling it again while the tool is already open just
+// re-centers the line on the new point rather than closing it - picking a
+// second point is a person aiming the slice again, not backing out of it.
+function _cmCrossSectionHere() {
+  const ll = _cmLatLng;
+  _cmClose();
+  if (!ll) return;
+  if (typeof _xsEnable === 'function') _xsEnable({ lat: ll.lat, lng: ll.lng });
 }
 
 // The Pi model on the map right now, if there is one: which model, what to
@@ -63765,6 +63897,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-16-e', date: 'Sep 16, 2026',
+    text: 'Added Radar 3D: a storm’s real shape in three dimensions, inspired by the desktop viewer OpenStorm. Every radar gate above a threshold becomes a colored point in space, built from the same volume decoder Cross Section and Level 2 already use, no extra download. Drag to orbit, scroll or pinch to zoom, and step through the last few volumes with the time slider. Also moved Cross Section off the tool rail and into the double-click / long-press map menu, where it now starts centered on whichever point you pick instead of always the middle of the view.' },
   { id: '2026-09-16-d', date: 'Sep 16, 2026',
     text: 'Waves, Air, Wind, Temperature and Pressure each got their own row in Settings → Layer Order, so every menu bubble can now be restacked against the others individually instead of five of them sharing one combined row.' },
   { id: '2026-09-16-c', date: 'Sep 16, 2026',
@@ -67157,7 +67291,11 @@ function toggleCrossSection() {
   }
 }
 
-function _xsEnable() {
+// centerAt, when given ({lat, lng}), is where the line is centered - the
+// point picked on the map menu. Left out, it falls back to the middle of
+// the current view, which is what the panel's own reopen (the X, then
+// picking it again from the menu with no particular point in mind) uses.
+function _xsEnable(centerAt) {
   if (typeof map === 'undefined' || !map) {
     if (typeof showToast === 'function') showToast('The map is still loading.', 2500);
     return;
@@ -67165,11 +67303,9 @@ function _xsEnable() {
   _xsOn = true;
   const bar = _xsEl('xsec-toolbar');
   if (bar) bar.classList.add('visible');
-  const btn = _xsEl('tool-xsec');
-  if (btn) btn.classList.add('active');
   // The line first, then the menus: the radar list is the eight nearest to
   // the middle of the line, so it has to exist before the list is built.
-  _xsCenterLine();
+  _xsCenterLine(centerAt);
   _xsFillMenus();
   const panel = _xsEl('xsec-panel');
   if (panel) panel.classList.add('open');
@@ -67182,8 +67318,6 @@ function _xsDisable() {
   _xsToken++;                     // anything in flight stops mattering
   const bar = _xsEl('xsec-toolbar');
   if (bar) bar.classList.remove('visible');
-  const btn = _xsEl('tool-xsec');
-  if (btn) btn.classList.remove('active');
   const panel = _xsEl('xsec-panel');
   if (panel) { panel.classList.remove('open'); panel.classList.remove('big'); }
   _xsClearLine();
@@ -67200,11 +67334,11 @@ function _xsClearLine() {
   _xsLayers = null;
 }
 
-function _xsCenterLine() {
+function _xsCenterLine(centerAt) {
   if (typeof map === 'undefined' || !map) return;
   let b;
   try { b = map.getBounds(); } catch (e) { return; }
-  const c = b.getCenter();
+  const c = centerAt ? L.latLng(centerAt.lat, centerAt.lng) : b.getCenter();
   // A quarter of the view either side, so the line is obviously grabbable
   // without covering the whole screen.
   const dLon = (b.getEast() - b.getWest()) * 0.25;
@@ -67665,6 +67799,590 @@ function _xsDraw(slice, errText) {
   if (ss) ss.onchange = () => { if (_xsLast) _xsBuild(); };
 })();
 
+/* ══════════════════════════════════════════════════════════════════════════
+   RADAR 3D
+   ──────────────────────────────────────────────────────────────────────────
+   A storm's real shape - where the core leans, whether there is an overhang,
+   how tall it stands - inspired by JordanSchlick/OpenStorm, the desktop 3D
+   radar viewer. OpenStorm renders a full volumetric texture with a GPU ray
+   marching shader; this page has no WebGL anywhere in it and that is staying
+   true here too, so the approach is different where it has to be and the
+   same where it can be:
+
+     - COLOUR: OpenStorm's own reflectivity and velocity ramps
+       (RadarColorIndex.cpp), ported to plain JS HSL math.
+     - GEOMETRY: OpenStorm's volume shader (volume.ush) turns out to treat
+       the volume as a plain sphere centred on the radar - range, azimuth and
+       an angle straight off z/radius, no earth-curvature term anywhere in
+       it. This page already has a MORE accurate version of exactly that
+       conversion for Cross Section (_xsBeamHeightKm, the real 4/3-earth-
+       radius beam height), so points here are placed with that instead of
+       copying OpenStorm's simplification.
+     - RENDERING: no ray marching, no shader, no volume texture. Every gate
+       above a threshold becomes one point in 3D space, coloured off the
+       ramp; a plain 2D canvas projects and paints them back-to-front. Fewer
+       pixels of nuance than a ray march, but the same storm structure, and
+       it runs anywhere this page already runs.
+
+   Data comes from the exact same place Cross Section's does: the browser's
+   own Level 2 decoder, run once per tilt over a volume already downloaded
+   for the map (or fetched fresh the same way). No new dependency, no
+   server, no new download format.
+*/
+
+const R3D_MAX_TILTS = 10;        // decoding is seconds each, same cap as Cross Section
+const R3D_MAX_POINTS = 15000;    // render budget; the rest are dropped by even stride
+const R3D_FRAMES = 6;            // recent volumes kept for the time control
+const R3D_MIN_DBZ = 10;          // clear air below this is not drawn at all
+const R3D_MIN_KT = 3;            // near-zero velocity is not drawn at all
+
+const R3D_PRODUCTS = [
+  { id: 'ref', label: 'Reflectivity' },
+  { id: 'vel', label: 'Velocity' },
+];
+
+let _r3dOn = false;
+let _r3dBuilding = false;
+let _r3dToken = 0;
+let _r3dFrames = [];             // oldest first, same convention as _l2Loop
+let _r3dFrameIdx = -1;
+let _r3dPlayTimer = null;
+let _r3dDirty = true;
+let _r3dLoopStarted = false;
+let _r3dCam = { yaw: 0.6, pitch: 0.5, dist: 190 };
+const R3D_DIST_MIN = 25, R3D_DIST_MAX = 500;
+const R3D_PITCH_MIN = -0.15, R3D_PITCH_MAX = 1.45;
+
+function _r3dEl(id) { return document.getElementById(id); }
+function _r3dSay(msg, kind) {
+  const el = _r3dEl('r3d-status');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.className = kind || '';
+}
+
+function toggleRadar3D() {
+  try {
+    _r3dOn ? _r3dDisable() : _r3dEnable();
+  } catch (e) {
+    console.warn('[r3d] toggle failed:', e);
+    _r3dSay('radar 3d could not start', 'bad');
+  }
+}
+
+function _r3dEnable() {
+  if (typeof map === 'undefined' || !map) {
+    if (typeof showToast === 'function') showToast('The map is still loading.', 2500);
+    return;
+  }
+  _r3dOn = true;
+  const bar = _r3dEl('r3d-toolbar');
+  if (bar) bar.classList.add('visible');
+  const panel = _r3dEl('r3d-panel');
+  if (panel) panel.classList.add('open');
+  _r3dFillMenus();
+  _r3dSay('press the arrow to load a volume');
+  if (!_r3dLoopStarted) { _r3dLoopStarted = true; _r3dTick(); }
+  _r3dDirty = true;
+}
+
+function _r3dDisable() {
+  _r3dOn = false;
+  _r3dToken++;
+  if (_r3dPlayTimer) { clearInterval(_r3dPlayTimer); _r3dPlayTimer = null; }
+  const bar = _r3dEl('r3d-toolbar');
+  if (bar) bar.classList.remove('visible');
+  const panel = _r3dEl('r3d-panel');
+  if (panel) { panel.classList.remove('open'); panel.classList.remove('big'); }
+  _r3dFrames = [];
+  _r3dFrameIdx = -1;
+}
+
+function _r3dFillMenus() {
+  const ps = _r3dEl('r3d-product');
+  if (ps && !ps.options.length) {
+    R3D_PRODUCTS.forEach(p => {
+      const o = document.createElement('option');
+      o.value = p.id; o.textContent = p.label;
+      ps.appendChild(o);
+    });
+  }
+  const ss = _r3dEl('r3d-site');
+  if (!ss) return;
+  // Nearest handful of radars to the middle of the map, same idea as Cross
+  // Section's own station list.
+  let mid;
+  try { const c = map.getCenter(); mid = { lat: c.lat, lng: c.lng }; }
+  catch (e) { mid = { lat: 35.3, lng: -97.3 }; }
+  const stations = (typeof NEXRAD_STATIONS !== 'undefined' && NEXRAD_STATIONS) || [];
+  const near = stations.map(s => ({
+    id: s.id,
+    km: _xsKm({ lat: mid.lat, lng: mid.lng }, { lat: s.lat, lng: s.lon }),
+  })).sort((a, b) => a.km - b.km).slice(0, 8);
+  const keep = ss.value;
+  ss.innerHTML = '';
+  near.forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.id;
+    o.textContent = `${s.id.toUpperCase()} · ${s.km.toFixed(0)} km`;
+    ss.appendChild(o);
+  });
+  if (keep && near.some(s => s.id === keep)) ss.value = keep;
+  else if (typeof _l2Site !== 'undefined' && _l2Site
+           && near.some(s => s.id === _l2Site)) ss.value = _l2Site;
+}
+
+// ── Colour ramps, ported from OpenStorm's RadarColorIndex.cpp ──────────────
+// Same HSL math (_HSLToRGBhue2rgb/HSLToRGB) and the same band breakpoints;
+// the per-band alpha boosts in the original exist to compensate for how
+// sparse a ray marcher's hits are in the rarest bins, which does not apply
+// to a discrete point cloud, so alpha here is simplified to "stronger value,
+// less transparent" instead of copied literally.
+function _r3dHue2Rgb(p, q, t) {
+  if (t < 0) t += 1;
+  if (t > 1) t -= 1;
+  if (t < 1 / 6) return p + (q - p) * 6 * t;
+  if (t < 1 / 2) return q;
+  if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+  return p;
+}
+function _r3dHsl(h, s, l) {
+  if (s === 0) { const v = Math.round(l * 255); return [v, v, v]; }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return [
+    Math.round(_r3dHue2Rgb(p, q, h + 1 / 3) * 255),
+    Math.round(_r3dHue2Rgb(p, q, h) * 255),
+    Math.round(_r3dHue2Rgb(p, q, h - 1 / 3) * 255),
+  ];
+}
+function _r3dLerpHsl(band, t) {
+  const h = band[0] + (band[3] - band[0]) * t, s = band[1] + (band[4] - band[1]) * t,
+        l = band[2] + (band[5] - band[2]) * t;
+  return _r3dHsl(h, s, l);
+}
+// [h1,s1,l1, h2,s2,l2, lowerDbz, upperDbz]
+const R3D_REF_BANDS = [
+  [0, 0, 0.1,    0, 0, 0.4,      -20, 15],   // gray
+  [0.5, 0.6, 0.5,  0.66, 1, 0.5,  15, 30],   // blue
+  [0.4, 1, 0.5,    0.33, 1, 0.5,  30, 40],   // green
+  [0.25, 1, 0.5,   0.166, 1, 0.5, 40, 50],   // yellow
+  [0, 1, 0.5,      0, 1, 0.5,     50, 60],   // red
+  [0.92, 1, 0.5,   0.83, 1, 0.5,  60, 70],   // purple
+  [0.83, 0.3, 0.8,  0.83, 0, 1,   70, 80],   // white
+];
+function _r3dReflectivityColor(dbz) {
+  const v = Math.max(-20, Math.min(80, dbz));
+  const band = R3D_REF_BANDS.find(b => v >= b[6] && v <= b[7]) || R3D_REF_BANDS[R3D_REF_BANDS.length - 1];
+  const t = (v - band[6]) / (band[7] - band[6] || 1);
+  const [r, g, b] = _r3dLerpHsl(band, t);
+  const alpha = Math.max(0.12, Math.min(1, (v + 20) / 100 * 1.6));
+  return [r, g, b, alpha];
+}
+const R3D_VEL_BANDS = [
+  [0.33, 1, 0.5,   0.33, 1, 0.5,   -100, -50],  // solid green
+  [0.33, 1, 0.5,   0.33, 0.2, 0.5, -50, 0],     // green fade
+  [0, 0.2, 0.5,    0, 1, 0.5,      0, 50],      // red fade
+  [0, 1, 0.5,      0, 1, 0.5,      50, 100],    // solid red
+];
+function _r3dVelocityColor(kt) {
+  const v = Math.max(-100, Math.min(100, kt));
+  const band = R3D_VEL_BANDS.find(b => v >= b[6] && v <= b[7]) || R3D_VEL_BANDS[R3D_VEL_BANDS.length - 1];
+  const t = (v - band[6]) / (band[7] - band[6] || 1);
+  const [r, g, b] = _r3dLerpHsl(band, t);
+  const alpha = Math.max(0, Math.min(1, Math.abs(v) / 100 * 2 + 0.1));
+  return [r, g, b, alpha];
+}
+
+// ── Building one frame ───────────────────────────────────────────────────
+// A gate-cell's quad corners are already projected lon/lat (the worker
+// consumed range and azimuth to build them and did not send those back), so
+// this recovers range and bearing the same way Cross Section already does:
+// great-circle distance and a flat bearing off the centroid, against the
+// station's own known site position. Height is the real 4/3-earth-radius
+// beam height, at the sweep's one elevation angle, same as Cross Section.
+async function _r3dBuildFrame(buf, layer, sitePos, token) {
+  let first;
+  try { first = await _workerProcess(buf.slice(0), layer, undefined); }
+  catch (e) { return null; }
+  if (token !== _r3dToken) return null;
+  const meta = (first && first.metadata) || {};
+  const elevs = Array.isArray(meta.availableElevations) && meta.availableElevations.length
+    ? meta.availableElevations.slice(0, R3D_MAX_TILTS)
+    : [meta.elevationNumber || 1];
+
+  const xs = [], ys = [], zs = [], vs = [];
+  let zSum = 0;
+
+  const consume = (res) => {
+    if (!res || !res.meshData || !res.bounds) return;
+    const angle = res.metadata && res.metadata.elevationAngle;
+    const elevAngle = isFinite(angle) ? angle : 0.5;
+    const mesh = res.meshData;
+    const minV = layer === 'VEL' ? -Infinity : R3D_MIN_DBZ;
+    for (let i = 0; i < mesh.length; i += 9) {
+      const v = mesh[i + 8];
+      if (v !== v) continue;                          // NaN, a range fold
+      if (layer === 'VEL' ? Math.abs(v) < R3D_MIN_KT : v < minV) continue;
+      const lon = (mesh[i] + mesh[i + 2] + mesh[i + 4] + mesh[i + 6]) / 4;
+      const lat = (mesh[i + 1] + mesh[i + 3] + mesh[i + 5] + mesh[i + 7]) / 4;
+      const rangeKm = sitePos ? _xsKm(sitePos, { lat, lng: lon }) : 0;
+      const bearingDeg = sitePos ? _fxBearing(sitePos.lat, sitePos.lng, lat, lon) : 0;
+      const br = bearingDeg * Math.PI / 180;
+      const z = _xsBeamHeightKm(rangeKm, elevAngle, 0);
+      xs.push(rangeKm * Math.sin(br));
+      ys.push(rangeKm * Math.cos(br));
+      zs.push(z);
+      vs.push(v);
+      zSum += z;
+    }
+  };
+  consume(first);
+  for (let k = 0; k < elevs.length; k++) {
+    if (token !== _r3dToken) return null;
+    if (k === 0 && (meta.elevationNumber === elevs[0] || elevs.length === 1)) continue; // already consumed
+    let res;
+    try { res = await _workerProcess(buf.slice(0), layer, { elevation: elevs[k] }); }
+    catch (e) { continue; }                            // one bad cut costs one cut, not the volume
+    if (token !== _r3dToken) return null;
+    consume(res);
+    await new Promise(r => setTimeout(r, 0));           // let the page breathe between cuts
+  }
+  if (!xs.length) return null;
+
+  // Downsample by an even stride rather than truncating, so a thin frame
+  // still shows structure from every tilt instead of just the low ones that
+  // happened to be decoded first.
+  const stride = Math.max(1, Math.ceil(xs.length / R3D_MAX_POINTS));
+  const n = Math.ceil(xs.length / stride);
+  const pts = new Float32Array(n * 4);
+  let j = 0;
+  for (let i = 0; i < xs.length; i += stride, j += 4) {
+    pts[j] = xs[i]; pts[j + 1] = ys[i]; pts[j + 2] = zs[i]; pts[j + 3] = vs[i];
+  }
+  return {
+    pts, count: n,
+    centerZ: zSum / xs.length,
+    time: meta.timeIso || null,
+    cuts: elevs.length,
+  };
+}
+
+function _r3dMaxRangeKm(frame) {
+  let max = 0;
+  const pts = frame.pts;
+  for (let i = 0; i < pts.length; i += 4) {
+    const r2 = pts[i] * pts[i] + pts[i + 1] * pts[i + 1];
+    if (r2 > max) max = r2;
+  }
+  return Math.sqrt(max);
+}
+
+async function _r3dBuild() {
+  if (_r3dBuilding) { _r3dSay('already loading a volume, one moment', 'busy'); return; }
+  const ps = _r3dEl('r3d-product'), ss = _r3dEl('r3d-site');
+  const product = (ps || {}).value || 'ref';
+  const site = ((ss || {}).value || '').toLowerCase();
+  if (!site) { _r3dSay('no radar chosen', 'bad'); return; }
+  if (typeof _workerProcess !== 'function') { _r3dSay('this build has no radar decoder', 'bad'); return; }
+  const token = ++_r3dToken;
+  _r3dBuilding = true;
+  _r3dFrames = [];
+  _r3dFrameIdx = -1;
+  try {
+    const layer = product === 'vel' ? 'VEL' : 'REF';
+    const sitePos = _xsSiteLatLon(site);
+    _r3dSay('getting the volume for ' + site.toUpperCase(), 'busy');
+    let buf = null;
+    if (typeof _l2VolCache !== 'undefined' && _l2VolCache
+        && _l2VolCache.station === site && _l2VolCache.buf
+        && Date.now() - _l2VolCache.at < 120000) {
+      buf = _l2VolCache.buf;
+    } else if (typeof _fetchVolumeDirect === 'function') {
+      buf = await _fetchVolumeDirect(site);
+      if (token !== _r3dToken) return;
+      try { _l2VolCache = { station: site, at: Date.now(), buf: buf.slice(0) }; } catch (e) {}
+    }
+    if (!buf) throw new Error('no volume for ' + site.toUpperCase());
+
+    _r3dSay('decoding tilts', 'busy');
+    const frame = await _r3dBuildFrame(buf, layer, sitePos, token);
+    if (token !== _r3dToken) return;
+    if (!frame) throw new Error('no usable gates in this volume');
+
+    _r3dFrames = [frame];
+    _r3dFrameIdx = 0;
+    // Start far enough back to see the whole loaded volume at once, rather
+    // than a fixed distance that crowds a wide storm or leaves a small one
+    // lost in the middle of the view.
+    _r3dCam.dist = Math.max(R3D_DIST_MIN, Math.min(R3D_DIST_MAX,
+      _r3dMaxRangeKm(frame) * 1.6 + 30));
+    _r3dSay(`${frame.count.toLocaleString()} points · ${frame.cuts} cuts`);
+    _r3dUpdateLegend(product);
+    _r3dUpdateSlider();
+    _r3dDirty = true;
+
+    // The shown frame owns the map alone at first; the rest of the time
+    // control's history joins moments later, same idea as the NWS and Level
+    // 2 loops already use elsewhere on this page.
+    if (typeof _fetchRecentVolumes === 'function') {
+      _fetchRecentVolumes(site, R3D_FRAMES).then(async (bufs) => {
+        if (token !== _r3dToken || !bufs || bufs.length < 2) return;
+        const older = bufs.slice(1);                    // [0] is the one already shown
+        const built = [];
+        for (const b of older) {
+          if (token !== _r3dToken) return;
+          const f = await _r3dBuildFrame(b, layer, sitePos, token);
+          if (f) built.push(f);
+        }
+        if (token !== _r3dToken || !built.length) return;
+        // Oldest first, newest (the one already on screen) last - _l2Loop's
+        // own convention, so the slider reads left-to-right as time does.
+        built.reverse();
+        _r3dFrames = [...built, frame];
+        _r3dFrameIdx = _r3dFrames.length - 1;
+        _r3dUpdateSlider();
+      }).catch(() => {});
+    }
+  } catch (e) {
+    if (token === _r3dToken) {
+      console.warn('[r3d] build failed:', e);
+      _r3dSay(String((e && e.message) || e).slice(0, 90), 'bad');
+    }
+  } finally {
+    _r3dBuilding = false;
+  }
+}
+
+function _r3dUpdateLegend(product) {
+  const el = _r3dEl('r3d-legend');
+  if (!el) return;
+  const stops = product === 'vel'
+    ? [[-80, 'toward'], [-20, ''], [0, ''], [20, ''], [80, 'away']]
+    : [[10, ''], [25, ''], [40, ''], [55, ''], [70, '']];
+  const colorFor = product === 'vel' ? _r3dVelocityColor : _r3dReflectivityColor;
+  el.innerHTML = stops.map(([v, label]) => {
+    const [r, g, b] = colorFor(v);
+    return `<i style="background:rgb(${r},${g},${b})"></i>${label || v}`;
+  }).join(' ');
+}
+
+function _r3dUpdateSlider() {
+  const s = _r3dEl('r3d-slider');
+  if (!s) return;
+  s.max = String(Math.max(0, _r3dFrames.length - 1));
+  s.value = String(_r3dFrameIdx);
+  s.disabled = _r3dFrames.length < 2;
+  _r3dUpdateTimeLabel();
+}
+function _r3dUpdateTimeLabel() {
+  const t = _r3dEl('r3d-time-label');
+  if (!t) return;
+  const f = _r3dFrames[_r3dFrameIdx];
+  if (!f || !f.time) { t.textContent = ''; return; }
+  try {
+    const d = new Date(f.time);
+    t.textContent = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}Z`;
+  } catch (e) { t.textContent = ''; }
+}
+function _r3dSetFrame(idx) {
+  if (!_r3dFrames.length) return;
+  _r3dFrameIdx = Math.max(0, Math.min(_r3dFrames.length - 1, idx));
+  _r3dUpdateTimeLabel();
+  const s = _r3dEl('r3d-slider');
+  if (s) s.value = String(_r3dFrameIdx);
+  _r3dDirty = true;
+}
+function _r3dPlayToggle() {
+  const btn = _r3dEl('r3d-play');
+  if (_r3dPlayTimer) {
+    clearInterval(_r3dPlayTimer); _r3dPlayTimer = null;
+    if (btn) btn.textContent = '▶';
+    return;
+  }
+  if (_r3dFrames.length < 2) return;
+  if (btn) btn.textContent = '⏸';
+  _r3dPlayTimer = setInterval(() => {
+    _r3dSetFrame(_r3dFrameIdx + 1 >= _r3dFrames.length ? 0 : _r3dFrameIdx + 1);
+  }, 1200);
+}
+
+// ── Camera and drawing ───────────────────────────────────────────────────
+function _r3dTick() {
+  if (_r3dOn && _r3dDirty) { _r3dDirty = false; _r3dRender(); }
+  requestAnimationFrame(_r3dTick);
+}
+
+function _r3dRender() {
+  const cv = _r3dEl('r3d-canvas');
+  if (!cv || !cv.getContext) return;
+  const rect = cv.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(rect.width * dpr)), h = Math.max(1, Math.round(rect.height * dpr));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  const bg = ctx.createLinearGradient(0, 0, 0, h);
+  bg.addColorStop(0, '#0a1420'); bg.addColorStop(1, '#050810');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+
+  const frame = _r3dFrames[_r3dFrameIdx];
+  const { yaw, pitch, dist } = _r3dCam;
+  const targetZ = frame ? frame.centerZ : 4;
+  const horiz = dist * Math.cos(pitch);
+  const camX = horiz * Math.sin(yaw), camY = horiz * Math.cos(yaw), camZ = targetZ + dist * Math.sin(pitch);
+  // Look-at basis: forward toward the target, world-up projected off it.
+  let fx = -camX, fy = -camY, fz = targetZ - camZ;
+  const fl = Math.hypot(fx, fy, fz) || 1; fx /= fl; fy /= fl; fz /= fl;
+  let rx = fy, ry = -fx, rz = 0;                          // forward × world-up(0,0,1), flattened
+  const rl = Math.hypot(rx, ry, rz) || 1; rx /= rl; ry /= rl; rz /= rl;
+  const ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
+  const focal = h * 1.15;
+
+  _r3dDrawGround(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal);
+
+  if (!frame) {
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Pick a station and press the arrow to load a volume', w / 2, h / 2);
+    return;
+  }
+  const product = ((_r3dEl('r3d-product') || {}).value) || 'ref';
+  const colorFor = product === 'vel' ? _r3dVelocityColor : _r3dReflectivityColor;
+  const pts = frame.pts, n = frame.count;
+  const sx = new Float32Array(n), sy = new Float32Array(n), depth = new Float32Array(n);
+  const order = new Int32Array(n);
+  let m = 0;
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    const dx = pts[p] - camX, dy = pts[p + 1] - camY, dz = pts[p + 2] - camZ;
+    const zc = dx * fx + dy * fy + dz * fz;
+    if (zc <= 1) continue;
+    const xc = dx * rx + dy * ry + dz * rz, yc = dx * ux + dy * uy + dz * uz;
+    const px = w / 2 + xc / zc * focal, py = h / 2 - yc / zc * focal;
+    if (px < -40 || px > w + 40 || py < -40 || py > h + 40) continue;
+    sx[m] = px; sy[m] = py; depth[m] = zc; order[m] = p; m++;
+  }
+  const idx = Array.from({ length: m }, (_, i) => i).sort((a, b) => depth[b] - depth[a]);
+  for (let k = 0; k < m; k++) {
+    const i = idx[k];
+    const v = pts[order[i] + 3];
+    const [r, g, b, a] = colorFor(v);
+    const radius = Math.max(0.6, Math.min(7, focal * 0.012 / depth[i] * dpr));
+    ctx.fillStyle = `rgba(${r},${g},${b},${a})`;
+    ctx.beginPath(); ctx.arc(sx[i], sy[i], radius, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+// A faint ground reference so the eye has something to orbit around: range
+// rings every 50 km and the station itself at the centre, drawn with the
+// same projection the points use so they never drift apart.
+function _r3dDrawGround(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal) {
+  const project = (x, y, z) => {
+    const dx = x - camX, dy = y - camY, dz = z - camZ;
+    const zc = dx * fx + dy * fy + dz * fz;
+    if (zc <= 1) return null;
+    return [w / 2 + (dx * rx + dy * ry + dz * rz) / zc * focal,
+            h / 2 - (dx * ux + dy * uy + dz * uz) / zc * focal];
+  };
+  ctx.strokeStyle = 'rgba(0,140,186,0.35)'; ctx.lineWidth = 1;
+  [50, 100, 150, 200].forEach(km => {
+    ctx.beginPath();
+    let started = false;
+    for (let a = 0; a <= 360; a += 4) {
+      const rad = a * Math.PI / 180;
+      const p = project(km * Math.sin(rad), km * Math.cos(rad), 0);
+      if (!p) { started = false; continue; }
+      if (!started) { ctx.moveTo(p[0], p[1]); started = true; } else ctx.lineTo(p[0], p[1]);
+    }
+    ctx.stroke();
+  });
+  const site = project(0, 0, 0);
+  if (site) {
+    ctx.fillStyle = '#e8b800';
+    ctx.beginPath(); ctx.arc(site[0], site[1], 4, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+// ── Orbit camera: drag to rotate, pinch or wheel to zoom ────────────────
+(function _r3dWireCamera() {
+  const cv = document.getElementById('r3d-canvas');
+  if (!cv) return;
+  const pointers = new Map();
+  let dragStart = null;                                   // { yaw, pitch, x, y }
+  let pinchStart = null;                                   // { dist, camDist }
+
+  const pinchDist = () => {
+    const pts = [...pointers.values()];
+    return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+  };
+
+  cv.addEventListener('pointerdown', (e) => {
+    cv.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 1) {
+      dragStart = { yaw: _r3dCam.yaw, pitch: _r3dCam.pitch, x: e.clientX, y: e.clientY };
+      cv.classList.add('r3d-dragging');
+    } else if (pointers.size === 2) {
+      dragStart = null;
+      pinchStart = { dist: pinchDist(), camDist: _r3dCam.dist };
+    }
+  });
+  cv.addEventListener('pointermove', (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 1 && dragStart) {
+      const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
+      _r3dCam.yaw = dragStart.yaw + dx * 0.008;
+      _r3dCam.pitch = Math.max(R3D_PITCH_MIN, Math.min(R3D_PITCH_MAX,
+        dragStart.pitch - dy * 0.008));
+      _r3dDirty = true;
+    } else if (pointers.size === 2 && pinchStart) {
+      const ratio = pinchStart.dist / Math.max(1, pinchDist());
+      _r3dCam.dist = Math.max(R3D_DIST_MIN, Math.min(R3D_DIST_MAX, pinchStart.camDist * ratio));
+      _r3dDirty = true;
+    }
+  });
+  const end = (e) => {
+    pointers.delete(e.pointerId);
+    if (pointers.size === 0) { dragStart = null; cv.classList.remove('r3d-dragging'); }
+    if (pointers.size < 2) pinchStart = null;
+  };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+  cv.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    _r3dCam.dist = Math.max(R3D_DIST_MIN, Math.min(R3D_DIST_MAX, _r3dCam.dist * (1 + e.deltaY * 0.0015)));
+    _r3dDirty = true;
+  }, { passive: false });
+})();
+
+// ── The panel's own chrome ───────────────────────────────────────────────
+(function _r3dWirePanel() {
+  const panel = _r3dEl('r3d-panel');
+  if (!panel) return;
+  const x = panel.querySelector('.xs-x');
+  if (x) x.onclick = () => toggleRadar3D();
+  const big = panel.querySelector('.xs-big');
+  if (big) big.onclick = () => {
+    panel.classList.toggle('big');
+    big.title = panel.classList.contains('big') ? 'Shrink' : 'Expand';
+    _r3dDirty = true;
+  };
+  if (typeof _makeDraggable === 'function') {
+    try { _makeDraggable(panel, panel.querySelector('.xs-head')); } catch (e) {}
+  }
+  window.addEventListener('resize', () => { if (_r3dOn) _r3dDirty = true; });
+  const slider = _r3dEl('r3d-slider');
+  if (slider) slider.oninput = () => _r3dSetFrame(Number(slider.value));
+  const play = _r3dEl('r3d-play');
+  if (play) play.onclick = () => _r3dPlayToggle();
+  const ps = _r3dEl('r3d-product');
+  if (ps) ps.onchange = () => { _r3dUpdateLegend(ps.value); if (_r3dFrames.length) _r3dBuild(); };
+  const ss = _r3dEl('r3d-site');
+  if (ss) ss.onchange = () => { if (_r3dFrames.length) _r3dBuild(); };
+})();
+
 // ── TOOLBAR (#right-menu) HOVER FLYOUT ──
 // Draw/Text/Polygon/Measure/Track/Radius/Storm Cone/Inspector are icon-only
 // buttons with only a native `title` tooltip. Hovering (or, on touch,
@@ -67683,6 +68401,7 @@ const TOOL_LABELS = {
   'tool-inspector': 'Inspector',
   'tool-export':    'Export',
   'tool-xsec':      'Cross Section',
+  'tool-r3d':       'Radar 3D',
 };
 const TOOL_DESCRIPTIONS = {
   'tool-draw':      'Freehand drawing. Click and drag to sketch directly on the map.',
@@ -67695,6 +68414,7 @@ const TOOL_DESCRIPTIONS = {
   'tool-inspector': 'Shows the radar value at the exact center of the map, and updates live as you pan.',
   'tool-export':    'Downloads what is on screen: the current picture as a PNG, or the whole loop as a video.',
   'tool-xsec':      'Cuts a vertical slice through a storm. A radar picture is one thin cone and says nothing about how tall the weather is, but a volume scan sweeps the same circle at rising angles, so sampling every one of them along a line on the ground stacks them into a side-on view. Drag the two ends of the line, press the arrow, and it shows where the core sits, whether it leans, and whether there is an overhang. Uses the volume already downloaded for the radar picture, so it costs no extra download.',
+  'tool-r3d':       'A storm’s real shape in three dimensions, not one flat slice through it. Every radar gate above a threshold becomes a point in space, coloured for reflectivity or velocity, drawn from a volume decoded the same way Cross Section and Level 2 already are. Drag to orbit, scroll or pinch to zoom, and step the slider through the last few volumes to watch it move.',
 };
 
 let _tbFlyoutHideTimer = null;
@@ -69019,7 +69739,7 @@ function closeCredits() {
    was the loudest of them, a solid cyan strip across the bottom of a red
    application. */
 #animbar,
-#export-toolbar, #xsec-toolbar, #radius-toolbar, #dist-toolbar,
+#export-toolbar, #xsec-toolbar, #r3d-toolbar, #radius-toolbar, #dist-toolbar,
 #poly-toolbar, #draw-toolbar, #text-toolbar, #stormcone-toolbar,
 #tt-toolbar, #cs-toolbar,
 #top-search-bar,
@@ -74766,6 +75486,19 @@ async function _expDownloadVideo() {
     ev.stopPropagation();
     const text = (typeof TOOL_DESCRIPTIONS === 'object'
                   && TOOL_DESCRIPTIONS['tool-xsec']) || 'Cross section.';
+    if (typeof _ovShowInfo === 'function') _ovShowInfo(text, btn);
+  };
+})();
+
+// Radar 3D's bar's own info button, same shape as the other two.
+(function _r3dWireInfo() {
+  const btn = document.getElementById('r3d-info-btn');
+  if (!btn) return;
+  btn.innerHTML = '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-info></use></svg>';
+  btn.onclick = (ev) => {
+    ev.stopPropagation();
+    const text = (typeof TOOL_DESCRIPTIONS === 'object'
+                  && TOOL_DESCRIPTIONS['tool-r3d']) || 'Radar 3D.';
     if (typeof _ovShowInfo === 'function') _ovShowInfo(text, btn);
   };
 })();
