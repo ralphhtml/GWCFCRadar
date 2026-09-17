@@ -4484,13 +4484,12 @@ body.lite-mode #export-toolbar { display: none !important; }
 #r3d-panel {
   position: fixed; left: 12px; bottom: 186px; z-index: 1150; display: none;
   width: min(560px, calc(100vw - 24px));
-  background:
-    linear-gradient(180deg, rgba(14,20,32,0.94) 0%, rgba(8,11,19,0.96) 100%);
+  background: linear-gradient(180deg, rgba(6,6,9,0.97) 0%, rgba(1,1,2,0.98) 100%);
   backdrop-filter: blur(16px) saturate(1.2);
   -webkit-backdrop-filter: blur(16px) saturate(1.2);
-  border: 1px solid rgba(0,140,186,0.35);
+  border: 1px solid rgba(255,255,255,0.14);
   border-radius: 14px;
-  box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+  box-shadow: 0 20px 50px rgba(0,0,0,0.7);
   font-family: var(--sans); color: #e8edf5; overflow: hidden;
 }
 #r3d-panel.open { display: block; }
@@ -4498,7 +4497,7 @@ body.lite-mode #export-toolbar { display: none !important; }
 #r3d-panel .xs-plot { padding: 8px 10px 4px; position: relative; }
 #r3d-panel canvas {
   display: block; width: 100%; height: 300px; border-radius: 8px;
-  background: #050810; cursor: grab; touch-action: none;
+  background: #000; cursor: grab; touch-action: none;
 }
 #r3d-panel canvas.r3d-dragging { cursor: grabbing; }
 #r3d-panel.big canvas { height: min(60vh, 560px); }
@@ -63962,6 +63961,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-17-b', date: 'Sep 17, 2026',
+    text: 'Volumetric 3D polish: the settled picture now renders at the full resolution of the panel (no more upscaled softness), the 3D grid itself is finer, and a smoothing pass melts the blocky stair-steps between radar cells so the cloud reads smooth instead of pixelated. Zoom is no longer fenced off: scroll or pinch all the way in, right through the inside of the storm. The panel itself is now black, so the volume floats on darkness like the desktop viewers do.' },
   { id: '2026-09-17-a', date: 'Sep 17, 2026',
     text: 'Rebuilt Radar 3D as true volumetric rendering, no more dots. Picking "View in 3D here" now draws a zone box on the map around the spot you tapped, and the panel renders only what is inside that box from the closest radar: every tilt is resampled into a 3D grid, the gaps between tilts are filled in so a storm reads as one continuous cloud with a solid core and a hazy edge, and a per-pixel ray marcher draws it with the radar picture painted on the box floor and heights marked in thousands of feet on the walls. A new box-size picker (small, medium, large) resizes the zone instantly with no re-download. It draws coarse while you drag and sharpens the moment you stop, so it stays smooth even on a phone.' },
   { id: '2026-09-16-h', date: 'Sep 16, 2026',
@@ -67923,8 +67924,8 @@ let _r3dZoneRect = null;         // the Leaflet rectangle shown on the map
 // onto the product's own range) - a byte grid is small enough to rebuild in
 // milliseconds and cheap enough to sample tens of thousands of times per
 // frame in plain JS.
-const R3D_GRID_N = 112;          // voxels across the zone horizontally
-const R3D_GRID_NZ = 48;          // voxels bottom-to-top
+const R3D_GRID_N = 160;          // voxels across the zone horizontally
+const R3D_GRID_NZ = 64;          // voxels bottom-to-top
 const R3D_Z_MAX_KM = 60 / R3D_KFT_PER_KM;   // grid ceiling: 60 kft
 
 const R3D_PRODUCTS = [
@@ -67957,9 +67958,10 @@ let _r3dLutCache = null;         // { key, lut, floorRgb } - rebuilt when produc
 let _r3dFilterPct = 0;
 let _r3dHeightMaxKft = 60;
 
-// Camera distance limits scale with the zone, so a small box can be leaned
-// into and a large one can still be framed whole.
-function _r3dDistMin() { return _r3dZoneSizeKm * 0.55; }
+// Zoom in as far as you like - all the way inside the cloud (the marcher
+// handles a camera inside the box, so there is no reason to stop short) -
+// and back out far enough to frame the largest zone whole.
+function _r3dDistMin() { return 2; }
 function _r3dDistMax() { return _r3dZoneSizeKm * 4.5; }
 function _r3dCamFit() {
   _r3dCam.dist = Math.max(_r3dDistMin(), Math.min(_r3dDistMax(), _r3dZoneSizeKm * 1.7));
@@ -68391,6 +68393,34 @@ function _r3dGridFrame(frame, sizeKm, isVel) {
     }
   }
 
+  // A gentle 3-tap smoothing pass along x then y, blending each filled
+  // voxel only with its FILLED neighbours: this melts the stair-stepping
+  // between adjacent radials and range steps without letting empty air
+  // drag values down (that would repaint cloud edges as false weak echo)
+  // and without growing the cloud by a single voxel.
+  const tmp = new Uint8Array(grid.length);
+  for (let pass = 0; pass < 2; pass++) {
+    tmp.set(grid);
+    const stride = pass === 0 ? 1 : nx;                // x neighbours, then y
+    for (let iz = 0; iz < nz; iz++) {
+      for (let iy = 0; iy < ny; iy++) {
+        const row = (iz * ny + iy) * nx;
+        for (let ix = 0; ix < nx; ix++) {
+          const c = tmp[row + ix];
+          if (!c) continue;
+          const edgeLo = pass === 0 ? ix === 0 : iy === 0;
+          const edgeHi = pass === 0 ? ix === nx - 1 : iy === ny - 1;
+          const a = edgeLo ? 0 : tmp[row + ix - stride];
+          const b = edgeHi ? 0 : tmp[row + ix + stride];
+          let sum = c * 2, wsum = 2;
+          if (a) { sum += a; wsum++; }
+          if (b) { sum += b; wsum++; }
+          grid[row + ix] = Math.round(sum / wsum);
+        }
+      }
+    }
+  }
+
   // Floor texture: the lowest tilt alone, the same picture the flat radar
   // map shows for this zone, drawn onto the box floor by the ray marcher.
   const floor = new Uint8Array(nx * ny);
@@ -68656,10 +68686,13 @@ function _r3dLutFor(product, stepKm) {
 let _r3dOffCv = null, _r3dImg = null;
 function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, half, topKm) {
   const fine = _r3dQuality === 'fine';
-  const iw = fine ? Math.max(160, Math.min(460, Math.round(w / 1.7)))
-                  : Math.max(96, Math.min(200, Math.round(w / 4)));
+  // Fine mode renders at the canvas's own full resolution (capped only for
+  // truly huge panels), so the settled picture has no upscale in it at all;
+  // fast mode stays small so dragging never stutters.
+  const iw = fine ? Math.min(w, 900)
+                  : Math.max(120, Math.min(260, Math.round(w / 3)));
   const ih = Math.max(60, Math.round(iw * h / w));
-  const stepKm = Math.max(0.12, Math.min(2, G.cellXY * (fine ? 0.55 : 1.1)));
+  const stepKm = Math.max(0.08, Math.min(2, G.cellXY * (fine ? 0.5 : 1.1)));
   const product = ((_r3dEl('r3d-product') || {}).value) || 'ref';
   const pack = _r3dLutFor(product, stepKm);
   const lut = pack.lut, floorRgb = pack.floorRgb;
@@ -68821,7 +68854,7 @@ function _r3dRender() {
   const ctx = cv.getContext('2d');
   ctx.clearRect(0, 0, w, h);
   const bg = ctx.createLinearGradient(0, 0, 0, h);
-  bg.addColorStop(0, '#0a1420'); bg.addColorStop(1, '#050810');
+  bg.addColorStop(0, '#08080b'); bg.addColorStop(1, '#000');
   ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
 
   const frame = _r3dFrames[_r3dFrameIdx];
