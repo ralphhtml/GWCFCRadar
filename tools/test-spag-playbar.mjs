@@ -259,6 +259,27 @@ console.log('\n6. speed is a multiple, and it cycles');
   ok('shown as a multiple, like the other two panels', /×/.test(r.label), r.label);
 }
 
+console.log('\n6b. any speed can be typed');
+{
+  const r = await page.evaluate(() => {
+    _tanim.speed = 24;
+    _tanimSetSpeed('2.5');
+    const typed = _tanim.speed;
+    const shown = document.getElementById('tanim-speed-in').value;
+    _tanimSetSpeed('nonsense');
+    const afterBad = _tanim.speed;
+    _tanimSetSpeed('0');
+    const afterZero = _tanim.speed;
+    _tanim.speed = 24;
+    _tanimSyncBar();
+    return { typed, shown, afterBad, afterZero, hasInput: !!document.getElementById('tanim-speed-in') };
+  });
+  ok('there is a number box beside the cycle button', r.hasInput);
+  ok('typing 2.5 runs the clock at 2.5 times 24 hours a second', r.typed === 60, String(r.typed));
+  ok('and the box shows the value', r.shown === '2.5', r.shown);
+  ok('nonsense and zero are ignored', r.afterBad === 60 && r.afterZero === 60, JSON.stringify([r.afterBad, r.afterZero]));
+}
+
 console.log('\n7. dragging the bar seeks the clock');
 {
   const r = await page.evaluate(() => {

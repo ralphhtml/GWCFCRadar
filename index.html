@@ -1463,9 +1463,11 @@ body {
   #sidebar { top: 68px; width: 130px; }
   .models-style-panel { left: 150px; width: min(300px, calc(100vw - 162px)); }
 
-  /* Animbar , hide speed control on very small screens */
+  /* Animbar: the speed box stays, squeezed, so a phone can type a speed too */
   #animbar { bottom: 26px; gap: 4px; }
-  #speed-wrap { display: none; }
+  #speed-wrap { display: flex; }
+  #speed-input { width: 34px; font-size: 10px; padding: 0 2px; }
+  #speed-unit { font-size: 8px; padding: 0 3px 0 0; }
   #anim-time { min-width: 58px; }
   /* Same reasoning as speed-wrap above, for the same reason: there is not
      room for everything on a phone this narrow, and something has to give.
@@ -3179,6 +3181,15 @@ img.wx-model-smooth {
   background: rgba(232,184,0,0.12); border: 1px solid rgba(232,184,0,0.35);
   border-radius: 4px; color: #e8b800; cursor: pointer;
 }
+/* The typed speed beside the cycle button: any number, in the same gold. */
+.sev-speed-in {
+  font-family: 'Comfortaa', sans-serif; font-size: 10px; font-weight: 700;
+  padding: 3px 4px; width: 46px; flex-shrink: 0; text-align: center;
+  background: rgba(232,184,0,0.08); border: 1px solid rgba(232,184,0,0.35);
+  border-radius: 4px; color: #e8b800; -moz-appearance: textfield;
+}
+.sev-speed-in::-webkit-inner-spin-button, .sev-speed-in::-webkit-outer-spin-button { -webkit-appearance: none; }
+.sev-speed-in:focus { outline: none; border-color: rgba(232,184,0,0.8); }
 .sev-playbar-track {
   flex: 1; height: 8px; background: rgba(0,140,186,0.15);
   border-radius: 4px; position: relative; cursor: pointer;
@@ -4499,7 +4510,7 @@ body.lite-mode #export-toolbar { display: none !important; }
    their real colours; the words beside them go gold. */
 #r3d-panel .xs-title, #r3d-panel .xs-where, #r3d-panel #r3d-status,
 #r3d-panel .r3d-slider-row > span, #r3d-panel .xs-note, #r3d-panel .xs-legend,
-#r3d-panel .r3d-timebar span, #r3d-panel #r3d-time-label {
+#r3d-panel .r3d-timebar span, #r3d-panel .r3d-speed b, #r3d-panel #r3d-time-label {
   background-image: linear-gradient(180deg, #ffe680 0%, #e8b800 48%, #b8860b 100%);
   -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent; color: #e8b800;
@@ -4530,6 +4541,14 @@ body.lite-mode #export-toolbar { display: none !important; }
 .r3d-timebar button:hover { background: rgba(255,255,255,0.16); }
 .r3d-timebar input[type=range] { flex: 1 1 auto; }
 .r3d-timebar input[type=range]:disabled { opacity: 0.35; }
+.r3d-speed { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+#r3d-speed {
+  width: 40px; height: 24px; border-radius: 7px; text-align: center;
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18);
+  color: #ffe680; font-size: 10.5px; -moz-appearance: textfield;
+}
+#r3d-speed::-webkit-inner-spin-button, #r3d-speed::-webkit-outer-spin-button { -webkit-appearance: none; }
+#r3d-speed:focus { outline: none; border-color: rgba(232,184,0,0.6); }
 #r3d-time-label {
   font-family: var(--mono); font-size: 9.5px; opacity: 0.65;
   min-width: 46px; text-align: right; flex-shrink: 0;
@@ -10594,6 +10613,7 @@ body.clean-mode #clean-hint { opacity: 1; }
       <div id="sev-playbar-row" class="sev-playbar-row">
         <button id="sev-play-btn2" class="sev-play-btn" onclick="_sevTogglePlay()"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg></button>
         <button id="sev-speed-btn" class="sev-speed-btn" onclick="_sevCycleSpeed()" title="Playback speed">1×</button>
+        <input type="number" class="sev-speed-in" id="sev-speed-in" value="1" min="0.05" step="any" title="Type any playback speed" oninput="_sevSetSpeed(this.value)" onkeydown="if(event.key==='Enter')this.blur()">
         <div id="sev-playbar-track" class="sev-playbar-track" onpointerdown="_sevPlaybarDown(event)">
           <div id="sev-playbar-fill" class="sev-playbar-fill"></div>
           <div id="sev-playbar-thumb" class="sev-playbar-thumb"></div>
@@ -10642,6 +10662,7 @@ body.clean-mode #clean-hint { opacity: 1; }
       <div id="tanim-playbar-row" class="sev-playbar-row">
         <button id="tanim-play" class="sev-play-btn" onclick="_tanimToggle()" title="Play or pause the forecast-hour clock"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg></button>
         <button id="tanim-speed-btn" class="sev-speed-btn" onclick="_tanimCycleSpeed()" title="How fast forecast time runs">1×</button>
+        <input type="number" class="sev-speed-in" id="tanim-speed-in" value="1" min="0.05" step="any" title="Type any playback speed" oninput="_tanimSetSpeed(this.value)" onkeydown="if(event.key==='Enter')this.blur()">
         <div id="tanim-playbar-track" class="sev-playbar-track" onpointerdown="_tanimPlaybarDown(event)">
           <div id="tanim-playbar-fill" class="sev-playbar-fill"></div>
           <div id="tanim-playbar-thumb" class="sev-playbar-thumb"></div>
@@ -10702,6 +10723,7 @@ body.clean-mode #clean-hint { opacity: 1; }
       <div id="cyc-playbar-row" class="sev-playbar-row">
         <button id="cyc-play-btn" class="sev-play-btn" onclick="_cycTogglePlay()" title="Walk the tracks forward through the forecast"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg></button>
         <button id="cyc-speed-btn" class="sev-speed-btn" onclick="_cycCycleSpeed()" title="Playback speed">1×</button>
+        <input type="number" class="sev-speed-in" id="cyc-speed-in" value="1" min="0.05" step="any" title="Type any playback speed" oninput="_cycSetSpeed(this.value)" onkeydown="if(event.key==='Enter')this.blur()">
         <div id="cyc-playbar-track" class="sev-playbar-track" onpointerdown="_cycPlaybarDown(event)">
           <div id="cyc-playbar-fill" class="sev-playbar-fill"></div>
           <div id="cyc-playbar-thumb" class="sev-playbar-thumb"></div>
@@ -11390,16 +11412,18 @@ body.clean-mode #clean-hint { opacity: 1; }
       </select>
     </label>
   </div>
-  <div class="xs-legend" id="r3d-legend"></div>
   <div class="xs-plot">
     <canvas id="r3d-canvas"></canvas>
     <div class="r3d-timebar">
       <button id="r3d-play" title="Play recent volumes">&#9654;</button>
+      <span class="r3d-speed" title="Playback speed: type any number of volumes per second">
+        <input type="number" id="r3d-speed" value="1" min="0.05" step="any"
+               oninput="_r3dSetSpeed(this.value)" onkeydown="if(event.key==='Enter')this.blur()"><b>×</b>
+      </span>
       <input type="range" id="r3d-slider" min="0" max="0" value="0" step="1" title="Scrub through recent volumes">
       <span id="r3d-time-label"></span>
     </div>
   </div>
-  <div class="xs-note">Drag to orbit, scroll or pinch to zoom. The rectangle on the map is the zone being rendered; pick Draw a 3D zone from the map menu and drag out a new box to move it, or send a radius or polygon here from its own toolbar. Sharpens a moment after you stop moving. Sites with no Level 2 archive (like a terminal TDWR at an airport) build from Level 3 tilt files instead, as one frame with no time slider.</div>
 </div>
 
     </div>
@@ -23036,6 +23060,8 @@ function _cycSyncPlaybar() {
     : '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg>';
   const sp = document.getElementById('cyc-speed-btn');
   if (sp) sp.textContent = _cycSpeed + '×';
+  const spIn = document.getElementById('cyc-speed-in');
+  if (spIn && document.activeElement !== spIn) spIn.value = String(_cycSpeed);
 }
 
 // Run labels look like 20260828T12 or 2026-08-28T12, so both are read rather
@@ -23072,6 +23098,14 @@ function _cycCycleSpeed() {
   _cycSpeed = CYC_SPEEDS[(i + 1) % CYC_SPEEDS.length];
   // Restart the timer so the new speed applies now rather than at the next
   // press of play.
+  if (_cycPlayTimer) { _cycStopPlay(); _cycTogglePlay(); }
+  else _cycSyncPlaybar();
+}
+// Any speed, typed, same restart rule.
+function _cycSetSpeed(v) {
+  const sp = parseFloat(v);
+  if (!(sp > 0)) return;
+  _cycSpeed = Math.min(100, sp);
   if (_cycPlayTimer) { _cycStopPlay(); _cycTogglePlay(); }
   else _cycSyncPlaybar();
 }
@@ -24761,9 +24795,12 @@ async function _l2ArcGunzip(bytes, truncated) {
   return out;
 }
 
-// One volume scan out of the mirror: list the day, pick the tar covering
-// the moment, walk its headers, read the nearest volume.
-async function _l2ArcVolume(site, at) {
+// The tar's table of contents for one moment: list the day, pick the tar
+// covering the moment, walk its headers. Walked once per tar and shared,
+// because the flat picture and Radar 3D ask for the same hour within
+// moments of each other and the walk is a hundred small ranged reads.
+const _l2ArcIndexCache = new Map();
+async function _l2ArcIndex(site, at) {
   let sid = String(site).toUpperCase();
   if (sid.length === 3) sid = 'K' + sid;
   const d = new Date(at);
@@ -24781,44 +24818,85 @@ async function _l2ArcVolume(site, at) {
     const m = /_(\d{14})_(\d{14})\.tar$/.exec(x.name);
     return m && at >= _l2ArcMs14(m[1]) && at <= _l2ArcMs14(m[2]) + 999;
   }) || tars[tars.length - 1];
-  const range = async (a, b) => {
-    const r = await fetch(tar.mediaLink, { headers: { Range: `bytes=${a}-${b}` },
-                                           signal: _abortSignal(45000) });
-    if (r.status !== 206 && r.status !== 200) throw new Error('archive read HTTP ' + r.status);
-    return new Uint8Array(await r.arrayBuffer());
-  };
-  // Walk the tar: each 512 byte header carries a name and an octal size,
-  // and the next header sits past the padded data. Pax metadata entries
-  // are bookkeeping, not volumes, and are stepped over.
-  const size = +tar.size || Infinity;
-  const dec = new TextDecoder();
-  const entries = [];
-  let off = 0;
-  for (let hop = 0; hop < 120 && off + 512 <= size; hop++) {
-    const h = await range(off, off + 511);
-    const name = dec.decode(h.subarray(0, 100)).replace(/\0[\s\S]*$/, '');
-    if (!name) break;
-    const esz = parseInt(dec.decode(h.subarray(124, 136)).replace(/[^0-7]/g, ' ').trim(), 8) || 0;
-    if (!/PaxHeaders/.test(name)) {
-      entries.push({ name: name.replace(/^\.\//, ''), start: off + 512, size: esz });
+  const hit = _l2ArcIndexCache.get(tar.name);
+  if (hit) return hit;
+  const p = (async () => {
+    const range = async (a, b) => {
+      const r = await fetch(tar.mediaLink, { headers: { Range: `bytes=${a}-${b}` },
+                                             signal: _abortSignal(45000) });
+      if (r.status !== 206 && r.status !== 200) throw new Error('archive read HTTP ' + r.status);
+      return new Uint8Array(await r.arrayBuffer());
+    };
+    // Walk the tar: each 512 byte header carries a name and an octal size,
+    // and the next header sits past the padded data. Pax metadata entries
+    // are bookkeeping, not volumes, and are stepped over.
+    const size = +tar.size || Infinity;
+    const dec = new TextDecoder();
+    const entries = [];
+    let off = 0;
+    for (let hop = 0; hop < 120 && off + 512 <= size; hop++) {
+      const h = await range(off, off + 511);
+      const name = dec.decode(h.subarray(0, 100)).replace(/\0[\s\S]*$/, '');
+      if (!name) break;
+      const esz = parseInt(dec.decode(h.subarray(124, 136)).replace(/[^0-7]/g, ' ').trim(), 8) || 0;
+      if (!/PaxHeaders/.test(name)) {
+        entries.push({ name: name.replace(/^\.\//, ''), start: off + 512, size: esz });
+      }
+      off += 512 + Math.ceil(esz / 512) * 512;
     }
-    off += 512 + Math.ceil(esz / 512) * 512;
-  }
-  const vols = entries.filter(e => isFinite(_l2ArcStampMs(e.name)) && e.size > 1024);
-  if (!vols.length) throw new Error('no volumes inside the archive tar');
+    const vols = entries.filter(e => isFinite(_l2ArcStampMs(e.name)) && e.size > 1024)
+      .sort((a, b) => _l2ArcStampMs(a.name) - _l2ArcStampMs(b.name));
+    if (!vols.length) throw new Error('no volumes inside the archive tar');
+    return { sid, tar, range, vols };
+  })();
+  _l2ArcIndexCache.set(tar.name, p);
+  p.catch(() => { if (_l2ArcIndexCache.get(tar.name) === p) _l2ArcIndexCache.delete(tar.name); });
+  return p;
+}
+
+function _l2ArcNearest(vols, at) {
   let best = vols[0];
   vols.forEach(v => {
     if (Math.abs(_l2ArcStampMs(v.name) - at) < Math.abs(_l2ArcStampMs(best.name) - at)) best = v;
   });
-  if (/\.Z$/.test(best.name)) {
-    throw new Error(`${sid}'s archive at that date is still in the pre-2009 tape format`
+  return best;
+}
+
+// Read one volume out of an indexed tar, up to `cap` bytes of it (the flat
+// picture wants only the low sweeps; Radar 3D wants the whole thing).
+async function _l2ArcRead(idx, entry, cap) {
+  if (/\.Z$/.test(entry.name)) {
+    throw new Error(`${idx.sid}'s archive at that date is still in the pre-2009 tape format`
       + ' this decoder cannot read yet. Try 2009 or later for this site.');
   }
-  const cap = Math.min(best.size, L2_DIRECT_CAP);
-  const body = await range(best.start, best.start + cap - 1);
-  const raw = /\.gz$/.test(best.name) ? await _l2ArcGunzip(body, cap < best.size) : body;
+  const byteCap = Math.min(entry.size, cap || L2_DIRECT_CAP);
+  const body = await idx.range(entry.start, entry.start + byteCap - 1);
+  const raw = /\.gz$/.test(entry.name) ? await _l2ArcGunzip(body, byteCap < entry.size) : body;
   return { buffer: raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength),
-           when: _l2ArcStampMs(best.name), name: best.name };
+           when: _l2ArcStampMs(entry.name), name: entry.name };
+}
+
+// One volume scan out of the mirror: the one nearest the moment.
+async function _l2ArcVolume(site, at, cap) {
+  const idx = await _l2ArcIndex(site, at);
+  return _l2ArcRead(idx, _l2ArcNearest(idx.vols, at), cap);
+}
+
+// Up to `n` volumes ending at the one nearest the moment, nearest first and
+// then back in time, whole (`cap` bytes each): Radar 3D's time control at a
+// travelled moment. `startBack` skips that many of the nearest, so the
+// history behind a volume already on screen is fetched without fetching
+// it again. The tar holds one hour, so the answer can be shorter than n.
+async function _l2ArcVolumes(site, at, n, cap, startBack) {
+  const idx = await _l2ArcIndex(site, at);
+  const bi = idx.vols.indexOf(_l2ArcNearest(idx.vols, at)) - (startBack || 0);
+  const picks = idx.vols.slice(Math.max(0, bi - n + 1), bi + 1).reverse();
+  const out = [];
+  for (const e of picks) {
+    try { out.push(await _l2ArcRead(idx, e, cap)); }
+    catch (err) { if (!out.length && !startBack) throw err; }
+  }
+  return out;
 }
 
 // Show one archived Level 2 scan through the exact pipeline the live radar
@@ -24959,6 +25037,8 @@ async function _tmJump(ms) {
   if (at < TM_FLOOR) await _l2ArcShow(site, at);
   else await _l3BucketShow(site, at);
   _tmSyncBadge();
+  // Radar 3D keeps the radar's clock: an open volume travels with it.
+  if (typeof _r3dTmSync === 'function') _r3dTmSync();
 }
 
 async function _tmLive() {
@@ -24979,6 +25059,7 @@ async function _tmLive() {
   _tmAt = null;
   if (site) await _l3BucketShow(site, null);
   _tmSyncBadge();
+  if (typeof _r3dTmSync === 'function') _r3dTmSync();
 }
 
 // Back to live for ONE picture, from its badge, whichever the modal was
@@ -31955,17 +32036,29 @@ function _sevSetFrame(v){
 // Playback speed: multiplies the base 700ms/frame step. Cycle with the speed button.
 let _sevSpeed = 1;
 const SEV_SPEEDS = [0.5, 1, 2, 4];
-function _sevPlayDelay(){ return Math.round(700 / _sevSpeed); }
+function _sevPlayDelay(){ return Math.max(16, Math.round(700 / _sevSpeed)); }
 function _sevPlayTick(){
   const max=_sevMaxFrame();
   _sevSetFrame(_sevFrame>=max?0:_sevFrame+1);
 }
+function _sevSyncSpeed(){
+  const btn = document.getElementById('sev-speed-btn');
+  if (btn) btn.textContent = _sevSpeed + '×';
+  const inp = document.getElementById('sev-speed-in');
+  if (inp && document.activeElement !== inp) inp.value = String(_sevSpeed);
+  if (_sevPlaying){ clearInterval(_sevPlayTimer); _sevPlayTimer = setInterval(_sevPlayTick, _sevPlayDelay()); }
+}
 function _sevCycleSpeed(){
   const i = SEV_SPEEDS.indexOf(_sevSpeed);
   _sevSpeed = SEV_SPEEDS[(i+1) % SEV_SPEEDS.length];
-  const btn = document.getElementById('sev-speed-btn');
-  if (btn) btn.textContent = _sevSpeed + '×';
-  if (_sevPlaying){ clearInterval(_sevPlayTimer); _sevPlayTimer = setInterval(_sevPlayTick, _sevPlayDelay()); }
+  _sevSyncSpeed();
+}
+// Any speed, typed: 0.25x for a slow study, 8x for a quick skim.
+function _sevSetSpeed(v){
+  const sp = parseFloat(v);
+  if (!(sp > 0)) return;
+  _sevSpeed = Math.min(100, sp);
+  _sevSyncSpeed();
 }
 function _sevTogglePlay(){
   _sevPlaying=!_sevPlaying;
@@ -37539,6 +37632,8 @@ function _tanimSyncBar(h) {
   }
   const sp = document.getElementById('tanim-speed-btn');
   if (sp) sp.textContent = (_tanim.speed / 24) + '×';
+  const si = document.getElementById('tanim-speed-in');
+  if (si && document.activeElement !== si) si.value = String(_tanim.speed / 24);
   const date = document.getElementById('tanim-fcast-date');
   // Empty rather than "Track animation" when nothing is loaded. That was a
   // label naming the panel you are already inside, sitting where the thing
@@ -37556,6 +37651,14 @@ const TANIM_SPEEDS = [24, 48, 96, 12];
 function _tanimCycleSpeed() {
   const i = TANIM_SPEEDS.indexOf(_tanim.speed);
   _tanim.speed = TANIM_SPEEDS[(i + 1) % TANIM_SPEEDS.length];
+  _tanimSyncBar();
+}
+// Any multiple, typed. The clock reads its speed live on every tick, so a
+// value typed mid-play takes hold at once.
+function _tanimSetSpeed(v) {
+  const sp = parseFloat(v);
+  if (!(sp > 0)) return;
+  _tanim.speed = Math.min(100, sp) * 24;
   _tanimSyncBar();
 }
 
@@ -44333,7 +44436,7 @@ let _radarWorkerPending = null;  // { resolve, reject } for current request
 // is a new URL, and a page from before the build keeps the URL its decoder
 // answers to. A mismatched pair is how "Parse failed" appears on one device
 // while the same click works everywhere else.
-var RADAR_WORKER_V = 'f2894c44';
+var RADAR_WORKER_V = '7116d14b';
 
 function _getRadarWebWorker() {
   if (_radarWebWorker) return _radarWebWorker;
@@ -64034,6 +64137,12 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-17-o', date: 'Sep 17, 2026',
+    text: 'Type your own playback speed. The Volumetric 3D time bar, the Spaghetti Models panel, the Severe panel and the cyclone panel each have a number box beside the play button now: type 0.25 for a slow study or 8 for a quick skim and it takes hold at once (the cycle button still works too). The animation bar\'s speed box stays on small phones instead of disappearing. Volumetric 3D playback is smooth as well: it runs on the screen\'s own clock, every frame is drawn once into a cache before the loop starts, and the box stands still while the frames play.' },
+  { id: '2026-09-17-n', date: 'Sep 17, 2026',
+    text: 'Volumetric 3D works with the Time Machine. Travel the radar to any past moment and an open 3D zone reloads there: the whole volume nearest that moment comes off the Level 2 tape archive with the volumes before it on the time bar, or the Level 3 tilts for that moment when the archive has not caught up yet, and the panel names the moment it is showing. Back to Live reloads the live volume. Also fixed: Level 3 time stamps read one day late (the tape counts 1 January 1970 as day one).' },
+  { id: '2026-09-17-m', date: 'Sep 17, 2026',
+    text: 'Volumetric 3D tidy-up: the colour legend row and the paragraph of instructions are gone from the panel. The box is now only as tall as the storm inside it (to the next 10 kft, never above the Up to slider) instead of always 80 kft, so a small hand-drawn zone no longer turns into a thin needle with the camera pointed at empty air, and the view frames the whole box when it opens. The picture itself is cleaner: gates on a small zone were painted as thin slivers with empty bands between radials (combs of vertical stripes through the cloud, diagonal stripes on the floor), and both are now one smooth field. Drawing a zone by touch is steadier too.' },
   { id: '2026-09-17-l', date: 'Sep 17, 2026',
     text: 'Volumetric 3D: draw your own zone. The small, medium and large boxes are gone; pick Draw a 3D zone from the map menu and drag out any box you like, the way you take a screenshot, and it renders exactly that. The Radius maker and the Polygon maker each got a 3D button that sends their shape\'s area straight to the 3D view. Also fixed three things that made the picture look wrong: echo just outside the box could be smeared up its walls, lone specks of ground clutter were carried to the ground as pillars (a field of them looked like a city skyline), and height labels could overlap. Weak returns below 5 dBZ now start hidden; drag Show above down to see them.' },
   { id: '2026-09-17-k', date: 'Sep 17, 2026',
@@ -68092,9 +68201,25 @@ let _r3dCutPct = 50;             // how far in the cutaway reaches, percent of t
 // handles a camera inside the box, so there is no reason to stop short) -
 // and back out far enough to frame the largest zone whole.
 function _r3dDistMin() { return 2; }
-function _r3dDistMax() { return _r3dZoneMaxKm() * 4.5; }
+function _r3dDistMax() { return Math.max(_r3dZoneMaxKm(), _r3dBoxTopKm() * _r3dExag) * 4.5; }
+// How tall the drawn box is: the Up to slider's cap, brought down to just
+// above the tallest echo actually in the zone (to the next 10 kft) once a
+// frame is in hand. An 80 kft box around a 5 km wide zone was a needle
+// taller than it was wide, with the camera orbiting empty air.
+function _r3dBoxTopKm() {
+  const cap = Math.max(1, Math.min(R3D_Z_MAX_KM, _r3dHeightMaxKft / R3D_KFT_PER_KM));
+  // The tallest storm across every loaded frame, not just the one shown,
+  // so the box stands still while the time control plays through them.
+  let zMax = 0;
+  for (const f of _r3dFrames) if (f && f.zMax > zMax) zMax = f.zMax;
+  if (!(zMax > 0)) return cap;
+  const stepKm = 10 / R3D_KFT_PER_KM;
+  const fit = Math.ceil((zMax + 0.5) / stepKm) * stepKm;
+  return Math.max(stepKm, Math.min(cap, fit));
+}
 function _r3dCamFit() {
-  _r3dCam.dist = Math.max(_r3dDistMin(), Math.min(_r3dDistMax(), _r3dZoneMaxKm() * 1.7));
+  const wide = _r3dZoneMaxKm(), tall = _r3dBoxTopKm() * _r3dExag;
+  _r3dCam.dist = Math.max(_r3dDistMin(), Math.min(_r3dDistMax(), Math.max(wide * 1.7, tall * 1.5)));
 }
 
 // Marks the view as needing a redraw at drag quality, and books the full
@@ -68209,6 +68334,7 @@ function _r3dDrawStart() {
   const c = map.getContainer();
   try { _r3dDrawWasDragging = map.dragging.enabled(); map.dragging.disable(); } catch (e) {}
   c.style.cursor = 'crosshair';
+  c.style.touchAction = 'none';
   c.addEventListener('pointerdown', _r3dDrawDown, true);
   c.addEventListener('pointermove', _r3dDrawMove, true);
   c.addEventListener('pointerup', _r3dDrawUp, true);
@@ -68226,6 +68352,7 @@ function _r3dDrawStop() {
   c.removeEventListener('pointercancel', _r3dDrawCancelEvent, true);
   document.removeEventListener('keydown', _r3dDrawKey, true);
   c.style.cursor = '';
+  c.style.touchAction = '';
   try { if (_r3dDrawWasDragging) map.dragging.enable(); } catch (e) {}
   if (_r3dDrawPreview) { try { map.removeLayer(_r3dDrawPreview); } catch (e) {} _r3dDrawPreview = null; }
   _r3dDrawAnchor = null;
@@ -68359,7 +68486,6 @@ function _r3dOpen(stationId) {
   if (height) height.value = String(_r3dHeightMaxKft);
   _r3dUpdateFilterLabel();
   _r3dUpdateHeightLabel();
-  _r3dUpdateLegend((ps || {}).value || 'ref');
   _r3dZoneRectSync();
   _r3dCamFit();
   if (!_r3dLoopStarted) { _r3dLoopStarted = true; _r3dTick(); }
@@ -68375,7 +68501,7 @@ function _r3dOpen(stationId) {
 function _r3dClose() {
   _r3dOn = false;
   _r3dToken++;
-  if (_r3dPlayTimer) { clearInterval(_r3dPlayTimer); _r3dPlayTimer = null; }
+  _r3dPlayStop();
   const panel = _r3dEl('r3d-panel');
   if (panel) { panel.classList.remove('open'); panel.classList.remove('big'); }
   _r3dZoneRectRemove();
@@ -68413,7 +68539,6 @@ function _r3dOnPaletteChange() {
   _r3dPaletteGen++;
   _r3dLutCache = null;
   if (!_r3dOn) return;
-  _r3dUpdateLegend(((_r3dEl('r3d-product') || {}).value) || 'ref');
   _r3dDirty = true;
 }
 
@@ -68492,7 +68617,9 @@ function _r3dFinishFrame(out, segs, timeIso, cuts) {
   // ground, half-depth of the beam), optional so a hand-built frame with
   // none still grids as points.
   const radii = out.rs && out.rs.length === n * 2 ? new Float32Array(out.rs) : null;
-  return { gates, radii, count: n, segs, time: timeIso || null, cuts, _grids: {} };
+  let zMax = 0;
+  for (let i = 0; i < n; i++) if (out.zs[i] > zMax) zMax = out.zs[i];
+  return { gates, radii, count: n, segs, time: timeIso || null, cuts, zMax, _grids: {} };
 }
 
 // One tilt decode. The playback decoder pool runs several at once on a
@@ -68594,7 +68721,7 @@ async function _r3dBuildFrame(buf, layer, sitePos, zone, token, onTilt) {
 // TDWR TZ*/TV* codes) is published as its own separate file. So each one is
 // fetched and decoded on its own, and the same mesh-to-points step above
 // combines them into one frame exactly as if they had come from one volume.
-async function _r3dBuildFrameL3(site, product, sitePos, zone, token) {
+async function _r3dBuildFrameL3(site, product, sitePos, zone, token, at) {
   const family = PR_BUCKET[product === 'vel' ? 'velocity' : 'reflectivity'];
   if (!family) return null;
   const isTdwr = typeof _isTdwrSite === 'function' && _isTdwrSite(site);
@@ -68607,7 +68734,7 @@ async function _r3dBuildFrameL3(site, product, sitePos, zone, token) {
 
   const sweeps = await Promise.all(codes.map(async (code) => {
     try {
-      const url = await _l3BucketNewest(site, code);
+      const url = await _l3BucketNewest(site, code, at == null ? undefined : at);
       if (!url) return null;
       const buf = await fetch(url, { signal: _abortSignal(20000) })
         .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); });
@@ -68650,6 +68777,44 @@ function _r3dNormByte(v, isVel) {
 }
 function _r3dByteStrength(b, isVel) { return isVel ? Math.abs(b - 128) : b; }
 
+// One box-blur pass along one axis (0 = x, 1 = y, 2 = z) of radius r,
+// averaging each filled voxel with the filled voxels within r of it along
+// that line. Empty voxels stay empty, except with `close` set, when an
+// empty voxel whose window is mostly filled is a seam between two radials
+// and is closed with their average. Running sums make the cost the same
+// whatever the radius, which is what lets the radius follow the gate
+// footprint rather than stay a fixed three taps.
+function _r3dBlurAxis(grid, tmp, nx, ny, nz, axis, r, close) {
+  tmp.set(grid);
+  const len = axis === 0 ? nx : axis === 1 ? ny : nz;
+  const stride = axis === 0 ? 1 : axis === 1 ? nx : nx * ny;
+  const outerA = axis === 0 ? ny : nx, outerB = axis === 2 ? ny : nz;
+  const sum = new Float32Array(len + 1), cnt = new Int32Array(len + 1);
+  for (let b = 0; b < outerB; b++) {
+    for (let a = 0; a < outerA; a++) {
+      // The first voxel of this line, for each axis' own layout.
+      const base = axis === 0 ? (b * ny + a) * nx : axis === 1 ? b * nx * ny + a : b * nx + a;
+      let any = false;
+      for (let i = 0; i < len; i++) {
+        const v = tmp[base + i * stride];
+        sum[i + 1] = sum[i] + v; cnt[i + 1] = cnt[i] + (v ? 1 : 0);
+        if (v) any = true;
+      }
+      if (!any) continue;
+      for (let i = 0; i < len; i++) {
+        const lo = i - r < 0 ? 0 : i - r, hi = i + r + 1 > len ? len : i + r + 1;
+        const c = cnt[hi] - cnt[lo];
+        if (tmp[base + i * stride]) {
+          if (c > 1) grid[base + i * stride] = Math.round((sum[hi] - sum[lo]) / c);
+        } else if (close && c * 2 >= hi - lo) {
+          // A seam: empty, but most of the window either side is filled.
+          grid[base + i * stride] = Math.round((sum[hi] - sum[lo]) / c);
+        }
+      }
+    }
+  }
+}
+
 function _r3dGridFrame(frame, zone, isVel) {
   // Square cells sized off the box's longer side, so a wide box gets a
   // wide grid and a tall one a tall grid; a big box gets more cells so
@@ -68667,7 +68832,12 @@ function _r3dGridFrame(frame, zone, isVel) {
   // box so a far, coarse gate cannot flood the grid), keeping the strongest
   // value where footprints overlap - the same max rule the flat picture
   // uses when it merges gates.
-  const MAX_SPAN = 6;
+  // The cap is in kilometres, not cells: on a small zone a cell is 70 m and
+  // a 1 degree gate at 40 km is 1.5 km wide, so a fixed six-cell cap painted
+  // each gate as a thin sliver of itself with an empty band to the next
+  // radial, which showed as combs of vertical stripes through the cloud.
+  const MAX_SPAN = Math.max(6, Math.ceil(3 / cellXY));
+  const MAX_SPAN_Z = Math.max(6, Math.ceil(2 / cellZ));
   for (let i = 0, p = 0; i < n; i++, p += 4) {
     const x = g[p], y = g[p + 1], z = g[p + 2];
     // Never thinner than a voxel layer either side: a beam sheet climbing
@@ -68680,7 +68850,7 @@ function _r3dGridFrame(frame, zone, isVel) {
     if (ix1 < 0 || ix0 >= nx || iy1 < 0 || iy0 >= ny || iz1 < 0 || iz0 >= nz) continue;
     if (ix1 - ix0 > MAX_SPAN) { const c = Math.floor((x + halfX) / cellXY); ix0 = c - (MAX_SPAN >> 1); ix1 = c + (MAX_SPAN >> 1); }
     if (iy1 - iy0 > MAX_SPAN) { const c = Math.floor((y + halfY) / cellXY); iy0 = c - (MAX_SPAN >> 1); iy1 = c + (MAX_SPAN >> 1); }
-    if (iz1 - iz0 > MAX_SPAN) { const c = Math.floor(z / cellZ); iz0 = c - (MAX_SPAN >> 1); iz1 = c + (MAX_SPAN >> 1); }
+    if (iz1 - iz0 > MAX_SPAN_Z) { const c = Math.floor(z / cellZ); iz0 = c - (MAX_SPAN_Z >> 1); iz1 = c + (MAX_SPAN_Z >> 1); }
     if (ix0 < 0) ix0 = 0; if (ix1 >= nx) ix1 = nx - 1;
     if (iy0 < 0) iy0 = 0; if (iy1 >= ny) iy1 = ny - 1;
     if (iz0 < 0) iz0 = 0; if (iz1 >= nz) iz1 = nz - 1;
@@ -68735,58 +68905,66 @@ function _r3dGridFrame(frame, zone, isVel) {
     }
   }
 
-  // A gentle 3-tap smoothing pass along x then y, blending each filled
-  // voxel only with its FILLED neighbours: this melts the stair-stepping
-  // between adjacent radials and range steps without letting empty air
-  // drag values down (that would repaint cloud edges as false weak echo)
-  // and without growing the cloud by a single voxel.
+  // Smoothing, over FILLED voxels only: each voxel is blended with its
+  // filled neighbours and never with empty air, so cloud edges are not
+  // repainted as false weak echo and the cloud does not grow by a voxel.
+  // Across the zone (x and y) the blur is as wide as a gate footprint, so
+  // the seams between neighbouring radials, which on a small zone sit
+  // several voxels apart, melt into one field instead of reading as a comb
+  // of vertical stripes. Up the column (z) a single voxel either side is
+  // enough, the beams having already been thickened and bridged above.
+  let meanHalf = 0;
+  if (rad && n) { for (let i = 0; i < n; i++) meanHalf += rad[i * 2]; meanHalf /= n; }
+  const rXY = Math.max(1, Math.min(6, Math.round(meanHalf * 1.2 / cellXY)));
   const tmp = new Uint8Array(grid.length);
-  for (let pass = 0; pass < 3; pass++) {
-    tmp.set(grid);
-    const stride = pass === 0 ? 1 : pass === 1 ? nx : layerStride;   // x, then y, then z
-    for (let iz = 0; iz < nz; iz++) {
-      for (let iy = 0; iy < ny; iy++) {
-        const row = (iz * ny + iy) * nx;
-        for (let ix = 0; ix < nx; ix++) {
-          const c = tmp[row + ix];
-          if (!c) continue;
-          const edgeLo = pass === 0 ? ix === 0 : pass === 1 ? iy === 0 : iz === 0;
-          const edgeHi = pass === 0 ? ix === nx - 1 : pass === 1 ? iy === ny - 1 : iz === nz - 1;
-          const a = edgeLo ? 0 : tmp[row + ix - stride];
-          const b = edgeHi ? 0 : tmp[row + ix + stride];
-          let sum = c * 2, wsum = 2;
-          if (a) { sum += a; wsum++; }
-          if (b) { sum += b; wsum++; }
-          grid[row + ix] = Math.round(sum / wsum);
-        }
-      }
-    }
-  }
+  _r3dBlurAxis(grid, tmp, nx, ny, nz, 0, rXY, true);
+  _r3dBlurAxis(grid, tmp, nx, ny, nz, 1, rXY, true);
+  _r3dBlurAxis(grid, tmp, nx, ny, nz, 2, 1, false);
 
   // Floor texture: the lowest tilt alone, the same picture the flat radar
   // map shows for this zone, drawn onto the box floor by the ray marcher.
+  // Each gate is stamped as a soft round blob a little wider than its own
+  // footprint, and a cell keeps the weighted AVERAGE of every blob touching
+  // it rather than the strongest one. Super-resolution reflectivity is
+  // noisy from one radial to the next in weak echo, and the old "keep the
+  // max" stamp painted that noise as diagonal stripes along the beams with
+  // dark seams between them. Averaging across the neighbouring radials is
+  // what turns the stripes back into the one smooth field the eye expects.
   const floor = new Uint8Array(nx * ny);
   if (frame.segs && frame.segs.length) {
     let low = frame.segs[0];
     for (const s of frame.segs) { if (s.angle < low.angle) low = s; }
+    const fsum = new Float32Array(nx * ny), fwt = new Float32Array(nx * ny);
+    const FLOOR_REACH = Math.max(9, Math.ceil(2 / cellXY)); // 2 km of reach at most, whatever the cell size
     for (let i = low.start; i < low.end; i++) {
       const p = i * 4;
-      const rxy = rad ? rad[i * 2] : 0;
-      let ix0 = Math.floor((g[p] - rxy + halfX) / cellXY), ix1 = Math.floor((g[p] + rxy + halfX) / cellXY);
-      let iy0 = Math.floor((g[p + 1] - rxy + halfY) / cellXY), iy1 = Math.floor((g[p + 1] + rxy + halfY) / cellXY);
-      if (ix1 - ix0 > MAX_SPAN) { const c = Math.floor((g[p] + halfX) / cellXY); ix0 = c - (MAX_SPAN >> 1); ix1 = c + (MAX_SPAN >> 1); }
-      if (iy1 - iy0 > MAX_SPAN) { const c = Math.floor((g[p + 1] + halfY) / cellXY); iy0 = c - (MAX_SPAN >> 1); iy1 = c + (MAX_SPAN >> 1); }
+      const cx = (g[p] + halfX) / cellXY, cy = (g[p + 1] + halfY) / cellXY;
+      // Reach one and a half footprints, never under a cell and a half: far
+      // enough to cross the seam into the next radial either side.
+      const rc = Math.min(FLOOR_REACH, Math.max(1.5, (rad ? rad[i * 2] : 0) * 1.5 / cellXY));
+      const rc2 = rc * rc, sig2 = rc2 * 0.5;               // gaussian, sigma = half the reach
+      let ix0 = Math.floor(cx - rc), ix1 = Math.ceil(cx + rc);
+      let iy0 = Math.floor(cy - rc), iy1 = Math.ceil(cy + rc);
       if (ix0 < 0) ix0 = 0; if (ix1 >= nx) ix1 = nx - 1;
       if (iy0 < 0) iy0 = 0; if (iy1 >= ny) iy1 = ny - 1;
       if (ix1 < ix0 || iy1 < iy0) continue;
       const b = _r3dNormByte(g[p + 3], isVel);
-      const s = _r3dByteStrength(b, isVel);
       for (let iy = iy0; iy <= iy1; iy++) {
+        const dy = iy + 0.5 - cy;
         for (let ix = ix0; ix <= ix1; ix++) {
+          const dx = ix + 0.5 - cx;
+          const d2 = dx * dx + dy * dy;
+          if (d2 > rc2) continue;
+          const wgt = Math.exp(-d2 / sig2);
           const idx = iy * nx + ix;
-          if (s > _r3dByteStrength(floor[idx], isVel)) floor[idx] = b;
+          fsum[idx] += wgt * b; fwt[idx] += wgt;
         }
       }
+    }
+    // A cell only the faint rim of one blob reached stays bare, so the
+    // field does not grow a soft halo a whole footprint wide.
+    for (let i = 0; i < floor.length; i++) {
+      if (fwt[i] > 0.2) floor[i] = Math.max(1, Math.min(255, Math.round(fsum[i] / fwt[i])));
     }
   }
 
@@ -68828,10 +69006,15 @@ async function _r3dLoad() {
   if (!site) { _r3dSay('no radar chosen', 'bad'); return; }
   if (!_r3dZone) { _r3dSay('no zone chosen', 'bad'); return; }
   if (typeof _workerProcess !== 'function') { _r3dSay('this build has no radar decoder', 'bad'); return; }
+  // The radar's Time Machine moment, if it has one: the volume then comes
+  // off the Level 2 tape archive for that moment instead of the live feed.
+  const at = (typeof _tmAt !== 'undefined' && _tmAt != null) ? _tmAt : null;
+  const whenTxt = at != null ? new Date(at).toISOString().slice(0, 16).replace('T', ' ') + 'Z' : '';
   const where = _r3dEl('r3d-where');
   if (where) where.textContent = site.toUpperCase()
     + (_r3dStationKm ? ' · ' + Math.round(_r3dStationKm) + ' km' : '')
-    + (_r3dZone ? ' · ' + Math.round(_r3dZone.wKm) + '×' + Math.round(_r3dZone.hKm) + ' km' : '');
+    + (_r3dZone ? ' · ' + Math.round(_r3dZone.wKm) + '×' + Math.round(_r3dZone.hKm) + ' km' : '')
+    + (at != null ? ' · ' + whenTxt : '');
   if (_r3dBuilding) { _r3dSay('already loading a volume, one moment', 'busy'); return; }
   const token = ++_r3dToken;
   _r3dBuilding = true;
@@ -68858,7 +69041,16 @@ async function _r3dLoad() {
       try {
         _r3dSay('getting the whole volume for ' + site.toUpperCase(), 'busy');
         let buf = null;
-        if (typeof _l2VolCache !== 'undefined' && _l2VolCache
+        if (at != null) {
+          // A travelled moment: the whole volume nearest it off the tape
+          // mirror. The mirror runs a little behind the live feed, so a
+          // moment it has not caught up with yet (nothing within an hour
+          // and a half) falls through to the Level 3 tilts for that moment.
+          _r3dSay('reading the Level 2 tape archive for ' + whenTxt, 'busy');
+          const vols = await _l2ArcVolumes(site, at, 1, R3D_VOLUME_CAP, 0);
+          if (token !== _r3dToken) return;
+          if (vols.length && Math.abs(vols[0].when - at) <= 90 * 60000) buf = vols[0].buffer;
+        } else if (typeof _l2VolCache !== 'undefined' && _l2VolCache
             && _l2VolCache.station === site && _l2VolCache.buf && _l2VolCache.full
             && Date.now() - _l2VolCache.at < 120000) {
           buf = _l2VolCache.buf;
@@ -68890,7 +69082,7 @@ async function _r3dLoad() {
     const usedL3 = !frame;
     if (usedL3) {
       _r3dSay('no Level 2 archive, trying Level 3 tilts for ' + site.toUpperCase(), 'busy');
-      frame = await _r3dBuildFrameL3(site, product, sitePos, zone, token);
+      frame = await _r3dBuildFrameL3(site, product, sitePos, zone, token, at);
       if (token !== _r3dToken) return;
     }
     if (!frame) {
@@ -68902,9 +69094,9 @@ async function _r3dLoad() {
 
     _r3dFrames = [frame];
     _r3dFrameIdx = 0;
+    _r3dCamFit();
     _r3dSay(`${frame.count.toLocaleString()} gates · ${frame.cuts} cuts`
-            + (usedL3 ? ' · Level 3' : ''));
-    _r3dUpdateLegend(product);
+            + (usedL3 ? ' · Level 3' : '') + (at != null ? ' · archive' : ''));
     _r3dUpdateSlider();
     _r3dQuality = 'fine';
     _r3dDirty = true;
@@ -68920,7 +69112,12 @@ async function _r3dLoad() {
     // Level 2 thing - a Level 3 frame stands alone as the one live picture.
     const cheapLink = typeof L2_DIRECT_CAP !== 'undefined' && L2_DIRECT_CAP < 3 * 1024 * 1024;
     if (!usedL3 && !cheapLink && typeof _fetchRecentVolumes === 'function') {
-      _fetchRecentVolumes(site, R3D_FRAMES - 1, R3D_VOLUME_CAP, 1, true).then(async (bufs) => {
+      // At a travelled moment the history is the volumes before it in the
+      // same archive hour; live, it is the feed's last few volumes.
+      const histP = at != null
+        ? _l2ArcVolumes(site, at, R3D_FRAMES - 1, R3D_VOLUME_CAP, 1).then(vs => vs.map(v => v.buffer))
+        : _fetchRecentVolumes(site, R3D_FRAMES - 1, R3D_VOLUME_CAP, 1, true);
+      histP.then(async (bufs) => {
         if (token !== _r3dToken || !bufs || !bufs.length) return;
         const built = [];
         for (const b of bufs) {                          // newest first
@@ -68947,17 +69144,11 @@ async function _r3dLoad() {
   }
 }
 
-function _r3dUpdateLegend(product) {
-  const el = _r3dEl('r3d-legend');
-  if (!el) return;
-  const stops = product === 'vel'
-    ? [[-80, 'toward'], [-20, ''], [0, ''], [20, ''], [80, 'away']]
-    : [[10, ''], [25, ''], [40, ''], [55, ''], [70, '']];
-  const colorFor = _r3dColorFn(product);
-  el.innerHTML = stops.map(([v, label]) => {
-    const rgb = colorFor(v) || [40, 44, 52];
-    return `<i style="background:rgb(${rgb[0]},${rgb[1]},${rgb[2]})"></i>${label || v}`;
-  }).join(' ');
+// The Time Machine calls this after every jump and every return to live:
+// an open Radar 3D reloads its zone at the radar's new moment.
+function _r3dTmSync() {
+  if (!_r3dOn || !_r3dZone || !_r3dStation || _r3dBuilding) return;
+  try { _r3dLoad(); } catch (e) {}
 }
 
 function _r3dUpdateSlider() {
@@ -68986,18 +69177,89 @@ function _r3dSetFrame(idx) {
   if (s) s.value = String(_r3dFrameIdx);
   _r3dDirty = true;
 }
-function _r3dPlayToggle() {
+// Playback speed, in volumes per second, typed as any number. One a
+// second reads as a storm evolving; ten a second is a flip-book.
+let _r3dPlaySpeed = 1;
+let _r3dPlayLast = 0;
+function _r3dSetSpeed(v) {
+  const sp = parseFloat(v);
+  if (!(sp > 0)) return;
+  _r3dPlaySpeed = Math.min(60, sp);
+  const el = _r3dEl('r3d-speed');
+  if (el && document.activeElement !== el && el.value !== String(_r3dPlaySpeed)) el.value = String(_r3dPlaySpeed);
+}
+function _r3dPlayStop() {
+  if (_r3dPlayTimer) { cancelAnimationFrame(_r3dPlayTimer); _r3dPlayTimer = null; }
   const btn = _r3dEl('r3d-play');
-  if (_r3dPlayTimer) {
-    clearInterval(_r3dPlayTimer); _r3dPlayTimer = null;
-    if (btn) btn.textContent = '▶';
-    return;
-  }
+  if (btn) btn.textContent = '▶';
+}
+// Driven by the display's own clock (requestAnimationFrame) rather than a
+// timer, so a step lands on a screen refresh and the pace does not drift.
+// Before the first step every frame is drawn once into the cache, so the
+// loop itself is a copy per step and never waits on a ray march.
+function _r3dPlayToggle() {
+  if (_r3dPlayTimer) { _r3dPlayStop(); return; }
   if (_r3dFrames.length < 2) return;
+  const btn = _r3dEl('r3d-play');
   if (btn) btn.textContent = '⏸';
-  _r3dPlayTimer = setInterval(() => {
+  _r3dPlayLast = 0;
+  const tick = (ts) => {
+    if (!_r3dPlayTimer) return;
+    _r3dPlayTimer = requestAnimationFrame(tick);
+    if (_r3dWarmOne()) { _r3dPlayLast = ts; return; }
+    if (!_r3dPlayLast) { _r3dPlayLast = ts; return; }
+    const interval = Math.max(16, 1000 / _r3dPlaySpeed);
+    if (ts - _r3dPlayLast < interval) return;
+    // Advance by whole intervals so a slow frame is caught up, not stacked.
+    _r3dPlayLast += interval * Math.floor((ts - _r3dPlayLast) / interval);
     _r3dSetFrame(_r3dFrameIdx + 1 >= _r3dFrames.length ? 0 : _r3dFrameIdx + 1);
-  }, 1200);
+  };
+  _r3dPlayTimer = requestAnimationFrame(tick);
+}
+
+// ── The frame cache ──────────────────────────────────────────────────────
+// A ray march is a few hundred milliseconds, and playback would stutter on
+// every step if each one marched afresh. So a finished fine-quality picture
+// is kept per frame, keyed on everything that shaped it (the view, the box,
+// every slider), and a step to a frame already drawn for this exact key is
+// one drawImage. Any change to the key, a drag or a slider, simply misses.
+const _r3dFrameCache = new WeakMap();
+let _r3dWarmCv = null;
+function _r3dRenderKey(w, h) {
+  const z = _r3dZone || {};
+  return [w, h, _r3dCam.yaw.toFixed(4), _r3dCam.pitch.toFixed(4), _r3dCam.dist.toFixed(2),
+          _r3dExag, _r3dQuality, z.wKm, z.hKm, _r3dFilterPct, _r3dHeightMaxKft, _r3dOpacity,
+          _r3dMode, _r3dCutSide, _r3dCutPct, _r3dHeightUnit, _r3dPaletteGen,
+          ((_r3dEl('r3d-product') || {}).value) || 'ref', _r3dBoxTopKm().toFixed(3),
+          _r3dFrames.length, isFinite(_r3dStationBrg) ? _r3dStationBrg.toFixed(2) : 'x'].join('|');
+}
+function _r3dCacheStore(frame, key, srcCv) {
+  let c = _r3dFrameCache.get(frame);
+  if (!c) { c = { key: '', cv: document.createElement('canvas') }; _r3dFrameCache.set(frame, c); }
+  c.key = key;
+  if (c.cv.width !== srcCv.width || c.cv.height !== srcCv.height) { c.cv.width = srcCv.width; c.cv.height = srcCv.height; }
+  const cx = c.cv.getContext('2d');
+  cx.clearRect(0, 0, c.cv.width, c.cv.height);
+  cx.drawImage(srcCv, 0, 0);
+}
+// Draws ONE not-yet-cached frame into the cache, off screen, and says
+// whether it did. The play loop calls this until it says no.
+function _r3dWarmOne() {
+  if (_r3dQuality !== 'fine' || _r3dFrames.length < 2) return false;
+  const cv = _r3dEl('r3d-canvas');
+  if (!cv || !cv.width) return false;
+  const w = cv.width, h = cv.height, dpr = window.devicePixelRatio || 1;
+  const key = _r3dRenderKey(w, h);
+  for (const f of _r3dFrames) {
+    const hit = _r3dFrameCache.get(f);
+    if (hit && hit.key === key) continue;
+    if (!_r3dWarmCv) _r3dWarmCv = document.createElement('canvas');
+    if (_r3dWarmCv.width !== w || _r3dWarmCv.height !== h) { _r3dWarmCv.width = w; _r3dWarmCv.height = h; }
+    _r3dPaint(_r3dWarmCv.getContext('2d'), w, h, dpr, f);
+    _r3dCacheStore(f, key, _r3dWarmCv);
+    return true;
+  }
+  return false;
 }
 
 // ── Camera and drawing ───────────────────────────────────────────────────
@@ -69291,15 +69553,33 @@ function _r3dRender() {
   const w = Math.max(1, Math.round(rect.width * dpr)), h = Math.max(1, Math.round(rect.height * dpr));
   if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
   const ctx = cv.getContext('2d');
+  const frame = _r3dFrames[_r3dFrameIdx];
+  if (frame) {
+    const key = _r3dRenderKey(w, h);
+    const hit = _r3dFrameCache.get(frame);
+    if (hit && hit.key === key) {
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(hit.cv, 0, 0);
+      return;
+    }
+    _r3dPaint(ctx, w, h, dpr, frame);
+    if (_r3dQuality === 'fine') _r3dCacheStore(frame, key, cv);
+    return;
+  }
+  _r3dPaint(ctx, w, h, dpr, null);
+}
+
+// The picture itself: background, the marched volume, the box, drawn into
+// whichever canvas context is handed over (the screen, or the cache).
+function _r3dPaint(ctx, w, h, dpr, frame) {
   ctx.clearRect(0, 0, w, h);
   const bg = ctx.createLinearGradient(0, 0, 0, h);
   bg.addColorStop(0, '#08080b'); bg.addColorStop(1, '#000');
   ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
 
-  const frame = _r3dFrames[_r3dFrameIdx];
   const product = ((_r3dEl('r3d-product') || {}).value) || 'ref';
   const halfX = (_r3dZone ? _r3dZone.wKm : 90) / 2, halfY = (_r3dZone ? _r3dZone.hKm : 90) / 2;
-  const topKm = Math.max(1, Math.min(R3D_Z_MAX_KM, _r3dHeightMaxKft / R3D_KFT_PER_KM));
+  const topKm = _r3dBoxTopKm();
 
   const { yaw, pitch, dist } = _r3dCam;
   const exag = _r3dExag;
@@ -69528,7 +69808,7 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   const play = _r3dEl('r3d-play');
   if (play) play.onclick = () => _r3dPlayToggle();
   const ps = _r3dEl('r3d-product');
-  if (ps) ps.onchange = () => { _r3dUpdateLegend(ps.value); _r3dUpdateFilterLabel(); if (_r3dStation) _r3dLoad(); };
+  if (ps) ps.onchange = () => { _r3dUpdateFilterLabel(); if (_r3dStation) _r3dLoad(); };
   // A different radar for the same zone: same box, new volume.
   const ss = _r3dEl('r3d-site');
   if (ss) ss.onchange = () => {

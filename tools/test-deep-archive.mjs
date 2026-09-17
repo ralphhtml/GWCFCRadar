@@ -151,6 +151,26 @@ console.log('\n2. the tar walker finds the right scan and decompresses it');
      String(rangeHits));
 }
 
+console.log('\n2b. several volumes for the time control, and the walk is shared');
+{
+  const before = rangeHits;
+  const r = await p.evaluate(async () => {
+    const out = {};
+    const vols = await _l2ArcVolumes('KTLX', Date.UTC(2015, 4, 6, 0, 1), 3, 64 * 1024 * 1024, 0);
+    out.names = vols.map(v => v.name);
+    out.order = vols.every((v, i) => !i || v.when <= vols[i - 1].when);
+    const back = await _l2ArcVolumes('KTLX', Date.UTC(2015, 4, 6, 0, 1), 3, 64 * 1024 * 1024, 1);
+    out.backNames = back.map(v => v.name);
+    return out;
+  });
+  ok('the nearest volume comes first', r.names[0] === 'KTLX20150506_000011_V06.gz', JSON.stringify(r.names));
+  ok('then back in time, never forward', r.order, JSON.stringify(r.names));
+  ok('skipping the nearest gives only what lies behind it',
+     !r.backNames.includes('KTLX20150506_000011_V06.gz'), JSON.stringify(r.backNames));
+  ok('the table of contents was walked once and shared, so only the volumes themselves were read again',
+     rangeHits - before <= r.names.length + r.backNames.length, String(rangeHits - before));
+}
+
 console.log('\n3. the archived scan flows through the live pipeline');
 {
   const r = await p.evaluate(async () => {

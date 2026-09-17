@@ -12263,7 +12263,7 @@
     const timeValue = Number(productDescription2.volumeScanTime ?? productDescription2.productTime);
     let timeIso = null;
     if (Number.isFinite(dateValue) && Number.isFinite(timeValue)) {
-      const epochMs = (dateValue * 86400 + timeValue) * 1e3;
+      const epochMs = ((dateValue - 1) * 86400 + timeValue) * 1e3;
       timeIso = new Date(epochMs).toISOString();
     }
     const elevationAngle = Number.isFinite(productDescription2.elevationAngle) ? productDescription2.elevationAngle : null;
