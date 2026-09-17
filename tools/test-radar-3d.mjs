@@ -380,6 +380,86 @@ console.log('\n6b. the whole stack: every tilt decoded, shown as it lands, stopp
      JSON.stringify(r.progress.slice(0, 4)));
 }
 
+console.log('\n6c. a decoder that reports angles: one decode per distinct tilt, shared across lanes, zone only');
+{
+  const r = await p.evaluate(async () => {
+    const N = 10, step = 0.03, lon0 = -97.15, lat0 = 35.35;
+    const makeMesh = (val) => {
+      const mesh = new Float32Array(N * N * 9);
+      let k = 0;
+      for (let gy = 0; gy < N; gy++) for (let gx = 0; gx < N; gx++) {
+        const x = lon0 + gx * step, y = lat0 + gy * step;
+        mesh[k++] = x; mesh[k++] = y; mesh[k++] = x + step; mesh[k++] = y;
+        mesh[k++] = x + step; mesh[k++] = y + step; mesh[k++] = x; mesh[k++] = y + step;
+        mesh[k++] = val;
+      }
+      return mesh;
+    };
+    // A real VCP 212 SAILS stack, as KIWX reported it: 21 records, the low
+    // tilts repeated mid-volume, split cuts sharing an angle, and the last
+    // few steeper than any storm top.
+    const ANGLES = [0.63, 0.44, 0.71, 0.80, 1.05, 1.23, 0.70, 0.44, 1.66, 2.22, 2.90, 3.83,
+                    4.90, 6.22, 0.57, 0.44, 7.84, 9.85, 12.29, 15.45, 19.35];
+    const elevs = ANGLES.map((_, i) => i + 1);
+    const calls = [];
+    const realWorker = window._workerProcess, realPool = window._pbDecode, realSize = window._pbPoolSize;
+    // The worker's own planning, mirrored: cluster by angle at a quarter
+    // degree, keep each cluster's lowest record, share them out by lane.
+    const plan = (topAngle) => {
+      const items = elevs.map((el, i) => ({ el, a: ANGLES[i] })).filter(x => x.a <= topAngle)
+        .sort((p, q) => p.a - q.a || p.el - q.el);
+      const clusters = [];
+      for (const it of items) {
+        const c = clusters[clusters.length - 1];
+        if (c && it.a - c.a0 < 0.25) { if (it.el < c.el) c.el = it.el; } else clusters.push({ a0: it.a, el: it.el });
+      }
+      return clusters.map(c => c.el);
+    };
+    const fake = async (buf, layer, opts) => {
+      calls.push(opts || {});
+      await new Promise(res => setTimeout(res, 2));
+      if (opts && opts.elevations === 'distinct') {
+        const reps = plan(opts.top_angle);
+        const mine = reps.filter((_, i) => i % opts.lanes === opts.lane);
+        return { sweeps: mine.map(el => ({ elevationNumber: el, elevationAngle: ANGLES[el - 1],
+                   meshData: makeMesh(40 + el), bounds: null })),
+                 metadata: { availableElevations: elevs, elevationAngles: ANGLES, distinctCount: reps.length,
+                             timeIso: '2026-09-17T12:00:00Z' } };
+      }
+      return { meshData: makeMesh(45), bounds: [lon0, lat0, lon0 + N * step, lat0 + N * step],
+        metadata: { availableElevations: elevs, elevationAngles: ANGLES, elevationNumber: 1,
+                    elevationAngle: ANGLES[0], timeIso: '2026-09-17T12:00:00Z' } };
+    };
+    window._workerProcess = fake; window._pbDecode = fake; window._pbPoolSize = () => 3;
+    const progress = [];
+    const token = ++_r3dToken;
+    const frame = await _r3dBuildFrame(new ArrayBuffer(8), 'REF', { lat: 35.0, lng: -97.3 },
+      { lat: 35.5, lng: -97.0 }, token, (snap, done, total) => progress.push([done, total]));
+    window._workerProcess = realWorker; window._pbDecode = realPool; window._pbPoolSize = realSize;
+    const laneCalls = calls.filter(c => c.elevations === 'distinct');
+    const got = frame ? frame.segs.map(s => elevs[ANGLES.indexOf(s.angle)]).sort((a, b) => a - b) : [];
+    return { everyCallHasBbox: calls.every(c => Array.isArray(c.bbox) && c.bbox.length === 4),
+             calls: calls.length, laneCalls: laneCalls.length,
+             lanesSeen: laneCalls.map(c => c.lane).sort().join(','),
+             got, cuts: frame ? frame.cuts : 0, time: frame ? frame.time : null,
+             topAngle: frame ? Math.max(...frame.segs.map(s => s.angle)) : 0,
+             total: progress.length ? progress[0][1] : 0, lastDone: progress.length ? progress[progress.length - 1][0] : 0 };
+  });
+  ok('every decode asks for just the zone', r.everyCallHasBbox);
+  ok('exactly one parse per worker lane, no separate decode to learn the angles first',
+     r.calls === 3 && r.laneCalls === 3 && r.lanesSeen === '0,1,2', JSON.stringify({ calls: r.calls, lanes: r.lanesSeen }));
+  // Clusters of the angles above at a quarter-degree: 0.44-0.63 keeps record
+  // 1, 0.70-0.80 keeps record 3, 1.05-1.23 keeps record 5, then one record
+  // per real tilt up through 19.35: fourteen distinct tilts from 21 records.
+  ok('every DISTINCT tilt is decoded exactly once - repeats and split cuts are not',
+     r.got.join(',') === '1,3,5,9,10,11,12,13,14,17,18,19,20,21', r.got.join(','));
+  ok('so the stack reaches the 19 degree tilt, not the 6 degree one',
+     r.topAngle > 19 && r.cuts === 14, JSON.stringify({ top: r.topAngle, cuts: r.cuts }));
+  ok('progress knew the full count from the first lane and reached it',
+     r.total === 14 && r.lastDone === 14 && r.time === '2026-09-17T12:00:00Z',
+     JSON.stringify({ total: r.total, lastDone: r.lastDone, time: r.time }));
+}
+
 console.log('\n7. the ray march draws a solid volume, and the two sliders really cut it');
 {
   const r = await p.evaluate(async () => {
@@ -766,6 +846,47 @@ console.log('\n11b. taller: the 80 kft ceiling, vertical exaggeration, and Comfo
   ok('every label drawn inside the box is Comfortaa',
      r.fonts.length > 0 && r.fonts.every(f => /Comfortaa/.test(f)), r.fonts[0]);
   ok('and the panel text itself is Comfortaa', /Comfortaa/.test(r.panelFont), r.panelFont);
+}
+
+console.log('\n11d. the height unit can be changed, and the numbers stay true');
+{
+  const r = await p.evaluate(() => {
+    _r3dOpen('kfws');
+    _r3dToken++;
+    const texts = [];
+    const orig = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (t, x, y) {
+      texts.push({ t: String(t), y });
+      return orig.call(this, t, x, y);
+    };
+    const savedH = _r3dHeightMaxKft;
+    _r3dHeightMaxKft = 80;
+    const sel = document.getElementById('r3d-hunit');
+    const grab = (unit) => {
+      sel.value = unit; sel.dispatchEvent(new Event('change', { bubbles: true }));
+      texts.length = 0;
+      _r3dRender();
+      return { labels: texts.map(o => o.t).filter(t => /^\d+ /.test(t)),
+               slider: document.getElementById('r3d-height-label').textContent,
+               y: Object.fromEntries(texts.filter(o => /^\d+ /.test(o.t)).map(o => [o.t, o.y])) };
+    };
+    const kft = grab('kft'), km = grab('km'), m = grab('m'), ft = grab('ft');
+    CanvasRenderingContext2D.prototype.fillText = orig;
+    sel.value = 'kft'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+    _r3dHeightMaxKft = savedH;
+    _r3dClose();
+    return { kft, km, m, ft };
+  });
+  ok('kft labels run 10 to 80 and the slider reads 80 kft',
+     r.kft.labels.includes('80 kft') && r.kft.slider === '80 kft', JSON.stringify(r.kft.labels));
+  ok('km labels run in 2 km steps to 24 km and the slider reads 24.4 km',
+     r.km.labels.includes('24 km') && r.km.labels.includes('2 km') && r.km.slider === '24.4 km',
+     JSON.stringify({ labels: r.km.labels, slider: r.km.slider }));
+  ok('metres and feet work too', r.m.labels.includes('24000 m') && r.ft.labels.includes('80000 ft'),
+     JSON.stringify({ m: r.m.labels.slice(-1), ft: r.ft.labels.slice(-1) }));
+  ok('the same true height lands at the same place on screen whatever the unit',
+     Math.abs(r.km.y['6 km'] - r.ft.y['20000 ft']) < 1.5,
+     JSON.stringify({ km6: r.km.y['6 km'], ft20000: r.ft.y['20000 ft'] }));
 }
 
 console.log('\n11c. a black gradient panel with gold gradient text, inside the box too');

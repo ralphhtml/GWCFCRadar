@@ -11815,7 +11815,7 @@
     gateCap: Number.isFinite(options.gate_limit) && options.gate_limit > 0 ? options.gate_limit : null,
     full: options.full_detail === true
   });
-  var createMeshBuilder = (includeGeojson) => {
+  var createMeshBuilder = (includeGeojson, bbox) => {
     const mesh = [];
     const features = includeGeojson ? [] : null;
     let minLng = Infinity;
@@ -11831,6 +11831,11 @@
       maxLat = Math.max(maxLat, lat);
     };
     const pushQuad = (quad, value) => {
+      if (bbox) {
+        const cx = (quad[0][0] + quad[1][0] + quad[2][0] + quad[3][0]) / 4;
+        const cy = (quad[0][1] + quad[1][1] + quad[2][1] + quad[3][1]) / 4;
+        if (cx < bbox[0] || cx > bbox[2] || cy < bbox[1] || cy > bbox[3]) return;
+      }
       for (let i = 0; i < 4; i++) {
         updateBounds(quad[i]);
       }
@@ -11909,7 +11914,8 @@
     const range = readRangeOptions(options);
     const project = createRadarProjector(radarLocation[0], radarLocation[1]);
     const includeGeojson = options.includeGeojson === true;
-    const builder = createMeshBuilder(includeGeojson);
+    const bbox = Array.isArray(options.bbox) && options.bbox.length === 4 && options.bbox.every(Number.isFinite) ? options.bbox : null;
+    const builder = createMeshBuilder(includeGeojson, bbox);
     const scanIsPartial = Boolean(radar?.hasGaps || radar?.isTruncated);
     const headers = radar.getHeader();
     const shouldDealiasLevel2Velocity = layer === "VEL" && options?.enableVelocityDealias !== false;
@@ -12265,6 +12271,31 @@
     return { timeIso, elevationAngle, vcp };
   };
   var toEpochMs = (monotonicMs) => performance.timeOrigin + monotonicMs;
+  var meanElevationAngle = (radar, elevationNumber) => {
+    try {
+      radar.setElevation(elevationNumber);
+      const hs = radar.getHeader();
+      const list = Array.isArray(hs) ? hs : [hs];
+      let sum = 0, n = 0;
+      for (const h of list) {
+        const a = Number(h && h.elevation_angle);
+        if (Number.isFinite(a)) {
+          sum += a;
+          n += 1;
+        }
+      }
+      return n ? sum / n : null;
+    } catch (e) {
+      return null;
+    }
+  };
+  var level2TimeIso = (header) => {
+    try {
+      return new Date(header.julian_date * 86400 * 1e3 + header.mseconds - 36e5).toISOString();
+    } catch (e) {
+      return null;
+    }
+  };
   self.onmessage = (event) => {
     const { type } = event.data || {};
     if (type === "process-chunks") {
@@ -12375,6 +12406,65 @@
         });
         parserEndMs = toEpochMs(performance.now());
         const elevations = radar.listElevations();
+        const elevationAngles = elevations.map((e) => meanElevationAngle(radar, e));
+        let wanted = options?.elevations;
+        let distinctCount = null;
+        if (wanted === "distinct") {
+          const topAngle = Number.isFinite(options.top_angle) ? options.top_angle : 20;
+          const items = elevations.map((el, i) => ({ el, a: elevationAngles[i] })).filter((x) => Number.isFinite(x.a) && x.a <= topAngle).sort((p, q) => p.a - q.a || p.el - q.el);
+          const clusters = [];
+          for (const it of items) {
+            const c = clusters[clusters.length - 1];
+            if (c && it.a - c.a0 < 0.25) {
+              if (it.el < c.el) c.el = it.el;
+            } else clusters.push({ a0: it.a, el: it.el });
+          }
+          const reps = clusters.map((c) => c.el);
+          distinctCount = reps.length;
+          const lanes = Number.isFinite(options.lanes) && options.lanes > 0 ? options.lanes : 1;
+          const lane = Number.isFinite(options.lane) ? options.lane : 0;
+          wanted = reps.filter((_, i) => i % lanes === lane);
+        }
+        if (Array.isArray(wanted) && (wanted.length || distinctCount !== null)) {
+          radar.setElevation(elevations[0] || 1);
+          const h0 = radar.getHeader(0);
+          const radarLocation0 = [h0.volume.latitude, h0.volume.longitude];
+          const sweeps = [];
+          const transfer = [];
+          for (const el of wanted) {
+            if (!elevations.includes(el)) continue;
+            try {
+              radar.setElevation(el);
+              const h = radar.getHeader(0);
+              const built = processRadarData(radar, radarLocation0, h.radial_length, layer, options);
+              const idx = elevations.indexOf(radar.elevation);
+              const angle = idx >= 0 && Number.isFinite(elevationAngles[idx]) ? elevationAngles[idx] : h.elevation_angle;
+              sweeps.push({
+                elevationNumber: radar.elevation,
+                elevationAngle: angle,
+                meshData: built.meshData,
+                bounds: built.bounds
+              });
+              transfer.push(built.meshData.buffer);
+            } catch (e) {
+            }
+          }
+          meshEndMs = toEpochMs(performance.now());
+          self.postMessage({
+            type: "result",
+            sweeps,
+            metadata: {
+              timeIso: level2TimeIso(h0),
+              station: options?.station || null,
+              vcp: getLevel2Vcp(radar, h0),
+              availableElevations: elevations,
+              elevationAngles,
+              distinctCount
+            },
+            timing: { parserStartMs, parserEndMs, meshEndMs }
+          }, transfer);
+          return;
+        }
         if (options?.elevation && elevations.includes(options.elevation)) {
           radar.setElevation(options.elevation);
         } else {
@@ -12385,14 +12475,18 @@
         const extent = header.radial_length;
         const { meshData, bounds, geojson } = processRadarData(radar, radarLocation, extent, layer, options);
         meshEndMs = toEpochMs(performance.now());
+        const ownIdx = elevations.indexOf(radar.elevation);
         const metadata = {
-          timeIso: new Date(header.julian_date * 86400 * 1e3 + header.mseconds - 36e5).toISOString(),
-          elevationAngle: header.elevation_angle,
+          timeIso: level2TimeIso(header),
+          // The mean over the sweep where it is known, the first radial's
+          // angle where it is not - see meanElevationAngle.
+          elevationAngle: ownIdx >= 0 && Number.isFinite(elevationAngles[ownIdx]) ? elevationAngles[ownIdx] : header.elevation_angle,
           station: options?.station || null,
           vcp: getLevel2Vcp(radar, header),
           // GWCFC: the page builds its tilt picker from what this volume
           // actually carries, so the list rides back with the result.
           availableElevations: elevations,
+          elevationAngles,
           elevationNumber: radar.elevation
         };
         self.postMessage({

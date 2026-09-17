@@ -11351,13 +11351,19 @@ body.clean-mode #clean-hint { opacity: 1; }
       <span id="r3d-height-label">80 kft</span>
     </label>
     <label class="r3d-slider-row">
-      <span>Height &times;</span>
+      <span>Height</span>
       <select class="xsec-sel" id="r3d-exag" title="Stretch the picture upward so vertical structure is easy to see. Labels stay in true height.">
         <option value="1">1&times; true scale</option>
         <option value="2">2&times;</option>
         <option value="3" selected>3&times;</option>
         <option value="4">4&times;</option>
         <option value="5">5&times;</option>
+      </select>
+      <select class="xsec-sel" id="r3d-hunit" title="Which unit the heights are printed in">
+        <option value="kft" selected>kft</option>
+        <option value="km">km</option>
+        <option value="ft">ft</option>
+        <option value="m">m</option>
       </select>
     </label>
   </div>
@@ -44304,7 +44310,7 @@ let _radarWorkerPending = null;  // { resolve, reject } for current request
 // is a new URL, and a page from before the build keeps the URL its decoder
 // answers to. A mismatched pair is how "Parse failed" appears on one device
 // while the same click works everywhere else.
-var RADAR_WORKER_V = '608a05bf';
+var RADAR_WORKER_V = 'f2894c44';
 
 function _getRadarWebWorker() {
   if (_radarWebWorker) return _radarWebWorker;
@@ -64005,6 +64011,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-17-h', date: 'Sep 17, 2026',
+    text: 'Volumetric 3D is finally the whole storm. Modern radars re-scan their low tilts mid-volume (SAILS), so a scan carries over twenty tilt records; the 3D view stopped after sixteen of them and never reached the steep tilts, which sliced every storm off along a low beam cone. The decoder now reports every record\'s angle up front, the view decodes each distinct tilt exactly once (up to about 20 degrees, above any storm top) from a single parse per worker, and only the zone is kept, so a full volume lands in seconds instead of a minute. Heights use the mean antenna angle over each sweep rather than its first radial, and the height labels can now be read in kft, km, ft or m.' },
   { id: '2026-09-17-g', date: 'Sep 17, 2026',
     text: 'Fixed Volumetric 3D drawing a storm as a slanted wedge. The radar writes each volume piece by piece as the antenna climbs through its tilts, so the newest one is usually still half-written and holds only the low tilts; the 3D view was taking it anyway, and the missing upper tilts left the top of the storm sliced off along the beam cone. It now waits for a volume that has actually finished scanning (its end chunk is present), for the live frame and the history frames alike, so the full height of the storm is there to draw.' },
   { id: '2026-09-17-f', date: 'Sep 17, 2026',
@@ -67967,12 +67975,25 @@ function _xsDraw(slice, errText) {
 // needs). A 3D view needs the WHOLE stack, so it fetches with a cap big
 // enough for any volume and decodes every tilt up to the top of the storm.
 const R3D_VOLUME_CAP = 48 * 1024 * 1024;
-const R3D_MAX_TILTS = 16;        // enough for every VCP's full stack
+// A SAILS/MRLE volume (VCP 212 and friends) carries over twenty cut
+// records, because the low tilts are re-scanned mid-volume and split cuts
+// share an angle, so the cap on records is generous: the real plan is one
+// decode per DISTINCT angle, made from the angle list the worker reports.
+const R3D_MAX_TILTS = 40;
 const R3D_TOP_ANGLE = 20;        // tilts steeper than this see over every storm
 const R3D_FRAMES = 4;            // recent volumes kept for the time control (whole volumes are big)
 const R3D_MIN_DBZ = -10;         // true clear-air/noise floor - the value slider does the real filtering
 const R3D_MIN_KT = 1;            // dead-zero noise floor - same idea
 const R3D_KFT_PER_KM = 3.28084;  // km -> thousands of feet
+// Height labels can be read in any of these. The slider and the data stay
+// in kft (and km) underneath; only what is printed changes.
+const R3D_HEIGHT_UNITS = {
+  kft: { label: 'kft', perKm: R3D_KFT_PER_KM, step: 10, fine: 5 },
+  km:  { label: 'km',  perKm: 1,              step: 2,  fine: 1 },
+  ft:  { label: 'ft',  perKm: R3D_KFT_PER_KM * 1000, step: 10000, fine: 5000 },
+  m:   { label: 'm',   perKm: 1000,           step: 2000, fine: 1000 },
+};
+let _r3dHeightUnit = 'kft';
 
 // The zone. Gates are stored out to the LARGEST size at build time, so
 // switching to a smaller or larger box is a re-grid of data already in
@@ -68067,7 +68088,10 @@ function _r3dUpdateFilterLabel() {
 }
 function _r3dUpdateHeightLabel() {
   const el = _r3dEl('r3d-height-label');
-  if (el) el.textContent = _r3dHeightMaxKft + ' kft';
+  if (!el) return;
+  const u = R3D_HEIGHT_UNITS[_r3dHeightUnit] || R3D_HEIGHT_UNITS.kft;
+  const v = _r3dHeightMaxKft / R3D_KFT_PER_KM * u.perKm;
+  el.textContent = (u.perKm >= 100 ? Math.round(v / 100) * 100 : Math.round(v * 10) / 10) + ' ' + u.label;
 }
 
 // Called from the double-click / long-press map menu. The tapped point IS
@@ -68248,6 +68272,16 @@ function _r3dOnPaletteChange() {
 // flat local east/north offset from the ZONE's centre, which is the box the
 // voxel grid lives in. Everything outside the largest zone size is dropped
 // on the spot - the cheap lon/lat box check runs before any trigonometry.
+// The largest zone's footprint in degrees: what the worker is asked to keep,
+// and what the page double-checks on the way in.
+function _r3dZoneBbox(zone) {
+  const kmLat = 111.32;
+  const kmLng = 111.32 * Math.max(0.2, Math.cos(zone.lat * Math.PI / 180));
+  const half = R3D_ZONE_MAX_KM / 2;
+  return [zone.lng - half / kmLng, zone.lat - half / kmLat,
+          zone.lng + half / kmLng, zone.lat + half / kmLat];
+}
+
 function _r3dConsumeMeshZone(mesh, elevAngle, sitePos, zone, isVel, out) {
   const angle = isFinite(elevAngle) ? elevAngle : 0.5;
   // Only a true noise/clear-air floor here, not a "show me the strong
@@ -68256,9 +68290,7 @@ function _r3dConsumeMeshZone(mesh, elevAngle, sitePos, zone, isVel, out) {
   const minV = isVel ? -Infinity : R3D_MIN_DBZ;
   const kmLat = 111.32;
   const kmLng = 111.32 * Math.max(0.2, Math.cos(zone.lat * Math.PI / 180));
-  const half = R3D_ZONE_MAX_KM / 2;
-  const latMin = zone.lat - half / kmLat, latMax = zone.lat + half / kmLat;
-  const lonMin = zone.lng - half / kmLng, lonMax = zone.lng + half / kmLng;
+  const [lonMin, latMin, lonMax, latMax] = _r3dZoneBbox(zone);
   const xs = out.xs, ys = out.ys, zs = out.zs, vs = out.vs;
   let added = 0;
   for (let i = 0; i < mesh.length; i += 9) {
@@ -68311,23 +68343,15 @@ function _r3dDecode(buf, layer, extra) {
 // a status line until the whole stack is done. Decoding stops once a tilt
 // steeper than R3D_TOP_ANGLE has been seen: nothing lives above that.
 async function _r3dBuildFrame(buf, layer, sitePos, zone, token, onTilt) {
-  let first;
-  try { first = await _r3dDecode(buf.slice(0), layer, undefined); }
-  catch (e) { return null; }
-  if (token !== _r3dToken) return null;
-  const meta = (first && first.metadata) || {};
-  const elevs = Array.isArray(meta.availableElevations) && meta.availableElevations.length
-    ? meta.availableElevations.slice(0, R3D_MAX_TILTS)
-    : [meta.elevationNumber || 1];
+  const bbox = _r3dZoneBbox(zone);
   const isVel = layer === 'VEL';
-
   const out = { xs: [], ys: [], zs: [], vs: [] };
   const segs = [];
-  let cuts = 0, done = 0;
+  let cuts = 0, done = 0, total = 1, timeIso = null;
   let stopAbove = false;
 
   const consume = (res) => {
-    if (!res || !res.meshData || !res.bounds) return;
+    if (!res || !res.meshData) return;
     const angle = res.metadata && res.metadata.elevationAngle;
     const start = out.xs.length;
     const added = _r3dConsumeMeshZone(res.meshData, angle, sitePos, zone, isVel, out);
@@ -68335,12 +68359,46 @@ async function _r3dBuildFrame(buf, layer, sitePos, zone, token, onTilt) {
     if (isFinite(angle) && angle > R3D_TOP_ANGLE) stopAbove = true;
     cuts++;
   };
-  const todo = elevs.filter((el, k) => !(k === 0 && (meta.elevationNumber === elevs[0] || elevs.length === 1)));
-  const total = todo.length + 1;
   const report = () => {
     if (!onTilt || token !== _r3dToken) return;
-    try { onTilt(_r3dFinishFrame(out, segs.slice(), meta.timeIso, cuts), done, total); } catch (e) {}
+    try { onTilt(_r3dFinishFrame(out, segs.slice(), timeIso, cuts), done, total); } catch (e) {}
   };
+  const takeSweeps = (res) => {
+    if (res && res.metadata && res.metadata.timeIso && !timeIso) timeIso = res.metadata.timeIso;
+    if (res && res.metadata && isFinite(res.metadata.distinctCount)) total = res.metadata.distinctCount;
+    for (const s of (res && Array.isArray(res.sweeps) ? res.sweeps : [])) {
+      consume({ meshData: s.meshData, metadata: { elevationAngle: s.elevationAngle } });
+      done++; report();
+    }
+  };
+
+  // The planned path: every worker lane parses the file ONCE, works out the
+  // distinct tilts itself (a SAILS volume re-scans the low tilts mid-volume
+  // and split cuts share an angle - decoding those again would be the same
+  // sky twice), and builds its own share of them from that one parse, for
+  // just the zone. No separate decode to learn the angle list first.
+  const lanes = Math.max(1, Math.min(4, typeof _pbPoolSize === 'function' ? _pbPoolSize() : 1));
+  // All lanes at once - each one's cuts show the moment that lane lands.
+  const results = await Promise.all(Array.from({ length: lanes }, (_, lane) =>
+    _r3dDecode(buf.slice(0), layer, { elevations: 'distinct', lane, lanes, top_angle: R3D_TOP_ANGLE, bbox })
+      .then((res) => { if (token === _r3dToken && res && Array.isArray(res.sweeps)) takeSweeps(res); return res; })
+      .catch(() => null)));                              // one lane's cuts lost, not the volume
+  if (token !== _r3dToken) return null;
+  const lane0 = results[0];
+  if (lane0 && Array.isArray(lane0.sweeps)) return _r3dFinishFrame(out, segs, timeIso, cuts);
+  if (!lane0) return null;
+
+  // The older path, one cut per decode, for a decoder that does not know
+  // how to plan (a stubbed one, or a stale bundle): the call above then
+  // simply returned the first cut, which is used as such.
+  const first = lane0;
+  const meta = (first && first.metadata) || {};
+  timeIso = meta.timeIso || null;
+  const elevs = Array.isArray(meta.availableElevations) && meta.availableElevations.length
+    ? meta.availableElevations.slice(0, R3D_MAX_TILTS)
+    : [meta.elevationNumber || 1];
+  const todo = elevs.filter((el, k) => !(k === 0 && (meta.elevationNumber === elevs[0] || elevs.length === 1)));
+  total = todo.length + 1;
   consume(first); done++; report();
 
   let next = 0;
@@ -68356,7 +68414,6 @@ async function _r3dBuildFrame(buf, layer, sitePos, zone, token, onTilt) {
       await new Promise(r => setTimeout(r, 0));         // let the page breathe between cuts
     }
   };
-  const lanes = Math.max(1, Math.min(4, typeof _pbPoolSize === 'function' ? _pbPoolSize() : 1));
   await Promise.all(Array.from({ length: lanes }, lane));
   if (token !== _r3dToken) return null;
   return _r3dFinishFrame(out, segs, meta.timeIso, cuts);
@@ -69008,7 +69065,8 @@ function _r3dGoldFill(ctx, h) {
 }
 
 function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, half, topKm, dpr, exag) {
-  const zOf = (kft) => kft / R3D_KFT_PER_KM * exag;       // true kft -> drawn height
+  const unit = R3D_HEIGHT_UNITS[_r3dHeightUnit] || R3D_HEIGHT_UNITS.kft;
+  const zOf = (v) => v / unit.perKm * exag;                // true height in the unit -> drawn height
   const topDrawn = topKm * exag;
   const gold = _r3dGoldFill(ctx, h);
   const project = (x, y, z) => {
@@ -69033,14 +69091,14 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   };
   const wallOrder = [0, 1, 2, 3].sort((a, b) => wallDepth(b) - wallDepth(a));
   const farWalls = wallOrder.slice(0, 2);
-  const topKft = topKm * R3D_KFT_PER_KM;
-  const step = topKft > 30 ? 10 : 5;
+  const topU = topKm * unit.perKm;
+  const step = topU > 3 * unit.step ? unit.step : unit.fine;
   ctx.strokeStyle = 'rgba(255,255,255,0.13)';
   ctx.lineWidth = Math.max(1, dpr * 0.8);
   for (const wi of farWalls) {
     const a = corners[wi], b = corners[(wi + 1) % 4];
-    for (let kft = step; kft <= topKft + 0.01; kft += step) {
-      const z = zOf(kft);
+    for (let v = step; v <= topU + 1e-6; v += step) {
+      const z = zOf(v);
       line(project(a[0], a[1], z), project(b[0], b[1], z));
     }
   }
@@ -69052,9 +69110,9 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   ctx.fillStyle = gold;
   ctx.font = `${Math.round(9.5 * dpr)}px 'Comfortaa', sans-serif`;
   ctx.textAlign = 'left';
-  for (let kft = step; kft <= topKft + 0.01; kft += step) {
-    const p = project(lc[0], lc[1], zOf(kft));
-    if (p) ctx.fillText(Math.round(kft) + ' kft', p[0] + 4 * dpr, p[1] + 3 * dpr);
+  for (let v = step; v <= topU + 1e-6; v += step) {
+    const p = project(lc[0], lc[1], zOf(v));
+    if (p) ctx.fillText(Math.round(v) + ' ' + unit.label, p[0] + 4 * dpr, p[1] + 3 * dpr);
   }
 
   // The box itself.
@@ -69188,6 +69246,12 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   if (height) height.oninput = () => { _r3dHeightMaxKft = Number(height.value); _r3dUpdateHeightLabel(); _r3dInteract(); };
   const exag = _r3dEl('r3d-exag');
   if (exag) exag.onchange = () => { _r3dExag = Math.max(1, Number(exag.value) || 3); _r3dInteract(); };
+  const hunit = _r3dEl('r3d-hunit');
+  if (hunit) hunit.onchange = () => {
+    _r3dHeightUnit = R3D_HEIGHT_UNITS[hunit.value] ? hunit.value : 'kft';
+    _r3dUpdateHeightLabel();
+    _r3dDirty = true;
+  };
   // The canvas labels are drawn in Comfortaa too; make sure it is loaded
   // before the first frame so they never fall back to a system font.
   try {
