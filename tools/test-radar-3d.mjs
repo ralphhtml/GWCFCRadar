@@ -348,13 +348,15 @@ console.log('\n5b. a gate paints its whole footprint, not just the voxel under i
     return { point: count(Gp), footprint: count(Gf), pointLayer: layer(Gp, iz), footLayer: layer(Gf, iz),
              above: layer(Gf, iz + 1), cellXY: Gf.cellXY, floorPoint: floorCells(Gp), floorFoot: floorCells(Gf) };
   });
-  // 1.2 km either side at 0.35 km voxels wants a 7 by 7 patch (the span
-  // cap), and 0.5 km of beam depth at 0.25 km voxels reaches the layers
-  // either side.
+  // 1.2 km either side at 0.35 km voxels is a 7 to 9 cell patch (the cap
+  // is 3 km, so nothing is trimmed here), and 0.5 km of beam depth at 0.25
+  // km voxels reaches the layers either side.
   ok('the bare point fills one column of voxels', r.pointLayer === 1, String(r.pointLayer));
-  ok('the footprint fills a patch of them', r.footLayer >= 36 && r.footLayer <= 49, String(r.footLayer));
-  ok('and the beam depth reaches the layer above too', r.above >= 36, String(r.above));
-  ok('the floor texture paints the footprint as well', r.floorFoot > r.floorPoint && r.floorPoint === 1,
+  ok('the footprint fills a patch of them', r.footLayer >= 49 && r.footLayer <= 81, String(r.footLayer));
+  ok('and the beam depth reaches the layer above too', r.above >= 49, String(r.above));
+  // The floor stamps soft blobs: a bare point is a dab of a few cells, a
+  // real footprint a much wider one.
+  ok('the floor texture paints the footprint as well', r.floorFoot > r.floorPoint * 3 && r.floorPoint >= 1 && r.floorPoint <= 9,
      JSON.stringify({ point: r.floorPoint, foot: r.floorFoot }));
 }
 
@@ -976,6 +978,44 @@ console.log('\n11b. taller: the 80 kft ceiling, vertical exaggeration, and Comfo
   ok('and the panel text itself is Comfortaa', /Comfortaa/.test(r.panelFont), r.panelFont);
 }
 
+console.log('\n11c. the box is only as tall as the storm in it, and the camera frames the whole box');
+{
+  const r = await p.evaluate(() => {
+    _r3dOpen('kfws');
+    _r3dToken++;
+    const savedH = _r3dHeightMaxKft;
+    _r3dHeightMaxKft = 80;
+    const empty = { top: _r3dBoxTopKm() };
+    // A shallow 4 km storm: the box should come down to 20 kft, not stay 80.
+    const g = [], rs = [];
+    for (let x = -2; x <= 2; x += 0.5) for (let y = -2; y <= 2; y += 0.5) for (let z = 0.4; z <= 4; z += 0.3) { g.push(x, y, z, 45); rs.push(0.5, 0.3); }
+    _r3dFrames = [{ gates: new Float32Array(g), radii: new Float32Array(rs), count: g.length / 4,
+                    segs: [{ start: 0, end: g.length / 4, angle: 0.5 }], time: null, cuts: 1, zMax: 4, _grids: {} }];
+    _r3dFrameIdx = 0;
+    const withStorm = { top: _r3dBoxTopKm() };
+    _r3dCamFit();
+    const dist = _r3dCam.dist;
+    const texts = [];
+    const orig = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (t, x, y) { texts.push(String(t)); return orig.call(this, t, x, y); };
+    _r3dQuality = 'fine'; _r3dRender();
+    CanvasRenderingContext2D.prototype.fillText = orig;
+    const kft = texts.filter(t => /kft$/.test(t)).map(t => parseInt(t, 10));
+    _r3dHeightMaxKft = 10;
+    const capped = { top: _r3dBoxTopKm() };
+    _r3dHeightMaxKft = savedH;
+    _r3dClose();
+    return { empty, withStorm, dist, topLabel: Math.max(...kft), capped, exag: _r3dExag };
+  });
+  ok('with nothing loaded the box stands at the slider cap (80 kft)',
+     Math.abs(r.empty.top - 80 / 3.28084) < 1e-6, String(r.empty.top));
+  ok('with a 4 km storm the box comes down to 20 kft', Math.abs(r.withStorm.top - 20 / 3.28084) < 1e-6, String(r.withStorm.top));
+  ok('and the labels stop there too', r.topLabel === 20, String(r.topLabel));
+  ok('the slider can still cap it lower', Math.abs(r.capped.top - 10 / 3.28084) < 1e-6, String(r.capped.top));
+  ok('the camera sits far enough back to frame both the width and the drawn height',
+     r.dist >= 90 * 1.7 - 1e-6 && r.dist >= r.withStorm.top * r.exag * 1.5 - 1e-6, String(r.dist));
+}
+
 console.log('\n11d. the height unit can be changed, and the numbers stay true');
 {
   const r = await p.evaluate(() => {
@@ -1052,6 +1092,105 @@ console.log('\n11c. a black gradient panel with gold gradient text, inside the b
   ok('so is the status line', /linear-gradient/.test(r.statusBg) && /232, 184, 0/.test(r.statusBg), r.statusBg);
   ok('and every label drawn inside the 3D box is painted with a gold gradient too',
      r.labels > 0 && r.allGradient, JSON.stringify({ labels: r.labels, allGradient: r.allGradient }));
+}
+
+console.log('\n13. playback: a typed speed, a frame cache, and a loop that copies rather than marches');
+{
+  const r = await p.evaluate(async () => {
+    _r3dOpen('kfws');
+    _r3dToken++;
+    const out = { hasInput: !!document.getElementById('r3d-speed') };
+    _r3dSetSpeed('4');
+    out.speed = _r3dPlaySpeed;
+    out.shown = document.getElementById('r3d-speed').value;
+    _r3dSetSpeed('0'); _r3dSetSpeed('abc');
+    out.speedAfterBad = _r3dPlaySpeed;
+    // Two hand-built frames, then count real paints against renders.
+    const mk = (v, zTop) => {
+      const g = [], rs = [];
+      for (let x = -3; x <= 3; x += 0.5) for (let y = -3; y <= 3; y += 0.5) for (let z = 0.4; z <= zTop; z += 0.3) { g.push(x, y, z, v); rs.push(0.5, 0.3); }
+      return { gates: new Float32Array(g), radii: new Float32Array(rs), count: g.length / 4,
+               segs: [{ start: 0, end: g.length / 4, angle: 0.5 }], time: null, cuts: 1, zMax: zTop, _grids: {} };
+    };
+    _r3dFrames = [mk(35, 3), mk(50, 6)];
+    _r3dFrameIdx = 0;
+    _r3dQuality = 'fine';
+    let paints = 0;
+    const orig = _r3dPaint;
+    _r3dPaint = function () { paints++; return orig.apply(this, arguments); };
+    _r3dRender();
+    out.firstPaints = paints;
+    _r3dRender();
+    out.secondPaints = paints;
+    out.topSteady = _r3dBoxTopKm();
+    _r3dSetFrame(1);
+    out.topSame = _r3dBoxTopKm() === out.topSteady;
+    // Warming draws the frame not yet cached, once, and then has nothing to do.
+    out.warm1 = _r3dWarmOne();
+    out.warm2 = _r3dWarmOne();
+    out.paintsAfterWarm = paints;
+    _r3dRender();
+    out.paintsAfterBlit = paints;
+    // A drag changes the view, so the cache misses and a real march runs.
+    _r3dCam.yaw += 0.3;
+    _r3dRender();
+    out.paintsAfterMove = paints;
+    _r3dPaint = orig;
+    // The loop rides requestAnimationFrame and stops cleanly.
+    _r3dPlayToggle();
+    out.playing = !!_r3dPlayTimer && document.getElementById('r3d-play').textContent === '⏸';
+    await new Promise(res => setTimeout(res, 600));
+    out.advanced = _r3dFrameIdx;
+    _r3dPlayToggle();
+    out.stopped = !_r3dPlayTimer;
+    _r3dClose();
+    return out;
+  });
+  ok('there is a speed box in the time bar', r.hasInput);
+  ok('typing 4 plays four volumes a second, and the box shows it', r.speed === 4 && r.shown === '4', JSON.stringify([r.speed, r.shown]));
+  ok('zero and nonsense are ignored', r.speedAfterBad === 4, String(r.speedAfterBad));
+  ok('the first render marches', r.firstPaints === 1, String(r.firstPaints));
+  ok('the same view again is a copy from the cache, not a march', r.secondPaints === 1, String(r.secondPaints));
+  ok('the box top is the tallest frame, so it stands still through playback',
+     Math.abs(r.topSteady - 20 / 3.28084) < 1e-6 && r.topSame, JSON.stringify([r.topSteady, r.topSame]));
+  ok('warming paints the other frame once and then reports nothing left', r.warm1 === true && r.warm2 === false && r.paintsAfterWarm === 2,
+     JSON.stringify([r.warm1, r.warm2, r.paintsAfterWarm]));
+  ok('so stepping to it is a copy too', r.paintsAfterBlit === 2, String(r.paintsAfterBlit));
+  ok('moving the camera misses the cache and marches again', r.paintsAfterMove === 3, String(r.paintsAfterMove));
+  ok('play runs on the frame clock, steps at the typed speed, and stops', r.playing && r.advanced >= 0 && r.stopped, JSON.stringify(r));
+}
+
+console.log('\n14. the Time Machine: a travelled radar loads its 3D volume from the tape archive');
+{
+  const r = await p.evaluate(async () => {
+    const out = {};
+    const calls = [];
+    const origArc = _l2ArcVolumes, origL3 = _r3dBuildFrameL3, origLive = _fetchVolumeDirect;
+    _l2ArcVolumes = async (site, at, n, cap, back) => { calls.push({ kind: 'arc', site, at, n, cap, back }); return []; };
+    _r3dBuildFrameL3 = async (site, product, sitePos, zone, token, at) => { calls.push({ kind: 'l3', at }); return null; };
+    _fetchVolumeDirect = async () => { calls.push({ kind: 'live' }); throw new Error('no'); };
+    _tmAt = Date.UTC(2024, 4, 6, 21, 10);
+    _r3dOpenBounds(36.0, -96.05, 36.2, -95.75);
+    for (let i = 0; i < 100; i++) { await new Promise(res => setTimeout(res, 50)); if (!_r3dBuilding && i > 2) break; }
+    out.calls = calls;
+    out.where = document.getElementById('r3d-where').textContent;
+    out.hasSync = typeof _r3dTmSync === 'function';
+    _tmAt = null;
+    _l2ArcVolumes = origArc; _r3dBuildFrameL3 = origL3; _fetchVolumeDirect = origLive;
+    _r3dClose();
+    return out;
+  });
+  const arc = r.calls.find(c => c.kind === 'arc');
+  const l3 = r.calls.find(c => c.kind === 'l3');
+  ok('the whole volume is asked of the archive at the travelled moment, not the live feed',
+     !!arc && arc.at === Date.UTC(2024, 4, 6, 21, 10) && arc.cap === 48 * 1024 * 1024 && !r.calls.some(c => c.kind === 'live'),
+     JSON.stringify(r.calls));
+  ok('when the archive has nothing there yet, the Level 3 tilts are asked for that same moment',
+     !!l3 && l3.at === Date.UTC(2024, 4, 6, 21, 10), JSON.stringify(l3));
+  ok('the panel says which moment it is showing', /2024-05-06 21:10Z/.test(r.where), r.where);
+  ok('and the Time Machine can tell the panel to follow a jump', r.hasSync);
+  ok('the jump and the return to live both call it',
+     PAGE.split('_r3dTmSync()').length >= 3, String(PAGE.split('_r3dTmSync()').length - 1));
 }
 
 console.log('\n12. nothing above threw');

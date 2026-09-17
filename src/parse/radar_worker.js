@@ -696,7 +696,11 @@ const getLevel3Metadata = (radar) => {
     const timeValue = Number(productDescription.volumeScanTime ?? productDescription.productTime);
     let timeIso = null;
     if (Number.isFinite(dateValue) && Number.isFinite(timeValue)) {
-        const epochMs = (dateValue * 86400 + timeValue) * 1000;
+        // A Level 3 date is a modified Julian day counted from 1 January
+        // 1970 as day ONE, not day zero, so the epoch offset is a day less
+        // than the number in the file. Taken at face value every Level 3
+        // stamp read one day late.
+        const epochMs = ((dateValue - 1) * 86400 + timeValue) * 1000;
         timeIso = new Date(epochMs).toISOString();
     }
 

@@ -312,6 +312,31 @@ console.log('\n9. play at the end restarts rather than sitting still');
      r.justAfter === 0, r.justAfter);
 }
 
+console.log('\n9b. any speed can be typed, and it keeps playing');
+{
+  const r = await page.evaluate(() => {
+    _cycStopPlay();
+    _cycSpeed = 1;
+    _cycSetSpeed('3');
+    const typed = _cycSpeed;
+    const shown = document.getElementById('cyc-speed-in').value;
+    const label = document.getElementById('cyc-speed-btn').textContent;
+    _cycSetSpeed('-2');
+    const afterBad = _cycSpeed;
+    _cycTogglePlay();
+    _cycSetSpeed('0.5');
+    const stillPlaying = !!_cycPlayTimer;
+    _cycStopPlay();
+    _cycSpeed = 1;
+    _cycSyncPlaybar();
+    return { typed, shown, label, afterBad, stillPlaying };
+  });
+  ok('typing 3 sets the speed to 3', r.typed === 3, String(r.typed));
+  ok('the box and the button both show it', r.shown === '3' && r.label === '3×', JSON.stringify([r.shown, r.label]));
+  ok('a negative number is ignored', r.afterBad === 3, String(r.afterBad));
+  ok('typing mid-play keeps it playing', r.stillPlaying);
+}
+
 console.log('\n10. the speed button cycles and keeps playing');
 {
   const r = await page.evaluate(() => {
