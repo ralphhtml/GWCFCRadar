@@ -327,8 +327,8 @@ console.log('\n9. the first picture costs fewer round trips and fewer bytes');
     loopIsCheaper: L2_LOOP_CAP < L2_DIRECT_CAP,
     capIsSane: L2_DIRECT_CAP >= 1.5 * 1024 * 1024 && L2_DIRECT_CAP <= 5.5 * 1024 * 1024,
     hasListCache: typeof _s3ListCached === 'function' && typeof _s3VolumeList === 'function',
-    assembleTakesCap: /function _assembleVolume\(station, vol, cap\)/.test(_assembleVolume.toString())
-      || _assembleVolume.length === 3,
+    assembleTakesCap: /function _assembleVolume\(station, vol, cap[,)]/.test(_assembleVolume.toString())
+      || _assembleVolume.length >= 3,
   }));
   ok('history frames are read more cheaply than the live frame',
      r.loopIsCheaper, JSON.stringify(r));
