@@ -131,30 +131,46 @@ console.log('\n2. the map menu places the zone and finds the nearest radar');
      r.rectGoneAfterClose && r.zoneClearedAfterClose);
 }
 
-console.log('\n3. the colour ramps, checked against the numbers ported from OpenStorm');
+console.log('\n3. the colours are the app\'s own radar palette, custom colours included');
 {
-  const r = await p.evaluate(() => ({
-    grayLow: _r3dReflectivityColor(-15),
-    green: _r3dReflectivityColor(35),
-    red: _r3dReflectivityColor(55),
-    white: _r3dReflectivityColor(78),
-    solidGreen: _r3dVelocityColor(-90),
-    solidRed: _r3dVelocityColor(90),
-  }));
-  ok('weak return reads gray-ish (low saturation)',
-     Math.max(...r.grayLow.slice(0, 3)) - Math.min(...r.grayLow.slice(0, 3)) < 40,
-     JSON.stringify(r.grayLow));
-  ok('30-40 dBZ reads green', r.green[1] > r.green[0] && r.green[1] > r.green[2],
-     JSON.stringify(r.green));
-  ok('50-60 dBZ reads red', r.red[0] > r.red[1] && r.red[0] > r.red[2],
-     JSON.stringify(r.red));
-  ok('70-80 dBZ reads near white (bright, low saturation)',
-     r.white[0] > 200 && r.white[1] > 200 && r.white[2] > 200,
-     JSON.stringify(r.white));
-  ok('strong inbound is solid green', r.solidGreen[1] > r.solidGreen[0],
-     JSON.stringify(r.solidGreen));
-  ok('strong outbound is solid red', r.solidRed[0] > r.solidRed[1],
-     JSON.stringify(r.solidRed));
+  const r = await p.evaluate(() => {
+    const ref = _r3dColorFn('ref'), vel = _r3dColorFn('vel');
+    const builtIn = {
+      belowScale: ref(2),                 // under the 5 dBZ band: the picture draws nothing
+      yellow35: ref(35), red55: ref(55), white78: ref(78),
+      deadZone: vel(0.5), inbound: vel(-90), outbound: vel(90),
+      sameAsPicture: JSON.stringify(_meshRGBA(_meshColorFn('ref')(55))) ===
+        JSON.stringify(_meshRGBA('rgb(' + ref(55).join(',') + ')')),
+    };
+    // Now with a custom palette switched on for reflectivity, exactly the
+    // way the Radar Colors panel stores one: blue at the bottom of the
+    // scale running to red at the top.
+    const savedRef = _fxColors.ref;
+    _fxColors.ref = { on: true, stops: ['#0000ff', '#ff0000'] };
+    _r3dOnPaletteChange();
+    const custom = _r3dColorFn('ref');
+    const out = { builtIn, custom: { low: custom(-20), high: custom(70) },
+                  genBumped: _r3dPaletteGen > 0 };
+    _fxColors.ref = savedRef;
+    _r3dOnPaletteChange();
+    return out;
+  });
+  ok('below the lowest band the volume is transparent, like the picture',
+     r.builtIn.belowScale === null);
+  ok('35 dBZ is the NWS yellow', r.builtIn.yellow35 && r.builtIn.yellow35[0] > 200
+     && r.builtIn.yellow35[1] > 200 && r.builtIn.yellow35[2] < 60, JSON.stringify(r.builtIn.yellow35));
+  ok('55 dBZ is the NWS red', r.builtIn.red55 && r.builtIn.red55[0] > 180
+     && r.builtIn.red55[1] < 40, JSON.stringify(r.builtIn.red55));
+  ok('78 dBZ is white', r.builtIn.white78 && r.builtIn.white78.every(c => c > 240),
+     JSON.stringify(r.builtIn.white78));
+  ok('the velocity dead zone around zero stays open', r.builtIn.deadZone === null);
+  ok('inbound is green, outbound is red', r.builtIn.inbound[1] > r.builtIn.inbound[0]
+     && r.builtIn.outbound[0] > r.builtIn.outbound[1], JSON.stringify([r.builtIn.inbound, r.builtIn.outbound]));
+  ok('and it is byte-for-byte what the flat picture paints', r.builtIn.sameAsPicture);
+  ok('a custom palette takes over: blue at the bottom, red at the top',
+     r.custom.low && r.custom.low[2] > r.custom.low[0]
+     && r.custom.high && r.custom.high[0] > r.custom.high[2], JSON.stringify(r.custom));
+  ok('a palette change bumps the generation so the LUT rebuilds', r.genBumped);
 }
 
 console.log('\n4. the transfer function: haze for weak, solid for strong, filter honoured');
@@ -245,8 +261,8 @@ console.log('\n6. building a frame from a volume that is stood in for, zone filt
       return { mesh, bounds: [lon0, lat0, lon0 + N * step, lat0 + N * step] };
     };
     let calls = 0;
-    const realWorker = window._workerProcess;
-    window._workerProcess = async (buf, layer, opts) => {
+    const realWorker = window._workerProcess, realPool = window._pbDecode;
+    const fake = async (buf, layer, opts) => {
       calls++;
       const el = (opts && opts.elevation) || 1;
       const m = makeMesh(el);
@@ -256,6 +272,7 @@ console.log('\n6. building a frame from a volume that is stood in for, zone filt
                     elevationAngle: ANGLES[el], timeIso: new Date().toISOString() },
       };
     };
+    window._workerProcess = fake; window._pbDecode = fake;
     const sitePos = { lat: 35.0, lng: -97.3 };
     const zone = { lat: 35.5, lng: -97.0 };              // the fake mesh sits around here
     const farZone = { lat: 44.0, lng: -80.0 };           // nowhere near it
@@ -263,7 +280,7 @@ console.log('\n6. building a frame from a volume that is stood in for, zone filt
     const frame = await _r3dBuildFrame(new ArrayBuffer(8), 'REF', sitePos, zone, token);
     const token2 = ++_r3dToken;
     const farFrame = await _r3dBuildFrame(new ArrayBuffer(8), 'REF', sitePos, farZone, token2);
-    window._workerProcess = realWorker;
+    window._workerProcess = realWorker; window._pbDecode = realPool;
     return {
       calls, count: frame ? frame.count : 0,
       cuts: frame ? frame.cuts : 0,
@@ -278,6 +295,53 @@ console.log('\n6. building a frame from a volume that is stood in for, zone filt
      r.segs.length === 2 && r.segs[0] === 0.5 && r.segs[1] === 1.5, r.segs.join(','));
   ok('every stored gate is a finite number', r.allFinite);
   ok('a zone far from the storm honestly builds nothing', r.farIsNull);
+}
+
+console.log('\n6b. the whole stack: every tilt decoded, shown as it lands, stopped above the top');
+{
+  const r = await p.evaluate(async () => {
+    const N = 10, step = 0.03, lon0 = -97.15, lat0 = 35.35;
+    const makeMesh = (val) => {
+      const mesh = new Float32Array(N * N * 9);
+      let k = 0;
+      for (let gy = 0; gy < N; gy++) for (let gx = 0; gx < N; gx++) {
+        const x = lon0 + gx * step, y = lat0 + gy * step;
+        mesh[k++] = x; mesh[k++] = y; mesh[k++] = x + step; mesh[k++] = y;
+        mesh[k++] = x + step; mesh[k++] = y + step; mesh[k++] = x; mesh[k++] = y + step;
+        mesh[k++] = val;
+      }
+      return mesh;
+    };
+    // Twelve elevations like a real VCP, the last few far steeper than any
+    // storm is tall. Decoded one lane at a time here so the order, and so
+    // the stop, is deterministic.
+    const ANGLES = { 1: 0.5, 2: 0.9, 3: 1.3, 4: 1.8, 5: 2.4, 6: 3.1, 7: 4.0, 8: 5.1,
+                     9: 6.4, 10: 8.0, 11: 10, 12: 25 };
+    const decoded = [];
+    const realWorker = window._workerProcess, realPool = window._pbDecode, realSize = window._pbPoolSize;
+    const fake = async (buf, layer, opts) => {
+      const el = (opts && opts.elevation) || 1;
+      decoded.push(el);
+      await new Promise(res => setTimeout(res, 2));
+      return { meshData: makeMesh(45), bounds: [lon0, lat0, lon0 + N * step, lat0 + N * step],
+        metadata: { availableElevations: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], elevationNumber: el,
+                    elevationAngle: ANGLES[el] || 30, timeIso: '2026-09-17T12:00:00Z' } };
+    };
+    window._workerProcess = fake; window._pbDecode = fake; window._pbPoolSize = () => 1;
+    const progress = [];
+    const token = ++_r3dToken;
+    const frame = await _r3dBuildFrame(new ArrayBuffer(8), 'REF', { lat: 35.0, lng: -97.3 },
+      { lat: 35.5, lng: -97.0 }, token, (snap, done, total) => progress.push([done, total, snap ? snap.cuts : 0]));
+    window._workerProcess = realWorker; window._pbDecode = realPool; window._pbPoolSize = realSize;
+    return { decoded, progress, cuts: frame ? frame.cuts : 0,
+             topAngle: frame ? Math.max(...frame.segs.map(s => s.angle)) : 0 };
+  });
+  ok('it decoded up through the first tilt steeper than 20 degrees and stopped',
+     r.decoded.includes(12) && !r.decoded.includes(13), r.decoded.join(','));
+  ok('twelve cuts made it into the frame', r.cuts === 12, String(r.cuts));
+  ok('the storm was reported growing after every single tilt',
+     r.progress.length === 12 && r.progress.every((pr, i) => pr[0] === i + 1 && pr[2] === i + 1),
+     JSON.stringify(r.progress.slice(0, 4)));
 }
 
 console.log('\n7. the ray march draws a solid volume, and the two sliders really cut it');
@@ -385,7 +449,7 @@ console.log('\n9. Level 3 builds the same frame from separate tilt files');
     const askedCodes = [];
     const realBucketNewest = window._l3BucketNewest;
     const realFetch = window.fetch;
-    const realWorker = window._workerProcess;
+    const realWorker = window._workerProcess, realPool = window._pbDecode;
     window._l3BucketNewest = async (site, code) => {
       askedCodes.push(code);
       return ANGLES[code] != null ? `fake://${site}/${code}` : null;
@@ -394,7 +458,7 @@ console.log('\n9. Level 3 builds the same frame from separate tilt files');
       if (String(url).startsWith('fake://')) return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) };
       return realFetch(url, opts);
     };
-    window._workerProcess = async (buf, code) => {
+    const fake = async (buf, code) => {
       const angle = ANGLES[code];
       if (angle == null) throw new Error('unknown Level 3 code ' + code);
       return {
@@ -402,6 +466,7 @@ console.log('\n9. Level 3 builds the same frame from separate tilt files');
         metadata: { elevationAngle: angle, timeIso: new Date().toISOString() },
       };
     };
+    window._workerProcess = fake; window._pbDecode = fake;
 
     const sitePos = { lat: 35.0, lng: -97.3 };
     const zone = { lat: 35.4, lng: -97.1 };
@@ -410,7 +475,7 @@ console.log('\n9. Level 3 builds the same frame from separate tilt files');
 
     window._l3BucketNewest = realBucketNewest;
     window.fetch = realFetch;
-    window._workerProcess = realWorker;
+    window._workerProcess = realWorker; window._pbDecode = realPool;
 
     return {
       askedCodes,
@@ -450,13 +515,19 @@ console.log('\n10. the load path reaches for Level 3 exactly when it should');
                    fetchDirectCalled };
 
     // A NEXRAD site still tries Level 2 first, and only falls back to Level
-    // 3 when that attempt genuinely fails.
+    // 3 when that attempt genuinely fails. The flat picture's cached volume
+    // (bottom sweeps only, no `full` mark) must NOT be taken as the whole
+    // stack: the fetch has to happen, and for the whole volume.
     fetchDirectCalled = false;
-    window._fetchVolumeDirect = async () => { fetchDirectCalled = true; throw new Error('no volume'); };
+    let capAsked = null;
+    window._fetchVolumeDirect = async (site, cap) => { fetchDirectCalled = true; capAsked = cap; throw new Error('no volume'); };
+    const keepCache = window._l2VolCache;
+    _l2VolCache = { station: 'kfws', at: Date.now(), buf: new ArrayBuffer(4096) };   // capped, not full
     _r3dStation = 'kfws';
     await _r3dLoad();
     const nexrad = { status: document.getElementById('r3d-status').textContent,
-                      fetchDirectCalled };
+                      fetchDirectCalled, capAsked };
+    _l2VolCache = keepCache;
 
     window._fetchVolumeDirect = realFetchDirect;
     window._r3dBuildFrameL3 = realBuildL3;
@@ -466,9 +537,68 @@ console.log('\n10. the load path reaches for Level 3 exactly when it should');
   ok('a TDWR site skips the Level 2 attempt entirely', !r.tdwr.fetchDirectCalled, JSON.stringify(r.tdwr));
   ok('and goes straight to the Level 3 build', r.l3Calls.includes('tdal'), r.l3Calls.join(','));
   ok('its status names Level 3', /Level 3/.test(r.tdwr.status), r.tdwr.status);
-  ok('a NEXRAD site still tries Level 2 first', r.nexrad.fetchDirectCalled);
+  ok('a NEXRAD site still tries Level 2 first, ignoring the picture\'s bottom-sweeps cache',
+     r.nexrad.fetchDirectCalled);
+  ok('and asks for the WHOLE volume, not the picture\'s few-MB cap',
+     r.nexrad.capAsked >= 40 * 1024 * 1024, String(r.nexrad.capAsked));
   ok('and falls back to Level 3 once that attempt fails',
      r.l3Calls.includes('kfws') && /Level 3/.test(r.nexrad.status), JSON.stringify(r.nexrad));
+}
+
+console.log('\n10b. a whole Level 2 volume: shown tilt by tilt, history pulled whole and skipping the live one');
+{
+  const r = await p.evaluate(async () => {
+    const realFetchDirect = window._fetchVolumeDirect, realRecent = window._fetchRecentVolumes;
+    const realWorker = window._workerProcess, realPool = window._pbDecode;
+    const N = 8, step = 0.03, lon0 = -97.15, lat0 = 35.35;
+    const mesh = new Float32Array(N * N * 9);
+    { let k = 0; for (let gy = 0; gy < N; gy++) for (let gx = 0; gx < N; gx++) {
+        const x = lon0 + gx * step, y = lat0 + gy * step;
+        mesh[k++] = x; mesh[k++] = y; mesh[k++] = x + step; mesh[k++] = y;
+        mesh[k++] = x + step; mesh[k++] = y + step; mesh[k++] = x; mesh[k++] = y + step;
+        mesh[k++] = 48; } }
+    const ANGLES = { 1: 0.5, 2: 1.5, 3: 2.4 };
+    const fake = async (buf, layer, opts) => {
+      const el = (opts && opts.elevation) || 1;
+      await new Promise(res => setTimeout(res, 2));
+      return { meshData: mesh.slice(0), bounds: [lon0, lat0, lon0 + N * step, lat0 + N * step],
+        metadata: { availableElevations: [1, 2, 3], elevationNumber: el,
+                    elevationAngle: ANGLES[el], timeIso: '2026-09-17T12:00:00Z' } };
+    };
+    window._workerProcess = fake; window._pbDecode = fake;
+    let capAsked = null, recentArgs = null;
+    window._fetchVolumeDirect = async (site, cap) => { capAsked = cap; return new ArrayBuffer(16); };
+    window._fetchRecentVolumes = async (site, n, cap, startBack) => { recentArgs = [n, cap, startBack]; return []; };
+    const keepCache = window._l2VolCache;
+    const statuses = [];
+    const realSay = window._r3dSay;
+    window._r3dSay = (m, k) => { statuses.push(m); realSay(m, k); };
+    _r3dZone = { lat: 35.5, lng: -97.0 };
+    _r3dStation = 'ktlx'; _r3dStationKm = 60;
+    await _r3dLoad();
+    await new Promise(res => setTimeout(res, 30));
+    const out = {
+      capAsked, recentArgs,
+      cacheMarkedFull: !!(_l2VolCache && _l2VolCache.full && _l2VolCache.station === 'ktlx'),
+      progressSeen: statuses.filter(s => /decoding tilt \d of \d/.test(s)).length,
+      cuts: _r3dFrames[0] ? _r3dFrames[0].cuts : 0,
+      final: document.getElementById('r3d-status').textContent,
+    };
+    window._r3dSay = realSay;
+    _l2VolCache = keepCache;
+    window._fetchVolumeDirect = realFetchDirect; window._fetchRecentVolumes = realRecent;
+    window._workerProcess = realWorker; window._pbDecode = realPool;
+    _r3dClose();
+    return out;
+  });
+  ok('the live volume is fetched whole', r.capAsked >= 40 * 1024 * 1024, String(r.capAsked));
+  ok('and the cache is marked as the whole thing for next time', r.cacheMarkedFull);
+  ok('every tilt was announced as it landed', r.progressSeen === 3, String(r.progressSeen));
+  ok('all three cuts are in the frame', r.cuts === 3, String(r.cuts));
+  ok('history is asked for whole volumes too, skipping the live one already on screen',
+     r.recentArgs && r.recentArgs[0] === 3 && r.recentArgs[1] >= 40 * 1024 * 1024 && r.recentArgs[2] === 1,
+     JSON.stringify(r.recentArgs));
+  ok('the status ends on the gate count', /gates/.test(r.final), r.final);
 }
 
 console.log('\n11. the orbit camera, the quality switch, and the panel controls');
