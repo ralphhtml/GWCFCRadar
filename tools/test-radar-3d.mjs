@@ -296,11 +296,12 @@ console.log('\n5b. a gate paints its whole footprint, not just the voxel under i
     return { point: count(Gp), footprint: count(Gf), pointLayer: layer(Gp, iz), footLayer: layer(Gf, iz),
              above: layer(Gf, iz + 1), cellXY: Gf.cellXY, floorPoint: floorCells(Gp), floorFoot: floorCells(Gf) };
   });
-  // 1.2 km either side at 0.5625 km voxels is a 5 by 5 patch, and 0.5 km
-  // of beam depth at 0.3 km voxels reaches the layers either side.
+  // 1.2 km either side at 0.35 km voxels wants a 7 by 7 patch (the span
+  // cap), and 0.5 km of beam depth at 0.25 km voxels reaches the layers
+  // either side.
   ok('the bare point fills one column of voxels', r.pointLayer === 1, String(r.pointLayer));
-  ok('the footprint fills a patch of them', r.footLayer >= 16 && r.footLayer <= 25, String(r.footLayer));
-  ok('and the beam depth reaches the layer above too', r.above >= 16, String(r.above));
+  ok('the footprint fills a patch of them', r.footLayer >= 36 && r.footLayer <= 49, String(r.footLayer));
+  ok('and the beam depth reaches the layer above too', r.above >= 36, String(r.above));
   ok('the floor texture paints the footprint as well', r.floorFoot > r.floorPoint && r.floorPoint === 1,
      JSON.stringify({ point: r.floorPoint, foot: r.floorFoot }));
 }
@@ -497,17 +498,17 @@ console.log('\n7. the ray march draws a solid volume, and the two sliders really
     const savedCam = { ..._r3dCam };
     const savedH = _r3dHeightMaxKft, savedF = _r3dFilterPct;
     // A tall thin 55 dBZ pillar: 3 km wide, from the ground to 16 km.
-    const g = [];
+    const g = [], rs = [];
     const segs = [{ start: 0, end: 0, angle: 0.5 }];
     for (let x = -1.5; x <= 1.5; x += 0.7) {
       for (let y = -1.5; y <= 1.5; y += 0.7) {
         for (let z = 0.4; z <= 16; z += 0.35) {
-          g.push(x, y, z, 55);
+          g.push(x, y, z, 55); rs.push(0.5, 0.3);     // real gates carry a footprint
         }
       }
     }
     segs[0].end = g.length / 4;
-    const frame = { gates: new Float32Array(g), count: g.length / 4,
+    const frame = { gates: new Float32Array(g), radii: new Float32Array(rs), count: g.length / 4,
                     segs, time: null, cuts: 1, _grids: {} };
     _r3dToken++;                                         // park any real load still in flight
     _r3dFrames = [frame];
