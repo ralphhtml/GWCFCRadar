@@ -4484,16 +4484,32 @@ body.lite-mode #export-toolbar { display: none !important; }
 #r3d-panel {
   position: fixed; left: 12px; bottom: 186px; z-index: 1150; display: none;
   width: min(560px, calc(100vw - 24px));
-  background: linear-gradient(180deg, rgba(6,6,9,0.97) 0%, rgba(1,1,2,0.98) 100%);
+  background: linear-gradient(180deg, rgba(30,30,36,0.98) 0%, rgba(12,12,15,0.99) 45%, #000 100%);
   backdrop-filter: blur(16px) saturate(1.2);
   -webkit-backdrop-filter: blur(16px) saturate(1.2);
-  border: 1px solid rgba(255,255,255,0.14);
+  border: 1px solid rgba(232,184,0,0.35);
   border-radius: 14px;
   box-shadow: 0 20px 50px rgba(0,0,0,0.7);
-  font-family: var(--sans); color: #e8edf5; overflow: hidden;
+  font-family: var(--sans); color: #e8b800; overflow: hidden;
 }
 #r3d-panel.open { display: block; }
 #r3d-panel, #r3d-panel * { font-family: 'Comfortaa', sans-serif; }
+/* Gold gradient text: painted as a background clipped to the glyphs. The
+   legend's swatches are children with their own backgrounds, so they keep
+   their real colours; the words beside them go gold. */
+#r3d-panel .xs-title, #r3d-panel .xs-where, #r3d-panel #r3d-status,
+#r3d-panel .r3d-slider-row > span, #r3d-panel .xs-note, #r3d-panel .xs-legend,
+#r3d-panel .r3d-timebar span, #r3d-panel #r3d-time-label {
+  background-image: linear-gradient(180deg, #ffe680 0%, #e8b800 48%, #b8860b 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: #e8b800;
+}
+#r3d-panel #r3d-status.bad {
+  background-image: linear-gradient(180deg, #ffc9b8 0%, #ff8a65 100%);
+}
+#r3d-panel select, #r3d-panel button, #r3d-panel option { color: #e8b800; }
+#r3d-panel option { background: #0c0c0f; }
+#r3d-panel input[type=range] { accent-color: #e8b800; }
 #r3d-panel.big { width: min(1100px, calc(100vw - 24px)); }
 #r3d-panel .xs-plot { padding: 8px 10px 4px; position: relative; }
 #r3d-panel canvas {
@@ -63982,6 +63998,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-17-f', date: 'Sep 17, 2026',
+    text: 'Volumetric 3D panel restyled: a real black gradient behind it, a gold edge, and gold gradient text everywhere, from the title and status down to the height labels, the N tick and the radar tag drawn inside the 3D box itself.' },
   { id: '2026-09-17-e', date: 'Sep 17, 2026',
     text: 'Volumetric 3D looks properly 3D now: the picture is stretched upward (3x by default, with a Height x picker from true scale to 5x) so a storm stands up instead of lying as a flat slab, while every label, the slider and the data stay in true height. The ceiling went up from 60 to 80 kft so the tallest overshooting tops fit, and every bit of text in the panel, including the height labels and radar tag drawn inside the 3D box, is now Comfortaa like the rest of the app.' },
   { id: '2026-09-17-d', date: 'Sep 17, 2026',
@@ -68958,7 +68976,7 @@ function _r3dRender() {
   _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, half, topKm, dpr, exag);
 
   if (!frame) {
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillStyle = _r3dGoldFill(ctx, h);
     ctx.font = `${Math.round(12 * dpr)}px 'Comfortaa', sans-serif`;
     ctx.textAlign = 'center';
     ctx.fillText(_r3dBuilding ? 'Building the volume…'
@@ -68970,9 +68988,18 @@ function _r3dRender() {
 // walls with labels climbing the far corner, a north tick, and a tick on
 // the floor rim pointing back at the radar the data came from - the same
 // reference frame the OpenStorm desktop viewer draws around its own storm.
+// The same gold the panel's text wears, as a canvas gradient for the text
+// drawn inside the box.
+function _r3dGoldFill(ctx, h) {
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, '#ffe680'); g.addColorStop(0.48, '#e8b800'); g.addColorStop(1, '#b8860b');
+  return g;
+}
+
 function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, half, topKm, dpr, exag) {
   const zOf = (kft) => kft / R3D_KFT_PER_KM * exag;       // true kft -> drawn height
   const topDrawn = topKm * exag;
+  const gold = _r3dGoldFill(ctx, h);
   const project = (x, y, z) => {
     const dx = x - camX, dy = y - camY, dz = z - camZ;
     const zc = dx * fx + dy * fy + dz * fz;
@@ -69011,7 +69038,7 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   const shared = farWalls.includes((farWalls[0] + 1) % 4) ? (farWalls[0] + 1) % 4
     : farWalls.includes((farWalls[1] + 1) % 4) ? (farWalls[1] + 1) % 4 : farWalls[0];
   const lc = corners[shared];
-  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillStyle = gold;
   ctx.font = `${Math.round(9.5 * dpr)}px 'Comfortaa', sans-serif`;
   ctx.textAlign = 'left';
   for (let kft = step; kft <= topKft + 0.01; kft += step) {
@@ -69033,7 +69060,7 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   corners.forEach(([x, y]) => line(project(x, y, 0), project(x, y, topDrawn)));
 
   // North tick on the floor rim, and where the radar itself sits.
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillStyle = gold;
   ctx.textAlign = 'center';
   ctx.font = `${Math.round(10 * dpr)}px 'Comfortaa', sans-serif`;
   const np = project(0, half, 0);
@@ -69044,7 +69071,6 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
     const s = half / Math.max(Math.abs(sx2), Math.abs(cy2), 1e-6);
     const sp = project(sx2 * s, cy2 * s, 0);
     if (sp) {
-      ctx.fillStyle = '#e8b800';
       ctx.beginPath(); ctx.arc(sp[0], sp[1], 3 * dpr, 0, Math.PI * 2); ctx.fill();
       ctx.fillText(_r3dStation.toUpperCase(), sp[0], sp[1] - 6 * dpr);
     }

@@ -736,6 +736,43 @@ console.log('\n11b. taller: the 80 kft ceiling, vertical exaggeration, and Comfo
   ok('and the panel text itself is Comfortaa', /Comfortaa/.test(r.panelFont), r.panelFont);
 }
 
+console.log('\n11c. a black gradient panel with gold gradient text, inside the box too');
+{
+  const r = await p.evaluate(() => {
+    _r3dOpen('kfws');
+    _r3dToken++;
+    const panel = getComputedStyle(document.getElementById('r3d-panel'));
+    const title = getComputedStyle(document.querySelector('#r3d-panel .xs-title'));
+    const status = getComputedStyle(document.getElementById('r3d-status'));
+    const fills = [];
+    const orig = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (t, x, y) {
+      fills.push({ t: String(t), gradient: typeof this.fillStyle === 'object' && this.fillStyle !== null });
+      return orig.call(this, t, x, y);
+    };
+    _r3dRender();
+    CanvasRenderingContext2D.prototype.fillText = orig;
+    _r3dClose();
+    return {
+      panelBg: panel.backgroundImage,
+      titleBg: title.backgroundImage, titleClip: title.webkitBackgroundClip || title.backgroundClip,
+      titleFill: title.webkitTextFillColor,
+      statusBg: status.backgroundImage,
+      labels: fills.length, allGradient: fills.every(f => f.gradient),
+    };
+  });
+  ok('the panel background is a black gradient',
+     /linear-gradient/.test(r.panelBg) && /rgba\(30, 30, 36/.test(r.panelBg) && /rgb\(0, 0, 0\)/.test(r.panelBg),
+     r.panelBg);
+  ok('the title is gold gradient text (a gradient clipped to the glyphs)',
+     /linear-gradient/.test(r.titleBg) && /232, 184, 0/.test(r.titleBg) && r.titleClip === 'text'
+     && /transparent|rgba\(0, 0, 0, 0\)/.test(r.titleFill),
+     JSON.stringify({ bg: r.titleBg, clip: r.titleClip, fill: r.titleFill }));
+  ok('so is the status line', /linear-gradient/.test(r.statusBg) && /232, 184, 0/.test(r.statusBg), r.statusBg);
+  ok('and every label drawn inside the 3D box is painted with a gold gradient too',
+     r.labels > 0 && r.allGradient, JSON.stringify({ labels: r.labels, allGradient: r.allGradient }));
+}
+
 console.log('\n12. nothing above threw');
 {
   const real = errs.filter(e => !/Failed to fetch|NetworkError|ERR_FAILED|net::/i.test(e));
