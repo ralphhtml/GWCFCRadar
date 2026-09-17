@@ -11312,6 +11312,7 @@ body.clean-mode #clean-hint { opacity: 1; }
   </div>
   <div class="r3d-controls">
     <select class="xsec-sel" id="r3d-product" title="Which measurement to render"></select>
+    <select class="xsec-sel" id="r3d-site" title="Which radar the zone is seen from (nearest first)"></select>
     <select class="xsec-sel" id="r3d-zone" title="How wide an area the zone covers">
       <option value="50">Small box</option>
       <option value="90" selected>Medium box</option>
@@ -63970,6 +63971,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-17-d', date: 'Sep 17, 2026',
+    text: 'Volumetric 3D got a station picker. The nearest radar to your zone is still chosen automatically, but the panel now lists the eight closest radars with their distances, so you can switch to a second radar for a different angle on the same storm, or step around one that is down for maintenance. The zone stays put; only the radar it is seen from changes.' },
   { id: '2026-09-17-c', date: 'Sep 17, 2026',
     text: 'Volumetric 3D fixes. The volume was missing because the radar picture only ever downloads the bottom few tilts of a Level 2 scan (all a flat map needs), and the 3D view was reusing that: it now fetches the whole volume itself, decodes every tilt up to the top of the storm several at a time, and shows the storm growing upward tilt by tilt while the rest lands. The colours are now your own: the 3D view paints with exactly the same radar palette as the flat picture, including your custom Radar Colors and value filter, and follows them the moment you change them.' },
   { id: '2026-09-17-b', date: 'Sep 17, 2026',
@@ -68051,6 +68054,28 @@ function _r3dNearestStation(lat, lng) {
   return best ? { id: best.id, km: bestKm } : null;
 }
 
+// The station picker: the nearest handful of radars to the zone's centre,
+// nearest first, so the list is short and every entry is one that could
+// actually see the zone. The nearest is chosen automatically; picking
+// another (a second radar with a different view of the same storm, or one
+// that is up when the nearest is down for maintenance) reloads from it.
+function _r3dFillSites() {
+  const ss = _r3dEl('r3d-site');
+  if (!ss || !_r3dZone) return;
+  const stations = (typeof NEXRAD_STATIONS !== 'undefined' && NEXRAD_STATIONS) || [];
+  const near = stations.map(s => ({
+    id: s.id, km: _xsKm({ lat: _r3dZone.lat, lng: _r3dZone.lng }, { lat: s.lat, lng: s.lon }),
+  })).sort((a, b) => a.km - b.km).slice(0, 8);
+  ss.innerHTML = '';
+  near.forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.id;
+    o.textContent = `${s.id.toUpperCase()} · ${s.km.toFixed(0)} km`;
+    ss.appendChild(o);
+  });
+  if (_r3dStation && near.some(s => s.id === _r3dStation)) ss.value = _r3dStation;
+}
+
 // The zone's box on the map, in real degrees for the current size.
 function _r3dZoneBounds(zone, sizeKm) {
   const half = sizeKm / 2;
@@ -68117,6 +68142,7 @@ function _r3dOpen(stationId) {
   _r3dCamFit();
   if (!_r3dLoopStarted) { _r3dLoopStarted = true; _r3dTick(); }
   _r3dStation = String(stationId || '').toLowerCase();
+  _r3dFillSites();
   _r3dLoad();
 }
 
@@ -69077,6 +69103,16 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   if (play) play.onclick = () => _r3dPlayToggle();
   const ps = _r3dEl('r3d-product');
   if (ps) ps.onchange = () => { _r3dUpdateLegend(ps.value); _r3dUpdateFilterLabel(); if (_r3dStation) _r3dLoad(); };
+  // A different radar for the same zone: same box, new volume.
+  const ss = _r3dEl('r3d-site');
+  if (ss) ss.onchange = () => {
+    const id = String(ss.value || '').toLowerCase();
+    if (!id || !_r3dZone) return;
+    const pos = _xsSiteLatLon(id);
+    _r3dStation = id;
+    _r3dStationKm = pos ? _xsKm({ lat: _r3dZone.lat, lng: _r3dZone.lng }, pos) : 0;
+    _r3dLoad();
+  };
   // The zone select re-grids gates already in hand and resizes the map
   // rectangle - no refetch, no re-decode, just a different crop of the sky.
   const zs = _r3dEl('r3d-zone');

@@ -38,8 +38,8 @@ console.log('\n1. the panel: a zone picker and volumetric controls, no toolbar b
      PAGE.includes('id="r3d-product"') && PAGE.includes('id="r3d-zone"'));
   ok('the zone picker offers small, medium and large boxes',
      /id="r3d-zone"[\s\S]{0,300}value="50"[\s\S]{0,200}value="90"[\s\S]{0,200}value="150"/.test(PAGE));
-  ok('there is no site picker - the zone finds its own nearest radar',
-     !PAGE.includes('id="r3d-site"'));
+  ok('it has a station picker too, for choosing a different radar than the nearest',
+     PAGE.includes('id="r3d-site"'));
   ok('it keeps the two sliders: Show above and Up to',
      PAGE.includes('id="r3d-filter"') && PAGE.includes('id="r3d-height"'));
   ok('it has a time control: play, a slider, a time label',
@@ -129,6 +129,42 @@ console.log('\n2. the map menu places the zone and finds the nearest radar');
   ok('and the map menu itself closes on the way', r.menuClosed);
   ok('closing takes the rectangle and the zone away with it',
      r.rectGoneAfterClose && r.zoneClearedAfterClose);
+}
+
+console.log('\n2b. the station picker: nearest first, nearest chosen, another one reloads');
+{
+  const r = await p.evaluate(async () => {
+    _cmOpen({ latlng: L.latLng(36.1, -95.9) });
+    const row = Array.from(document.querySelectorAll('#map-ctx-menu .cm-item'))
+      .find(el => /View in 3D here/i.test(el.textContent));
+    if (row) row.click();
+    const ss = document.getElementById('r3d-site');
+    const opts = Array.from(ss.options).map(o => ({ id: o.value, km: parseFloat(o.textContent.split('·')[1]) }));
+    const before = { station: _r3dStation, km: _r3dStationKm, selected: ss.value };
+    const loads = [];
+    const realLoad = window._r3dLoad;
+    window._r3dLoad = async () => { loads.push(_r3dStation); };
+    ss.value = opts[1].id;
+    ss.dispatchEvent(new Event('change', { bubbles: true }));
+    const after = { station: _r3dStation, km: _r3dStationKm, zone: { ..._r3dZone } };
+    window._r3dLoad = realLoad;
+    _r3dToken++;
+    _r3dClose();
+    return { opts, before, after, loads };
+  });
+  ok('it lists a short handful of radars, nearest first',
+     r.opts.length === 8 && r.opts.every((o, i) => i === 0 || o.km >= r.opts[i - 1].km),
+     JSON.stringify(r.opts.slice(0, 3)));
+  ok('the nearest one is what the tap chose, and it is the one selected',
+     r.before.selected === r.before.station && r.opts[0].id === r.before.station,
+     JSON.stringify(r.before));
+  ok('picking the second radar switches to it and reloads from it, same zone',
+     r.after.station === r.opts[1].id && r.loads.join(',') === r.opts[1].id
+     && Math.abs(r.after.zone.lat - 36.1) < 1e-6,
+     JSON.stringify({ after: r.after, loads: r.loads }));
+  ok('with its own distance from the zone, not the old one',
+     Math.abs(r.after.km - r.opts[1].km) < 1 && r.after.km !== r.before.km,
+     JSON.stringify({ before: r.before.km, after: r.after.km, listed: r.opts[1].km }));
 }
 
 console.log('\n3. the colours are the app\'s own radar palette, custom colours included');
