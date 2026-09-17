@@ -552,6 +552,56 @@ console.log('\n7. the ray march draws a solid volume, and the two sliders really
      r.filtered < 30, String(r.filtered));
 }
 
+console.log('\n7b. lit, solid, thinner, and cut open: the controls gauged from GR2Analyst, OpenStorm and RadarOmega');
+{
+  const r = await p.evaluate(async () => {
+    _r3dOpen('kfws');
+    _r3dToken++;
+    const g = [], rs = [];
+    for (let x = -3; x <= 3; x += 0.5) for (let y = -3; y <= 3; y += 0.5) for (let z = 0.4; z <= 12; z += 0.3) { g.push(x, y, z, 55); rs.push(0.5, 0.3); }
+    const frame = { gates: new Float32Array(g), radii: new Float32Array(rs), count: g.length / 4,
+                    segs: [{ start: 0, end: g.length / 4, angle: 0.5 }], time: null, cuts: 1, _grids: {} };
+    _r3dFrames = [frame]; _r3dFrameIdx = 0; _r3dQuality = 'fine';
+    _r3dCam.yaw = 0.6; _r3dCam.pitch = 0.35; _r3dCam.dist = 50;
+    const saved = { h: _r3dHeightMaxKft, f: _r3dFilterPct, o: _r3dOpacity, m: _r3dMode, c: _r3dCutSide, p: _r3dCutPct };
+    _r3dHeightMaxKft = 80; _r3dFilterPct = 0; _r3dOpacity = 1; _r3dMode = 'cloud'; _r3dCutSide = 'off'; _r3dLutCache = null;
+    const cv = document.getElementById('r3d-canvas'), ctx = cv.getContext('2d');
+    const reds = () => {
+      const d = ctx.getImageData(0, 0, cv.width, cv.height).data;
+      const vals = [];
+      for (let i = 0; i < d.length; i += 4) if (d[i] > 60 && d[i + 1] < 40 && d[i + 2] < 40) vals.push(d[i]);
+      vals.sort((a, b) => a - b);
+      return { n: vals.length, lo: vals[Math.floor(vals.length * 0.1)] || 0, hi: vals[Math.floor(vals.length * 0.9)] || 0 };
+    };
+    _r3dRender(); const lit = reds();
+    _r3dMode = 'solid'; _r3dLutCache = null; _r3dRender(); const solid = reds();
+    _r3dMode = 'cloud'; _r3dOpacity = 0.25; _r3dLutCache = null; _r3dRender(); const thin = reds();
+    _r3dOpacity = 1; _r3dLutCache = null;
+    _r3dCutSide = 'e'; _r3dCutPct = 70; _r3dRender(); const cutAway = reds();   // the east 70% is gone: the block sat at x = 0
+    _r3dCutSide = 'e'; _r3dCutPct = 20; _r3dRender(); const cutShallow = reds();
+    // The controls themselves.
+    const sel = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('change', { bubbles: true })); };
+    const inp = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); };
+    sel('r3d-mode', 'solid'); sel('r3d-cut', 'n'); inp('r3d-cutpct', '35'); inp('r3d-opacity', '250');
+    const wired = { mode: _r3dMode, cut: _r3dCutSide, pct: _r3dCutPct, opacity: _r3dOpacity,
+                    label: document.getElementById('r3d-opacity-label').textContent };
+    sel('r3d-mode', 'cloud'); sel('r3d-cut', 'off'); inp('r3d-cutpct', '50'); inp('r3d-opacity', '100');
+    Object.assign({}, saved); _r3dHeightMaxKft = saved.h; _r3dFilterPct = saved.f; _r3dOpacity = saved.o; _r3dMode = saved.m; _r3dCutSide = saved.c; _r3dCutPct = saved.p; _r3dLutCache = null;
+    _r3dClose();
+    return { lit, solid, thin, cutAway, cutShallow, wired };
+  });
+  ok('the block is lit: its faces come out in clearly different shades of the same red',
+     r.lit.n > 400 && (r.lit.hi - r.lit.lo) > 40, JSON.stringify(r.lit));
+  ok('Solid surface draws an opaque shell, at least as much red as the cloud',
+     r.solid.n >= r.lit.n * 0.9, JSON.stringify({ solid: r.solid.n, lit: r.lit.n }));
+  ok('a quarter opacity draws a visibly thinner cloud', r.thin.n < r.lit.n, JSON.stringify({ thin: r.thin.n, lit: r.lit.n }));
+  ok('cutting 70% in from the east removes the block entirely', r.cutAway.n < 20, String(r.cutAway.n));
+  ok('a shallow 20% cut leaves it standing', r.cutShallow.n > 400, String(r.cutShallow.n));
+  ok('the Look, Cutaway and Opacity controls drive the state',
+     r.wired.mode === 'solid' && r.wired.cut === 'n' && r.wired.pct === 35 && r.wired.opacity === 2.5 && /2\.5/.test(r.wired.label),
+     JSON.stringify(r.wired));
+}
+
 console.log('\n8. changing the box size re-grids in place, no refetch');
 {
   const r = await p.evaluate(() => {

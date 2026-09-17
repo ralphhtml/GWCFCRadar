@@ -11351,6 +11351,26 @@ body.clean-mode #clean-hint { opacity: 1; }
       <span id="r3d-height-label">80 kft</span>
     </label>
     <label class="r3d-slider-row">
+      <span>Opacity</span>
+      <input type="range" id="r3d-opacity" min="25" max="400" value="100" step="5" title="How solid the cloud is drawn">
+      <span id="r3d-opacity-label">1.0&times;</span>
+    </label>
+    <label class="r3d-slider-row">
+      <span>Look</span>
+      <select class="xsec-sel" id="r3d-mode" title="Lit cloud: see-through, shaded by a light. Solid surface: an opaque shell at the Show above value, like an isosurface.">
+        <option value="cloud" selected>Lit cloud</option>
+        <option value="solid">Solid surface</option>
+      </select>
+      <select class="xsec-sel" id="r3d-cut" title="Cut the box open from one side to look inside the storm">
+        <option value="off" selected>No cutaway</option>
+        <option value="n">Cut from north</option>
+        <option value="s">Cut from south</option>
+        <option value="e">Cut from east</option>
+        <option value="w">Cut from west</option>
+      </select>
+      <input type="range" id="r3d-cutpct" min="0" max="95" value="50" step="1" title="How far in the cutaway reaches">
+    </label>
+    <label class="r3d-slider-row">
       <span>Height</span>
       <select class="xsec-sel" id="r3d-exag" title="Stretch the picture upward so vertical structure is easy to see. Labels stay in true height.">
         <option value="1">1&times; true scale</option>
@@ -64011,6 +64031,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-17-k', date: 'Sep 17, 2026',
+    text: 'Volumetric 3D learned from the pros. Gauged against GR2Analyst (its Lit Volume and Isosurface modes and Volume Alpha control), OpenStorm (blue-noise ray jitter) and RadarOmega (the cutaway): the storm is now lit by a light above the camera, so every surface is shaded by which way it faces and the shape finally reads as solid; a new Look picker offers Lit cloud (see-through) or Solid surface (an opaque shell at the Show above value, like an isosurface); an Opacity slider makes the cloud thinner or denser; a Cutaway picker slices the box open from the north, south, east or west with a slider for how deep, so you can look inside; and every ray starts at a slightly different point so no banding patterns appear.' },
   { id: '2026-09-17-j', date: 'Sep 17, 2026',
     text: 'Volumetric 3D, finer still: the 3D grid is now 256 cells across and 96 tall (a third of a kilometre on a medium box, a quarter of a kilometre vertically), the radar picture on the box floor is blended smoothly between cells instead of stepping, and the coarse picture drawn while you drag is sharper too.' },
   { id: '2026-09-17-i', date: 'Sep 17, 2026',
@@ -68049,6 +68071,15 @@ let _r3dLutCache = null;         // { key, lut, floorRgb } - rebuilt when produc
 // instantly with no new decode.
 let _r3dFilterPct = 0;
 let _r3dHeightMaxKft = 80;
+// What the pros expose, gauged against GR2Analyst's Volume Explorer (Lit
+// Volume and Isosurface modes, a Volume Alpha control, a light), OpenStorm
+// (blue-noise jitter on the ray start so fixed steps never band) and
+// RadarOmega (a cutaway plane): an opacity multiplier, a Lit cloud / Solid
+// surface look, and an axis cutaway with a depth slider.
+let _r3dOpacity = 1;             // multiplier on the transfer function's alpha
+let _r3dMode = 'cloud';          // 'cloud' (lit, see-through) or 'solid' (isosurface-like shell)
+let _r3dCutSide = 'off';         // 'off' | 'n' | 's' | 'e' | 'w'
+let _r3dCutPct = 50;             // how far in the cutaway reaches, percent of the box
 
 // Zoom in as far as you like - all the way inside the cloud (the marcher
 // handles a camera inside the box, so there is no reason to stop short) -
@@ -68854,7 +68885,8 @@ function _r3dTick() {
 // same, just at different sharpness. The "Show above" slider lives here
 // too: below its cutoff the alpha is exactly zero.
 function _r3dLutFor(product, stepKm) {
-  const key = product + '|' + _r3dFilterPct + '|' + stepKm.toFixed(3) + '|' + _r3dPaletteGen;
+  const key = product + '|' + _r3dFilterPct + '|' + stepKm.toFixed(3) + '|' + _r3dPaletteGen
+    + '|' + _r3dOpacity + '|' + _r3dMode;
   if (_r3dLutCache && _r3dLutCache.key === key) return _r3dLutCache;
   const lut = new Float32Array(256 * 4);
   const floorRgb = new Uint8Array(256 * 3);
@@ -68870,10 +68902,14 @@ function _r3dLutFor(product, stepKm) {
     floorRgb[b * 3] = rgb[0]; floorRgb[b * 3 + 1] = rgb[1]; floorRgb[b * 3 + 2] = rgb[2];
     let a = 0;
     if (mag >= t0) {
-      const u = (mag - t0) / Math.max(0.02, 1 - t0);
-      a = Math.min(0.92, 0.015 + Math.pow(u, 1.5) * 0.75);   // opacity per km of cloud
+      if (_r3dMode === 'solid') {
+        a = 1;                                                // an opaque shell at the threshold: an isosurface
+      } else {
+        const u = (mag - t0) / Math.max(0.02, 1 - t0);
+        a = Math.min(0.92, (0.015 + Math.pow(u, 1.5) * 0.75) * _r3dOpacity);   // opacity per km of cloud
+      }
     }
-    a = 1 - Math.pow(1 - a, stepKm);                          // per-step, for this step length
+    a = a >= 1 ? 1 : 1 - Math.pow(1 - a, stepKm);             // per-step, for this step length
     lut[b * 4] = rgb[0] * a; lut[b * 4 + 1] = rgb[1] * a;
     lut[b * 4 + 2] = rgb[2] * a; lut[b * 4 + 3] = a;
   }
@@ -68891,7 +68927,18 @@ function _r3dLutFor(product, stepKm) {
 // samples nearest-voxel at a coarser resolution; fine mode (the moment the
 // hand stops) samples trilinearly at high resolution.
 let _r3dOffCv = null, _r3dImg = null;
-function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, half, topKm, exag) {
+// The box actually marched: the zone, less whatever the cutaway removes.
+function _r3dMarchBox(half) {
+  const box = { minX: -half, maxX: half, minY: -half, maxY: half };
+  const cut = 2 * half * Math.max(0, Math.min(95, _r3dCutPct)) / 100;
+  if (_r3dCutSide === 'e') box.maxX = half - cut;
+  else if (_r3dCutSide === 'w') box.minX = -half + cut;
+  else if (_r3dCutSide === 'n') box.maxY = half - cut;
+  else if (_r3dCutSide === 's') box.minY = -half + cut;
+  return box;
+}
+
+function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, half, topKm, exag, box) {
   const fine = _r3dQuality === 'fine';
   // Fine mode renders at the canvas's own full resolution (capped only for
   // truly huge panels), so the settled picture has no upscale in it at all;
@@ -68920,10 +68967,21 @@ function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, f
   // exaggeration on the way into the grid keeps the data at true height.
   const invCX = 1 / cellXY, invCZ = 1 / (cellZ * exag);
   const layerStride = nx * ny;
-  const minX = -half, maxX = half, minY = -half, maxY = half, maxZ = topKm * exag;
+  // The grid still spans the whole zone; the cutaway only narrows what is
+  // marched, so gx/gy are figured from the zone's own edge (-half).
+  const zoneMin = -half;
+  const minX = box.minX, maxX = box.maxX, minY = box.minY, maxY = box.maxY, maxZ = topKm * exag;
   const skipKm = B * Math.min(cellXY, cellZ * exag) * 0.9;
   const focalI = ih * 1.15;
   const floorArr = G.floor;
+  // A single light, GR2Analyst style, fixed in eye space: above and a
+  // little to the left of the camera, so whatever faces the viewer is lit
+  // and the far sides fall into shade. Surfaces are shaded by the local
+  // gradient of the data, the volume's own normal.
+  let lx = -0.35 * rx + 0.75 * ux - 0.55 * fx, ly = -0.35 * ry + 0.75 * uy - 0.55 * fy, lz = -0.35 * rz + 0.75 * uz - 0.55 * fz;
+  const ll = Math.hypot(lx, ly, lz) || 1; lx /= ll; ly /= ll; lz /= ll;
+  const gScaleXY = 1 / (2 * cellXY), gScaleZ = 1 / (2 * cellZ * exag);
+  const isVelG = ((_r3dEl('r3d-product') || {}).value) === 'vel';
 
   let o = 0;
   for (let py = 0; py < ih; py++) {
@@ -68957,7 +69015,7 @@ function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, f
         // stepping cell by cell. The floor honours the Show Above filter
         // too - filtering down to the core should not leave the whole radar
         // map painted underneath.
-        let fxg = (camX + dx * floorT - minX) * invCX - 0.5, fyg = (camY + dy * floorT - minY) * invCX - 0.5;
+        let fxg = (camX + dx * floorT - zoneMin) * invCX - 0.5, fyg = (camY + dy * floorT - zoneMin) * invCX - 0.5;
         if (fxg < 0) fxg = 0; else if (fxg > nx - 1.001) fxg = nx - 1.001;
         if (fyg < 0) fyg = 0; else if (fyg > ny - 1.001) fyg = ny - 1.001;
         const fx0 = fxg | 0, fy0 = fyg | 0, ftx = fxg - fx0, fty = fyg - fy0;
@@ -68974,10 +69032,14 @@ function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, f
         accR += k * pr; accG += k * pg; accB += k * pb; accA += k * pa;
       }
 
-      let t = t0 + stepKm * 0.5, guard = 0;
-      while (t < t1 && accA < 0.96 && guard++ < 700) {
+      // OpenStorm's "fuzz": the first step starts a little differently on
+      // every pixel (a hash of its position), so fixed-length steps never
+      // line up into wood-grain bands across the picture.
+      const jitter = fine ? (Math.sin(px * 12.9898 + py * 78.233) * 43758.5453) % 1 : 0.5;
+      let t = t0 + stepKm * (jitter < 0 ? jitter + 1 : jitter), guard = 0;
+      while (t < t1 && accA < 0.96 && guard++ < 900) {
         const x = camX + dx * t, y = camY + dy * t, z = camZ + dz * t;
-        let gx = (x - minX) * invCX, gy = (y - minY) * invCX, gz = z * invCZ;
+        let gx = (x - zoneMin) * invCX, gy = (y - zoneMin) * invCX, gz = z * invCZ;
         if (gx < 0) gx = 0; else if (gx > nx - 0.001) gx = nx - 0.001;
         if (gy < 0) gy = 0; else if (gy > ny - 0.001) gy = ny - 0.001;
         if (gz < 0) gz = 0; else if (gz > nz - 0.001) gz = nz - 0.001;
@@ -69011,12 +69073,35 @@ function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, f
             const sa = w000 * lut[l0 + 3] + w100 * lut[l1 + 3] + w010 * lut[l2 + 3] + w110 * lut[l3 + 3]
                      + w001 * lut[l4 + 3] + w101 * lut[l5 + 3] + w011 * lut[l6 + 3] + w111 * lut[l7 + 3];
             if (sa > 0.0015) {
-              const sr = w000 * lut[l0] + w100 * lut[l1] + w010 * lut[l2] + w110 * lut[l3]
-                       + w001 * lut[l4] + w101 * lut[l5] + w011 * lut[l6] + w111 * lut[l7];
-              const sg = w000 * lut[l0 + 1] + w100 * lut[l1 + 1] + w010 * lut[l2 + 1] + w110 * lut[l3 + 1]
-                       + w001 * lut[l4 + 1] + w101 * lut[l5 + 1] + w011 * lut[l6 + 1] + w111 * lut[l7 + 1];
-              const sb = w000 * lut[l0 + 2] + w100 * lut[l1 + 2] + w010 * lut[l2 + 2] + w110 * lut[l3 + 2]
-                       + w001 * lut[l4 + 2] + w101 * lut[l5 + 2] + w011 * lut[l6 + 2] + w111 * lut[l7 + 2];
+              let sr = w000 * lut[l0] + w100 * lut[l1] + w010 * lut[l2] + w110 * lut[l3]
+                     + w001 * lut[l4] + w101 * lut[l5] + w011 * lut[l6] + w111 * lut[l7];
+              let sg = w000 * lut[l0 + 1] + w100 * lut[l1 + 1] + w010 * lut[l2 + 1] + w110 * lut[l3 + 1]
+                     + w001 * lut[l4 + 1] + w101 * lut[l5 + 1] + w011 * lut[l6 + 1] + w111 * lut[l7 + 1];
+              let sb = w000 * lut[l0 + 2] + w100 * lut[l1 + 2] + w010 * lut[l2 + 2] + w110 * lut[l3 + 2]
+                     + w001 * lut[l4 + 2] + w101 * lut[l5 + 2] + w011 * lut[l6 + 2] + w111 * lut[l7 + 2];
+              // Lighting: the gradient of the data at this sample is the
+              // surface normal; how squarely it faces the light sets the
+              // shade. Deep inside the cloud the gradient is nil, and that
+              // is left at a neutral mid-tone rather than lit or shadowed.
+              if (sa > 0.02) {
+                const cx = ix0 + (tx > 0.5 ? 1 : 0), cy = iy0 + (ty > 0.5 ? 1 : 0), cz = iz0 + (tz > 0.5 ? 1 : 0);
+                const ci = (cz * ny + cy) * nx + cx;
+                const bxm = cx > 0 ? grid[ci - 1] : 0, bxp = cx < nx - 1 ? grid[ci + 1] : 0;
+                const bym = cy > 0 ? grid[ci - nx] : 0, byp = cy < ny - 1 ? grid[ci + nx] : 0;
+                const bzm = cz > 0 ? grid[ci - layerStride] : 0, bzp = cz < nz - 1 ? grid[ci + layerStride] : 0;
+                const sx2 = isVelG ? Math.abs(bxp - 128) - Math.abs(bxm - 128) : bxp - bxm;
+                const sy2 = isVelG ? Math.abs(byp - 128) - Math.abs(bym - 128) : byp - bym;
+                const sz2 = isVelG ? Math.abs(bzp - 128) - Math.abs(bzm - 128) : bzp - bzm;
+                let nX = -sx2 * gScaleXY, nY = -sy2 * gScaleXY, nZ = -sz2 * gScaleZ;
+                const nl = Math.hypot(nX, nY, nZ);
+                let shade = 0.78;
+                if (nl > 4) {
+                  nX /= nl; nY /= nl; nZ /= nl;
+                  const d = nX * lx + nY * ly + nZ * lz;
+                  shade = 0.42 + 0.62 * (d > 0 ? d : 0);
+                }
+                sr *= shade; sg *= shade; sb *= shade;
+              }
               const k = 1 - accA;
               accR += k * sr; accG += k * sg; accB += k * sb; accA += k * sa;
             }
@@ -69037,7 +69122,7 @@ function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, f
         // stepping cell by cell. The floor honours the Show Above filter
         // too - filtering down to the core should not leave the whole radar
         // map painted underneath.
-        let fxg = (camX + dx * floorT - minX) * invCX - 0.5, fyg = (camY + dy * floorT - minY) * invCX - 0.5;
+        let fxg = (camX + dx * floorT - zoneMin) * invCX - 0.5, fyg = (camY + dy * floorT - zoneMin) * invCX - 0.5;
         if (fxg < 0) fxg = 0; else if (fxg > nx - 1.001) fxg = nx - 1.001;
         if (fyg < 0) fyg = 0; else if (fyg > ny - 1.001) fyg = ny - 1.001;
         const fx0 = fxg | 0, fy0 = fyg | 0, ftx = fxg - fx0, fty = fyg - fy0;
@@ -69098,12 +69183,13 @@ function _r3dRender() {
   const ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
   const focal = h * 1.15;
 
+  const box = _r3dMarchBox(half);
   if (frame) {
     const G = _r3dGridFor(frame, product === 'vel');
-    _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, half, topKm, exag);
+    _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, half, topKm, exag, box);
   }
 
-  _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, half, topKm, dpr, exag);
+  _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, half, topKm, dpr, exag, box);
 
   if (!frame) {
     ctx.fillStyle = _r3dGoldFill(ctx, h);
@@ -69126,7 +69212,7 @@ function _r3dGoldFill(ctx, h) {
   return g;
 }
 
-function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, half, topKm, dpr, exag) {
+function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, half, topKm, dpr, exag, box) {
   const unit = R3D_HEIGHT_UNITS[_r3dHeightUnit] || R3D_HEIGHT_UNITS.kft;
   const zOf = (v) => v / unit.perKm * exag;                // true height in the unit -> drawn height
   const topDrawn = topKm * exag;
@@ -69189,6 +69275,22 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   drawLoop(0);
   drawLoop(topDrawn);
   corners.forEach(([x, y]) => line(project(x, y, 0), project(x, y, topDrawn)));
+
+  // The cutaway face, outlined in white where the box has been opened.
+  if (box && _r3dCutSide !== 'off') {
+    let face;
+    if (_r3dCutSide === 'e') face = [[box.maxX, -half], [box.maxX, half]];
+    else if (_r3dCutSide === 'w') face = [[box.minX, -half], [box.minX, half]];
+    else if (_r3dCutSide === 'n') face = [[-half, box.maxY], [half, box.maxY]];
+    else face = [[-half, box.minY], [half, box.minY]];
+    ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+    ctx.lineWidth = Math.max(1, dpr * 1.1);
+    const [a, b] = face;
+    line(project(a[0], a[1], 0), project(b[0], b[1], 0));
+    line(project(a[0], a[1], topDrawn), project(b[0], b[1], topDrawn));
+    line(project(a[0], a[1], 0), project(a[0], a[1], topDrawn));
+    line(project(b[0], b[1], 0), project(b[0], b[1], topDrawn));
+  }
 
   // North tick on the floor rim, and where the radar itself sits.
   ctx.fillStyle = gold;
@@ -69314,6 +69416,17 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
     _r3dUpdateHeightLabel();
     _r3dDirty = true;
   };
+  const opacity = _r3dEl('r3d-opacity'), opacityLabel = _r3dEl('r3d-opacity-label');
+  if (opacity) opacity.oninput = () => {
+    _r3dOpacity = Math.max(0.25, Math.min(4, Number(opacity.value) / 100 || 1));
+    if (opacityLabel) opacityLabel.textContent = _r3dOpacity.toFixed(2).replace(/0$/, '') + '×';
+    _r3dInteract();
+  };
+  const mode = _r3dEl('r3d-mode');
+  if (mode) mode.onchange = () => { _r3dMode = mode.value === 'solid' ? 'solid' : 'cloud'; _r3dInteract(); };
+  const cut = _r3dEl('r3d-cut'), cutPct = _r3dEl('r3d-cutpct');
+  if (cut) cut.onchange = () => { _r3dCutSide = ['n', 's', 'e', 'w'].includes(cut.value) ? cut.value : 'off'; _r3dInteract(); };
+  if (cutPct) cutPct.oninput = () => { _r3dCutPct = Number(cutPct.value) || 0; _r3dInteract(); };
   // The canvas labels are drawn in Comfortaa too; make sure it is loaded
   // before the first frame so they never fall back to a system font.
   try {
