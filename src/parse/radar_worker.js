@@ -143,7 +143,13 @@ const readRangeOptions = (options) => ({
     full: options.full_detail === true,
 });
 
-const createMeshBuilder = (includeGeojson) => {
+// `bbox` ([lonMin, latMin, lonMax, latMax]) keeps only the cells whose
+// centroid falls inside it. GWCFC's Radar 3D asks for one small zone of the
+// sky from every tilt of a volume; dropping the rest here, in the worker,
+// means the page is handed a few thousand cells per tilt instead of a few
+// hundred thousand, and never has to copy or scan the ones it will throw
+// away.
+const createMeshBuilder = (includeGeojson, bbox) => {
     const mesh = [];
     const features = includeGeojson ? [] : null;
     let minLng = Infinity;
@@ -161,6 +167,11 @@ const createMeshBuilder = (includeGeojson) => {
     };
 
     const pushQuad = (quad, value) => {
+        if (bbox) {
+            const cx = (quad[0][0] + quad[1][0] + quad[2][0] + quad[3][0]) / 4;
+            const cy = (quad[0][1] + quad[1][1] + quad[2][1] + quad[3][1]) / 4;
+            if (cx < bbox[0] || cx > bbox[2] || cy < bbox[1] || cy > bbox[3]) return;
+        }
         for (let i = 0; i < 4; i++) {
             updateBounds(quad[i]);
         }
@@ -249,7 +260,9 @@ const processRadarData = (radar, radarLocation, extent, layer, options = {}) => 
     const range = readRangeOptions(options);
     const project = createRadarProjector(radarLocation[0], radarLocation[1]);
     const includeGeojson = options.includeGeojson === true;
-    const builder = createMeshBuilder(includeGeojson);
+    const bbox = Array.isArray(options.bbox) && options.bbox.length === 4
+        && options.bbox.every(Number.isFinite) ? options.bbox : null;
+    const builder = createMeshBuilder(includeGeojson, bbox);
     const scanIsPartial = Boolean(radar?.hasGaps || radar?.isTruncated);
     const headers = radar.getHeader();
 
@@ -700,6 +713,34 @@ const getLevel3Metadata = (radar) => {
 
 const toEpochMs = (monotonicMs) => performance.timeOrigin + monotonicMs;
 
+// GWCFC: the mean elevation angle of one cut, over every radial in it.
+// A cut's header angle is just its first radial's, and the antenna wanders
+// a tenth of a degree or so around the nominal tilt as it turns; the mean
+// is what the beam height for the whole sweep should be figured from.
+const meanElevationAngle = (radar, elevationNumber) => {
+    try {
+        radar.setElevation(elevationNumber);
+        const hs = radar.getHeader();
+        const list = Array.isArray(hs) ? hs : [hs];
+        let sum = 0, n = 0;
+        for (const h of list) {
+            const a = Number(h && h.elevation_angle);
+            if (Number.isFinite(a)) { sum += a; n += 1; }
+        }
+        return n ? sum / n : null;
+    } catch (e) {
+        return null;
+    }
+};
+
+const level2TimeIso = (header) => {
+    try {
+        return new Date((header.julian_date * 86400 * 1000) + header.mseconds - 3600000).toISOString();
+    } catch (e) {
+        return null;
+    }
+};
+
 self.onmessage = (event) => {
     const { type } = event.data || {};
 
@@ -829,6 +870,83 @@ self.onmessage = (event) => {
             parserEndMs = toEpochMs(performance.now());
 
             const elevations = radar.listElevations();
+            // GWCFC: every cut's mean angle, so a caller can plan which cuts
+            // it wants (one per distinct tilt - a SAILS volume repeats the
+            // low tilts mid-scan and split cuts share an angle) without a
+            // full parse per guess. Measured once here; parsing is the cost.
+            const elevationAngles = elevations.map((e) => meanElevationAngle(radar, e));
+
+            // GWCFC: many cuts from ONE parse. Radar 3D needs every tilt of a
+            // volume; asking for them one message at a time meant re-parsing
+            // a 13 MB file for each, four seconds a tilt. With `elevations`
+            // the file is parsed once and each requested cut is built in
+            // turn, and with `bbox` each of those is only the zone asked for.
+            // `elevations: 'distinct'` asks the worker to plan the cuts itself:
+            // one per distinct tilt (angles clustered at a quarter degree,
+            // the lowest-numbered record of each cluster chosen, since that is
+            // the surveillance cut), up to `top_angle`, and when `lane`/`lanes`
+            // are given, only this lane's share of them - so several workers
+            // can each parse once and split the cuts between them without a
+            // separate decode to learn the angle list first.
+            let wanted = options?.elevations;
+            let distinctCount = null;
+            if (wanted === 'distinct') {
+                const topAngle = Number.isFinite(options.top_angle) ? options.top_angle : 20;
+                const items = elevations.map((el, i) => ({ el, a: elevationAngles[i] }))
+                    .filter((x) => Number.isFinite(x.a) && x.a <= topAngle)
+                    .sort((p, q) => p.a - q.a || p.el - q.el);
+                const clusters = [];
+                for (const it of items) {
+                    const c = clusters[clusters.length - 1];
+                    if (c && it.a - c.a0 < 0.25) { if (it.el < c.el) c.el = it.el; }
+                    else clusters.push({ a0: it.a, el: it.el });
+                }
+                const reps = clusters.map((c) => c.el);
+                distinctCount = reps.length;
+                const lanes = Number.isFinite(options.lanes) && options.lanes > 0 ? options.lanes : 1;
+                const lane = Number.isFinite(options.lane) ? options.lane : 0;
+                wanted = reps.filter((_, i) => i % lanes === lane);
+            }
+            if (Array.isArray(wanted) && (wanted.length || distinctCount !== null)) {
+                radar.setElevation(elevations[0] || 1);
+                const h0 = radar.getHeader(0);
+                const radarLocation0 = [h0.volume.latitude, h0.volume.longitude];
+                const sweeps = [];
+                const transfer = [];
+                for (const el of wanted) {
+                    if (!elevations.includes(el)) continue;
+                    try {
+                        radar.setElevation(el);
+                        const h = radar.getHeader(0);
+                        const built = processRadarData(radar, radarLocation0, h.radial_length, layer, options);
+                        const idx = elevations.indexOf(radar.elevation);
+                        const angle = idx >= 0 && Number.isFinite(elevationAngles[idx])
+                            ? elevationAngles[idx] : h.elevation_angle;
+                        sweeps.push({ elevationNumber: radar.elevation, elevationAngle: angle,
+                                      meshData: built.meshData, bounds: built.bounds });
+                        transfer.push(built.meshData.buffer);
+                    } catch (e) {
+                        // A cut without this moment (a Doppler-only split cut
+                        // asked for reflectivity) costs that cut, not the volume.
+                    }
+                }
+                meshEndMs = toEpochMs(performance.now());
+                self.postMessage({
+                    type: 'result',
+                    sweeps,
+                    metadata: {
+                        timeIso: level2TimeIso(h0),
+                        station: options?.station || null,
+                        vcp: getLevel2Vcp(radar, h0),
+                        availableElevations: elevations,
+                        elevationAngles,
+                        distinctCount
+                    },
+                    timing: { parserStartMs, parserEndMs, meshEndMs }
+                }, transfer);
+                return;
+            }
+
             if (options?.elevation && elevations.includes(options.elevation)) {
                 radar.setElevation(options.elevation);
             } else {
@@ -841,14 +959,19 @@ self.onmessage = (event) => {
 
             const { meshData, bounds, geojson } = processRadarData(radar, radarLocation, extent, layer, options);
             meshEndMs = toEpochMs(performance.now());
+            const ownIdx = elevations.indexOf(radar.elevation);
             const metadata = {
-                timeIso: new Date((header.julian_date * 86400 * 1000) + header.mseconds - 3600000).toISOString(),
-                elevationAngle: header.elevation_angle,
+                timeIso: level2TimeIso(header),
+                // The mean over the sweep where it is known, the first radial's
+                // angle where it is not - see meanElevationAngle.
+                elevationAngle: ownIdx >= 0 && Number.isFinite(elevationAngles[ownIdx])
+                    ? elevationAngles[ownIdx] : header.elevation_angle,
                 station: options?.station || null,
                 vcp: getLevel2Vcp(radar, header),
                 // GWCFC: the page builds its tilt picker from what this volume
                 // actually carries, so the list rides back with the result.
                 availableElevations: elevations,
+                elevationAngles,
                 elevationNumber: radar.elevation
             };
 
