@@ -602,9 +602,9 @@ console.log('\n10b. a whole Level 2 volume: shown tilt by tilt, history pulled w
                     elevationAngle: ANGLES[el], timeIso: '2026-09-17T12:00:00Z' } };
     };
     window._workerProcess = fake; window._pbDecode = fake;
-    let capAsked = null, recentArgs = null;
-    window._fetchVolumeDirect = async (site, cap) => { capAsked = cap; return new ArrayBuffer(16); };
-    window._fetchRecentVolumes = async (site, n, cap, startBack) => { recentArgs = [n, cap, startBack]; return []; };
+    let capAsked = null, completeAsked = null, recentArgs = null;
+    window._fetchVolumeDirect = async (site, cap, complete) => { capAsked = cap; completeAsked = complete; return new ArrayBuffer(16); };
+    window._fetchRecentVolumes = async (site, n, cap, startBack, complete) => { recentArgs = [n, cap, startBack, complete]; return []; };
     const keepCache = window._l2VolCache;
     const statuses = [];
     const realSay = window._r3dSay;
@@ -614,7 +614,7 @@ console.log('\n10b. a whole Level 2 volume: shown tilt by tilt, history pulled w
     await _r3dLoad();
     await new Promise(res => setTimeout(res, 30));
     const out = {
-      capAsked, recentArgs,
+      capAsked, completeAsked, recentArgs,
       cacheMarkedFull: !!(_l2VolCache && _l2VolCache.full && _l2VolCache.station === 'ktlx'),
       progressSeen: statuses.filter(s => /decoding tilt \d of \d/.test(s)).length,
       cuts: _r3dFrames[0] ? _r3dFrames[0].cuts : 0,
@@ -628,6 +628,8 @@ console.log('\n10b. a whole Level 2 volume: shown tilt by tilt, history pulled w
     return out;
   });
   ok('the live volume is fetched whole', r.capAsked >= 40 * 1024 * 1024, String(r.capAsked));
+  ok('and only a FINISHED volume is accepted, never one still being written',
+     r.completeAsked === true && r.recentArgs && r.recentArgs[3] === true, JSON.stringify(r.recentArgs));
   ok('and the cache is marked as the whole thing for next time', r.cacheMarkedFull);
   ok('every tilt was announced as it landed', r.progressSeen === 3, String(r.progressSeen));
   ok('all three cuts are in the frame', r.cuts === 3, String(r.cuts));
@@ -635,6 +637,36 @@ console.log('\n10b. a whole Level 2 volume: shown tilt by tilt, history pulled w
      r.recentArgs && r.recentArgs[0] === 3 && r.recentArgs[1] >= 40 * 1024 * 1024 && r.recentArgs[2] === 1,
      JSON.stringify(r.recentArgs));
   ok('the status ends on the gate count', /gates/.test(r.final), r.final);
+}
+
+console.log('\n10c. a half-written volume is refused, a finished one is taken');
+{
+  const r = await p.evaluate(async () => {
+    const realXml = window._s3Xml, realFetch = window.fetch;
+    const listing = (keys) => new DOMParser().parseFromString(
+      '<ListBucketResult>' + keys.map(k =>
+        `<Contents><Key>KTLX/9/${k}</Key><Size>30000</Size></Contents>`).join('') + '</ListBucketResult>',
+      'text/xml');
+    const inProgress = ['20260917-120000-001-S', ...Array.from({ length: 9 }, (_, i) =>
+      `20260917-120000-${String(i + 2).padStart(3, '0')}-I`)];          // antenna still turning
+    const finished = [...inProgress, '20260917-120000-011-E'];          // scan done
+    let keys = inProgress;
+    window._s3Xml = async () => listing(keys);
+    window.fetch = async (url, opts) => {
+      if (String(url).includes('KTLX/9/')) return { ok: true, arrayBuffer: async () => new ArrayBuffer(30000) };
+      return realFetch(url, opts);
+    };
+    const partialStrict = await _assembleVolume('KTLX', '9', 1e9, true);
+    const partialLoose = await _assembleVolume('KTLX', '9', 1e9, false);
+    keys = finished;
+    const wholeStrict = await _assembleVolume('KTLX', '9', 1e9, true);
+    window._s3Xml = realXml; window.fetch = realFetch;
+    return { partialStrict: partialStrict === null, partialLoose: !!partialLoose,
+             wholeStrict: wholeStrict ? wholeStrict.byteLength : 0 };
+  });
+  ok('a volume with no end chunk is refused when a whole one is required', r.partialStrict);
+  ok('the flat picture still accepts it (its low tilts are all it needs)', r.partialLoose);
+  ok('once the -E chunk exists the whole volume comes back', r.wholeStrict === 11 * 30000, String(r.wholeStrict));
 }
 
 console.log('\n11. the orbit camera, the quality switch, and the panel controls');

@@ -43939,7 +43939,7 @@ async function _s3VolumeList(station) {
 // connection-sized cap the flat picture wants (the low sweeps only). Radar
 // 3D passes a cap big enough for the whole volume, because it needs every
 // tilt, not just the bottom of the stack.
-async function _fetchVolumeDirect(stationId, cap) {
+async function _fetchVolumeDirect(stationId, cap, requireComplete) {
   const station = stationId.toUpperCase();
   const vols = await _s3VolumeList(station);
   if (!vols.length) throw new Error('no volumes for ' + station);
@@ -43983,7 +43983,7 @@ async function _fetchVolumeDirect(stationId, cap) {
   _l2SkipNewest = null;
   for (let back = startBack; back < startBack + 4; back++) {
     const vol = vols[(at - back + vols.length) % vols.length];
-    const buf = await _assembleVolume(station, vol, cap);
+    const buf = await _assembleVolume(station, vol, cap, requireComplete);
     if (buf) return buf;
   }
   throw new Error('no complete volume for ' + station);
@@ -43992,7 +43992,13 @@ async function _fetchVolumeDirect(stationId, cap) {
 // Assemble one volume's low sweeps into a decodable buffer, or null when the
 // volume is not yet complete. Split out of _fetchVolumeDirect so playback can
 // pull several recent volumes with the same, proven logic.
-async function _assembleVolume(station, vol, cap) {
+// `requireComplete`: the live feed writes a volume chunk by chunk as the
+// antenna scans, so the newest directory is usually still half-written and
+// holds only the low tilts. The flat picture is happy with that (the low
+// tilts are all it draws). Radar 3D is not: a volume missing its upper
+// tilts renders as a storm sliced off along a cone. Its last chunk is named
+// "-E" only once the scan has finished, so that is what is checked.
+async function _assembleVolume(station, vol, cap, requireComplete) {
   const byteCap = cap || L2_DIRECT_CAP;
   const x = await _s3Xml('prefix=' + station + '/' + vol + '/&max-keys=200');
   const entries = [...x.querySelectorAll('Contents')].map(c => ({
@@ -44000,6 +44006,7 @@ async function _assembleVolume(station, vol, cap) {
     size: parseInt(c.querySelector('Size')?.textContent || '0', 10),
   })).sort((a, b) => a.key < b.key ? -1 : 1);
   if (entries.length < 8 || !entries[0].key.endsWith('-001-S')) return null;
+  if (requireComplete && !entries[entries.length - 1].key.endsWith('-E')) return null;
   // Chunks are whole records, so any prefix of them is a valid file. The
   // listing carries every chunk's size, so the ones under the cap are chosen
   // before a byte moves: the low sweeps live at the front.
@@ -44034,7 +44041,7 @@ async function _assembleVolume(station, vol, cap) {
 // ArrayBuffers, which may be shorter than n near the start of a feed.
 // `cap` (bytes per volume) and `startBack` (how many newest volumes to skip)
 // are for Radar 3D, which wants whole volumes and already holds the newest.
-async function _fetchRecentVolumes(station, n, cap, startBack) {
+async function _fetchRecentVolumes(station, n, cap, startBack, requireComplete) {
   station = station.toUpperCase();
   const vols = await _s3VolumeList(station);   // shared with the live load
   if (!vols.length) return [];
@@ -44073,7 +44080,7 @@ async function _fetchRecentVolumes(station, n, cap, startBack) {
   for (let i = 0; i < candidates.length && out.length < n; i += CONCURRENCY) {
     const batch = candidates.slice(i, i + CONCURRENCY);
     const bufs = await Promise.all(batch.map(v =>
-      _assembleVolume(station, v, cap || L2_LOOP_CAP).catch(() => null)));
+      _assembleVolume(station, v, cap || L2_LOOP_CAP, requireComplete).catch(() => null)));
     for (const b of bufs) { if (b && out.length < n) out.push(b); }
   }
   return out;
@@ -63998,6 +64005,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-17-g', date: 'Sep 17, 2026',
+    text: 'Fixed Volumetric 3D drawing a storm as a slanted wedge. The radar writes each volume piece by piece as the antenna climbs through its tilts, so the newest one is usually still half-written and holds only the low tilts; the 3D view was taking it anyway, and the missing upper tilts left the top of the storm sliced off along the beam cone. It now waits for a volume that has actually finished scanning (its end chunk is present), for the live frame and the history frames alike, so the full height of the storm is there to draw.' },
   { id: '2026-09-17-f', date: 'Sep 17, 2026',
     text: 'Volumetric 3D panel restyled: a real black gradient behind it, a gold edge, and gold gradient text everywhere, from the title and status down to the height labels, the N tick and the radar tag drawn inside the 3D box itself.' },
   { id: '2026-09-17-e', date: 'Sep 17, 2026',
@@ -68587,7 +68596,9 @@ async function _r3dLoad() {
             && Date.now() - _l2VolCache.at < 120000) {
           buf = _l2VolCache.buf;
         } else if (typeof _fetchVolumeDirect === 'function') {
-          buf = await _fetchVolumeDirect(site, R3D_VOLUME_CAP);
+          // Whole AND finished: a volume still being written holds only
+          // the low tilts, which draws as a storm sliced off along a cone.
+          buf = await _fetchVolumeDirect(site, R3D_VOLUME_CAP, true);
           if (token !== _r3dToken) return;
           try { _l2VolCache = { station: site, at: Date.now(), buf: buf.slice(0), full: true }; } catch (e) {}
         }
@@ -68642,7 +68653,7 @@ async function _r3dLoad() {
     // Level 2 thing - a Level 3 frame stands alone as the one live picture.
     const cheapLink = typeof L2_DIRECT_CAP !== 'undefined' && L2_DIRECT_CAP < 3 * 1024 * 1024;
     if (!usedL3 && !cheapLink && typeof _fetchRecentVolumes === 'function') {
-      _fetchRecentVolumes(site, R3D_FRAMES - 1, R3D_VOLUME_CAP, 1).then(async (bufs) => {
+      _fetchRecentVolumes(site, R3D_FRAMES - 1, R3D_VOLUME_CAP, 1, true).then(async (bufs) => {
         if (token !== _r3dToken || !bufs || !bufs.length) return;
         const built = [];
         for (const b of bufs) {                          // newest first
