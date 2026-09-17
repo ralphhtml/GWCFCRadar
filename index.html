@@ -24706,8 +24706,19 @@ function _l3BucketCode(site, product, tilt) {
 // entries instead of several hundred, and needs no paging.
 async function _l3BucketNewest(site, code, at) {
   if (at == null) {
-    const keys = await _l3BucketList(site, code, 1);
-    return keys.length ? `${L3_BUCKET}/${keys[keys.length - 1]}` : null;
+    // This hour and the last, asked together: the newest scan is the last
+    // key of whichever is later. Two listings of a few dozen keys, where
+    // this used to read three whole days (up to a thousand keys each,
+    // measured at three and a half seconds apiece) to find one file.
+    const now = Date.now();
+    const [cur, prev] = await Promise.all([
+      _arcHourKeys(site, code, now), _arcHourKeys(site, code, now - 3600e3)]);
+    const keys = cur.length ? cur : prev;
+    if (keys.length) return `${L3_BUCKET}/${keys[keys.length - 1]}`;
+    // A quiet couple of hours (a radar down for maintenance, or a product
+    // it makes rarely): the slower day-wide look.
+    const dk = await _l3BucketList(site, code, 1);
+    return dk.length ? `${L3_BUCKET}/${dk[dk.length - 1]}` : null;
   }
   // A moment in the past: the scan nearest it, which is not the same as the
   // last scan before it. Asking for 3pm when the radar scanned at 2:58 and
@@ -25242,6 +25253,8 @@ addEventListener('keydown', (e) => {
 //
 // Only the listing is warmed here, never the frames. Frames are 286 KB each
 // and warming those for every site on screen would be somebody's phone bill.
+// The listing is now one hour's worth, not the whole day: a click only needs
+// the newest scan, and the loop behind it reads its days after the picture.
 function _arcWarm(site, code) {
   try {
     if (!site) return;
@@ -25251,7 +25264,10 @@ function _arcWarm(site, code) {
     const cd = code || (typeof _l3BucketCode === 'function'
       ? _l3BucketCode(site, _prProduct, _prTilt) : null);
     if (!cd) return;
-    _arcDayKeys(site, cd, Date.now()).catch(() => {});
+    // This hour and the last: exactly what the click's newest-scan lookup
+    // reads, and a tiny fraction of the whole day it used to warm.
+    _arcHourKeys(site, cd, Date.now());
+    _arcHourKeys(site, cd, Date.now() - 3600e3);
   } catch (e) {}
 }
 
@@ -25346,13 +25362,8 @@ async function _l3BucketShow(site, at) {
     return;
   }
   const wasBucket = _prBucketSite;
-  _prBucketSite = String(site).toUpperCase();
-  // Ask the bucket what this antenna is really publishing. Deliberately not
-  // awaited: the picture must not wait on the menu's homework, and the probe
-  // redraws the row itself when it lands.
-  if (typeof _l3ProbeSite === 'function') {
-    try { _l3ProbeSite(_prBucketSite); } catch (e) {}
-  }
+  const SITE = String(site).toUpperCase();
+  _prBucketSite = SITE;
   _prOn = true;
   _prClear();                       // the Pi's images, if any, come down
   if (typeof _refreshNexradSiteStyles === 'function') _refreshNexradSiteStyles();
@@ -25384,6 +25395,14 @@ async function _l3BucketShow(site, at) {
       // The moment travels with it, so a loop built around a storm three
       // years ago scrubs through that afternoon rather than through today.
       _l3BucketLoopBuild(site, code, img, at);
+    }
+    // Ask the bucket what this antenna is really publishing, for the menu.
+    // AFTER the picture, deliberately: it is eight small requests, and fired
+    // at the click they were queued ahead of the one file the picture
+    // needed (a browser holds about six connections to a host). Not
+    // awaited; the probe redraws the row itself when it lands.
+    if (typeof _l3ProbeSite === 'function' && _prBucketSite === SITE) {
+      try { _l3ProbeSite(SITE); } catch (e) {}
     }
   } catch (e) {
     if (e && e.message === 'superseded') return;
@@ -44067,55 +44086,130 @@ async function _s3VolumeList(station) {
   });
 }
 
+// ── Where the newest volume is ─────────────────────────────────────────────
+// The feed numbers volumes 1..999 and rolls over, so the newest is wherever
+// the times stop climbing. Finding it used to be a directory listing (a
+// thousand prefixes, measured at 2.6 s on a real click) and then up to a
+// dozen probes one after another, all before a single byte of radar moved.
+// Now it is a few rounds of small probes fired together, starting from a
+// remembered guess: a station's volumes come every few minutes, so the
+// number it was at last time plus the minutes since is usually within a
+// handful of the answer, and one round around that guess settles it.
+// Remembered for a minute so the loop build that follows a click reuses the
+// answer instead of searching again beside the download it would slow.
+const _s3NewestCache = new Map();          // station -> { at, p }
+const S3_NEWEST_LS = 'gwcfc_l2_newest';    // station -> { vol, time, perMin }
+function _s3NewestVol(station) {
+  station = String(station).toUpperCase();
+  const hit = _s3NewestCache.get(station);
+  if (hit && Date.now() - hit.at < 60000) return hit.p;
+  const p = _s3FindNewest(station);
+  _s3NewestCache.set(station, { at: Date.now(), p });
+  p.catch(() => { const c = _s3NewestCache.get(station); if (c && c.p === p) _s3NewestCache.delete(station); });
+  return p;
+}
+function _s3TimeMs(t) {                    // 'YYYYMMDDHHMMSS' -> ms
+  const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})?/.exec(String(t || ''));
+  return m ? Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)) : NaN;
+}
+function _s3VolWrap(v) { return ((v - 1) % 999 + 999) % 999 + 1; }   // 1..999, both ways round
+function _s3NewestMemory() {
+  try { return JSON.parse(localStorage.getItem(S3_NEWEST_LS) || '{}') || {}; } catch (e) { return {}; }
+}
+function _s3NewestRemember(station, vol, time) {
+  try {
+    const mem = _s3NewestMemory();
+    const old = mem[station];
+    let perMin = (old && old.perMin) || 0;
+    // Two sightings give the station's own pace, minutes per volume.
+    if (old && old.vol !== vol && isFinite(_s3TimeMs(old.time))) {
+      const dv = ((vol - old.vol) % 999 + 999) % 999;
+      const dm = (_s3TimeMs(time) - _s3TimeMs(old.time)) / 60000;
+      if (dv > 0 && dm > 0 && dm < 1440) perMin = dm / dv;
+    }
+    mem[station] = { vol, time, perMin };
+    const keys = Object.keys(mem);
+    if (keys.length > 60) {
+      keys.sort((a, b) => _s3TimeMs(mem[a].time) - _s3TimeMs(mem[b].time))
+          .slice(0, keys.length - 60).forEach(k => { delete mem[k]; });
+    }
+    localStorage.setItem(S3_NEWEST_LS, JSON.stringify(mem));
+  } catch (e) {}
+}
+async function _s3FindNewest(station) {
+  const time = (v) => _s3VolTime(station, v).catch(() => '');
+  const probe = async (nums) => {
+    const ts = await Promise.all(nums.map(time));
+    let b = -1;
+    for (let i = 0; i < nums.length; i++) if (ts[i] && (b < 0 || ts[i] > ts[b])) b = i;
+    return b < 0 ? null : { vol: nums[b], time: ts[b], i: b };
+  };
+  const finish = (vol, time) => { _s3NewestRemember(station, vol, time); return { vol, time }; };
+
+  // 1. The remembered guess, moved on by the minutes since, and a window of
+  // numbers either side of it in one go. A winner strictly inside the
+  // window whose successor is empty or older is the answer; a winner at the
+  // edge means the guess was off, and the proper search below runs.
+  const mem = _s3NewestMemory()[station];
+  if (mem && mem.vol && isFinite(_s3TimeMs(mem.time))) {
+    const ago = (Date.now() - _s3TimeMs(mem.time)) / 60000;
+    const per = mem.perMin > 1 && mem.perMin < 15 ? mem.perMin : 5;
+    const guess = _s3VolWrap(mem.vol + Math.round(ago / per));
+    const nums = [];
+    for (let d = -6; d <= 6; d++) nums.push(_s3VolWrap(guess + d));
+    const best = await probe(nums);
+    if (best && best.i > 0 && best.i < nums.length - 1) {
+      const nextT = await time(_s3VolWrap(best.vol + 1));
+      if (!nextT || nextT < best.time) return finish(best.vol, best.time);
+    }
+  }
+
+  // 2. Coarse to fine, every round fired together: sixteen numbers 64
+  // apart and the top of the range, then every eighth between the freshest
+  // and the next, then every one. Times climb with the number up to the
+  // rollover and drop there, so the newest sits at or just past the
+  // freshest probe of each round. A top of the range only minutes old
+  // means no rollover since, and it is the newest outright.
+  const r1 = [];
+  for (let v = 1; v <= 999; v += 64) r1.push(v);
+  if (r1[r1.length - 1] !== 999) r1.push(999);
+  const b1 = await probe(r1);
+  if (!b1) throw new Error('no volumes for ' + station);
+  if (b1.vol === 999 && (Date.now() - _s3TimeMs(b1.time)) / 60000 < 12) return finish(999, b1.time);
+  let best = b1;
+  let lo = b1.vol, hi = b1.i + 1 < r1.length ? r1[b1.i + 1] : 1000;   // the newest is in [lo, hi)
+  const r2 = [];
+  for (let v = lo + 8; v < hi; v += 8) r2.push(v);
+  if (r2.length) {
+    const b2 = await probe(r2);
+    if (b2 && b2.time > best.time) { best = b2; lo = b2.vol; hi = b2.i + 1 < r2.length ? r2[b2.i + 1] : hi; }
+    else hi = r2[0];
+  }
+  const r3 = [];
+  for (let v = lo + 1; v < hi; v++) r3.push(v);
+  if (r3.length) {
+    const b3 = await probe(r3);
+    if (b3 && b3.time > best.time) best = b3;
+  }
+  return finish(best.vol, best.time);
+}
+
 // `cap` is how many bytes of the volume to pull; left out, it is the
 // connection-sized cap the flat picture wants (the low sweeps only). Radar
 // 3D passes a cap big enough for the whole volume, because it needs every
-// tilt, not just the bottom of the stack.
-async function _fetchVolumeDirect(stationId, cap, requireComplete) {
+// tilt, not just the bottom of the stack. `opts` is the two-stage fetch
+// (see _assembleVolume): the first sweep alone comes back from here, and
+// the rest is handed to opts.onRest as it lands.
+async function _fetchVolumeDirect(stationId, cap, requireComplete, opts) {
   const station = stationId.toUpperCase();
-  const vols = await _s3VolumeList(station);
-  if (!vols.length) throw new Error('no volumes for ' + station);
-
-  // The volume number rolls over at 999, so the highest number is only the
-  // newest when there has been no rollover. Time goes backwards exactly once
-  // in the number-sorted list, so a short binary search finds where.
-  //
-  // Probe the highest number first: when it is minutes old it IS the newest,
-  // rollover or not, and the search is skipped entirely. That is the common
-  // case, and it saves a dozen sequential round trips on a slow connection.
-  let at = vols.length - 1;
-  // These two probes used to run one after the other, with the second only
-  // started once the first had answered. They do not depend on each other,
-  // so asking both at once removes a whole round trip from the wait before
-  // any radar appears; the oldest-volume answer is simply ignored when the
-  // newest turns out to be recent enough to settle it alone.
-  const [last, firstProbe] = await Promise.all([
-    _s3VolTime(station, vols[at]).catch(() => ''),
-    _s3VolTime(station, vols[0]).catch(() => ''),
-  ]);
-  const ageMin = (() => {
-    const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})/.exec(last || '');
-    if (!m) return Infinity;
-    return (Date.now() - Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5])) / 60000;
-  })();
-  const first = ageMin < 12 ? '' : firstProbe;
-  if (first && last && first > last) {
-    let lo = 0, hi = vols.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      const t = await _s3VolTime(station, vols[mid]).catch(() => '');
-      if (t && t >= first) lo = mid; else hi = mid - 1;
-    }
-    at = lo;
-  }
+  const newest = await _s3NewestVol(station);
 
   // Newest first, stepping back past volumes that have only just started:
   // a couple of chunks is an antenna part way round, not a picture.
   const startBack = _l2SkipNewest === station ? 1 : 0;
   _l2SkipNewest = null;
   for (let back = startBack; back < startBack + 4; back++) {
-    const vol = vols[(at - back + vols.length) % vols.length];
-    const buf = await _assembleVolume(station, vol, cap, requireComplete);
+    const buf = await _assembleVolume(station, _s3VolWrap(newest.vol - back), cap, requireComplete, opts);
     if (buf) return buf;
   }
   throw new Error('no complete volume for ' + station);
@@ -44130,7 +44224,14 @@ async function _fetchVolumeDirect(stationId, cap, requireComplete) {
 // tilts are all it draws). Radar 3D is not: a volume missing its upper
 // tilts renders as a storm sliced off along a cone. Its last chunk is named
 // "-E" only once the scan has finished, so that is what is checked.
-async function _assembleVolume(station, vol, cap, requireComplete) {
+// `opts.first` (bytes) splits the download in two: the chunks holding the
+// first sweep come back from this call as soon as they land, so the picture
+// can be decoded and drawn while the rest of the capped volume is still
+// coming down; the whole thing is then handed to `opts.onRest`. Measured on
+// a real click, the first sweep is a quarter of the bytes and a quarter of
+// the decode, which is the difference between a picture in two seconds and
+// one in seven. `opts.split` is set true when a rest is actually coming.
+async function _assembleVolume(station, vol, cap, requireComplete, opts) {
   const byteCap = cap || L2_DIRECT_CAP;
   const x = await _s3Xml('prefix=' + station + '/' + vol + '/&max-keys=200');
   const entries = [...x.querySelectorAll('Contents')].map(c => ({
@@ -44149,21 +44250,41 @@ async function _assembleVolume(station, vol, cap, requireComplete) {
     planned += e.size;
     if (planned > byteCap) break;
   }
-  const responses = await Promise.all(wanted.map(k =>
-    fetch(L2_CHUNKS_BUCKET + '/' + k, { signal: _abortSignal(30000) })));
-  const parts = [];
-  let total = 0;
-  for (const r of responses) {
-    if (!r.ok) break;
-    const b = await r.arrayBuffer();
-    parts.push(b);
-    total += b.byteLength;
+  let firstN = wanted.length;
+  if (opts && opts.first > 0 && typeof opts.onRest === 'function') {
+    let acc = 0; firstN = 0;
+    for (let i = 0; i < wanted.length; i++) { acc += entries[i].size; firstN++; if (acc >= opts.first) break; }
+    firstN = Math.max(Math.min(wanted.length, 3), firstN);
   }
+  const pull = async (keys) => {
+    const responses = await Promise.all(keys.map(k =>
+      fetch(L2_CHUNKS_BUCKET + '/' + k, { signal: (opts && opts.signal) || _abortSignal(30000) })));
+    const parts = [];
+    for (const r of responses) {
+      if (!r.ok) break;
+      parts.push(await r.arrayBuffer());
+    }
+    return parts;
+  };
+  const join = (parts) => {
+    let total = 0;
+    for (const b of parts) total += b.byteLength;
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (const b of parts) { out.set(new Uint8Array(b), off); off += b.byteLength; }
+    return out.buffer;
+  };
+  const parts = await pull(wanted.slice(0, firstN));
+  let total = 0;
+  for (const b of parts) total += b.byteLength;
   if (total < 100000) return null;
-  const out = new Uint8Array(total);
-  let off = 0;
-  for (const b of parts) { out.set(new Uint8Array(b), off); off += b.byteLength; }
-  return out.buffer;
+  if (firstN < wanted.length && parts.length === firstN) {
+    opts.split = true;
+    pull(wanted.slice(firstN))
+      .then(more => { try { opts.onRest(join(parts.concat(more))); } catch (e) {} })
+      .catch(() => { try { opts.onRest(null); } catch (e) {} });
+  }
+  return join(parts);
 }
 
 // The newest `n` COMPLETE volumes for a station, newest first, for playback.
@@ -44173,30 +44294,12 @@ async function _assembleVolume(station, vol, cap, requireComplete) {
 // ArrayBuffers, which may be shorter than n near the start of a feed.
 // `cap` (bytes per volume) and `startBack` (how many newest volumes to skip)
 // are for Radar 3D, which wants whole volumes and already holds the newest.
-async function _fetchRecentVolumes(station, n, cap, startBack, requireComplete) {
+async function _fetchRecentVolumes(station, n, cap, startBack, requireComplete, signal) {
   station = station.toUpperCase();
-  const vols = await _s3VolumeList(station);   // shared with the live load
-  if (!vols.length) return [];
-  let at = vols.length - 1;
-  const [last, firstProbe] = await Promise.all([
-    _s3VolTime(station, vols[at]).catch(() => ''),
-    _s3VolTime(station, vols[0]).catch(() => ''),
-  ]);
-  const ageMin = (() => {
-    const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})/.exec(last || '');
-    if (!m) return Infinity;
-    return (Date.now() - Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5])) / 60000;
-  })();
-  const first = ageMin < 12 ? '' : firstProbe;
-  if (first && last && first > last) {
-    let lo = 0, hi = vols.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      const t = await _s3VolTime(station, vols[mid]).catch(() => '');
-      if (t && t >= first) lo = mid; else hi = mid - 1;
-    }
-    at = lo;
-  }
+  // The same answer the live load just found, not a second search beside
+  // the download it would be slowing.
+  const newest = await _s3NewestVol(station);
+  const at = newest.vol;
   // These were pulled strictly one after another, so five history volumes
   // meant five full downloads end to end - minutes on a slow link, all of it
   // competing with the map for bandwidth. They do not depend on each other,
@@ -44205,14 +44308,14 @@ async function _fetchRecentVolumes(station, n, cap, startBack, requireComplete) 
   const candidates = [];
   const from = startBack || 0;
   for (let back = from; back < from + n + 6; back++) {
-    candidates.push(vols[(at - back + vols.length) % vols.length]);
+    candidates.push(_s3VolWrap(at - back));
   }
   const out = [];
   const CONCURRENCY = cap ? 1 : 3;           // whole volumes are big: one at a time
   for (let i = 0; i < candidates.length && out.length < n; i += CONCURRENCY) {
     const batch = candidates.slice(i, i + CONCURRENCY);
     const bufs = await Promise.all(batch.map(v =>
-      _assembleVolume(station, v, cap || L2_LOOP_CAP, requireComplete).catch(() => null)));
+      _assembleVolume(station, v, cap || L2_LOOP_CAP, requireComplete, signal ? { signal } : undefined).catch(() => null)));
     for (const b of bufs) { if (b && out.length < n) out.push(b); }
   }
   return out;
@@ -44963,9 +45066,13 @@ function _l2LoopReset() {
   // every loop ever built for the life of the tab, which on a phone is the
   // out-of-memory crash arriving by a different road.
   if (_l2Loop) _pbFreeFrames(_l2Loop.frames);
+  // The old build's downloads are cut off too, not just ignored when they
+  // land: left running, a few megabytes of history for the station just
+  // left would sit on the connections the next click needs.
+  if (_l2Loop && _l2Loop.abort) { try { _l2Loop.abort.abort(); } catch (e) {} }
   // Bumping the token invalidates any build still decoding in the background.
   _l2Loop = { frames: [], idx: 0, station: null, product: null, at: null,
-              code: null, exhausted: false,
+              code: null, exhausted: false, abort: null,
               building: false, token: (_l2Loop ? _l2Loop.token + 1 : 1) };
 }
 
@@ -44985,8 +45092,9 @@ async function _l2LoopBuild(product, station, curImg) {
   _l2Loop.product = product;
   _l2Loop.at = null;
   _l2Loop.building = true;
+  _l2Loop.abort = new AbortController();
   try {
-    const bufs = await _fetchRecentVolumes(station, L2_LOOP_MAX);
+    const bufs = await _fetchRecentVolumes(station, L2_LOOP_MAX, undefined, undefined, undefined, _l2Loop.abort.signal);
     if (token !== _l2Loop.token) return;          // superseded by a newer draw
     const layerMap = { cc: 'CC', zdr: 'ZDR', vel: 'VEL', ref: 'REF', kdp: 'KDP', sw: 'SW' };
     const layer = layerMap[product] || product.toUpperCase();
@@ -45270,6 +45378,25 @@ async function _arcDayKeys(site, code, dayMs, opts) {
   return pr;
 }
 
+// One UTC hour of one product: a few dozen keys in one small request, for
+// the questions that only need the newest scan. Briefly cached and shared
+// with the hover warm, so a click usually finds its hour already read.
+const _arcHourMem = new Map();             // prefix -> { at, p }
+function _arcHourKeys(site, code, hourMs) {
+  const sid = _arcSid(site);
+  const d = new Date(hourMs);
+  const prefix = `${sid}_${code}_${_arcDayStr(hourMs)}_${String(d.getUTCHours()).padStart(2, '0')}_`;
+  const hit = _arcHourMem.get(prefix);
+  if (hit && Date.now() - hit.at < ARC_TODAY_TTL) return hit.p;
+  const p = fetch(`${L3_BUCKET}/?list-type=2&max-keys=1000&prefix=${prefix}`,
+                  { signal: _abortSignal(15000) })
+    .then(r => r.ok ? r.text() : '')
+    .then(xml => [...xml.matchAll(/<Key>([^<]+)<\/Key>/g)].map(m => m[1]).sort())
+    .catch(() => []);
+  _arcHourMem.set(prefix, { at: Date.now(), p });
+  return p;
+}
+
 // Every scan between two moments, oldest first, reading whole days in
 // parallel. This is the function the old sequential hour-walk became.
 async function _arcRange(site, code, fromMs, toMs, opts) {
@@ -45392,6 +45519,8 @@ async function _l3BucketLoopBuild(site, code, curImg, at) {
   _l2Loop.product = String(code).toLowerCase();
   _l2Loop.at = at == null ? null : at;
   _l2Loop.building = true;
+  _l2Loop.abort = new AbortController();
+  const loopSignal = _l2Loop.abort.signal;
   // How much to build NOW, as against how much this device could hold.
   //
   // Measured: building to the full budget took 112 seconds and 76 MB of
@@ -45424,8 +45553,7 @@ async function _l3BucketLoopBuild(site, code, curImg, at) {
       const slice = todo.slice(i, i + BATCH);
       const got = await Promise.all(slice.map(async (key) => {
         try {
-          const buf = await fetch(`${L3_BUCKET}/${key}`,
-                                  { signal: _abortSignal(30000) })
+          const buf = await fetch(`${L3_BUCKET}/${key}`, { signal: loopSignal })
             .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); });
           if (token !== _l2Loop.token) return null;
           const result = await _pbDecode(buf, code);
@@ -45667,6 +45795,10 @@ async function _loadL3DataInner(product, stationOverride, retried, gen, signal, 
   // half a minute of waiting on a slow link, and slow overlapping fetches are
   // exactly the weather that grows races.
   var buffer;
+  // The two-stage fetch: the first sweep comes back alone and is decoded
+  // and drawn at once; the rest of the capped volume lands a moment later
+  // through `rest`, and is what gets banked for the next product switch.
+  var rest = null;
   if (_l2VolCache.station === station &&
       Date.now() - _l2VolCache.at < 120000 && _l2VolCache.buf) {
     buffer = _l2VolCache.buf.slice(0);
@@ -45678,7 +45810,10 @@ async function _loadL3DataInner(product, stationOverride, retried, gen, signal, 
     // every station including the terminal radars, and has no middle box to
     // be down; the Worker route needs the station in four capitals.
     try {
-      buffer = await _fetchVolumeDirect(station);
+      const two = { first: _l2FirstBytes(product), split: false, onRest: null };
+      const restP = new Promise(res => { two.onRest = (full) => res(full || null); });
+      buffer = await _fetchVolumeDirect(station, undefined, false, two);
+      if (two.split) rest = restP;
     } catch (direct) {
       console.log('[L2] direct fetch failed (' + direct.message + '), trying worker');
       var res = await fetch(RADAR_WORKER_URL + '?station=' + station.toUpperCase(),
@@ -45686,12 +45821,15 @@ async function _loadL3DataInner(product, stationOverride, retried, gen, signal, 
       if (!res.ok) { var errJson = await res.json().catch(function(){ return {}; }); throw new Error(errJson.error || 'HTTP ' + res.status); }
       buffer = await res.arrayBuffer();
     }
-    console.log('[L2] Fetched', buffer.byteLength, 'bytes for', station);
+    console.log('[L2] Fetched', buffer.byteLength, 'bytes for', station + (rest ? ' (first sweep)' : ''));
     // Keep a copy: the one handed to the worker is transferred away.
-    _l2VolCache = { station: station, at: Date.now(), buf: buffer.slice(0) };
     // Cached even when superseded, because the download is already paid for
     // and clicking back to this station should then be instant. Only the
-    // DRAWING is abandoned.
+    // DRAWING is abandoned. A first sweep alone is not banked: the cross
+    // section and the tilt menu want the whole capped volume, and that is
+    // banked the moment the rest lands.
+    if (!rest) _l2VolCache = { station: station, at: Date.now(), buf: buffer.slice(0) };
+    else rest.then(full => { if (full) _l2VolCache = { station: station, at: Date.now(), buf: full }; });
     if (stale()) return;
   } catch(e) {
     if (!e || !e.cached) {
@@ -45709,8 +45847,21 @@ async function _loadL3DataInner(product, stationOverride, retried, gen, signal, 
   var result;
   try {
     console.log('[L2] Sending', buffer.byteLength, 'bytes to worker for layer', layer);
-    result = await _workerProcess(buffer, layer,
-      _l2Tilt ? { elevation: _l2Tilt } : undefined);
+    try {
+      result = await _workerProcess(buffer, layer,
+        _l2Tilt ? { elevation: _l2Tilt } : undefined);
+    } catch (e1) {
+      // The first sweep alone may not hold this product yet (velocity lives
+      // in the second sweep of a split cut): the rest is on its way, so wait
+      // for it and decode the whole volume rather than retrying a volume
+      // back, which would be a fresh download of the wrong thing.
+      if (!(rest && /No data found in file/i.test(e1 && e1.message || ''))) throw e1;
+      const full = await rest;
+      if (!full || stale()) throw e1;
+      rest = null;
+      result = await _workerProcess(full.slice(0), layer,
+        _l2Tilt ? { elevation: _l2Tilt } : undefined);
+    }
     console.log('[L2] Worker result: meshData length =', result.meshData?.length, 'bounds =', result.bounds);
   } catch(e) {
     // A superseded request lost to a newer click on purpose; the newer one
@@ -45765,12 +45916,48 @@ async function _loadL3DataInner(product, stationOverride, retried, gen, signal, 
     _l2Tilt = meta.elevationNumber || _l2Tilt;
     if (document.getElementById('sub-l2-ref')) toggleRadarL2Sub();
   }
+  // The rest of the volume, when the first sweep went up alone: decoded on
+  // the pool (never the interactive slot, which belongs to the next click)
+  // for the tilt menu, which the first sweep could only fill with one cut.
+  if (rest) {
+    const firstQuads = (result && result.meshData && result.meshData.length) || 0;
+    rest.then(full => {
+      if (!full || stale()) return;
+      return _pbDecode(full.slice(0), layer, _l2Tilt ? { elevation: _l2Tilt } : undefined).then(res => {
+        if (stale()) return;
+        const m = res && res.metadata;
+        if (m && Array.isArray(m.availableElevations)
+            && m.availableElevations.length > (_l2TiltList || []).length) {
+          _l2TiltList = m.availableElevations;
+          if (document.getElementById('sub-l2-ref')) toggleRadarL2Sub();
+        }
+        // A first bite that ended partway round the sweep drew a picture
+        // with a wedge missing. The whole volume knows: more gates at the
+        // same cut means the sweep was cut short, and the full one goes up.
+        const quads = (res && res.meshData && res.meshData.length) || 0;
+        if (quads > firstQuads * 1.02 + 9) _renderMesh(res, product, station);
+      });
+    }).catch(() => {});
+  }
   // Build the raw playback loop for this site in the background, so the play
   // button and timeline can scrub the last few volumes. The live frame is
-  // already up; the older frames fill in behind it.
+  // already up; the older frames fill in behind it, once the rest of the
+  // live volume has had the connections to itself.
   if (img && typeof _l2LoopBuild === 'function') {
-    _l2LoopBuild(product, station, img);
+    const startLoop = () => { if (!stale()) _l2LoopBuild(product, station, img); };
+    if (rest) rest.then(startLoop, startLoop); else startLoop();
   }
+}
+
+// How much of a volume the first stage of a click pulls: enough for the
+// first sweep of the product asked for. Reflectivity and the dual-pol
+// moments ride the surveillance sweep at the front of the file; velocity
+// and spectrum width ride the Doppler sweep that follows it in a split cut,
+// so they take a bigger first bite. A connection already capped small gets
+// no split at all, since the whole capped volume is about this size anyway.
+function _l2FirstBytes(product) {
+  if (L2_DIRECT_CAP <= 3 * 1024 * 1024) return 0;
+  return (/^(vel|sw)$/.test(String(product || '')) ? 3.5 : 2) * 1024 * 1024;
 }
 
 // Paint one decoded volume into a PNG, and nothing else: no globals touched,
@@ -64137,6 +64324,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-17-p', date: 'Sep 17, 2026',
+    text: 'Viewing a station is much faster. Level 2: finding the newest volume used to read a directory of a thousand entries and then probe a dozen of them one after another before a byte of radar moved; it now fires a few small probes together, starts from where the station was last time, and the loop behind the picture reuses the answer instead of searching again. The first sweep is downloaded and drawn on its own while the rest of the volume is still arriving, so the picture is up in a fraction of the time (measured: a 10 second click became 4 on a slow link). Level 3: the newest scan comes from this hour\'s listing instead of three whole days, and the product probe waits until the picture is up rather than queueing in front of it. Leaving a station also cuts off its history downloads so the next click has the connections to itself.' },
   { id: '2026-09-17-o', date: 'Sep 17, 2026',
     text: 'Type your own playback speed. The Volumetric 3D time bar, the Spaghetti Models panel, the Severe panel and the cyclone panel each have a number box beside the play button now: type 0.25 for a slow study or 8 for a quick skim and it takes hold at once (the cycle button still works too). The animation bar\'s speed box stays on small phones instead of disappearing. Volumetric 3D playback is smooth as well: it runs on the screen\'s own clock, every frame is drawn once into a cache before the loop starts, and the box stands still while the frames play.' },
   { id: '2026-09-17-n', date: 'Sep 17, 2026',
