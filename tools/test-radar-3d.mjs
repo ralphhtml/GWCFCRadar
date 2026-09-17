@@ -275,6 +275,36 @@ console.log('\n5. gates become voxels: gridding, vertical continuity, the floor'
      r.occHit === 1 && r.occEmpty === 0, JSON.stringify({ occHit: r.occHit, occEmpty: r.occEmpty }));
 }
 
+console.log('\n5b. a gate paints its whole footprint, not just the voxel under its centre');
+{
+  const r = await p.evaluate(() => {
+    // Two identical 55 dBZ gates at the same spot: one as a bare point, one
+    // carrying a real footprint 1.2 km across and a 0.5 km deep beam.
+    const gates = new Float32Array([0, 0, 5, 55]);
+    const asPoint = { gates, count: 1, segs: [{ start: 0, end: 1, angle: 0.5 }], time: null, cuts: 1, _grids: {} };
+    const asFootprint = { gates, radii: new Float32Array([1.2, 0.5]), count: 1,
+                          segs: [{ start: 0, end: 1, angle: 0.5 }], time: null, cuts: 1, _grids: {} };
+    const count = (G) => { let n = 0; for (let i = 0; i < G.grid.length; i++) if (G.grid[i]) n++; return n; };
+    const layer = (G, izWanted) => {
+      let n = 0;
+      for (let iy = 0; iy < G.ny; iy++) for (let ix = 0; ix < G.nx; ix++) if (G.grid[(izWanted * G.ny + iy) * G.nx + ix]) n++;
+      return n;
+    };
+    const Gp = _r3dGridFrame(asPoint, 90, false), Gf = _r3dGridFrame(asFootprint, 90, false);
+    const iz = Math.floor(5 / Gf.cellZ);
+    const floorCells = (G) => { let n = 0; for (let i = 0; i < G.floor.length; i++) if (G.floor[i]) n++; return n; };
+    return { point: count(Gp), footprint: count(Gf), pointLayer: layer(Gp, iz), footLayer: layer(Gf, iz),
+             above: layer(Gf, iz + 1), cellXY: Gf.cellXY, floorPoint: floorCells(Gp), floorFoot: floorCells(Gf) };
+  });
+  // 1.2 km either side at 0.5625 km voxels is a 5 by 5 patch, and 0.5 km
+  // of beam depth at 0.3 km voxels reaches the layers either side.
+  ok('the bare point fills one column of voxels', r.pointLayer === 1, String(r.pointLayer));
+  ok('the footprint fills a patch of them', r.footLayer >= 16 && r.footLayer <= 25, String(r.footLayer));
+  ok('and the beam depth reaches the layer above too', r.above >= 16, String(r.above));
+  ok('the floor texture paints the footprint as well', r.floorFoot > r.floorPoint && r.floorPoint === 1,
+     JSON.stringify({ point: r.floorPoint, foot: r.floorFoot }));
+}
+
 console.log('\n6. building a frame from a volume that is stood in for, zone filtered');
 {
   const r = await p.evaluate(async () => {
