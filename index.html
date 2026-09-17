@@ -24806,6 +24806,70 @@ async function _l2ArcGunzip(bytes, truncated) {
   return out;
 }
 
+// ── The AWS archive, the fast road ────────────────────────────────────────
+// Unidata mirrors the same Level 2 tape on S3 with plain per-volume files,
+// open CORS and ranged reads - none of the tar walking the Google mirror
+// needs, and it answers real browsers where the Google listing has been
+// seen to fail. So it is asked first, and the tar mirror is the fallback.
+const L2AWS_BUCKET = 'https://unidata-nexrad-level2.s3.amazonaws.com';
+const _l2AwsDayCache = new Map();
+function _l2AwsSid(site) {
+  let sid = String(site).toUpperCase();
+  if (sid.length === 3) sid = 'K' + sid;
+  return sid;
+}
+function _l2AwsStampMs(key) {
+  const m = /(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/.exec(String(key).split('/').pop() || '');
+  return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : NaN;
+}
+async function _l2AwsDayKeys(site, dayMs) {
+  const sid = _l2AwsSid(site);
+  const d = new Date(dayMs);
+  const p2 = n => String(n).padStart(2, '0');
+  const prefix = `${d.getUTCFullYear()}/${p2(d.getUTCMonth() + 1)}/${p2(d.getUTCDate())}/${sid}/`;
+  const hit = _l2AwsDayCache.get(prefix);
+  if (hit && Date.now() - hit.at < 60000) return hit.p;
+  const pr = fetch(`${L2AWS_BUCKET}/?list-type=2&prefix=${encodeURIComponent(prefix)}&max-keys=1000`,
+                   { signal: _abortSignal(20000) })
+    .then(r => { if (!r.ok) throw new Error('archive listing HTTP ' + r.status); return r.text(); })
+    .then(xml => [...xml.matchAll(/<Key>([^<]+)<\/Key>/g)].map(m => m[1])
+      // The bucket keeps a small _MDM metadata file beside some volumes.
+      .filter(k => !/_MDM/.test(k) && isFinite(_l2AwsStampMs(k))).sort());
+  _l2AwsDayCache.set(prefix, { at: Date.now(), p: pr });
+  pr.catch(() => { const c = _l2AwsDayCache.get(prefix); if (c && c.p === pr) _l2AwsDayCache.delete(prefix); });
+  return pr;
+}
+// Up to `n` whole volumes ending at the one nearest `at`, nearest first then
+// back in time. `startBack` skips that many of the nearest. `cap` bounds the
+// bytes read of each volume (a ranged read; the records are whole enough for
+// the decoder's tolerant tail).
+async function _l2AwsVolumes(site, at, n, cap, startBack) {
+  let keys = await _l2AwsDayKeys(site, at);
+  // The volumes just before midnight live in the previous day's listing.
+  const near = keys.length ? Math.abs(_l2AwsStampMs(keys[0]) - at) : Infinity;
+  if (!keys.length || (near < 90 * 60000 && keys.findIndex(k => _l2AwsStampMs(k) >= at) <= (n || 1) + (startBack || 0))) {
+    try { keys = (await _l2AwsDayKeys(site, at - 86400e3)).concat(keys); } catch (e) {}
+  }
+  if (!keys.length) throw new Error('the archive has no ' + _l2AwsSid(site) + ' data that day');
+  let bi = 0, gap = Infinity;
+  keys.forEach((k, i) => { const g = Math.abs(_l2AwsStampMs(k) - at); if (g < gap) { gap = g; bi = i; } });
+  bi -= (startBack || 0);
+  const picks = keys.slice(Math.max(0, bi - (n || 1) + 1), bi + 1).reverse();
+  const out = [];
+  for (const key of picks) {
+    try {
+      // The records inside are bzip2 blocks: a mid-block cut is undecodable,
+      // so a small cap means the whole (modest) file rather than a ranged
+      // slice; only the big 3D cap uses Range, as a guard on a freak file.
+      const headers = cap && cap >= 16 * 1024 * 1024 ? { Range: `bytes=0-${cap - 1}` } : undefined;
+      const r = await fetch(`${L2AWS_BUCKET}/${key}`, { headers, signal: _abortSignal(60000) });
+      if (!r.ok && r.status !== 206) throw new Error('archive read HTTP ' + r.status);
+      out.push({ buffer: await r.arrayBuffer(), when: _l2AwsStampMs(key), name: key.split('/').pop() });
+    } catch (e) { if (!out.length && !startBack) throw e; }
+  }
+  return out;
+}
+
 // The tar's table of contents for one moment: list the day, pick the tar
 // covering the moment, walk its headers. Walked once per tar and shared,
 // because the flat picture and Radar 3D ask for the same hour within
@@ -24887,8 +24951,13 @@ async function _l2ArcRead(idx, entry, cap) {
            when: _l2ArcStampMs(entry.name), name: entry.name };
 }
 
-// One volume scan out of the mirror: the one nearest the moment.
+// One volume scan out of the archive: the one nearest the moment. AWS
+// first, the tar mirror as fallback.
 async function _l2ArcVolume(site, at, cap) {
+  try {
+    const vols = await _l2AwsVolumes(site, at, 1, cap || L2_DIRECT_CAP, 0);
+    if (vols.length) return vols[0];
+  } catch (e) {}
   const idx = await _l2ArcIndex(site, at);
   return _l2ArcRead(idx, _l2ArcNearest(idx.vols, at), cap);
 }
@@ -24899,6 +24968,10 @@ async function _l2ArcVolume(site, at, cap) {
 // history behind a volume already on screen is fetched without fetching
 // it again. The tar holds one hour, so the answer can be shorter than n.
 async function _l2ArcVolumes(site, at, n, cap, startBack) {
+  try {
+    const vols = await _l2AwsVolumes(site, at, n, cap, startBack);
+    if (vols.length) return vols;
+  } catch (e) {}
   const idx = await _l2ArcIndex(site, at);
   const bi = idx.vols.indexOf(_l2ArcNearest(idx.vols, at)) - (startBack || 0);
   const picks = idx.vols.slice(Math.max(0, bi - n + 1), bi + 1).reverse();
@@ -44539,7 +44612,7 @@ let _radarWorkerPending = null;  // { resolve, reject } for current request
 // is a new URL, and a page from before the build keeps the URL its decoder
 // answers to. A mismatched pair is how "Parse failed" appears on one device
 // while the same click works everywhere else.
-var RADAR_WORKER_V = '7116d14b';
+var RADAR_WORKER_V = '0729362f';
 
 function _getRadarWebWorker() {
   if (_radarWebWorker) return _radarWebWorker;
@@ -64324,6 +64397,10 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-17-r', date: 'Sep 17, 2026',
+    text: 'Volumetric 3D reads the radar\'s own coordinates now, the way OpenStorm does. The volume is kept as the antenna scanned it (sweep, azimuth, range, at the native quarter kilometre by half degree) and every ray interpolates between the two tilts either side of it, so the picture is the data itself rather than a resampled copy: sharper cores, smooth air between tilts, honest fades at the top and bottom of the stack. The ray marching also moved off the page into a pool of background workers, so the map and the controls never freeze while a frame draws, and a multi-core phone or laptop draws several times faster. Every raw product is in the picker too: reflectivity, velocity, spectrum width, correlation, differential reflectivity and specific phase, each with its own scale, noise floor and Show above slider.' },
+  { id: '2026-09-17-q', date: 'Sep 17, 2026',
+    text: 'Time Machine 3D is accurate now. Travelled volumes come off NOAA\'s own per-volume archive first (the tar mirror stayed as fallback), so a moment like the one that used to show only four Level 3 tilts now loads the whole Level 2 volume, every cut of it, with the volumes before it on the time bar. Two real time bugs fixed on the way: every Level 2 clock read 23 hours ahead (the tape counts 1 January 1970 as day one), and archived velocity failed to decode at all because the parser landed on a sweep that carries no velocity. All products now work at any moment, live or travelled.' },
   { id: '2026-09-17-p', date: 'Sep 17, 2026',
     text: 'Viewing a station is much faster. Level 2: finding the newest volume used to read a directory of a thousand entries and then probe a dozen of them one after another before a byte of radar moved; it now fires a few small probes together, starts from where the station was last time, and the loop behind the picture reuses the answer instead of searching again. The first sweep is downloaded and drawn on its own while the rest of the volume is still arriving, so the picture is up in a fraction of the time (measured: a 10 second click became 4 on a slow link). Level 3: the newest scan comes from this hour\'s listing instead of three whole days, and the product probe waits until the picture is up rather than queueing in front of it. Leaving a station also cuts off its history downloads so the next click has the connections to itself.' },
   { id: '2026-09-17-o', date: 'Sep 17, 2026',
@@ -68338,8 +68415,6 @@ function _r3dZoneMaxKm() { return _r3dZone ? Math.max(_r3dZone.wKm, _r3dZone.hKm
 // onto the product's own range) - a byte grid is small enough to rebuild in
 // milliseconds and cheap enough to sample tens of thousands of times per
 // frame in plain JS.
-const R3D_GRID_N = 256;          // voxels across the zone horizontally (0.35 km on a medium box)
-const R3D_GRID_NZ = 96;          // voxels bottom-to-top (0.25 km)
 const R3D_Z_MAX_KM = 80 / R3D_KFT_PER_KM;   // grid ceiling: 80 kft, above any storm top on record
 // Vertical exaggeration, for the eye only. A 90 km box is only 18 km tall
 // at true scale - a flat slab that hides every vertical feature - so the
@@ -68347,10 +68422,44 @@ const R3D_Z_MAX_KM = 80 / R3D_KFT_PER_KM;   // grid ceiling: 80 kft, above any s
 // slider and the data itself stay in true kft; only the drawing is taller.
 let _r3dExag = 3;
 
+// Every moment the raw feeds carry, each with the scale its bytes map onto,
+// the worker layer that decodes it, the Level 3 family that publishes it
+// (spectrum width has no decodable Level 3 product, so it is Level 2 only),
+// the noise floor below which a gate is empty air, and where the Show above
+// slider starts. `signed` (velocity) and `absolute` (ZDR) products count
+// their strength as distance from zero either way; `inverted` (CC) counts
+// LOW values as the strong ones, since a hail core or debris ball is a hole
+// in the correlation field, not a peak.
 const R3D_PRODUCTS = [
-  { id: 'ref', label: 'Reflectivity' },
-  { id: 'vel', label: 'Velocity' },
+  { id: 'ref', label: 'Reflectivity', layer: 'REF', l3: 'reflectivity', min: -20, max: 80, unit: 'dBZ', floor: R3D_MIN_DBZ, filter: 25 },
+  { id: 'vel', label: 'Velocity', layer: 'VEL', l3: 'velocity', min: -100, max: 100, unit: 'kt', signed: true, floor: R3D_MIN_KT, filter: 10 },
+  { id: 'sw', label: 'Spectrum width', layer: 'SW', l3: null, min: 0, max: 40, unit: 'kt', floor: 0.5, filter: 10 },
+  { id: 'cc', label: 'Correlation (CC)', layer: 'CC', l3: 'corrcoeff', min: 0.2, max: 1.05, unit: '', inverted: true, floor: null, filter: 0 },
+  { id: 'zdr', label: 'Differential (ZDR)', layer: 'ZDR', l3: 'diffrefl', min: -8, max: 8, unit: 'dB', absolute: true, floor: null, filter: 0 },
+  { id: 'kdp', label: 'Specific phase (KDP)', layer: 'KDP', l3: 'kdp', min: -2, max: 7, unit: 'deg/km', floor: null, filter: 0 },
 ];
+function _r3dSpec(id) { return R3D_PRODUCTS.find(p => p.id === id) || R3D_PRODUCTS[0]; }
+function _r3dSpecByLayer(layer) { return R3D_PRODUCTS.find(p => p.layer === String(layer || '').toUpperCase()) || R3D_PRODUCTS[0]; }
+function _r3dSpecOf(x) { return x && typeof x === 'object' ? x : typeof x === 'string' ? _r3dSpec(x) : _r3dSpec(x ? 'vel' : 'ref'); }
+// One byte per bin: 0 means empty air, 1..255 is the value mapped onto the
+// product's own range (velocity's calm sits at 128).
+function _r3dNormByte(v, spec) {
+  const s = _r3dSpecOf(spec);
+  const t = Math.max(0, Math.min(1, (v - s.min) / (s.max - s.min)));
+  return 1 + Math.round(t * 254);
+}
+// How strong a value is, 0..1, the number the opacity and the Show above
+// cutoff both work from.
+function _r3dMagOf(spec, v) {
+  if (spec.signed || spec.absolute) return Math.min(1, Math.abs(v) / Math.max(Math.abs(spec.min), Math.abs(spec.max)));
+  const t = (v - spec.min) / (spec.max - spec.min);
+  return Math.max(0, Math.min(1, spec.inverted ? 1 - t : t));
+}
+function _r3dByteStrength(b, spec) {
+  if (!b) return 0;
+  const s = _r3dSpecOf(spec);
+  return _r3dMagOf(s, s.min + (b - 1) / 254 * (s.max - s.min));
+}
 
 let _r3dOn = false;
 let _r3dBuilding = false;
@@ -68433,14 +68542,19 @@ function _r3dSay(msg, kind) {
 // runs 0 to 100 kt either side of zero, so the same 0-100 slider covers
 // each product's whole real range.
 function _r3dFilterValue(product, pct) {
-  return product === 'vel' ? pct : (-20 + pct);
+  const sp = _r3dSpec(product), f = pct / 100;
+  if (sp.signed || sp.absolute) return f * Math.max(Math.abs(sp.min), Math.abs(sp.max));
+  if (sp.inverted) return sp.max - f * (sp.max - sp.min);
+  return sp.min + f * (sp.max - sp.min);
 }
 function _r3dUpdateFilterLabel() {
   const el = _r3dEl('r3d-filter-label');
   if (!el) return;
   const product = (_r3dEl('r3d-product') || {}).value || 'ref';
+  const sp = _r3dSpec(product);
   const v = _r3dFilterValue(product, _r3dFilterPct);
-  el.textContent = product === 'vel' ? Math.round(v) + ' kt' : Math.round(v) + ' dBZ';
+  const num = sp.max - sp.min <= 2 ? v.toFixed(2) : String(Math.round(v * 10) / 10);
+  el.textContent = (sp.inverted ? 'below ' : sp.absolute ? 'beyond ' : '') + num + (sp.unit ? ' ' + sp.unit : '');
 }
 function _r3dUpdateHeightLabel() {
   const el = _r3dEl('r3d-height-label');
@@ -68699,6 +68813,7 @@ function _r3dClose() {
   _r3dFrameIdx = -1;
   _r3dStation = null;
   _r3dLutCache = null;
+  _r3dPaintSeq++;
 }
 
 // ── Colour: the app's own radar palette ──────────────────────────────────
@@ -68752,20 +68867,24 @@ function _r3dZoneBbox(zone) {
 }
 
 function _r3dConsumeMeshZone(mesh, elevAngle, sitePos, zone, isVel, out) {
+  const spec = _r3dSpecOf(isVel);
   const angle = isFinite(elevAngle) ? elevAngle : 0.5;
   // Only a true noise/clear-air floor here, not a "show me the strong
   // stuff" cutoff - that is what the Show Above slider is for, at render
   // time, so it can be turned back down without a re-decode.
-  const minV = isVel ? -Infinity : R3D_MIN_DBZ;
+  const floor = spec.floor;
   const kmLat = 111.32;
   const kmLng = 111.32 * Math.max(0.2, Math.cos(zone.lat * Math.PI / 180));
   const [lonMin, latMin, lonMax, latMax] = _r3dZoneBbox(zone);
   const xs = out.xs, ys = out.ys, zs = out.zs, vs = out.vs, rs = out.rs;
+  // Where the radar stands in the zone's own km, once per frame: the polar
+  // volume is built around it.
+  if (!out.site && sitePos) out.site = { x: (sitePos.lng - zone.lng) * kmLng, y: (sitePos.lat - zone.lat) * kmLat };
   let added = 0;
   for (let i = 0; i < mesh.length; i += 9) {
     const v = mesh[i + 8];
     if (v !== v) continue;                            // NaN, a range fold
-    if (isVel ? Math.abs(v) < R3D_MIN_KT : v < minV) continue;
+    if (floor != null && (spec.signed ? Math.abs(v) < floor : v < floor)) continue;
     const lon = (mesh[i] + mesh[i + 2] + mesh[i + 4] + mesh[i + 6]) / 4;
     if (lon < lonMin || lon > lonMax) continue;
     const lat = (mesh[i + 1] + mesh[i + 3] + mesh[i + 5] + mesh[i + 7]) / 4;
@@ -68808,7 +68927,7 @@ function _r3dFinishFrame(out, segs, timeIso, cuts) {
   const radii = out.rs && out.rs.length === n * 2 ? new Float32Array(out.rs) : null;
   let zMax = 0;
   for (let i = 0; i < n; i++) if (out.zs[i] > zMax) zMax = out.zs[i];
-  return { gates, radii, count: n, segs, time: timeIso || null, cuts, zMax, _grids: {} };
+  return { gates, radii, count: n, segs, time: timeIso || null, cuts, zMax, site: out.site || null, _grids: {} };
 }
 
 // One tilt decode. The playback decoder pool runs several at once on a
@@ -68828,7 +68947,7 @@ function _r3dDecode(buf, layer, extra) {
 // steeper than R3D_TOP_ANGLE has been seen: nothing lives above that.
 async function _r3dBuildFrame(buf, layer, sitePos, zone, token, onTilt) {
   const bbox = _r3dZoneBbox(zone);
-  const isVel = layer === 'VEL';
+  const isVel = _r3dSpecByLayer(layer);            // the product's spec, by the worker's layer name
   const out = { xs: [], ys: [], zs: [], vs: [], rs: [] };
   const segs = [];
   let cuts = 0, done = 0, total = 1, timeIso = null;
@@ -68911,15 +69030,16 @@ async function _r3dBuildFrame(buf, layer, sitePos, zone, token, onTilt) {
 // fetched and decoded on its own, and the same mesh-to-points step above
 // combines them into one frame exactly as if they had come from one volume.
 async function _r3dBuildFrameL3(site, product, sitePos, zone, token, at) {
-  const family = PR_BUCKET[product === 'vel' ? 'velocity' : 'reflectivity'];
-  if (!family) return null;
+  const spec = _r3dSpec(product);
+  const family = spec.l3 ? PR_BUCKET[spec.l3] : null;
+  if (!family) return null;                              // spectrum width: Level 2 only
   const isTdwr = typeof _isTdwrSite === 'function' && _isTdwrSite(site);
   const allCodes = isTdwr ? family.t : family.k;
-  if (!allCodes || !allCodes.length) return null;
+  if (!allCodes || !allCodes.length) return null;        // a terminal radar has no dual-pol products
   // TZL is a longer-range repeat of TZ0's own tilt, not a distinct elevation
   // - skip it so two cuts never land on top of each other in the same frame.
   const codes = allCodes.filter(c => c !== 'TZL').slice(0, R3D_MAX_TILTS);
-  const isVel = product === 'vel';
+  const isVel = spec;
 
   const sweeps = await Promise.all(codes.map(async (code) => {
     try {
@@ -68938,10 +69058,14 @@ async function _r3dBuildFrameL3(site, product, sitePos, zone, token, at) {
   const out = { xs: [], ys: [], zs: [], vs: [], rs: [] };
   const segs = [];
   let cuts = 0, timeIso = null;
-  for (const res of sweeps) {
+  for (let k = 0; k < sweeps.length; k++) {
+    const res = sweeps[k];
     if (!res || !res.meshData) continue;
     const meta = res.metadata || {};
     if (!isFinite(meta.elevationAngle)) continue;      // no real angle, no honest height
+    // Level 3 velocity arrives in metres per second and echo tops carry a
+    // flag: the same normalising the flat picture does, so a knot is a knot.
+    if (typeof _l3MeshNormalize === 'function') _l3MeshNormalize(res.meshData, codes[k]);
     const start = out.xs.length;
     const added = _r3dConsumeMeshZone(res.meshData, meta.elevationAngle, sitePos, zone, isVel, out);
     if (added) segs.push({ start, end: start + added, angle: meta.elevationAngle });
@@ -68952,240 +69076,528 @@ async function _r3dBuildFrameL3(site, product, sitePos, zone, token, at) {
   return _r3dFinishFrame(out, segs, timeIso, cuts);
 }
 
-// ── The voxel grid ───────────────────────────────────────────────────────
-// One byte per voxel: 0 means empty air, 1..255 is the value mapped onto
-// the product's own range (-20..80 dBZ, or -100..100 kt with 128 as calm).
-// The grid, the floor texture and a coarse occupancy mask (for skipping
-// empty space while marching) are built together, in milliseconds, from a
-// frame's stored in-zone gates - so re-gridding for a new box size costs
-// nothing anyone would notice.
-function _r3dNormByte(v, isVel) {
-  const t = isVel ? (Math.max(-100, Math.min(100, v)) + 100) / 200
-                  : (Math.max(-20, Math.min(80, v)) + 20) / 100;
-  return 1 + Math.round(t * 254);
-}
-function _r3dByteStrength(b, isVel) { return isVel ? Math.abs(b - 128) : b; }
+// ── The polar volume ─────────────────────────────────────────────────────
+// OpenStorm keeps a radar volume in the radar's own coordinates (sweep,
+// azimuth, range), and its ray marcher converts every sample point back into
+// those coordinates to look the value up, interpolating between the two
+// sweeps either side of the point's elevation. That is what this does now,
+// in place of the voxel grid it replaces: nothing is resampled onto a box,
+// so a gate keeps its native quarter kilometre by half a degree whatever
+// the zone's size, and the air between two tilts is the smooth blend of
+// both rather than a stack of stair-stepped layers. The volume is a set of
+// byte planes, one per tilt, over just the window of ground range and
+// azimuth that covers the zone, with a padding ray copied round each end
+// (OpenStorm's trick) so a full circle interpolates across north.
+const R3D_EARTH_KM = 6371 * 4 / 3;      // the 4/3 earth every beam-height formula uses
+const R3D_EL_MIN = -2, R3D_EL_MAX = 32, R3D_EL_STEP = 0.01;
+const R3D_POLAR_MAX_BYTES = 5 * 1024 * 1024;   // beyond this the bins coarsen, evenly
+const R3D_HALF_BEAM = 0.5;               // degrees: how far the highest tilt reaches above itself
+// Below the lowest tilt the volume fades out over a wider skirt: a storm
+// whose lowest sample sits a kilometre up (a 0.5 degree beam at 100 km)
+// genuinely continues to the ground, and a hard cone cut through every
+// storm bottom read as a slanted plane. A degree and a bit fades it to
+// nothing well before it could paint a whole sky's worth of clear air.
+const R3D_SKIRT_BELOW = 1.2;
+const R3D_COL_N = 64;                    // the column map: 64 by 64 cells over the zone, each with its top of echo
+let _r3dVolSeq = 0;
 
-// One box-blur pass along one axis (0 = x, 1 = y, 2 = z) of radius r,
-// averaging each filled voxel with the filled voxels within r of it along
-// that line. Empty voxels stay empty, except with `close` set, when an
-// empty voxel whose window is mostly filled is a seam between two radials
-// and is closed with their average. Running sums make the cost the same
-// whatever the radius, which is what lets the radius follow the gate
-// footprint rather than stay a fixed three taps.
-function _r3dBlurAxis(grid, tmp, nx, ny, nz, axis, r, close) {
-  tmp.set(grid);
-  const len = axis === 0 ? nx : axis === 1 ? ny : nz;
-  const stride = axis === 0 ? 1 : axis === 1 ? nx : nx * ny;
-  const outerA = axis === 0 ? ny : nx, outerB = axis === 2 ? ny : nz;
-  const sum = new Float32Array(len + 1), cnt = new Int32Array(len + 1);
-  for (let b = 0; b < outerB; b++) {
-    for (let a = 0; a < outerA; a++) {
-      // The first voxel of this line, for each axis' own layout.
-      const base = axis === 0 ? (b * ny + a) * nx : axis === 1 ? b * nx * ny + a : b * nx + a;
-      let any = false;
-      for (let i = 0; i < len; i++) {
-        const v = tmp[base + i * stride];
-        sum[i + 1] = sum[i] + v; cnt[i + 1] = cnt[i] + (v ? 1 : 0);
-        if (v) any = true;
-      }
-      if (!any) continue;
-      for (let i = 0; i < len; i++) {
-        const lo = i - r < 0 ? 0 : i - r, hi = i + r + 1 > len ? len : i + r + 1;
-        const c = cnt[hi] - cnt[lo];
-        if (tmp[base + i * stride]) {
-          if (c > 1) grid[base + i * stride] = Math.round((sum[hi] - sum[lo]) / c);
-        } else if (close && c * 2 >= hi - lo) {
-          // A seam: empty, but most of the window either side is filled.
-          grid[base + i * stride] = Math.round((sum[hi] - sum[lo]) / c);
-        }
-      }
-    }
-  }
-}
-
-function _r3dGridFrame(frame, zone, isVel) {
-  // Square cells sized off the box's longer side, so a wide box gets a
-  // wide grid and a tall one a tall grid; a big box gets more cells so
-  // the cell itself never grows past what the radar can resolve.
-  const wKm = zone.wKm, hKm = zone.hKm, longKm = Math.max(wKm, hKm);
-  const nMax = longKm > 120 ? 320 : R3D_GRID_N;
-  const cellXY = longKm / nMax, cellZ = R3D_Z_MAX_KM / R3D_GRID_NZ;
-  const nx = Math.max(8, Math.round(wKm / cellXY)), ny = Math.max(8, Math.round(hKm / cellXY)), nz = R3D_GRID_NZ;
-  const grid = new Uint8Array(nx * ny * nz);           // idx = (iz*ny + iy)*nx + ix
-  const halfX = wKm / 2, halfY = hKm / 2;
+function _r3dPolarFrame(frame, zone, specOrVel) {
+  const spec = specOrVel && typeof specOrVel === 'object' ? specOrVel : _r3dSpec(specOrVel ? 'vel' : 'ref');
+  const halfX = zone.wKm / 2, halfY = zone.hKm / 2;
+  // Where the radar stands, in the zone's own km. A hand-built frame with
+  // no site is treated as seen from well south of the box.
+  const site = frame.site || { x: 0, y: -Math.max(zone.wKm, zone.hKm) * 2 };
+  const sx = site.x, sy = site.y;
   const g = frame.gates, n = frame.count, rad = frame.radii || null;
-  const layerStride = nx * ny;
+  const DEG = 180 / Math.PI;
 
-  // Each gate paints every voxel its footprint covers (capped to a small
-  // box so a far, coarse gate cannot flood the grid), keeping the strongest
-  // value where footprints overlap - the same max rule the flat picture
-  // uses when it merges gates.
-  // The cap is in kilometres, not cells: on a small zone a cell is 70 m and
-  // a 1 degree gate at 40 km is 1.5 km wide, so a fixed six-cell cap painted
-  // each gate as a thin sliver of itself with an empty band to the next
-  // radial, which showed as combs of vertical stripes through the cloud.
-  const MAX_SPAN = Math.max(6, Math.ceil(3 / cellXY));
-  const MAX_SPAN_Z = Math.max(6, Math.ceil(2 / cellZ));
-  for (let i = 0, p = 0; i < n; i++, p += 4) {
-    const x = g[p], y = g[p + 1], z = g[p + 2];
-    // Never thinner than a voxel layer either side: a beam sheet climbing
-    // smoothly with range otherwise stair-steps through the layers and
-    // shows as rings around the radar.
-    const rxy = rad ? rad[i * 2] : 0, rz = rad ? Math.max(rad[i * 2 + 1], cellZ * 0.75) : 0;
-    let ix0 = Math.floor((x - rxy + halfX) / cellXY), ix1 = Math.floor((x + rxy + halfX) / cellXY);
-    let iy0 = Math.floor((y - rxy + halfY) / cellXY), iy1 = Math.floor((y + rxy + halfY) / cellXY);
-    let iz0 = Math.floor((z - rz) / cellZ), iz1 = Math.floor((z + rz) / cellZ);
-    if (ix1 < 0 || ix0 >= nx || iy1 < 0 || iy0 >= ny || iz1 < 0 || iz0 >= nz) continue;
-    if (ix1 - ix0 > MAX_SPAN) { const c = Math.floor((x + halfX) / cellXY); ix0 = c - (MAX_SPAN >> 1); ix1 = c + (MAX_SPAN >> 1); }
-    if (iy1 - iy0 > MAX_SPAN) { const c = Math.floor((y + halfY) / cellXY); iy0 = c - (MAX_SPAN >> 1); iy1 = c + (MAX_SPAN >> 1); }
-    if (iz1 - iz0 > MAX_SPAN_Z) { const c = Math.floor(z / cellZ); iz0 = c - (MAX_SPAN_Z >> 1); iz1 = c + (MAX_SPAN_Z >> 1); }
-    if (ix0 < 0) ix0 = 0; if (ix1 >= nx) ix1 = nx - 1;
-    if (iy0 < 0) iy0 = 0; if (iy1 >= ny) iy1 = ny - 1;
-    if (iz0 < 0) iz0 = 0; if (iz1 >= nz) iz1 = nz - 1;
-    const b = _r3dNormByte(g[p + 3], isVel);
-    const s = _r3dByteStrength(b, isVel);
-    for (let iz = iz0; iz <= iz1; iz++) {
-      for (let iy = iy0; iy <= iy1; iy++) {
-        const row = (iz * ny + iy) * nx;
-        for (let ix = ix0; ix <= ix1; ix++) {
-          if (s > _r3dByteStrength(grid[row + ix], isVel)) grid[row + ix] = b;
-        }
-      }
+  // Distinct tilts, lowest first; a tilt scanned twice in one volume (SAILS)
+  // shares one plane.
+  const segs = (frame.segs || []).slice();
+  const angles = [];
+  const segPlane = segs.map(s => {
+    const k = angles.findIndex(a => Math.abs(a - s.angle) < 0.15);
+    if (k >= 0) return k;
+    angles.push(s.angle);
+    return angles.length - 1;
+  });
+  const order = angles.map((a, i) => i).sort((i, j) => angles[i] - angles[j]);
+  const rank = []; order.forEach((i, r) => { rank[i] = r; });
+  const sorted = order.map(i => angles[i]);
+  const nS = Math.max(1, sorted.length);
+  if (!sorted.length) sorted.push(0.5);
+
+  // The window of range and azimuth the zone occupies as seen from the
+  // radar. A radar inside the box sees every azimuth from range zero.
+  const corners = [[-halfX, -halfY], [halfX, -halfY], [halfX, halfY], [-halfX, halfY]];
+  const inside = sx > -halfX && sx < halfX && sy > -halfY && sy < halfY;
+  let rMin = Infinity, rMax = 0;
+  const azs = [];
+  corners.forEach(([x, y]) => {
+    const s = Math.hypot(x - sx, y - sy);
+    if (s > rMax) rMax = s;
+    if (s < rMin) rMin = s;
+    azs.push(((Math.atan2(x - sx, y - sy) * DEG) + 360) % 360);
+  });
+  // The nearest point of the box can be on an edge rather than a corner.
+  const ex = Math.max(-halfX, Math.min(halfX, sx)), ey = Math.max(-halfY, Math.min(halfY, sy));
+  rMin = Math.min(rMin, Math.hypot(ex - sx, ey - sy));
+  let full = inside, az0 = 0, span = 360;
+  if (!inside) {
+    // The smallest arc holding all four corner bearings: it starts after the
+    // biggest gap between them going round the circle.
+    const a = azs.slice().sort((p, q) => p - q);
+    let gap = -1, gi = 0;
+    for (let i = 0; i < a.length; i++) {
+      const d = ((a[(i + 1) % a.length] - a[i]) + 360) % 360 || 360;
+      if (d > gap) { gap = d; gi = i; }
     }
+    span = 360 - gap;
+    az0 = a[(gi + 1) % a.length];
+    if (span >= 350) { full = true; az0 = 0; span = 360; }
   }
+  if (inside) rMin = 0;
+  const marginKm = 1.5, marginDeg = 1.5;
+  let r0 = Math.max(0, rMin - marginKm), r1 = rMax + marginKm;
+  if (!full) { az0 = ((az0 - marginDeg) % 360 + 360) % 360; span = Math.min(360, span + 2 * marginDeg); }
 
-  // The radar only measures along its discrete cones, so a column of air
-  // has samples at a handful of heights with real gaps between them.
-  // Interpolating along each column between neighbouring filled voxels is
-  // what turns the stack of cones into something that reads as one
-  // continuous cloud. Gaps wider than ~5.5 km stay honest gaps.
-  const maxGap = Math.max(2, Math.round(5.5 / cellZ));
-  for (let iy = 0; iy < ny; iy++) {
-    for (let ix = 0; ix < nx; ix++) {
-      const base = iy * nx + ix;
-      let prev = -1;
-      for (let iz = 0; iz < nz; iz++) {
-        const b = grid[iz * layerStride + base];
-        if (!b) continue;
-        if (prev >= 0 && iz - prev > 1 && iz - prev <= maxGap) {
-          const b0 = grid[prev * layerStride + base];
-          for (let k = prev + 1; k < iz; k++) {
-            const t = (k - prev) / (iz - prev);
-            grid[k * layerStride + base] = Math.round(b0 + (b - b0) * t);
-          }
-        }
-        prev = iz;
-      }
-      // The lowest beam is already a kilometre or two off the ground where
-      // it crosses the zone; a storm that low genuinely continues down, so
-      // carry the lowest sample to the floor rather than leaving every
-      // storm floating on air. Samples that START high stay high.
-      // Only for a column that is genuinely precipitation: the lowest sample
-      // within 1.5 km of the ground AND several layers of echo above it.
-      // A lone speck of clutter carried to the ground drew as a pillar, and
-      // a field of them as a city skyline.
-      let lowest = -1, filled = 0;
-      for (let iz = 0; iz < nz; iz++) { if (grid[iz * layerStride + base]) { filled++; if (lowest < 0) lowest = iz; } }
-      if (lowest > 0 && lowest * cellZ < 1.5 && filled >= 4) {
-        const b0 = grid[lowest * layerStride + base];
-        for (let k = 0; k < lowest; k++) grid[k * layerStride + base] = b0;
-      }
-    }
+  // Native bins, coarsened evenly only when a huge zone would not fit.
+  let rStep = 0.25, azStep = 0.5;
+  const bytesAt = (rs, as) => nS * Math.ceil((r1 - r0) / rs) * (Math.ceil(span / as) + 2);
+  if (bytesAt(rStep, azStep) > R3D_POLAR_MAX_BYTES) {
+    const k = Math.sqrt(bytesAt(rStep, azStep) / R3D_POLAR_MAX_BYTES);
+    rStep *= k; azStep *= k;
   }
+  const nR = Math.max(2, Math.ceil((r1 - r0) / rStep));
+  const nA = Math.max(2, full ? Math.round(360 / azStep) : Math.ceil(span / azStep));
+  if (full) azStep = 360 / nA;
+  const rows = nA + 2;                                   // a padding ray at each end
+  const sweeps = [];
+  for (let i = 0; i < nS; i++) sweeps.push(new Uint8Array(rows * nR));
+  const azRadStep = azStep / DEG;
 
-  // Smoothing, over FILLED voxels only: each voxel is blended with its
-  // filled neighbours and never with empty air, so cloud edges are not
-  // repainted as false weak echo and the cloud does not grow by a voxel.
-  // Across the zone (x and y) the blur is as wide as a gate footprint, so
-  // the seams between neighbouring radials, which on a small zone sit
-  // several voxels apart, melt into one field instead of reading as a comb
-  // of vertical stripes. Up the column (z) a single voxel either side is
-  // enough, the beams having already been thickened and bridged above.
-  let meanHalf = 0;
-  if (rad && n) { for (let i = 0; i < n; i++) meanHalf += rad[i * 2]; meanHalf /= n; }
-  const rXY = Math.max(1, Math.min(6, Math.round(meanHalf * 1.2 / cellXY)));
-  const tmp = new Uint8Array(grid.length);
-  _r3dBlurAxis(grid, tmp, nx, ny, nz, 0, rXY, true);
-  _r3dBlurAxis(grid, tmp, nx, ny, nz, 1, rXY, true);
-  _r3dBlurAxis(grid, tmp, nx, ny, nz, 2, 1, false);
-
-  // Floor texture: the lowest tilt alone, the same picture the flat radar
-  // map shows for this zone, drawn onto the box floor by the ray marcher.
-  // Each gate is stamped as a soft round blob a little wider than its own
-  // footprint, and a cell keeps the weighted AVERAGE of every blob touching
-  // it rather than the strongest one. Super-resolution reflectivity is
-  // noisy from one radial to the next in weak echo, and the old "keep the
-  // max" stamp painted that noise as diagonal stripes along the beams with
-  // dark seams between them. Averaging across the neighbouring radials is
-  // what turns the stripes back into the one smooth field the eye expects.
-  const floor = new Uint8Array(nx * ny);
-  if (frame.segs && frame.segs.length) {
-    let low = frame.segs[0];
-    for (const s of frame.segs) { if (s.angle < low.angle) low = s; }
-    const fsum = new Float32Array(nx * ny), fwt = new Float32Array(nx * ny);
-    const FLOOR_REACH = Math.max(9, Math.ceil(2 / cellXY)); // 2 km of reach at most, whatever the cell size
-    for (let i = low.start; i < low.end; i++) {
+  // Every gate stamps its footprint into its tilt's plane, keeping the
+  // strongest value where two overlap, exactly as the flat picture merges.
+  const colMaxZ = new Float32Array(R3D_COL_N * R3D_COL_N);
+  const colCX = 2 * halfX / R3D_COL_N, colCY = 2 * halfY / R3D_COL_N;
+  for (let si = 0; si < segs.length; si++) {
+    const plane = sweeps[rank[segPlane[si]]];
+    const seg = segs[si];
+    for (let i = seg.start; i < seg.end; i++) {
       const p = i * 4;
-      const cx = (g[p] + halfX) / cellXY, cy = (g[p + 1] + halfY) / cellXY;
-      // Reach one and a half footprints, never under a cell and a half: far
-      // enough to cross the seam into the next radial either side.
-      const rc = Math.min(FLOOR_REACH, Math.max(1.5, (rad ? rad[i * 2] : 0) * 1.5 / cellXY));
-      const rc2 = rc * rc, sig2 = rc2 * 0.5;               // gaussian, sigma = half the reach
-      let ix0 = Math.floor(cx - rc), ix1 = Math.ceil(cx + rc);
-      let iy0 = Math.floor(cy - rc), iy1 = Math.ceil(cy + rc);
-      if (ix0 < 0) ix0 = 0; if (ix1 >= nx) ix1 = nx - 1;
-      if (iy0 < 0) iy0 = 0; if (iy1 >= ny) iy1 = ny - 1;
-      if (ix1 < ix0 || iy1 < iy0) continue;
-      const b = _r3dNormByte(g[p + 3], isVel);
-      for (let iy = iy0; iy <= iy1; iy++) {
-        const dy = iy + 0.5 - cy;
-        for (let ix = ix0; ix <= ix1; ix++) {
-          const dx = ix + 0.5 - cx;
-          const d2 = dx * dx + dy * dy;
-          if (d2 > rc2) continue;
-          const wgt = Math.exp(-d2 / sig2);
-          const idx = iy * nx + ix;
-          fsum[idx] += wgt * b; fwt[idx] += wgt;
+      const x = g[p], y = g[p + 1], z = g[p + 2];
+      const dx = x - sx, dy = y - sy;
+      const s = Math.hypot(dx, dy);
+      if (s < r0 || s >= r1 || s < 0.01) continue;
+      let rel = ((Math.atan2(dx, dy) * DEG - az0) % 360 + 360) % 360;
+      if (!full && rel > span + 1) continue;
+      const rxy = rad ? rad[i * 2] : 0, rz = rad ? rad[i * 2 + 1] : 0.3;
+      const halfR = Math.max(rxy, rStep * 0.5), halfA = Math.max(azStep * 0.5, Math.atan(rxy / s) * DEG);
+      const ir0 = Math.max(0, Math.floor((s - halfR - r0) / rStep)), ir1 = Math.min(nR - 1, Math.floor((s + halfR - r0) / rStep));
+      const ia0 = Math.floor((rel - halfA) / azStep), ia1 = Math.floor((rel + halfA) / azStep);
+      const b = _r3dNormByte(g[p + 3], spec);
+      const strength = _r3dByteStrength(b, spec);
+      for (let ia = ia0; ia <= ia1; ia++) {
+        let row = ia;
+        if (full) row = ((row % nA) + nA) % nA;
+        else if (row < 0 || row >= nA) continue;
+        const base = (row + 1) * nR;
+        for (let ir = ir0; ir <= ir1; ir++) {
+          if (strength > _r3dByteStrength(plane[base + ir], spec)) plane[base + ir] = b;
         }
       }
-    }
-    // A cell only the faint rim of one blob reached stays bare, so the
-    // field does not grow a soft halo a whole footprint wide.
-    for (let i = 0; i < floor.length; i++) {
-      if (fwt[i] > 0.2) floor[i] = Math.max(1, Math.min(255, Math.round(fsum[i] / fwt[i])));
+      // The column map: the highest echo over each patch of ground, so the
+      // marcher can leap through clear air above the storm tops.
+      const cx = Math.max(0, Math.min(R3D_COL_N - 1, Math.floor((x + halfX) / colCX)));
+      const cy = Math.max(0, Math.min(R3D_COL_N - 1, Math.floor((y + halfY) / colCY)));
+      const top = z + rz + 0.4;
+      const ci = cy * R3D_COL_N + cx;
+      if (top > colMaxZ[ci]) colMaxZ[ci] = top;
     }
   }
-
-  // Coarse occupancy, 4x4x4 voxel blocks: most of any zone is empty air,
-  // and the marcher leaps whole blocks of it instead of sampling through.
-  const B = 4;
-  const cnx = Math.ceil(nx / B), cny = Math.ceil(ny / B), cnz = Math.ceil(nz / B);
-  const occ = new Uint8Array(cnx * cny * cnz);
-  for (let iz = 0; iz < nz; iz++) {
-    for (let iy = 0; iy < ny; iy++) {
-      const row = (iz * ny + iy) * nx;
-      const orow = ((iz / B | 0) * cny + (iy / B | 0)) * cnx;
-      for (let ix = 0; ix < nx; ix++) {
-        if (grid[row + ix]) occ[orow + (ix / B | 0)] = 1;
+  // A column's echo also covers its neighbours, since a footprint can cross
+  // a cell edge; grown by one cell so no edge is ever clipped.
+  const grown = new Float32Array(colMaxZ);
+  for (let cy = 0; cy < R3D_COL_N; cy++) {
+    for (let cx = 0; cx < R3D_COL_N; cx++) {
+      let m = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const yy = cy + dy, xx = cx + dx;
+        if (yy < 0 || yy >= R3D_COL_N || xx < 0 || xx >= R3D_COL_N) continue;
+        const v = colMaxZ[yy * R3D_COL_N + xx];
+        if (v > m) m = v;
       }
+      grown[cy * R3D_COL_N + cx] = m;
     }
   }
+  // The padding rays: a full circle wraps, a partial window ends in air.
+  sweeps.forEach(plane => {
+    if (full) {
+      plane.set(plane.subarray(nA * nR, (nA + 1) * nR), 0);
+      plane.set(plane.subarray(nR, 2 * nR), (nA + 1) * nR);
+    }
+  });
 
-  return { grid, floor, occ, nx, ny, nz, cnx, cny, cnz, blockB: B, cellXY, cellZ, wKm, hKm };
+  // The angle index, OpenStorm's own idea: a table from elevation angle to
+  // a fractional tilt number, linear between one tilt and the next, so the
+  // marcher finds "two thirds of the way from tilt 3 to tilt 4" with one
+  // lookup. Half a beam below the lowest tilt and above the highest the
+  // volume fades out; beyond that there is honestly nothing.
+  const angN = Math.round((R3D_EL_MAX - R3D_EL_MIN) / R3D_EL_STEP) + 1;
+  const angIdx = new Float32Array(angN), angFade = new Float32Array(angN);
+  for (let k = 0; k < angN; k++) {
+    const el = R3D_EL_MIN + k * R3D_EL_STEP;
+    let idx = -1, fade = 0;
+    if (el < sorted[0]) {
+      if (el >= sorted[0] - R3D_SKIRT_BELOW) { idx = 0; fade = 1 - (sorted[0] - el) / R3D_SKIRT_BELOW; }
+    } else if (el > sorted[nS - 1]) {
+      if (el <= sorted[nS - 1] + R3D_HALF_BEAM) { idx = nS - 1; fade = 1 - (el - sorted[nS - 1]) / R3D_HALF_BEAM; }
+      else idx = -2;                                   // above everything: the marcher can hurry
+    } else {
+      let i = 0;
+      while (i + 1 < nS && sorted[i + 1] < el) i++;
+      const lo = sorted[i], hi = i + 1 < nS ? sorted[i + 1] : lo;
+      idx = hi > lo ? i + (el - lo) / (hi - lo) : i;
+      fade = 1;
+    }
+    angIdx[k] = idx; angFade[k] = fade;
+  }
+
+  return {
+    id: ++_r3dVolSeq, sweeps, nS, nR, nA, r0, rStep, az0, azStep, span, full,
+    angles: new Float32Array(sorted), angIdx, angFade, elMin: R3D_EL_MIN, elStep: R3D_EL_STEP,
+    sx, sy, colMaxZ: grown, colN: R3D_COL_N, halfX, halfY, wKm: zone.wKm, hKm: zone.hKm,
+    signed: !!spec.signed, product: spec.id,
+    // Kept for the tests and the status line: how many bins hold data.
+    bytes: nS * rows * nR,
+  };
 }
 
-// The grid for the CURRENT zone size, cached on the frame. Only one size is
-// kept per frame - switching sizes rebuilds in a few ms, and keeping every
-// size for every time-control frame would be memory for nothing.
-function _r3dGridFor(frame, isVel) {
+// The volume for the zone on screen, built once per zone size and product
+// and kept on the frame, so a resize of the box is a re-bin and never a
+// refetch.
+function _r3dPolarFor(frame, productOrVel) {
+  const spec = typeof productOrVel === 'string' ? _r3dSpec(productOrVel)
+             : productOrVel && typeof productOrVel === 'object' ? productOrVel
+             : _r3dSpec(productOrVel ? 'vel' : 'ref');
   const zone = _r3dZone || { wKm: 90, hKm: 90 };
-  const key = zone.wKm + 'x' + zone.hKm + '|' + (isVel ? 'v' : 'r');
+  const key = zone.wKm + 'x' + zone.hKm + '|' + spec.id;
+  if (!frame._grids) frame._grids = {};
   if (!frame._grids[key]) {
     frame._grids = {};
-    frame._grids[key] = _r3dGridFrame(frame, zone, isVel);
+    frame._grids[key] = _r3dPolarFrame(frame, zone, spec);
   }
   return frame._grids[key];
+}
+
+// One value out of the volume at a point in the zone (x, y in km from the
+// centre, z the true height in km): the same lookup the marcher does, in
+// plain form, for the floor texture and the tests. 0 means empty air.
+function _r3dPolarSample(P, x, y, z) {
+  const DEG = 180 / Math.PI;
+  const dx = x - P.sx, dy = y - P.sy;
+  const s = Math.hypot(dx, dy);
+  const ir = (s - P.r0) / P.rStep - 0.5;
+  if (ir < 0 || ir >= P.nR - 1) return 0;
+  let rel = ((Math.atan2(dx, dy) * DEG - P.az0) % 360 + 360) % 360;
+  if (!P.full && rel >= P.span) return 0;
+  const ia = rel / P.azStep + 0.5;
+  const hor = (R3D_EARTH_KM + z) * Math.sin(s / R3D_EARTH_KM);
+  const ver = (R3D_EARTH_KM + z) * Math.cos(s / R3D_EARTH_KM) - R3D_EARTH_KM;
+  const el = Math.atan2(ver, hor) * DEG;
+  const ei = Math.round((el - P.elMin) / P.elStep);
+  if (ei < 0 || ei >= P.angIdx.length) return 0;
+  const f = P.angIdx[ei];
+  if (f < 0) return 0;
+  const s0 = f | 0, ft = f - s0, s1 = ft > 0.001 && s0 + 1 < P.nS ? s0 + 1 : s0;
+  const i0 = ia | 0, ta = ia - i0, r0i = ir | 0, tr = ir - r0i;
+  const bil = (pl) => {
+    const b = i0 * P.nR + r0i;
+    return (pl[b] * (1 - tr) + pl[b + 1] * tr) * (1 - ta) + (pl[b + P.nR] * (1 - tr) + pl[b + P.nR + 1] * tr) * ta;
+  };
+  const v = bil(P.sweeps[s0]) * (1 - ft) + (s1 !== s0 ? bil(P.sweeps[s1]) * ft : bil(P.sweeps[s0]) * ft);
+  return v * P.angFade[ei];
+}
+
+// ── The band marcher ─────────────────────────────────────────────────────
+// One ray per pixel for the rows y0..y1 of the picture, marched front to
+// back through the polar volume with alpha compositing, and written into
+// `data` (RGBA, rows y0..y1 only). Self-contained on purpose: this exact
+// function is also stringified into the worker script, so it must touch
+// nothing but its arguments and Math. Fine mode interpolates across range,
+// azimuth and between tilts (OpenStorm's trilinear), lights the volume by
+// its own gradient, and jitters the first step per pixel; fast mode (while
+// dragging) takes the nearest bin, unlit, at a coarser step.
+function _r3dMarchBand(P, prm, y0, y1, data) {
+  const iw = prm.iw, ih = prm.ih, fine = !!prm.fine;
+  const cam = prm.cam;
+  const camX = cam[0], camY = cam[1], camZ = cam[2];
+  const rx = cam[3], ry = cam[4], rz = cam[5], ux = cam[6], uy = cam[7], uz = cam[8], fx = cam[9], fy = cam[10], fz = cam[11];
+  const minX = prm.minX, maxX = prm.maxX, minY = prm.minY, maxY = prm.maxY, maxZ = prm.maxZ;
+  const exag = prm.exag, invExag = 1 / exag, stepKm = prm.stepKm, skipKm = stepKm * 4;
+  const lut = prm.lut, floorRgb = prm.floorRgb;
+  const lx = prm.light[0], ly = prm.light[1], lz = prm.light[2];
+  const signed = !!prm.signed;
+  const focalI = ih * 1.15;
+  const DEG = 180 / Math.PI, RE = 6371 * 4 / 3;
+  const sweeps = P.sweeps, nS = P.nS, nR = P.nR, nA = P.nA, r0 = P.r0, rStep = P.rStep, az0 = P.az0, azStep = P.azStep;
+  const full = P.full, span = P.span, angIdx = P.angIdx, angFade = P.angFade, angN = angIdx.length;
+  const elMin = P.elMin, invElStep = 1 / P.elStep, sx = P.sx, sy = P.sy;
+  const colMaxZ = P.colMaxZ, colN = P.colN, halfX = P.halfX, halfY = P.halfY;
+  const colSX = colN / (2 * halfX), colSY = colN / (2 * halfY);
+  const invR = 1 / rStep, invA = 1 / azStep, azStepRad = azStep / DEG;
+  const angles = P.angles;
+  const nRm1 = nR - 1.001;
+  // The strength a gradient is taken over: the value itself, or for a
+  // signed product (velocity) its distance from calm.
+  const mg = signed ? (v) => (v ? (v >= 128 ? v - 128 : 128 - v) : 0) : (v) => v;
+
+  // The floor: the lowest tilt, bilinear, at the point where a ray meets
+  // the ground. Bare ground where the tilt holds nothing.
+  const floorAt = (x, y, acc) => {
+    const dx = x - sx, dy = y - sy;
+    const s = Math.sqrt(dx * dx + dy * dy);
+    let cr = 30, cg = 36, cb = 46, ca = 0.4;
+    const ir = (s - r0) * invR - 0.5;
+    if (ir >= 0 && ir < nRm1) {
+      let rel = Math.atan2(dx, dy) * DEG - az0;
+      rel -= 360 * Math.floor(rel / 360);
+      if (full || rel < span) {
+        const ia = rel * invA + 0.5, i0 = ia | 0, ta = ia - i0, ri = ir | 0, tr = ir - ri;
+        const pl = sweeps[0], b0 = i0 * nR + ri;
+        let pr = 0, pg = 0, pb = 0, pa = 0;
+        const taps = [[pl[b0], (1 - ta) * (1 - tr)], [pl[b0 + 1], (1 - ta) * tr], [pl[b0 + nR], ta * (1 - tr)], [pl[b0 + nR + 1], ta * tr]];
+        for (let q = 0; q < 4; q++) {
+          const fb = taps[q][0], wq = taps[q][1];
+          let qr = 30, qg = 36, qb = 46, qa = 0.4;
+          if (fb && lut[(fb << 2) + 3] > 0) { const fi = fb * 3; qr = floorRgb[fi]; qg = floorRgb[fi + 1]; qb = floorRgb[fi + 2]; qa = 0.85; }
+          pr += wq * qr * qa; pg += wq * qg * qa; pb += wq * qb * qa; pa += wq * qa;
+        }
+        cr = pr; cg = pg; cb = pb; ca = pa;
+      } else { cr *= ca; cg *= ca; cb *= ca; }
+    } else { cr *= ca; cg *= ca; cb *= ca; }
+    const k = 1 - acc[3];
+    acc[0] += k * cr; acc[1] += k * cg; acc[2] += k * cb; acc[3] += k * ca;
+  };
+  const acc = [0, 0, 0, 0];
+
+  let o = 0;
+  for (let py = y0; py < y1; py++) {
+    const sv = -((py + 0.5) - ih / 2) / focalI;
+    for (let px = 0; px < iw; px++, o += 4) {
+      const su = ((px + 0.5) - iw / 2) / focalI;
+      let dx = fx + rx * su + ux * sv, dy = fy + ry * su + uy * sv, dz = fz + rz * su + uz * sv;
+      const dl = Math.sqrt(dx * dx + dy * dy + dz * dz); dx /= dl; dy /= dl; dz /= dl;
+
+      let t0 = 0.5, t1 = 1e9, inv, ta, tb, q;
+      inv = 1 / dx; ta = (minX - camX) * inv; tb = (maxX - camX) * inv;
+      if (ta > tb) { q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb;
+      inv = 1 / dy; ta = (minY - camY) * inv; tb = (maxY - camY) * inv;
+      if (ta > tb) { q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb;
+      inv = 1 / dz; ta = (0 - camZ) * inv; tb = (maxZ - camZ) * inv;
+      if (ta > tb) { q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb;
+      if (!(t1 > t0)) continue;
+
+      acc[0] = 0; acc[1] = 0; acc[2] = 0; acc[3] = 0;
+      const floorT = dz !== 0 ? (0 - camZ) / dz : -1;
+      const hitsFloor = floorT >= t0 - 1e-3 && floorT <= t1 + 1e-3;
+      const floorFirst = hitsFloor && dz > 0;
+      if (floorFirst) floorAt(camX + dx * floorT, camY + dy * floorT, acc);
+
+      const jitter = fine ? (Math.sin(px * 12.9898 + py * 78.233) * 43758.5453) % 1 : 0.5;
+      let t = t0 + stepKm * (jitter < 0 ? jitter + 1 : jitter), guard = 0;
+      let accR = acc[0], accG = acc[1], accB = acc[2], accA = acc[3];
+      while (t < t1 && accA < 0.96 && guard++ < 1400) {
+        const x = camX + dx * t, y = camY + dy * t, zt = (camZ + dz * t) * invExag;
+        // Clear air above the storm tops of this column: leap.
+        let cx = ((x + halfX) * colSX) | 0, cy = ((y + halfY) * colSY) | 0;
+        if (cx < 0) cx = 0; else if (cx >= colN) cx = colN - 1;
+        if (cy < 0) cy = 0; else if (cy >= colN) cy = colN - 1;
+        if (zt > colMaxZ[cy * colN + cx]) { t += skipKm; continue; }
+        const dxs = x - sx, dys = y - sy;
+        const s = Math.sqrt(dxs * dxs + dys * dys);
+        const ir = (s - r0) * invR - 0.5;
+        if (ir < 0 || ir >= nRm1 || s < 0.05) { t += stepKm; continue; }
+        let rel = Math.atan2(dxs, dys) * DEG - az0;
+        rel -= 360 * Math.floor(rel / 360);
+        if (!full && rel >= span) { t += stepKm; continue; }
+        const ia = rel * invA + 0.5;
+        const hor = (RE + zt) * Math.sin(s / RE), ver = (RE + zt) * Math.cos(s / RE) - RE;
+        const el = Math.atan2(ver, hor) * DEG;
+        const ei = ((el - elMin) * invElStep) | 0;
+        if (ei < 0) { t += stepKm; continue; }
+        if (ei >= angN) { t += skipKm; continue; }
+        const f = angIdx[ei];
+        if (f < 0) { t += f < -1.5 ? skipKm : stepKm; continue; }
+        const fade = angFade[ei];
+        const s0 = f | 0, ft = f - s0;
+        const s1 = ft > 0.001 && s0 + 1 < nS ? s0 + 1 : s0;
+        const pl0 = sweeps[s0], pl1 = sweeps[s1];
+        if (fine) {
+          const i0 = ia | 0, tA = ia - i0, ri = ir | 0, tR = ir - ri;
+          const b0 = i0 * nR + ri, b1 = b0 + nR;
+          const v00 = pl0[b0], v01 = pl0[b0 + 1], v10 = pl0[b1], v11 = pl0[b1 + 1];
+          const u00 = pl1[b0], u01 = pl1[b0 + 1], u10 = pl1[b1], u11 = pl1[b1 + 1];
+          if (v00 | v01 | v10 | v11 | u00 | u01 | u10 | u11) {
+            const w00 = (1 - tA) * (1 - tR) * (1 - ft), w01 = (1 - tA) * tR * (1 - ft), w10 = tA * (1 - tR) * (1 - ft), w11 = tA * tR * (1 - ft);
+            const x00 = (1 - tA) * (1 - tR) * ft, x01 = (1 - tA) * tR * ft, x10 = tA * (1 - tR) * ft, x11 = tA * tR * ft;
+            const l0 = v00 << 2, l1 = v01 << 2, l2 = v10 << 2, l3 = v11 << 2, m0 = u00 << 2, m1 = u01 << 2, m2 = u10 << 2, m3 = u11 << 2;
+            let sa = (w00 * lut[l0 + 3] + w01 * lut[l1 + 3] + w10 * lut[l2 + 3] + w11 * lut[l3 + 3]
+                    + x00 * lut[m0 + 3] + x01 * lut[m1 + 3] + x10 * lut[m2 + 3] + x11 * lut[m3 + 3]) * fade;
+            if (sa > 0.0015) {
+              let sr = (w00 * lut[l0] + w01 * lut[l1] + w10 * lut[l2] + w11 * lut[l3] + x00 * lut[m0] + x01 * lut[m1] + x10 * lut[m2] + x11 * lut[m3]) * fade;
+              let sg = (w00 * lut[l0 + 1] + w01 * lut[l1 + 1] + w10 * lut[l2 + 1] + w11 * lut[l3 + 1] + x00 * lut[m0 + 1] + x01 * lut[m1 + 1] + x10 * lut[m2 + 1] + x11 * lut[m3 + 1]) * fade;
+              let sb = (w00 * lut[l0 + 2] + w01 * lut[l1 + 2] + w10 * lut[l2 + 2] + w11 * lut[l3 + 2] + x00 * lut[m0 + 2] + x01 * lut[m1 + 2] + x10 * lut[m2 + 2] + x11 * lut[m3 + 2]) * fade;
+              if (sa > 0.02) {
+                // The gradient of the data, in the radar's own directions
+                // (out along the beam, round in azimuth, up through the
+                // tilts), turned into a surface normal in the zone's km.
+                const ci = (tA > 0.5 ? i0 + 1 : i0) * nR + (tR > 0.5 ? ri + 1 : ri);
+                const pl = ft > 0.5 ? pl1 : pl0;
+                const vr = ci % nR;
+                const bR = mg(vr < nR - 1 ? pl[ci + 1] : 0) - mg(vr > 0 ? pl[ci - 1] : 0);
+                const bA = mg(ci + nR < pl.length ? pl[ci + nR] : 0) - mg(ci >= nR ? pl[ci - nR] : 0);
+                const bS = s1 !== s0 ? mg(pl1[ci]) - mg(pl0[ci]) : 0;
+                const gR = bR / (2 * rStep);
+                const gA = bA / (2 * s * azStepRad);
+                const dzS = Math.max(0.3, s * (angles[s1] - angles[s0]) / DEG);
+                const gS = bS / dzS;
+                const urx = dxs / s, ury = dys / s;             // out along the beam
+                let nX = -(gR * urx + gA * ury), nY = -(gR * ury - gA * urx), nZ = -gS;
+                const nl = Math.sqrt(nX * nX + nY * nY + nZ * nZ);
+                let shade = 0.78;
+                if (nl > 8) {
+                  nX /= nl; nY /= nl; nZ /= nl;
+                  const d = nX * lx + nY * ly + nZ * lz;
+                  shade = 0.42 + 0.62 * (d > 0 ? d : 0);
+                }
+                sr *= shade; sg *= shade; sb *= shade;
+              }
+              const k = 1 - accA;
+              accR += k * sr; accG += k * sg; accB += k * sb; accA += k * sa;
+            }
+          }
+        } else {
+          const b = (ft > 0.5 ? pl1 : pl0)[((ia + 0.5) | 0) * nR + ((ir + 0.5) | 0)];
+          if (b) {
+            const li = b << 2, sa = lut[li + 3] * fade, k = 1 - accA;
+            accR += k * lut[li] * fade; accG += k * lut[li + 1] * fade; accB += k * lut[li + 2] * fade; accA += k * sa;
+          }
+        }
+        t += stepKm;
+      }
+      acc[0] = accR; acc[1] = accG; acc[2] = accB; acc[3] = accA;
+      if (!floorFirst && hitsFloor && accA < 0.96) floorAt(camX + dx * floorT, camY + dy * floorT, acc);
+      if (acc[3] > 0.004) {
+        data[o] = acc[0] / acc[3]; data[o + 1] = acc[1] / acc[3]; data[o + 2] = acc[2] / acc[3];
+        data[o + 3] = acc[3] * 255;
+      }
+    }
+  }
+}
+
+// A volume, packed for the trip to a worker: plain fields plus the raw
+// buffers, copied, so every worker owns its own and the page keeps the
+// original. Unpack rebuilds the typed arrays on the far side. Both are
+// stringified into the worker script, so neither may touch anything but
+// its arguments.
+function _r3dPolarPack(P) {
+  const bufs = P.sweeps.map(s => s.slice().buffer);
+  const msg = {
+    type: 'volume', id: P.id, sweeps: bufs, nS: P.nS, nR: P.nR, nA: P.nA, r0: P.r0, rStep: P.rStep,
+    az0: P.az0, azStep: P.azStep, span: P.span, full: P.full, angles: P.angles.slice().buffer,
+    angIdx: P.angIdx.slice().buffer, angFade: P.angFade.slice().buffer, elMin: P.elMin, elStep: P.elStep,
+    sx: P.sx, sy: P.sy, colMaxZ: P.colMaxZ.slice().buffer, colN: P.colN, halfX: P.halfX, halfY: P.halfY,
+  };
+  return { msg, transfer: bufs.concat([msg.angles, msg.angIdx, msg.angFade, msg.colMaxZ]) };
+}
+function _r3dPolarUnpack(m) {
+  return {
+    id: m.id, sweeps: m.sweeps.map(b => new Uint8Array(b)), nS: m.nS, nR: m.nR, nA: m.nA, r0: m.r0, rStep: m.rStep,
+    az0: m.az0, azStep: m.azStep, span: m.span, full: m.full, angles: new Float32Array(m.angles),
+    angIdx: new Float32Array(m.angIdx), angFade: new Float32Array(m.angFade), elMin: m.elMin, elStep: m.elStep,
+    sx: m.sx, sy: m.sy, colMaxZ: new Float32Array(m.colMaxZ), colN: m.colN, halfX: m.halfX, halfY: m.halfY,
+  };
+}
+
+// ── The render pool ──────────────────────────────────────────────────────
+// The march used to run on the page's own thread, and a fine pass of a big
+// panel froze everything else for the better part of a second: the map,
+// the sliders, the scroll. It now runs in a few workers, each marching a
+// band of rows, so the page never waits on it and a many-core machine
+// draws it several times faster. The workers are built from this very file
+// (the marcher above, stringified), so there is one marcher, not two. A
+// browser with no workers marches inline, as before.
+let _r3dPool = null, _r3dPoolTried = false;
+const _r3dJobs = new Map();
+let _r3dJobSeq = 0;
+function _r3dPoolGet() {
+  if (_r3dPool || _r3dPoolTried) return _r3dPool;
+  _r3dPoolTried = true;
+  try {
+    if (typeof Worker === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined') return null;
+    const src = 'const vols = new Map();\n' + _r3dMarchBand.toString() + '\n' + _r3dPolarUnpack.toString() + '\n'
+      + 'self.onmessage = function (e) {\n'
+      + '  const m = e.data;\n'
+      + '  if (m.type === "volume") { vols.set(m.id, _r3dPolarUnpack(m)); while (vols.size > 8) vols.delete(vols.keys().next().value); return; }\n'
+      + '  if (m.type !== "render") return;\n'
+      + '  const P = vols.get(m.id);\n'
+      + '  if (!P) { self.postMessage({ type: "band", job: m.job, y0: m.y0, y1: m.y1, missing: true }); return; }\n'
+      + '  const out = new Uint8ClampedArray(m.prm.iw * (m.y1 - m.y0) * 4);\n'
+      + '  _r3dMarchBand(P, m.prm, m.y0, m.y1, out);\n'
+      + '  self.postMessage({ type: "band", job: m.job, y0: m.y0, y1: m.y1, buf: out.buffer }, [out.buffer]);\n'
+      + '};\n';
+    const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+    const cores = (navigator.hardwareConcurrency || 2);
+    const n = Math.max(1, Math.min(6, cores - 1));
+    const pool = [];
+    for (let i = 0; i < n; i++) {
+      const w = new Worker(url);
+      const rec = { w, vols: new Set() };
+      w.onmessage = (e) => _r3dOnBand(e.data, rec);
+      w.onerror = () => { rec.dead = true; };
+      pool.push(rec);
+    }
+    _r3dPool = pool;
+  } catch (e) { _r3dPool = null; }
+  return _r3dPool;
+}
+function _r3dOnBand(m, rec) {
+  if (!m || m.type !== 'band') return;
+  const j = _r3dJobs.get(m.job);
+  if (!j) return;
+  if (m.missing) { rec.vols.clear(); j.missing = true; }
+  else j.out.set(new Uint8ClampedArray(m.buf), m.y0 * j.iw * 4);
+  if (--j.left === 0) { _r3dJobs.delete(m.job); j.resolve(j.missing ? null : j.out); }
+}
+// The whole picture for one view, as RGBA bytes, marched by the pool (or
+// inline without one). Rows are dealt out across the workers.
+function _r3dMarchAsync(P, prm) {
+  const iw = prm.iw, ih = prm.ih;
+  const out = new Uint8ClampedArray(iw * ih * 4);
+  const pool = (_r3dPoolGet() || []).filter(r => !r.dead);
+  if (!pool.length) { _r3dMarchBand(P, prm, 0, ih, out); return Promise.resolve(out); }
+  return new Promise((resolve) => {
+    const job = ++_r3dJobSeq;
+    const n = Math.max(1, Math.min(pool.length, Math.floor(ih / 12)));
+    const rows = Math.ceil(ih / n);
+    const j = { resolve, out, left: 0, iw, missing: false };
+    _r3dJobs.set(job, j);
+    for (let k = 0; k < n; k++) {
+      const y0 = k * rows, y1 = Math.min(ih, y0 + rows);
+      if (y0 >= y1) continue;
+      const rec = pool[k];
+      if (!rec.vols.has(P.id)) {
+        const packed = _r3dPolarPack(P);
+        rec.w.postMessage(packed.msg, packed.transfer);
+        rec.vols.add(P.id);
+        while (rec.vols.size > 8) rec.vols.delete(rec.vols.values().next().value);
+      }
+      j.left++;
+      rec.w.postMessage({ type: 'render', job, id: P.id, y0, y1, prm });
+    }
+    if (!j.left) { _r3dJobs.delete(job); resolve(out); }
+  });
 }
 
 async function _r3dLoad() {
@@ -69211,7 +69623,8 @@ async function _r3dLoad() {
   _r3dFrameIdx = -1;
   _r3dDirty = true;
   try {
-    const layer = product === 'vel' ? 'VEL' : 'REF';
+    const spec = _r3dSpec(product);
+    const layer = spec.layer;
     const sitePos = _xsSiteLatLon(site);
     const zone = _r3dZone;
     _r3dStationBrg = sitePos
@@ -69270,6 +69683,14 @@ async function _r3dLoad() {
     // elevation each, in place of the one multi-tilt volume.
     const usedL3 = !frame;
     if (usedL3) {
+      if (!spec.l3) {
+        _r3dSay('no Level 2 volume, and ' + spec.label.toLowerCase() + ' has no Level 3 feed', 'bad');
+        _r3dUpdateSlider(); _r3dDirty = true; return;
+      }
+      if (isTdwr && !(PR_BUCKET[spec.l3] || {}).t) {
+        _r3dSay('a terminal radar does not make ' + spec.label.toLowerCase(), 'bad');
+        _r3dUpdateSlider(); _r3dDirty = true; return;
+      }
       _r3dSay('no Level 2 archive, trying Level 3 tilts for ' + site.toUpperCase(), 'busy');
       frame = await _r3dBuildFrameL3(site, product, sitePos, zone, token, at);
       if (token !== _r3dToken) return;
@@ -69370,6 +69791,7 @@ function _r3dSetFrame(idx) {
 // second reads as a storm evolving; ten a second is a flip-book.
 let _r3dPlaySpeed = 1;
 let _r3dPlayLast = 0;
+let _r3dWarmBusy = false;
 function _r3dSetSpeed(v) {
   const sp = parseFloat(v);
   if (!(sp > 0)) return;
@@ -69395,7 +69817,11 @@ function _r3dPlayToggle() {
   const tick = (ts) => {
     if (!_r3dPlayTimer) return;
     _r3dPlayTimer = requestAnimationFrame(tick);
-    if (_r3dWarmOne()) { _r3dPlayLast = ts; return; }
+    if (_r3dWarmBusy) { _r3dPlayLast = ts; return; }
+    if (_r3dWarmNeeded()) {
+      if (!_r3dRendering) { _r3dWarmBusy = true; _r3dWarmOne().then(() => { _r3dWarmBusy = false; }); }
+      _r3dPlayLast = ts; return;
+    }
     if (!_r3dPlayLast) { _r3dPlayLast = ts; return; }
     const interval = Math.max(16, 1000 / _r3dPlaySpeed);
     if (ts - _r3dPlayLast < interval) return;
@@ -69432,53 +69858,81 @@ function _r3dCacheStore(frame, key, srcCv) {
   cx.drawImage(srcCv, 0, 0);
 }
 // Draws ONE not-yet-cached frame into the cache, off screen, and says
-// whether it did. The play loop calls this until it says no.
-function _r3dWarmOne() {
-  if (_r3dQuality !== 'fine' || _r3dFrames.length < 2) return false;
+// whether it did (as a promise: the march runs in the pool). The play loop
+// calls this until it says no.
+function _r3dWarmNeeded() {
+  if (_r3dQuality !== 'fine' || _r3dFrames.length < 2) return null;
   const cv = _r3dEl('r3d-canvas');
-  if (!cv || !cv.width) return false;
-  const w = cv.width, h = cv.height, dpr = window.devicePixelRatio || 1;
-  const key = _r3dRenderKey(w, h);
+  if (!cv || !cv.width) return null;
+  const key = _r3dRenderKey(cv.width, cv.height);
   for (const f of _r3dFrames) {
     const hit = _r3dFrameCache.get(f);
-    if (hit && hit.key === key) continue;
-    if (!_r3dWarmCv) _r3dWarmCv = document.createElement('canvas');
-    if (_r3dWarmCv.width !== w || _r3dWarmCv.height !== h) { _r3dWarmCv.width = w; _r3dWarmCv.height = h; }
-    _r3dPaint(_r3dWarmCv.getContext('2d'), w, h, dpr, f);
-    _r3dCacheStore(f, key, _r3dWarmCv);
-    return true;
+    if (!hit || hit.key !== key) return f;
   }
-  return false;
+  return null;
+}
+function _r3dWarmOne() {
+  const f = _r3dWarmNeeded();
+  if (!f || _r3dRendering) return Promise.resolve(false);
+  const cv = _r3dEl('r3d-canvas');
+  const w = cv.width, h = cv.height, dpr = window.devicePixelRatio || 1;
+  const key = _r3dRenderKey(w, h);
+  if (!_r3dWarmCv) _r3dWarmCv = document.createElement('canvas');
+  if (_r3dWarmCv.width !== w || _r3dWarmCv.height !== h) { _r3dWarmCv.width = w; _r3dWarmCv.height = h; }
+  _r3dRendering = true;
+  return _r3dPaint(_r3dWarmCv.getContext('2d'), w, h, dpr, f).then(ok => {
+    _r3dRendering = false;
+    if (ok && _r3dRenderKey(w, h) === key) _r3dCacheStore(f, key, _r3dWarmCv);
+    return true;
+  }).catch(() => { _r3dRendering = false; return true; });
 }
 
 // ── Camera and drawing ───────────────────────────────────────────────────
+// One picture at a time: while the pool is marching, a change of view just
+// marks the picture dirty again and the next tick starts a fresh march from
+// the newest view, so a drag never queues up stale frames.
+let _r3dRendering = false;
 function _r3dTick() {
-  if (_r3dOn && _r3dDirty) { _r3dDirty = false; _r3dRender(); }
+  if (_r3dOn && _r3dDirty && !_r3dRendering) { _r3dDirty = false; _r3dRender(); }
   requestAnimationFrame(_r3dTick);
+}
+// Settles once nothing is marching and nothing is waiting to: the tests'
+// way of waiting for the picture.
+function _r3dRenderIdle(timeoutMs) {
+  const until = Date.now() + (timeoutMs || 15000);
+  return new Promise((resolve) => {
+    const poll = () => {
+      if ((!_r3dRendering && !_r3dDirty) || Date.now() > until) resolve(!_r3dRendering && !_r3dDirty);
+      else setTimeout(poll, 16);
+    };
+    poll();
+  });
 }
 
 // ── The transfer function ────────────────────────────────────────────────
 // Byte value -> premultiplied RGBA, once per state change, 256 entries.
-// Colour comes from the OpenStorm ramps; opacity is the volumetric part:
-// weak returns are a thin haze that only shows after many samples along a
-// ray, strong cores saturate in a few, so one march reads as mist wrapped
-// around a solid heart, exactly what the flat dots could never do. Alpha is
-// baked for the current march step length, so both quality modes look the
-// same, just at different sharpness. The "Show above" slider lives here
-// too: below its cutoff the alpha is exactly zero.
+// Colour is the app's own palette for the product; opacity is the
+// volumetric part: weak returns are a thin haze that only shows after many
+// samples along a ray, strong cores saturate in a few, so one march reads
+// as mist wrapped around a solid heart. OpenStorm's ramp lends its shape:
+// opacity climbs with the value, and the 60 to 70 dBZ band is half again
+// as opaque, 70 and up twice, so hail cores read as the solid things they
+// are. Alpha is baked for the current march step length, so both quality
+// modes look the same, just at different sharpness. The "Show above"
+// slider lives here too: below its cutoff the alpha is exactly zero.
 function _r3dLutFor(product, stepKm) {
-  const key = product + '|' + _r3dFilterPct + '|' + stepKm.toFixed(3) + '|' + _r3dPaletteGen
+  const spec = _r3dSpec(product);
+  const key = spec.id + '|' + _r3dFilterPct + '|' + stepKm.toFixed(3) + '|' + _r3dPaletteGen
     + '|' + _r3dOpacity + '|' + _r3dMode;
   if (_r3dLutCache && _r3dLutCache.key === key) return _r3dLutCache;
   const lut = new Float32Array(256 * 4);
   const floorRgb = new Uint8Array(256 * 3);
-  const isVel = product === 'vel';
-  const colorOf = _r3dColorFn(product);
+  const colorOf = _r3dColorFn(spec.id);
   const t0 = Math.max(0, Math.min(0.98, _r3dFilterPct / 100));
   for (let b = 1; b < 256; b++) {
     const t = (b - 1) / 254;
-    const v = isVel ? -100 + t * 200 : -20 + t * 100;
-    const mag = isVel ? Math.abs(v) / 100 : t;
+    const v = spec.min + t * (spec.max - spec.min);
+    const mag = _r3dMagOf(spec, v);
     const rgb = colorOf(v);
     if (!rgb) continue;                                       // the picture draws nothing here
     floorRgb[b * 3] = rgb[0]; floorRgb[b * 3 + 1] = rgb[1]; floorRgb[b * 3 + 2] = rgb[2];
@@ -69488,7 +69942,9 @@ function _r3dLutFor(product, stepKm) {
         a = 1;                                                // an opaque shell at the threshold: an isosurface
       } else {
         const u = (mag - t0) / Math.max(0.02, 1 - t0);
-        a = Math.min(0.92, (0.015 + Math.pow(u, 1.5) * 0.75) * _r3dOpacity);   // opacity per km of cloud
+        a = (0.015 + Math.pow(u, 1.5) * 0.75) * _r3dOpacity;  // opacity per km of cloud
+        if (spec.id === 'ref') { if (v >= 70) a *= 2; else if (v >= 60) a *= 1.5; }
+        a = Math.min(0.95, a);
       }
     }
     a = a >= 1 ? 1 : 1 - Math.pow(1 - a, stepKm);             // per-step, for this step length
@@ -69499,16 +69955,8 @@ function _r3dLutFor(product, stepKm) {
   return _r3dLutCache;
 }
 
-// ── The ray marcher ──────────────────────────────────────────────────────
-// One ray per pixel, marched front-to-back through the voxel grid with
-// alpha compositing, empty blocks leapt over via the coarse occupancy mask,
-// and the radar floor composited where the ray meets the ground inside the
-// box. Renders into a small offscreen buffer and upscales with the canvas's
-// own bilinear smoothing - volumetric data is soft by nature, so the
-// upscale reads as antialiasing, not blur. Fast mode (while dragging)
-// samples nearest-voxel at a coarser resolution; fine mode (the moment the
-// hand stops) samples trilinearly at high resolution.
-let _r3dOffCv = null, _r3dImg = null;
+// ── Rendering ────────────────────────────────────────────────────────────
+let _r3dOffCv = null, _r3dImg = null, _r3dPaintSeq = 0;
 // The box actually marched: the zone, less whatever the cutaway removes.
 function _r3dMarchBox(halfX, halfY) {
   const box = { minX: -halfX, maxX: halfX, minY: -halfY, maxY: halfY };
@@ -69520,220 +69968,6 @@ function _r3dMarchBox(halfX, halfY) {
   return box;
 }
 
-function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, halfX, halfY, topKm, exag, box) {
-  const fine = _r3dQuality === 'fine';
-  // Fine mode renders at the canvas's own full resolution (capped only for
-  // truly huge panels), so the settled picture has no upscale in it at all;
-  // fast mode stays small so dragging never stutters.
-  const iw = fine ? Math.min(w, 900)
-                  : Math.max(140, Math.min(320, Math.round(w / 2.5)));
-  const ih = Math.max(60, Math.round(iw * h / w));
-  const stepKm = Math.max(0.08, Math.min(2, G.cellXY * (fine ? 0.5 : 1.1)));
-  const product = ((_r3dEl('r3d-product') || {}).value) || 'ref';
-  const pack = _r3dLutFor(product, stepKm);
-  const lut = pack.lut, floorRgb = pack.floorRgb;
-
-  if (!_r3dOffCv) _r3dOffCv = document.createElement('canvas');
-  if (_r3dOffCv.width !== iw || _r3dOffCv.height !== ih) {
-    _r3dOffCv.width = iw; _r3dOffCv.height = ih; _r3dImg = null;
-  }
-  const octx = _r3dOffCv.getContext('2d');
-  if (!_r3dImg) _r3dImg = octx.createImageData(iw, ih);
-  const data = _r3dImg.data;
-  data.fill(0);
-
-  const nx = G.nx, ny = G.ny, nz = G.nz, grid = G.grid, occ = G.occ;
-  const cnx = G.cnx, cny = G.cny, B = G.blockB;
-  const cellXY = G.cellXY, cellZ = G.cellZ;
-  // The march happens in drawn (exaggerated) space; dividing z by the
-  // exaggeration on the way into the grid keeps the data at true height.
-  const invCX = 1 / cellXY, invCZ = 1 / (cellZ * exag);
-  const layerStride = nx * ny;
-  // The grid still spans the whole zone; the cutaway only narrows what is
-  // marched, so gx/gy are figured from the zone's own edge (-half).
-  const zoneMinX = -halfX, zoneMinY = -halfY;
-  const minX = box.minX, maxX = box.maxX, minY = box.minY, maxY = box.maxY, maxZ = topKm * exag;
-  const skipKm = B * Math.min(cellXY, cellZ * exag) * 0.9;
-  const focalI = ih * 1.15;
-  const floorArr = G.floor;
-  // A single light, GR2Analyst style, fixed in eye space: above and a
-  // little to the left of the camera, so whatever faces the viewer is lit
-  // and the far sides fall into shade. Surfaces are shaded by the local
-  // gradient of the data, the volume's own normal.
-  let lx = -0.35 * rx + 0.75 * ux - 0.55 * fx, ly = -0.35 * ry + 0.75 * uy - 0.55 * fy, lz = -0.35 * rz + 0.75 * uz - 0.55 * fz;
-  const ll = Math.hypot(lx, ly, lz) || 1; lx /= ll; ly /= ll; lz /= ll;
-  const gScaleXY = 1 / (2 * cellXY), gScaleZ = 1 / (2 * cellZ * exag);
-  const isVelG = ((_r3dEl('r3d-product') || {}).value) === 'vel';
-
-  let o = 0;
-  for (let py = 0; py < ih; py++) {
-    const sv = -((py + 0.5) - ih / 2) / focalI;
-    for (let px = 0; px < iw; px++, o += 4) {
-      const su = ((px + 0.5) - iw / 2) / focalI;
-      let dx = fx + rx * su + ux * sv, dy = fy + ry * su + uy * sv, dz = fz + rz * su + uz * sv;
-      const dl = Math.hypot(dx, dy, dz); dx /= dl; dy /= dl; dz /= dl;
-
-      // Slab test against the shown box (the height slider clips maxZ).
-      let t0 = 0.5, t1 = 1e9, inv, ta, tb, q;
-      inv = 1 / dx; ta = (minX - camX) * inv; tb = (maxX - camX) * inv;
-      if (ta > tb) { q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb;
-      inv = 1 / dy; ta = (minY - camY) * inv; tb = (maxY - camY) * inv;
-      if (ta > tb) { q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb;
-      inv = 1 / dz; ta = (0 - camZ) * inv; tb = (maxZ - camZ) * inv;
-      if (ta > tb) { q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb;
-      if (!(t1 > t0)) continue;
-
-      let accR = 0, accG = 0, accB = 0, accA = 0;
-
-      const floorT = dz !== 0 ? (0 - camZ) / dz : -1;
-      const hitsFloor = floorT >= t0 - 1e-3 && floorT <= t1 + 1e-3;
-      const floorFirst = hitsFloor && dz > 0;            // looking up from under the box
-
-      // No closure here on purpose: this loop runs up to ~100k times per
-      // frame and a per-pixel closure is a per-pixel allocation.
-      if (floorFirst) {
-        // Bilinear over the four floor cells around the hit, blended in
-        // premultiplied colour so radar fades to bare ground rather than
-        // stepping cell by cell. The floor honours the Show Above filter
-        // too - filtering down to the core should not leave the whole radar
-        // map painted underneath.
-        let fxg = (camX + dx * floorT - zoneMinX) * invCX - 0.5, fyg = (camY + dy * floorT - zoneMinY) * invCX - 0.5;
-        if (fxg < 0) fxg = 0; else if (fxg > nx - 1.001) fxg = nx - 1.001;
-        if (fyg < 0) fyg = 0; else if (fyg > ny - 1.001) fyg = ny - 1.001;
-        const fx0 = fxg | 0, fy0 = fyg | 0, ftx = fxg - fx0, fty = fyg - fy0;
-        let pr = 0, pg = 0, pb = 0, pa = 0;
-        const fw = [(1 - ftx) * (1 - fty), ftx * (1 - fty), (1 - ftx) * fty, ftx * fty];
-        const fidx = [fy0 * nx + fx0, fy0 * nx + fx0 + 1, (fy0 + 1) * nx + fx0, (fy0 + 1) * nx + fx0 + 1];
-        for (let q = 0; q < 4; q++) {
-          const fb = floorArr[fidx[q]];
-          let cr = 30, cg = 36, cb = 46, ca = 0.4;
-          if (fb && lut[(fb << 2) + 3] > 0) { const fi = fb * 3; cr = floorRgb[fi]; cg = floorRgb[fi + 1]; cb = floorRgb[fi + 2]; ca = 0.85; }
-          pr += fw[q] * cr * ca; pg += fw[q] * cg * ca; pb += fw[q] * cb * ca; pa += fw[q] * ca;
-        }
-        const k = 1 - accA;
-        accR += k * pr; accG += k * pg; accB += k * pb; accA += k * pa;
-      }
-
-      // OpenStorm's "fuzz": the first step starts a little differently on
-      // every pixel (a hash of its position), so fixed-length steps never
-      // line up into wood-grain bands across the picture.
-      const jitter = fine ? (Math.sin(px * 12.9898 + py * 78.233) * 43758.5453) % 1 : 0.5;
-      let t = t0 + stepKm * (jitter < 0 ? jitter + 1 : jitter), guard = 0;
-      while (t < t1 && accA < 0.96 && guard++ < 900) {
-        const x = camX + dx * t, y = camY + dy * t, z = camZ + dz * t;
-        let gx = (x - zoneMinX) * invCX, gy = (y - zoneMinY) * invCX, gz = z * invCZ;
-        if (gx < 0) gx = 0; else if (gx > nx - 0.001) gx = nx - 0.001;
-        if (gy < 0) gy = 0; else if (gy > ny - 0.001) gy = ny - 0.001;
-        if (gz < 0) gz = 0; else if (gz > nz - 0.001) gz = nz - 0.001;
-        if (!occ[(((gz / B) | 0) * cny + ((gy / B) | 0)) * cnx + ((gx / B) | 0)]) {
-          t += skipKm;                                   // whole block of empty air
-          continue;
-        }
-        if (fine) {
-          // Trilinear, premultiplied through the LUT: blending COLOURS, not
-          // raw values, so a cloud edge fades to transparent instead of
-          // greying out toward the empty voxels next to it.
-          let ax = gx - 0.5, ay = gy - 0.5, az = gz - 0.5;
-          if (ax < 0) ax = 0; else if (ax > nx - 1.001) ax = nx - 1.001;
-          if (ay < 0) ay = 0; else if (ay > ny - 1.001) ay = ny - 1.001;
-          if (az < 0) az = 0; else if (az > nz - 1.001) az = nz - 1.001;
-          const ix0 = ax | 0, iy0 = ay | 0, iz0 = az | 0;
-          const tx = ax - ix0, ty = ay - iy0, tz = az - iz0;
-          const i000 = (iz0 * ny + iy0) * nx + ix0;
-          const b000 = grid[i000], b100 = grid[i000 + 1];
-          const b010 = grid[i000 + nx], b110 = grid[i000 + nx + 1];
-          const i001 = i000 + layerStride;
-          const b001 = grid[i001], b101 = grid[i001 + 1];
-          const b011 = grid[i001 + nx], b111 = grid[i001 + nx + 1];
-          if (b000 | b100 | b010 | b110 | b001 | b101 | b011 | b111) {
-            const w000 = (1 - tx) * (1 - ty) * (1 - tz), w100 = tx * (1 - ty) * (1 - tz);
-            const w010 = (1 - tx) * ty * (1 - tz), w110 = tx * ty * (1 - tz);
-            const w001 = (1 - tx) * (1 - ty) * tz, w101 = tx * (1 - ty) * tz;
-            const w011 = (1 - tx) * ty * tz, w111 = tx * ty * tz;
-            const l0 = b000 << 2, l1 = b100 << 2, l2 = b010 << 2, l3 = b110 << 2;
-            const l4 = b001 << 2, l5 = b101 << 2, l6 = b011 << 2, l7 = b111 << 2;
-            const sa = w000 * lut[l0 + 3] + w100 * lut[l1 + 3] + w010 * lut[l2 + 3] + w110 * lut[l3 + 3]
-                     + w001 * lut[l4 + 3] + w101 * lut[l5 + 3] + w011 * lut[l6 + 3] + w111 * lut[l7 + 3];
-            if (sa > 0.0015) {
-              let sr = w000 * lut[l0] + w100 * lut[l1] + w010 * lut[l2] + w110 * lut[l3]
-                     + w001 * lut[l4] + w101 * lut[l5] + w011 * lut[l6] + w111 * lut[l7];
-              let sg = w000 * lut[l0 + 1] + w100 * lut[l1 + 1] + w010 * lut[l2 + 1] + w110 * lut[l3 + 1]
-                     + w001 * lut[l4 + 1] + w101 * lut[l5 + 1] + w011 * lut[l6 + 1] + w111 * lut[l7 + 1];
-              let sb = w000 * lut[l0 + 2] + w100 * lut[l1 + 2] + w010 * lut[l2 + 2] + w110 * lut[l3 + 2]
-                     + w001 * lut[l4 + 2] + w101 * lut[l5 + 2] + w011 * lut[l6 + 2] + w111 * lut[l7 + 2];
-              // Lighting: the gradient of the data at this sample is the
-              // surface normal; how squarely it faces the light sets the
-              // shade. Deep inside the cloud the gradient is nil, and that
-              // is left at a neutral mid-tone rather than lit or shadowed.
-              if (sa > 0.02) {
-                const cx = ix0 + (tx > 0.5 ? 1 : 0), cy = iy0 + (ty > 0.5 ? 1 : 0), cz = iz0 + (tz > 0.5 ? 1 : 0);
-                const ci = (cz * ny + cy) * nx + cx;
-                const bxm = cx > 0 ? grid[ci - 1] : 0, bxp = cx < nx - 1 ? grid[ci + 1] : 0;
-                const bym = cy > 0 ? grid[ci - nx] : 0, byp = cy < ny - 1 ? grid[ci + nx] : 0;
-                const bzm = cz > 0 ? grid[ci - layerStride] : 0, bzp = cz < nz - 1 ? grid[ci + layerStride] : 0;
-                const sx2 = isVelG ? Math.abs(bxp - 128) - Math.abs(bxm - 128) : bxp - bxm;
-                const sy2 = isVelG ? Math.abs(byp - 128) - Math.abs(bym - 128) : byp - bym;
-                const sz2 = isVelG ? Math.abs(bzp - 128) - Math.abs(bzm - 128) : bzp - bzm;
-                let nX = -sx2 * gScaleXY, nY = -sy2 * gScaleXY, nZ = -sz2 * gScaleZ;
-                const nl = Math.hypot(nX, nY, nZ);
-                let shade = 0.78;
-                if (nl > 4) {
-                  nX /= nl; nY /= nl; nZ /= nl;
-                  const d = nX * lx + nY * ly + nZ * lz;
-                  shade = 0.42 + 0.62 * (d > 0 ? d : 0);
-                }
-                sr *= shade; sg *= shade; sb *= shade;
-              }
-              const k = 1 - accA;
-              accR += k * sr; accG += k * sg; accB += k * sb; accA += k * sa;
-            }
-          }
-        } else {
-          const b = grid[((gz | 0) * ny + (gy | 0)) * nx + (gx | 0)];
-          if (b) {
-            const li = b << 2, sa = lut[li + 3], k = 1 - accA;
-            accR += k * lut[li]; accG += k * lut[li + 1]; accB += k * lut[li + 2]; accA += k * sa;
-          }
-        }
-        t += stepKm;
-      }
-
-      if (!floorFirst && hitsFloor && accA < 0.96) {
-        // Bilinear over the four floor cells around the hit, blended in
-        // premultiplied colour so radar fades to bare ground rather than
-        // stepping cell by cell. The floor honours the Show Above filter
-        // too - filtering down to the core should not leave the whole radar
-        // map painted underneath.
-        let fxg = (camX + dx * floorT - zoneMinX) * invCX - 0.5, fyg = (camY + dy * floorT - zoneMinY) * invCX - 0.5;
-        if (fxg < 0) fxg = 0; else if (fxg > nx - 1.001) fxg = nx - 1.001;
-        if (fyg < 0) fyg = 0; else if (fyg > ny - 1.001) fyg = ny - 1.001;
-        const fx0 = fxg | 0, fy0 = fyg | 0, ftx = fxg - fx0, fty = fyg - fy0;
-        let pr = 0, pg = 0, pb = 0, pa = 0;
-        const fw = [(1 - ftx) * (1 - fty), ftx * (1 - fty), (1 - ftx) * fty, ftx * fty];
-        const fidx = [fy0 * nx + fx0, fy0 * nx + fx0 + 1, (fy0 + 1) * nx + fx0, (fy0 + 1) * nx + fx0 + 1];
-        for (let q = 0; q < 4; q++) {
-          const fb = floorArr[fidx[q]];
-          let cr = 30, cg = 36, cb = 46, ca = 0.4;
-          if (fb && lut[(fb << 2) + 3] > 0) { const fi = fb * 3; cr = floorRgb[fi]; cg = floorRgb[fi + 1]; cb = floorRgb[fi + 2]; ca = 0.85; }
-          pr += fw[q] * cr * ca; pg += fw[q] * cg * ca; pb += fw[q] * cb * ca; pa += fw[q] * ca;
-        }
-        const k = 1 - accA;
-        accR += k * pr; accG += k * pg; accB += k * pb; accA += k * pa;
-      }
-
-      if (accA > 0.004) {
-        data[o] = accR / accA; data[o + 1] = accG / accA; data[o + 2] = accB / accA;
-        data[o + 3] = accA * 255;
-      }
-    }
-  }
-
-  octx.putImageData(_r3dImg, 0, 0);
-  ctx.imageSmoothingEnabled = true;
-  try { ctx.imageSmoothingQuality = 'high'; } catch (e) {}
-  ctx.drawImage(_r3dOffCv, 0, 0, w, h);
-}
-
 function _r3dRender() {
   const cv = _r3dEl('r3d-canvas');
   if (!cv || !cv.getContext) return;
@@ -69743,33 +69977,35 @@ function _r3dRender() {
   if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
   const ctx = cv.getContext('2d');
   const frame = _r3dFrames[_r3dFrameIdx];
+  const key = frame ? _r3dRenderKey(w, h) : '';
   if (frame) {
-    const key = _r3dRenderKey(w, h);
     const hit = _r3dFrameCache.get(frame);
     if (hit && hit.key === key) {
       ctx.clearRect(0, 0, w, h);
       ctx.drawImage(hit.cv, 0, 0);
       return;
     }
-    _r3dPaint(ctx, w, h, dpr, frame);
-    if (_r3dQuality === 'fine') _r3dCacheStore(frame, key, cv);
-    return;
   }
-  _r3dPaint(ctx, w, h, dpr, null);
+  if (_r3dRendering) { _r3dDirty = true; return; }
+  _r3dRendering = true;
+  const fine = _r3dQuality === 'fine';
+  _r3dPaint(ctx, w, h, dpr, frame).then(ok => {
+    _r3dRendering = false;
+    if (!ok) { _r3dDirty = true; return; }
+    if (frame && fine && _r3dRenderKey(w, h) === key) _r3dCacheStore(frame, key, cv);
+  }).catch((e) => { _r3dRendering = false; console.warn('[r3d] render:', e); });
 }
 
-// The picture itself: background, the marched volume, the box, drawn into
-// whichever canvas context is handed over (the screen, or the cache).
-function _r3dPaint(ctx, w, h, dpr, frame) {
-  ctx.clearRect(0, 0, w, h);
-  const bg = ctx.createLinearGradient(0, 0, 0, h);
-  bg.addColorStop(0, '#08080b'); bg.addColorStop(1, '#000');
-  ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
-
+// The picture itself: the volume marched by the pool, then background,
+// volume and box drawn into the given context in one go once it is back,
+// so the previous picture stays up until the new one is whole. Resolves
+// true when it drew, false when a newer paint overtook it.
+async function _r3dPaint(ctx, w, h, dpr, frame) {
+  const seq = ++_r3dPaintSeq;
   const product = ((_r3dEl('r3d-product') || {}).value) || 'ref';
+  const spec = _r3dSpec(product);
   const halfX = (_r3dZone ? _r3dZone.wKm : 90) / 2, halfY = (_r3dZone ? _r3dZone.hKm : 90) / 2;
   const topKm = _r3dBoxTopKm();
-
   const { yaw, pitch, dist } = _r3dCam;
   const exag = _r3dExag;
   const targetZ = topKm * exag / 2;
@@ -69782,15 +70018,57 @@ function _r3dPaint(ctx, w, h, dpr, frame) {
   const rl = Math.hypot(rx, ry, rz) || 1; rx /= rl; ry /= rl; rz /= rl;
   const ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
   const focal = h * 1.15;
-
   const box = _r3dMarchBox(halfX, halfY);
+
+  let volume = null;
   if (frame) {
-    const G = _r3dGridFor(frame, product === 'vel');
-    _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, halfX, halfY, topKm, exag, box);
+    const P = _r3dPolarFor(frame, spec);
+    const fine = _r3dQuality === 'fine';
+    // Fine mode renders at the canvas's own resolution (capped for huge
+    // panels, the canvas's bilinear upscale reads as antialiasing on data
+    // this soft); fast mode stays small so dragging never stutters.
+    const iw = fine ? Math.min(w, 720) : Math.max(140, Math.min(320, Math.round(w / 2.5)));
+    const ih = Math.max(60, Math.round(iw * h / w));
+    // A step of half a range bin in fine mode: the native data is never
+    // stepped over; coarser while dragging.
+    const stepKm = Math.max(0.08, Math.min(1.5, P.rStep * (fine ? 0.6 : 1.3)));
+    const pack = _r3dLutFor(product, stepKm);
+    // A single light, GR2Analyst style, fixed in eye space: above and a
+    // little to the left of the camera, so whatever faces the viewer is lit
+    // and the far sides fall into shade.
+    let lx = -0.35 * rx + 0.75 * ux - 0.55 * fx, ly = -0.35 * ry + 0.75 * uy - 0.55 * fy, lz = -0.35 * rz + 0.75 * uz - 0.55 * fz;
+    const ll = Math.hypot(lx, ly, lz) || 1; lx /= ll; ly /= ll; lz /= ll;
+    const prm = {
+      iw, ih, fine: fine ? 1 : 0, exag, stepKm,
+      cam: new Float64Array([camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz]),
+      minX: box.minX, maxX: box.maxX, minY: box.minY, maxY: box.maxY, maxZ: topKm * exag,
+      lut: pack.lut, floorRgb: pack.floorRgb, signed: !!spec.signed,
+      light: new Float32Array([lx, ly, lz]),
+    };
+    const data = await _r3dMarchAsync(P, prm);
+    if (seq !== _r3dPaintSeq) return false;
+    if (!data) return false;
+    volume = { data, iw, ih };
   }
 
+  ctx.clearRect(0, 0, w, h);
+  const bg = ctx.createLinearGradient(0, 0, 0, h);
+  bg.addColorStop(0, '#08080b'); bg.addColorStop(1, '#000');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+  if (volume) {
+    if (!_r3dOffCv) _r3dOffCv = document.createElement('canvas');
+    if (_r3dOffCv.width !== volume.iw || _r3dOffCv.height !== volume.ih) {
+      _r3dOffCv.width = volume.iw; _r3dOffCv.height = volume.ih; _r3dImg = null;
+    }
+    const octx = _r3dOffCv.getContext('2d');
+    if (!_r3dImg) _r3dImg = octx.createImageData(volume.iw, volume.ih);
+    _r3dImg.data.set(volume.data);
+    octx.putImageData(_r3dImg, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    try { ctx.imageSmoothingQuality = 'high'; } catch (e) {}
+    ctx.drawImage(_r3dOffCv, 0, 0, w, h);
+  }
   _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, halfX, halfY, topKm, dpr, exag, box);
-
   if (!frame) {
     ctx.fillStyle = _r3dGoldFill(ctx, h);
     ctx.font = `${Math.round(12 * dpr)}px 'Comfortaa', sans-serif`;
@@ -69798,6 +70076,7 @@ function _r3dPaint(ctx, w, h, dpr, frame) {
     ctx.fillText(_r3dBuilding ? 'Building the volume…'
       : "Double-click or long-press the map, pick Draw 3D zone, and drag out a box", w / 2, h / 2);
   }
+  return true;
 }
 
 // The wireframe box around the zone: edges, kft gridlines on the two far
@@ -69997,7 +70276,16 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   const play = _r3dEl('r3d-play');
   if (play) play.onclick = () => _r3dPlayToggle();
   const ps = _r3dEl('r3d-product');
-  if (ps) ps.onchange = () => { _r3dUpdateFilterLabel(); if (_r3dStation) _r3dLoad(); };
+  if (ps) ps.onchange = () => {
+    // Each product starts its Show above slider where its own noise ends:
+    // 5 dBZ, 10 kt, everything for the dual-pol moments.
+    _r3dFilterPct = _r3dSpec(ps.value).filter;
+    const fl = _r3dEl('r3d-filter');
+    if (fl) fl.value = String(_r3dFilterPct);
+    _r3dUpdateFilterLabel();
+    _r3dLutCache = null;
+    if (_r3dStation) _r3dLoad(); else _r3dDirty = true;
+  };
   // A different radar for the same zone: same box, new volume.
   const ss = _r3dEl('r3d-site');
   if (ss) ss.onchange = () => {
