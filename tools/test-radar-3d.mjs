@@ -34,10 +34,10 @@ console.log('\n1. the panel: a zone picker and volumetric controls, no toolbar b
      !/id="tool-r3d"/.test(PAGE));
   ok('the panel exists and is titled Volumetric 3D',
      PAGE.includes('id="r3d-panel"') && /<span class="xs-title">Volumetric 3D<\/span>/.test(PAGE));
-  ok('it has a product picker and a zone size picker',
-     PAGE.includes('id="r3d-product"') && PAGE.includes('id="r3d-zone"'));
-  ok('the zone picker offers small, medium and large boxes',
-     /id="r3d-zone"[\s\S]{0,300}value="50"[\s\S]{0,200}value="90"[\s\S]{0,200}value="150"/.test(PAGE));
+  ok('it has a product picker and no box-size picker: the zone is whatever you draw',
+     PAGE.includes('id="r3d-product"') && !PAGE.includes('id="r3d-zone"'));
+  ok('the Radius maker and the Polygon maker each have a 3D button',
+     /id="rtb-3d-btn" onclick="_r3dFromRadius\(\)"/.test(PAGE) && /id="ptb-3d" onclick="_r3dFromPolygon\(\)"/.test(PAGE));
   ok('it has a station picker too, for choosing a different radar than the nearest',
      PAGE.includes('id="r3d-site"'));
   ok('it keeps the two sliders: Show above and Up to',
@@ -45,8 +45,8 @@ console.log('\n1. the panel: a zone picker and volumetric controls, no toolbar b
   ok('it has a time control: play, a slider, a time label',
      PAGE.includes('id="r3d-play"') && PAGE.includes('id="r3d-slider"')
      && PAGE.includes('id="r3d-time-label"'));
-  ok('the double-click/long-press map menu has a row for it',
-     /_cmRadar3DHere\(\)/.test(PAGE) && /View in 3D here/.test(PAGE));
+  ok('the double-click/long-press map menu has a row that starts drawing a zone',
+     /_cmRadar3DDraw\(\)/.test(PAGE) && /Draw a 3D zone/.test(PAGE));
   ok('the renderer is a ray marcher, not a dot painter',
      /_r3dMarchDraw/.test(PAGE) && /Trilinear/.test(PAGE));
   const EM = String.fromCharCode(0x2014);
@@ -89,55 +89,110 @@ await p.goto('file://' + join(ROOT, 'index.html'), { waitUntil: 'domcontentloade
 await p.waitForTimeout(4200);
 ok('the page boots clean', errs.length === 0, errs[0]);
 
-console.log('\n2. the map menu places the zone and finds the nearest radar');
+console.log('\n2. the map menu starts a drag, and the drag becomes the zone');
 {
-  const r = await p.evaluate(() => {
+  const r = await p.evaluate(async () => {
+    map.setView([36.1, -95.9], 7);
+    await new Promise(res => setTimeout(res, 200));
     _cmOpen({ latlng: L.latLng(36.1, -95.9) });
     const row = Array.from(document.querySelectorAll('#map-ctx-menu .cm-item'))
-      .find(el => /View in 3D here/i.test(el.textContent));
+      .find(el => /Draw a 3D zone/i.test(el.textContent));
     if (row) row.click();
+    const drawing = { on: _r3dDrawOn, dragOff: !map.dragging.enabled(),
+                      cursor: map.getContainer().style.cursor,
+                      menuClosed: !document.getElementById('map-ctx-menu').classList.contains('open') };
+    // Drag a box out on the map, screenshot-style: 120 by 90 pixels.
+    const c = map.getContainer(), rc = c.getBoundingClientRect();
+    const a = [rc.left + 500, rc.top + 300], b = [rc.left + 620, rc.top + 390];
+    const ev = (type, xy, extra) => c.dispatchEvent(new PointerEvent(type, Object.assign({
+      pointerId: 7, clientX: xy[0], clientY: xy[1], button: 0, bubbles: true, cancelable: true }, extra || {})));
+    ev('pointerdown', a);
+    ev('pointermove', [rc.left + 560, rc.top + 350]);
+    const previewShown = !!(_r3dDrawPreview && map.hasLayer(_r3dDrawPreview));
+    ev('pointermove', b);
+    ev('pointerup', b);
+    // What that drag measures on the map, in km.
+    const la = map.containerPointToLatLng([500, 300]), lb = map.containerPointToLatLng([620, 390]);
+    const midLat = (la.lat + lb.lat) / 2;
+    const expectW = Math.abs(lb.lng - la.lng) * 111.32 * Math.cos(midLat * Math.PI / 180);
+    const expectH = Math.abs(la.lat - lb.lat) * 111.32;
     const rectOnMap = !!(_r3dZoneRect && map.hasLayer(_r3dZoneRect));
-    let rectKm = 0;
+    let rectKm = null;
     if (rectOnMap) {
       const rb = _r3dZoneRect.getBounds();
-      rectKm = (rb.getNorth() - rb.getSouth()) * 111.32;
+      rectKm = { w: (rb.getEast() - rb.getWest()) * 111.32 * Math.cos(midLat * Math.PI / 180), h: (rb.getNorth() - rb.getSouth()) * 111.32 };
     }
     const out = {
-      rowExists: !!row,
-      on: _r3dOn,
-      zone: _r3dZone ? { lat: _r3dZone.lat, lng: _r3dZone.lng } : null,
-      station: _r3dStation,
-      km: _r3dStationKm,
+      rowExists: !!row, drawing, previewShown,
+      on: _r3dOn, zone: _r3dZone ? Object.assign({}, _r3dZone) : null,
+      expectW, expectH, midLat, midLng: (la.lng + lb.lng) / 2,
+      station: _r3dStation, km: _r3dStationKm,
       rectOnMap, rectKm,
+      drawOffAfter: !_r3dDrawOn, dragBackOn: map.dragging.enabled(), previewGone: !_r3dDrawPreview,
       panelOpen: document.getElementById('r3d-panel').classList.contains('open'),
-      menuClosed: !document.getElementById('map-ctx-menu').classList.contains('open'),
     };
     _r3dClose();
     out.rectGoneAfterClose = !_r3dZoneRect;
     out.zoneClearedAfterClose = !_r3dZone;
     return out;
   });
-  ok('the row is really in the menu', r.rowExists);
-  ok('clicking it opens the panel', r.on && r.panelOpen);
-  ok('the zone is centred exactly where the map was tapped',
-     r.zone && Math.abs(r.zone.lat - 36.1) < 1e-6 && Math.abs(r.zone.lng - -95.9) < 1e-6,
-     JSON.stringify(r.zone));
-  ok('the nearest radar to that spot was chosen, with a real distance',
+  ok('the row is really in the menu, and picking it closes the menu', r.rowExists && r.drawing.menuClosed);
+  ok('it enters drawing mode: crosshair, map panning paused',
+     r.drawing.on && r.drawing.dragOff && r.drawing.cursor === 'crosshair', JSON.stringify(r.drawing));
+  ok('a dashed preview rubber-bands while dragging', r.previewShown);
+  ok('letting go opens the panel', r.on && r.panelOpen);
+  ok('the zone is exactly the box that was dragged out',
+     r.zone && Math.abs(r.zone.wKm - r.expectW) < 0.3 && Math.abs(r.zone.hKm - r.expectH) < 0.3
+     && Math.abs(r.zone.lat - r.midLat) < 1e-4 && Math.abs(r.zone.lng - r.midLng) < 1e-4,
+     JSON.stringify({ zone: r.zone, expectW: r.expectW, expectH: r.expectH }));
+  ok('it is not a square: width and height follow the drag',
+     r.zone && Math.abs(r.zone.wKm - r.zone.hKm) > 5, JSON.stringify(r.zone));
+  ok('the nearest radar to that box was chosen, with a real distance',
      !!r.station && r.km > 0 && r.km < 420, r.station + ' ' + r.km);
-  ok('a rectangle appears on the map, sized to the medium box',
-     r.rectOnMap && Math.abs(r.rectKm - 90) < 2, String(r.rectKm));
-  ok('and the map menu itself closes on the way', r.menuClosed);
+  ok('the rectangle on the map is that same box',
+     r.rectOnMap && r.rectKm && Math.abs(r.rectKm.w - r.zone.wKm) < 0.5 && Math.abs(r.rectKm.h - r.zone.hKm) < 0.5,
+     JSON.stringify(r.rectKm));
+  ok('drawing mode ends, panning comes back, the preview is gone',
+     r.drawOffAfter && r.dragBackOn && r.previewGone);
   ok('closing takes the rectangle and the zone away with it',
      r.rectGoneAfterClose && r.zoneClearedAfterClose);
+}
+
+console.log('\n2c. the Radius maker and the Polygon maker can send their shape to 3D');
+{
+  const r = await p.evaluate(() => {
+    _radii.push({ id: 9990, lat: 36.0, lng: -96.0, miles: 30, color: '#fff', marker: null, circle: null });
+    const okRadius = _r3dFromRadius();
+    const fromRadius = _r3dZone ? Object.assign({}, _r3dZone) : null;
+    _radii.pop();
+    _r3dClose();
+    const savedPts = _polyPts;
+    _polyPts = [L.latLng(36.0, -96.0), L.latLng(36.5, -96.0), L.latLng(36.5, -95.4)];
+    const okPoly = _r3dFromPolygon();
+    const fromPoly = _r3dZone ? Object.assign({}, _r3dZone) : null;
+    _polyPts = [];
+    const refusedEmpty = _r3dFromPolygon();
+    _polyPts = savedPts;
+    _r3dClose();
+    return { okRadius, fromRadius, okPoly, fromPoly, refusedEmpty };
+  });
+  // A 30 mile radius is a 96.6 km square; the polygon spans 0.5 degrees of
+  // latitude (55.7 km) and 0.6 of longitude (53.9 km at 36.25 north).
+  ok('a radius becomes its bounding square, centred on the radius',
+     r.okRadius && r.fromRadius && Math.abs(r.fromRadius.wKm - 96.6) < 0.5 && Math.abs(r.fromRadius.hKm - 96.6) < 0.5
+     && Math.abs(r.fromRadius.lat - 36) < 1e-6 && Math.abs(r.fromRadius.lng - -96) < 1e-6,
+     JSON.stringify(r.fromRadius));
+  ok('a polygon becomes its extent',
+     r.okPoly && r.fromPoly && Math.abs(r.fromPoly.hKm - 55.7) < 0.5 && Math.abs(r.fromPoly.wKm - 53.9) < 0.6
+     && Math.abs(r.fromPoly.lat - 36.25) < 1e-6 && Math.abs(r.fromPoly.lng - -95.7) < 1e-6,
+     JSON.stringify(r.fromPoly));
+  ok('with no polygon drawn the button politely refuses', r.refusedEmpty === false);
 }
 
 console.log('\n2b. the station picker: nearest first, nearest chosen, another one reloads');
 {
   const r = await p.evaluate(async () => {
-    _cmOpen({ latlng: L.latLng(36.1, -95.9) });
-    const row = Array.from(document.querySelectorAll('#map-ctx-menu .cm-item'))
-      .find(el => /View in 3D here/i.test(el.textContent));
-    if (row) row.click();
+    _r3dOpenBounds(36.0, -96.05, 36.2, -95.75);       // a box centred on 36.1, -95.9
     const ss = document.getElementById('r3d-site');
     const opts = Array.from(ss.options).map(o => ({ id: o.value, km: parseFloat(o.textContent.split('·')[1]) }));
     const before = { station: _r3dStation, km: _r3dStationKm, selected: ss.value };
@@ -240,20 +295,18 @@ console.log('\n4. the transfer function: haze for weak, solid for strong, filter
 console.log('\n5. gates become voxels: gridding, vertical continuity, the floor');
 {
   const r = await p.evaluate(() => {
-    const savedSize = _r3dZoneSizeKm;
-    _r3dZoneSizeKm = 90;
     // One column of air sampled by two tilts: 2 km and 5 km up, both 55
     // dBZ, exactly what a radar's cone stack really hands us.
-    const gates = new Float32Array([0, 0, 2, 55, 0, 0, 5, 55]);
+    const gates = new Float32Array([0, 0, 1, 55, 0, 0, 5, 55]);
     const frame = { gates, count: 2, segs: [
       { start: 0, end: 1, angle: 0.5 }, { start: 1, end: 2, angle: 3.0 },
     ], time: null, cuts: 2, _grids: {} };
-    const G = _r3dGridFrame(frame, 90, false);
+    const G = _r3dGridFrame(frame, { wKm: 90, hKm: 90 }, false);
     const nx = G.nx, ny = G.ny;
     const ic = Math.floor((0 + 45) / G.cellXY);
     const col = [];
     for (let iz = 0; iz < G.nz; iz++) col.push(G.grid[(iz * ny + ic) * nx + ic]);
-    const iz2 = Math.floor(2 / G.cellZ), iz5 = Math.floor(5 / G.cellZ);
+    const iz2 = Math.floor(1 / G.cellZ), iz5 = Math.floor(5 / G.cellZ);
     const betweenFilled = col.slice(iz2 + 1, iz5).every(v => v > 0);
     const carriedToGround = col.slice(0, iz2).every(v => v > 0);
     const emptyAbove = col.slice(iz5 + 1).every(v => v === 0);
@@ -261,9 +314,8 @@ console.log('\n5. gates become voxels: gridding, vertical continuity, the floor'
     const occHit = G.occ[(((iz2 / G.blockB) | 0) * G.cny + ((ic / G.blockB) | 0)) * G.cnx + ((ic / G.blockB) | 0)];
     // A far, empty corner's occupancy block stays clear.
     const occEmpty = G.occ[0];
-    _r3dZoneSizeKm = savedSize;
     return { iz2, iz5, betweenFilled, carriedToGround, emptyAbove,
-             floorByte, occHit, occEmpty, sizeKm: G.sizeKm };
+             floorByte, occHit, occEmpty };
   });
   ok('both real samples land in the column', r.iz5 > r.iz2, JSON.stringify(r));
   ok('the gap between the two tilts is interpolated, not left as stripes',
@@ -290,7 +342,7 @@ console.log('\n5b. a gate paints its whole footprint, not just the voxel under i
       for (let iy = 0; iy < G.ny; iy++) for (let ix = 0; ix < G.nx; ix++) if (G.grid[(izWanted * G.ny + iy) * G.nx + ix]) n++;
       return n;
     };
-    const Gp = _r3dGridFrame(asPoint, 90, false), Gf = _r3dGridFrame(asFootprint, 90, false);
+    const Gp = _r3dGridFrame(asPoint, { wKm: 90, hKm: 90 }, false), Gf = _r3dGridFrame(asFootprint, { wKm: 90, hKm: 90 }, false);
     const iz = Math.floor(5 / Gf.cellZ);
     const floorCells = (G) => { let n = 0; for (let i = 0; i < G.floor.length; i++) if (G.floor[i]) n++; return n; };
     return { point: count(Gp), footprint: count(Gf), pointLayer: layer(Gp, iz), footLayer: layer(Gf, iz),
@@ -341,8 +393,8 @@ console.log('\n6. building a frame from a volume that is stood in for, zone filt
     };
     window._workerProcess = fake; window._pbDecode = fake;
     const sitePos = { lat: 35.0, lng: -97.3 };
-    const zone = { lat: 35.5, lng: -97.0 };              // the fake mesh sits around here
-    const farZone = { lat: 44.0, lng: -80.0 };           // nowhere near it
+    const zone = { lat: 35.5, lng: -97.0, wKm: 90, hKm: 90 };   // the fake mesh sits around here
+    const farZone = { lat: 44.0, lng: -80.0, wKm: 90, hKm: 90 }; // nowhere near it
     const token = ++_r3dToken;
     const frame = await _r3dBuildFrame(new ArrayBuffer(8), 'REF', sitePos, zone, token);
     const token2 = ++_r3dToken;
@@ -398,7 +450,7 @@ console.log('\n6b. the whole stack: every tilt decoded, shown as it lands, stopp
     const progress = [];
     const token = ++_r3dToken;
     const frame = await _r3dBuildFrame(new ArrayBuffer(8), 'REF', { lat: 35.0, lng: -97.3 },
-      { lat: 35.5, lng: -97.0 }, token, (snap, done, total) => progress.push([done, total, snap ? snap.cuts : 0]));
+      { lat: 35.5, lng: -97.0, wKm: 90, hKm: 90 }, token, (snap, done, total) => progress.push([done, total, snap ? snap.cuts : 0]));
     window._workerProcess = realWorker; window._pbDecode = realPool; window._pbPoolSize = realSize;
     return { decoded, progress, cuts: frame ? frame.cuts : 0,
              topAngle: frame ? Math.max(...frame.segs.map(s => s.angle)) : 0 };
@@ -465,7 +517,7 @@ console.log('\n6c. a decoder that reports angles: one decode per distinct tilt, 
     const progress = [];
     const token = ++_r3dToken;
     const frame = await _r3dBuildFrame(new ArrayBuffer(8), 'REF', { lat: 35.0, lng: -97.3 },
-      { lat: 35.5, lng: -97.0 }, token, (snap, done, total) => progress.push([done, total]));
+      { lat: 35.5, lng: -97.0, wKm: 90, hKm: 90 }, token, (snap, done, total) => progress.push([done, total]));
     window._workerProcess = realWorker; window._pbDecode = realPool; window._pbPoolSize = realSize;
     const laneCalls = calls.filter(c => c.elevations === 'distinct');
     const got = frame ? frame.segs.map(s => elevs[ANGLES.indexOf(s.angle)]).sort((a, b) => a - b) : [];
@@ -602,25 +654,32 @@ console.log('\n7b. lit, solid, thinner, and cut open: the controls gauged from G
      JSON.stringify(r.wired));
 }
 
-console.log('\n8. changing the box size re-grids in place, no refetch');
+console.log('\n8. the grid follows the drawn box: its shape, its size, and re-grids in place');
 {
   const r = await p.evaluate(() => {
-    const savedSize = _r3dZoneSizeKm;
+    const savedZone = _r3dZone;
     const gates = new Float32Array([0, 0, 2, 55]);
     const frame = { gates, count: 1, segs: [{ start: 0, end: 1, angle: 0.5 }],
                     time: null, cuts: 1, _grids: {} };
-    _r3dZoneSizeKm = 90;
-    const g90 = _r3dGridFor(frame, false);
-    _r3dZoneSizeKm = 50;
-    const g50 = _r3dGridFor(frame, false);
+    _r3dZone = { lat: 36, lng: -96, wKm: 90, hKm: 60 };
+    const wide = _r3dGridFor(frame, false);
+    _r3dZone = { lat: 36, lng: -96, wKm: 50, hKm: 50 };
+    const small = _r3dGridFor(frame, false);
+    _r3dZone = { lat: 36, lng: -96, wKm: 250, hKm: 100 };
+    const huge = _r3dGridFor(frame, false);
     const oneCached = Object.keys(frame._grids).length;
-    _r3dZoneSizeKm = savedSize;
-    return { s90: g90.sizeKm, s50: g50.sizeKm,
-             cellShrank: g50.cellXY < g90.cellXY, oneCached };
+    _r3dZone = savedZone;
+    return { wide: { nx: wide.nx, ny: wide.ny, cell: wide.cellXY, w: wide.wKm, h: wide.hKm },
+             small: { nx: small.nx, ny: small.ny, cell: small.cellXY },
+             huge: { nx: huge.nx, ny: huge.ny, cell: huge.cellXY }, oneCached };
   });
-  ok('the grid follows the selected size', r.s90 === 90 && r.s50 === 50, JSON.stringify(r));
-  ok('a smaller box means finer voxels over the same spot', r.cellShrank);
-  ok('only the current size stays cached per frame', r.oneCached === 1, String(r.oneCached));
+  ok('a wide box gets a wide grid of square cells', r.wide.nx === 256 && r.wide.ny === 171
+     && Math.abs(r.wide.cell - 90 / 256) < 1e-6 && r.wide.w === 90 && r.wide.h === 60, JSON.stringify(r.wide));
+  ok('a smaller box means finer voxels over the same spot', r.small.cell < r.wide.cell && r.small.nx === 256 && r.small.ny === 256,
+     JSON.stringify(r.small));
+  ok('a very big box gets more cells so they never grow coarse', r.huge.nx === 320 && r.huge.ny === 128,
+     JSON.stringify(r.huge));
+  ok('only the current box stays cached per frame', r.oneCached === 1, String(r.oneCached));
 }
 
 console.log('\n9. Level 3 builds the same frame from separate tilt files');
@@ -666,7 +725,7 @@ console.log('\n9. Level 3 builds the same frame from separate tilt files');
     window._workerProcess = fake; window._pbDecode = fake;
 
     const sitePos = { lat: 35.0, lng: -97.3 };
-    const zone = { lat: 35.4, lng: -97.1 };
+    const zone = { lat: 35.4, lng: -97.1, wKm: 90, hKm: 90 };
     const token = ++_r3dToken;
     const frame = await _r3dBuildFrameL3('kfws', 'ref', sitePos, zone, token);
 
@@ -705,7 +764,7 @@ console.log('\n10. the load path reaches for Level 3 exactly when it should');
     // never even try _fetchVolumeDirect for one.
     let fetchDirectCalled = false;
     window._fetchVolumeDirect = async () => { fetchDirectCalled = true; throw new Error('should not be called'); };
-    _r3dZone = { lat: 32.9, lng: -97.0 };
+    _r3dZone = { lat: 32.9, lng: -97.0, wKm: 90, hKm: 90 };
     _r3dStation = 'tdal'; _r3dStationKm = 15;
     await _r3dLoad();
     const tdwr = { status: document.getElementById('r3d-status').textContent,
@@ -770,7 +829,7 @@ console.log('\n10b. a whole Level 2 volume: shown tilt by tilt, history pulled w
     const statuses = [];
     const realSay = window._r3dSay;
     window._r3dSay = (m, k) => { statuses.push(m); realSay(m, k); };
-    _r3dZone = { lat: 35.5, lng: -97.0 };
+    _r3dZone = { lat: 35.5, lng: -97.0, wKm: 90, hKm: 90 };
     _r3dStation = 'ktlx'; _r3dStationKm = 60;
     await _r3dLoad();
     await new Promise(res => setTimeout(res, 30));
@@ -856,18 +915,9 @@ console.log('\n11. the orbit camera, the quality switch, and the panel controls'
     height.value = '20'; height.dispatchEvent(new Event('input', { bubbles: true }));
     const sliders = { filterPct: _r3dFilterPct, heightKft: _r3dHeightMaxKft };
 
-    const zoneSel = document.getElementById('r3d-zone');
-    zoneSel.value = '50'; zoneSel.dispatchEvent(new Event('change', { bubbles: true }));
-    const zoneAfter = {
-      sizeKm: _r3dZoneSizeKm,
-      rectKm: _r3dZoneRect ? (_r3dZoneRect.getBounds().getNorth() - _r3dZoneRect.getBounds().getSouth()) * 111.32 : 0,
-    };
-    zoneSel.value = '90'; zoneSel.dispatchEvent(new Event('change', { bubbles: true }));
-    _r3dZoneSizeKm = 90;
-
     _r3dClose();
     const after = { panel: document.getElementById('r3d-panel').classList.contains('open') };
-    return { openState, before, midDrag, afterSettle, afterZoom, sliders, zoneAfter, after };
+    return { openState, before, midDrag, afterSettle, afterZoom, sliders, after };
   });
   ok('opening shows the panel', r.openState.panel, JSON.stringify(r.openState));
   ok('dragging the canvas changes yaw and pitch at drag quality',
@@ -882,9 +932,6 @@ console.log('\n11. the orbit camera, the quality switch, and the panel controls'
      JSON.stringify(r.sliders));
   ok('dragging Up to updates the height cap', r.sliders.heightKft === 20,
      JSON.stringify(r.sliders));
-  ok('the box size select resizes the map rectangle too',
-     r.zoneAfter.sizeKm === 50 && Math.abs(r.zoneAfter.rectKm - 50) < 2,
-     JSON.stringify(r.zoneAfter));
   ok('closing puts the panel away', !r.after.panel, JSON.stringify(r.after));
 }
 
@@ -960,14 +1007,14 @@ console.log('\n11d. the height unit can be changed, and the numbers stay true');
   });
   ok('kft labels run 10 to 80 and the slider reads 80 kft',
      r.kft.labels.includes('80 kft') && r.kft.slider === '80 kft', JSON.stringify(r.kft.labels));
-  ok('km labels run in 2 km steps to 24 km and the slider reads 24.4 km',
-     r.km.labels.includes('24 km') && r.km.labels.includes('2 km') && r.km.slider === '24.4 km',
+  ok('km labels climb to 24 km (thinned so none overlap) and the slider reads 24.4 km',
+     r.km.labels.includes('24 km') && r.km.labels.length >= 6 && r.km.slider === '24.4 km',
      JSON.stringify({ labels: r.km.labels, slider: r.km.slider }));
   ok('metres and feet work too', r.m.labels.includes('24000 m') && r.ft.labels.includes('80000 ft'),
      JSON.stringify({ m: r.m.labels.slice(-1), ft: r.ft.labels.slice(-1) }));
   ok('the same true height lands at the same place on screen whatever the unit',
-     Math.abs(r.km.y['6 km'] - r.ft.y['20000 ft']) < 1.5,
-     JSON.stringify({ km6: r.km.y['6 km'], ft20000: r.ft.y['20000 ft'] }));
+     Math.abs(r.km.y['24 km'] - r.m.y['24000 m']) < 0.5,
+     JSON.stringify({ km24: r.km.y['24 km'], m24000: r.m.y['24000 m'] }));
 }
 
 console.log('\n11c. a black gradient panel with gold gradient text, inside the box too');

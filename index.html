@@ -10975,6 +10975,10 @@ body.clean-mode #clean-hint { opacity: 1; }
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M9 6V4h6v2"/></svg>
     </button>
     <div class="dtb-sep"></div>
+    <button class="rtb-btn" id="rtb-3d-btn" onclick="_r3dFromRadius()" title="View this radius in 3D">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" width="15" height="15"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
+    </button>
+    <div class="dtb-sep"></div>
     <button id="rtb-close-btn" onclick="_rtbClose()">&#x2715;</button>
   </div>
   <div id="rtb-list"></div>
@@ -11042,6 +11046,10 @@ body.clean-mode #clean-hint { opacity: 1; }
   <!-- Filter -->
   <button class="ptb-btn" id="ptb-filter" onclick="_polyToggleFilter()" title="Apply polygon filter to all layers">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+  </button>
+  <!-- View the polygon's area in 3D -->
+  <button class="ptb-btn" id="ptb-3d" onclick="_r3dFromPolygon()" title="View this polygon's area in 3D">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" width="17" height="17"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
   </button>
   <!-- Close -->
   <button id="ptb-close" onclick="deactivateTool()" title="Exit polygon tool"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-close></use></svg></button>
@@ -11330,11 +11338,6 @@ body.clean-mode #clean-hint { opacity: 1; }
   <div class="r3d-controls">
     <select class="xsec-sel" id="r3d-product" title="Which measurement to render"></select>
     <select class="xsec-sel" id="r3d-site" title="Which radar the zone is seen from (nearest first)"></select>
-    <select class="xsec-sel" id="r3d-zone" title="How wide an area the zone covers">
-      <option value="50">Small box</option>
-      <option value="90" selected>Medium box</option>
-      <option value="150">Large box</option>
-    </select>
     <span id="r3d-status"></span>
     <div class="xs-spacer"></div>
     <button class="dtb-btn" id="r3d-info-btn" title="What this does" type="button"></button>
@@ -11342,7 +11345,7 @@ body.clean-mode #clean-hint { opacity: 1; }
   <div class="r3d-sliders">
     <label class="r3d-slider-row">
       <span>Show above</span>
-      <input type="range" id="r3d-filter" min="0" max="100" value="0" step="1" title="Hide weak values below this">
+      <input type="range" id="r3d-filter" min="0" max="100" value="25" step="1" title="Hide weak values below this">
       <span id="r3d-filter-label"></span>
     </label>
     <label class="r3d-slider-row">
@@ -11396,7 +11399,7 @@ body.clean-mode #clean-hint { opacity: 1; }
       <span id="r3d-time-label"></span>
     </div>
   </div>
-  <div class="xs-note">Drag to orbit, scroll or pinch to zoom. The rectangle on the map is the zone being rendered; double-click or long-press somewhere else to move it. Sharpens a moment after you stop moving. Sites with no Level 2 archive (like a terminal TDWR at an airport) build from Level 3 tilt files instead, as one frame with no time slider.</div>
+  <div class="xs-note">Drag to orbit, scroll or pinch to zoom. The rectangle on the map is the zone being rendered; pick Draw a 3D zone from the map menu and drag out a new box to move it, or send a radius or polygon here from its own toolbar. Sharpens a moment after you stop moving. Sites with no Level 2 archive (like a terminal TDWR at an airport) build from Level 3 tilt files instead, as one frame with no time slider.</div>
 </div>
 
     </div>
@@ -41736,7 +41739,7 @@ function _cmOpen(e) {
     <div class="cm-item" onclick="_cmSoundingHere()">${ic('chart-up')} Sounding here</div>
     ${pm ? `<div class="cm-item" onclick="_cmModelSoundingHere()">${ic('chart-up')} Model sounding: ${esc(pm.label)} &middot; F+${String(pm.fhr).padStart(3, '0')}</div>` : ''}
     <div class="cm-item" onclick="_cmCrossSectionHere()">${ic('ruler')} Cross section here</div>
-    <div class="cm-item" onclick="_cmRadar3DHere()">${ic('hex')} View in 3D here</div>
+    <div class="cm-item" onclick="_cmRadar3DDraw()">${ic('hex')} Draw a 3D zone</div>
     <div class="cm-item" onclick="_cmRadiusHere()">${ic('target')} 50 mi radius here</div>
     <div class="cm-item" onclick="_cmSetRecenter()">${ic('compass')} Set as recenter</div>
     <div class="cm-item" onclick="_cmSetLoadSpot()">${ic('flag')} Set as load spot</div>
@@ -64031,6 +64034,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-17-l', date: 'Sep 17, 2026',
+    text: 'Volumetric 3D: draw your own zone. The small, medium and large boxes are gone; pick Draw a 3D zone from the map menu and drag out any box you like, the way you take a screenshot, and it renders exactly that. The Radius maker and the Polygon maker each got a 3D button that sends their shape\'s area straight to the 3D view. Also fixed three things that made the picture look wrong: echo just outside the box could be smeared up its walls, lone specks of ground clutter were carried to the ground as pillars (a field of them looked like a city skyline), and height labels could overlap. Weak returns below 5 dBZ now start hidden; drag Show above down to see them.' },
   { id: '2026-09-17-k', date: 'Sep 17, 2026',
     text: 'Volumetric 3D learned from the pros. Gauged against GR2Analyst (its Lit Volume and Isosurface modes and Volume Alpha control), OpenStorm (blue-noise ray jitter) and RadarOmega (the cutaway): the storm is now lit by a light above the camera, so every surface is shaded by which way it faces and the shape finally reads as solid; a new Look picker offers Lit cloud (see-through) or Solid surface (an opaque shell at the Show above value, like an isosurface); an Opacity slider makes the cloud thinner or denser; a Cutaway picker slices the box open from the north, south, east or west with a slider for how deep, so you can look inside; and every ray starts at a slightly different point so no banding patterns appear.' },
   { id: '2026-09-17-j', date: 'Sep 17, 2026',
@@ -68021,13 +68026,15 @@ const R3D_HEIGHT_UNITS = {
 };
 let _r3dHeightUnit = 'kft';
 
-// The zone. Gates are stored out to the LARGEST size at build time, so
-// switching to a smaller or larger box is a re-grid of data already in
-// hand, never a refetch or a re-decode.
-const R3D_ZONE_MAX_KM = 150;
-let _r3dZone = null;             // { lat, lng } - the tapped point, the zone's centre
-let _r3dZoneSizeKm = 90;         // current box edge, from the panel's own select
+// The zone: a box of any size and shape, drawn on the map the way a
+// screenshot is dragged out, or taken from a radius or polygon already on
+// the map. Gates are stored for exactly that box (plus a footprint's worth
+// of margin), so nothing outside it can ever be smeared onto its walls.
+const R3D_ZONE_MIN_KM = 3;
+const R3D_ZONE_MAX_KM = 300;
+let _r3dZone = null;             // { lat, lng, wKm, hKm } - centre and extents
 let _r3dZoneRect = null;         // the Leaflet rectangle shown on the map
+function _r3dZoneMaxKm() { return _r3dZone ? Math.max(_r3dZone.wKm, _r3dZone.hKm) : 90; }
 
 // The voxel grid. One byte per voxel (0 = empty, 1..255 = the value mapped
 // onto the product's own range) - a byte grid is small enough to rebuild in
@@ -68069,7 +68076,7 @@ let _r3dLutCache = null;         // { key, lut, floorRgb } - rebuilt when produc
 // live at render time - the filter lives in the transfer function LUT and
 // the ceiling just clips the marched box, so dragging either redraws
 // instantly with no new decode.
-let _r3dFilterPct = 0;
+let _r3dFilterPct = 25;          // 5 dBZ: the bottom of the NWS scale, so clutter and haze start hidden
 let _r3dHeightMaxKft = 80;
 // What the pros expose, gauged against GR2Analyst's Volume Explorer (Lit
 // Volume and Isosurface modes, a Volume Alpha control, a light), OpenStorm
@@ -68085,9 +68092,9 @@ let _r3dCutPct = 50;             // how far in the cutaway reaches, percent of t
 // handles a camera inside the box, so there is no reason to stop short) -
 // and back out far enough to frame the largest zone whole.
 function _r3dDistMin() { return 2; }
-function _r3dDistMax() { return _r3dZoneSizeKm * 4.5; }
+function _r3dDistMax() { return _r3dZoneMaxKm() * 4.5; }
 function _r3dCamFit() {
-  _r3dCam.dist = Math.max(_r3dDistMin(), Math.min(_r3dDistMax(), _r3dZoneSizeKm * 1.7));
+  _r3dCam.dist = Math.max(_r3dDistMin(), Math.min(_r3dDistMax(), _r3dZoneMaxKm() * 1.7));
 }
 
 // Marks the view as needing a redraw at drag quality, and books the full
@@ -68133,25 +68140,135 @@ function _r3dUpdateHeightLabel() {
 // the zone: a box gets drawn on the map around it, the nearest radar to it
 // is chosen automatically, and the panel renders only what is inside.
 // Tapping somewhere else while it is open just moves the zone there.
-function _cmRadar3DHere() {
-  const ll = _cmLatLng;
+// From the map menu: start drawing a zone. The next drag on the map rubber
+// bands a box, the way a screenshot is dragged out, and letting go opens
+// the 3D view of exactly that box from the nearest radar.
+function _cmRadar3DDraw() {
   _cmClose();
-  if (!ll) return;
-  const near = _r3dNearestStation(ll.lat, ll.lng);
-  if (!near) return;
-  if (near.km > 420) {
-    if (typeof showToast === 'function') showToast('No radar close enough to that spot for a 3D view.', 2800);
-    return;
-  }
-  _r3dZone = { lat: ll.lat, lng: ll.lng };
-  _r3dStationKm = near.km;
-  _r3dOpen(near.id);
+  _r3dDrawStart();
 }
 
+// Open the 3D view on a box given as map bounds (south, west, north, east):
+// the drawn rectangle, a radius's bounding square, or a polygon's extent.
+// Boxes are kept between R3D_ZONE_MIN_KM and R3D_ZONE_MAX_KM on a side,
+// shrunk around their own centre if they are too big.
+function _r3dOpenBounds(south, west, north, east) {
+  const lat = (south + north) / 2, lng = (west + east) / 2;
+  const kmLat = 111.32, kmLng = 111.32 * Math.max(0.2, Math.cos(lat * Math.PI / 180));
+  let wKm = Math.abs(east - west) * kmLng, hKm = Math.abs(north - south) * kmLat;
+  if (wKm < R3D_ZONE_MIN_KM && hKm < R3D_ZONE_MIN_KM) {
+    if (typeof showToast === 'function') showToast('Drag out a box at least a few kilometres across.', 2600);
+    return false;
+  }
+  wKm = Math.max(R3D_ZONE_MIN_KM, wKm); hKm = Math.max(R3D_ZONE_MIN_KM, hKm);
+  if (wKm > R3D_ZONE_MAX_KM || hKm > R3D_ZONE_MAX_KM) {
+    if (typeof showToast === 'function') showToast('That box is huge; trimmed to ' + R3D_ZONE_MAX_KM + ' km on a side.', 2800);
+    wKm = Math.min(R3D_ZONE_MAX_KM, wKm); hKm = Math.min(R3D_ZONE_MAX_KM, hKm);
+  }
+  const near = _r3dNearestStation(lat, lng);
+  if (!near) return false;
+  if (near.km > 420) {
+    if (typeof showToast === 'function') showToast('No radar close enough to that box for a 3D view.', 2800);
+    return false;
+  }
+  _r3dZone = { lat, lng, wKm: Math.round(wKm * 10) / 10, hKm: Math.round(hKm * 10) / 10 };
+  _r3dStationKm = near.km;
+  _r3dOpen(near.id);
+  return true;
+}
+
+// The Radius maker's button: the newest radius, as its bounding square.
+function _r3dFromRadius() {
+  const list = (typeof _radii !== 'undefined' && _radii) || [];
+  const r = list[list.length - 1];
+  if (!r) { if (typeof showToast === 'function') showToast('Place a radius first, then view it in 3D.', 2600); return false; }
+  const km = r.miles * 1.60934;
+  const dLat = km / 111.32, dLng = km / (111.32 * Math.max(0.2, Math.cos(r.lat * Math.PI / 180)));
+  return _r3dOpenBounds(r.lat - dLat, r.lng - dLng, r.lat + dLat, r.lng + dLng);
+}
+
+// The Polygon maker's button: the polygon's extent.
+function _r3dFromPolygon() {
+  const pts = (typeof _polyPts !== 'undefined' && _polyPts) || [];
+  if (pts.length < 3) { if (typeof showToast === 'function') showToast('Draw a polygon with at least three corners first.', 2600); return false; }
+  let s = Infinity, w = Infinity, n = -Infinity, e = -Infinity;
+  pts.forEach(p => { const la = p.lat, ln = p.lng; if (la < s) s = la; if (la > n) n = la; if (ln < w) w = ln; if (ln > e) e = ln; });
+  return _r3dOpenBounds(s, w, n, e);
+}
+
+// ── Drawing the zone on the map ─────────────────────────────────────────
+// Press, drag, release. Map panning is paused while the box is being drawn
+// and handed straight back afterwards; Escape or a tap without a drag
+// cancels. Pointer events cover mouse and touch alike.
+let _r3dDrawOn = false, _r3dDrawAnchor = null, _r3dDrawPreview = null, _r3dDrawWasDragging = true;
+function _r3dDrawStart() {
+  if (typeof map === 'undefined' || !map) return;
+  if (_r3dDrawOn) return;
+  _r3dDrawOn = true;
+  _r3dDrawAnchor = null;
+  const c = map.getContainer();
+  try { _r3dDrawWasDragging = map.dragging.enabled(); map.dragging.disable(); } catch (e) {}
+  c.style.cursor = 'crosshair';
+  c.addEventListener('pointerdown', _r3dDrawDown, true);
+  c.addEventListener('pointermove', _r3dDrawMove, true);
+  c.addEventListener('pointerup', _r3dDrawUp, true);
+  c.addEventListener('pointercancel', _r3dDrawCancelEvent, true);
+  document.addEventListener('keydown', _r3dDrawKey, true);
+  if (typeof _showHint === 'function') _showHint('&#9635;  Drag a box on the map to view it in 3D. Esc cancels.');
+}
+function _r3dDrawStop() {
+  if (!_r3dDrawOn) return;
+  _r3dDrawOn = false;
+  const c = map.getContainer();
+  c.removeEventListener('pointerdown', _r3dDrawDown, true);
+  c.removeEventListener('pointermove', _r3dDrawMove, true);
+  c.removeEventListener('pointerup', _r3dDrawUp, true);
+  c.removeEventListener('pointercancel', _r3dDrawCancelEvent, true);
+  document.removeEventListener('keydown', _r3dDrawKey, true);
+  c.style.cursor = '';
+  try { if (_r3dDrawWasDragging) map.dragging.enable(); } catch (e) {}
+  if (_r3dDrawPreview) { try { map.removeLayer(_r3dDrawPreview); } catch (e) {} _r3dDrawPreview = null; }
+  _r3dDrawAnchor = null;
+  if (typeof _showHint === 'function') _showHint('');
+}
+function _r3dDrawKey(e) { if (e.key === 'Escape') { e.preventDefault(); _r3dDrawStop(); } }
+function _r3dDrawCancelEvent() { _r3dDrawAnchor = null; if (_r3dDrawPreview) { try { map.removeLayer(_r3dDrawPreview); } catch (e) {} _r3dDrawPreview = null; } }
+function _r3dDrawDown(e) {
+  if (!_r3dDrawOn || (e.button && e.button !== 0)) return;
+  e.preventDefault(); e.stopPropagation();
+  _r3dDrawAnchor = map.mouseEventToLatLng(e);
+  try { map.getContainer().setPointerCapture(e.pointerId); } catch (err) {}
+}
+function _r3dDrawMove(e) {
+  if (!_r3dDrawOn || !_r3dDrawAnchor) return;
+  e.preventDefault(); e.stopPropagation();
+  const ll = map.mouseEventToLatLng(e);
+  const b = L.latLngBounds(_r3dDrawAnchor, ll);
+  if (!_r3dDrawPreview) {
+    _r3dDrawPreview = L.rectangle(b, { color: '#6fb6ff', weight: 2, dashArray: '6 4', fillColor: '#6fb6ff', fillOpacity: 0.08, interactive: false }).addTo(map);
+  } else _r3dDrawPreview.setBounds(b);
+}
+function _r3dDrawUp(e) {
+  if (!_r3dDrawOn || !_r3dDrawAnchor) return;
+  e.preventDefault(); e.stopPropagation();
+  const a = _r3dDrawAnchor, b = map.mouseEventToLatLng(e);
+  _r3dDrawStop();
+  const bounds = L.latLngBounds(a, b);
+  if (!_r3dOpenBounds(bounds.getSouth(), bounds.getWest(), bounds.getNorth(), bounds.getEast())) {
+    _r3dDrawStart();                                   // too small: try again
+  }
+}
+
+// The nearest full NEXRAD. A terminal (TDWR) airport radar can be closer,
+// but its Level 3 picture reaches only about 90 km against a NEXRAD's 460,
+// so a box that strays past that came back empty; the terminal radars stay
+// in the station picker for anyone who wants one on purpose.
 function _r3dNearestStation(lat, lng) {
   const stations = (typeof NEXRAD_STATIONS !== 'undefined' && NEXRAD_STATIONS) || [];
+  const isTdwr = (id) => typeof _isTdwrSite === 'function' && _isTdwrSite(id);
   let best = null, bestKm = Infinity;
   stations.forEach(s => {
+    if (isTdwr(s.id)) return;
     const km = _xsKm({ lat, lng }, { lat: s.lat, lng: s.lon });
     if (km < bestKm) { bestKm = km; best = s; }
   });
@@ -68167,24 +68284,26 @@ function _r3dFillSites() {
   const ss = _r3dEl('r3d-site');
   if (!ss || !_r3dZone) return;
   const stations = (typeof NEXRAD_STATIONS !== 'undefined' && NEXRAD_STATIONS) || [];
+  const isTdwr = (id) => typeof _isTdwrSite === 'function' && _isTdwrSite(id);
+  // Full NEXRADs first, nearest first, then the short-reach airport radars.
   const near = stations.map(s => ({
-    id: s.id, km: _xsKm({ lat: _r3dZone.lat, lng: _r3dZone.lng }, { lat: s.lat, lng: s.lon }),
-  })).sort((a, b) => a.km - b.km).slice(0, 8);
+    id: s.id, tdwr: isTdwr(s.id),
+    km: _xsKm({ lat: _r3dZone.lat, lng: _r3dZone.lng }, { lat: s.lat, lng: s.lon }),
+  })).sort((a, b) => (a.tdwr - b.tdwr) || (a.km - b.km)).slice(0, 8);
   ss.innerHTML = '';
   near.forEach(s => {
     const o = document.createElement('option');
     o.value = s.id;
-    o.textContent = `${s.id.toUpperCase()} · ${s.km.toFixed(0)} km`;
+    o.textContent = `${s.id.toUpperCase()} · ${s.km.toFixed(0)} km${s.tdwr ? ' (airport)' : ''}`;
     ss.appendChild(o);
   });
   if (_r3dStation && near.some(s => s.id === _r3dStation)) ss.value = _r3dStation;
 }
 
 // The zone's box on the map, in real degrees for the current size.
-function _r3dZoneBounds(zone, sizeKm) {
-  const half = sizeKm / 2;
-  const dLat = half / 111.32;
-  const dLng = half / (111.32 * Math.max(0.2, Math.cos(zone.lat * Math.PI / 180)));
+function _r3dZoneBounds(zone) {
+  const dLat = (zone.hKm / 2) / 111.32;
+  const dLng = (zone.wKm / 2) / (111.32 * Math.max(0.2, Math.cos(zone.lat * Math.PI / 180)));
   return [[zone.lat - dLat, zone.lng - dLng], [zone.lat + dLat, zone.lng + dLng]];
 }
 
@@ -68193,7 +68312,7 @@ function _r3dZoneBounds(zone, sizeKm) {
 // exactly what you get in the panel.
 function _r3dZoneRectSync() {
   if (!_r3dZone || typeof map === 'undefined' || !map || typeof L === 'undefined') return;
-  const b = _r3dZoneBounds(_r3dZone, _r3dZoneSizeKm);
+  const b = _r3dZoneBounds(_r3dZone);
   if (!_r3dZoneRect) {
     try {
       _r3dZoneRect = L.rectangle(b, {
@@ -68218,11 +68337,12 @@ function _r3dOpen(stationId) {
     if (typeof showToast === 'function') showToast('The map is still loading.', 2500);
     return;
   }
-  // Opened without a zone (older callers, tests): centre it on the station.
+  // Opened without a zone (older callers, tests): a 90 km box on the station.
   if (!_r3dZone) {
     const pos = _xsSiteLatLon(String(stationId || '').toLowerCase());
-    if (pos) { _r3dZone = { lat: pos.lat, lng: pos.lng }; _r3dStationKm = 0; }
+    if (pos) { _r3dZone = { lat: pos.lat, lng: pos.lng, wKm: 90, hKm: 90 }; _r3dStationKm = 0; }
   }
+  _r3dDrawStop();
   _r3dOn = true;
   const panel = _r3dEl('r3d-panel');
   if (panel) panel.classList.add('open');
@@ -68237,8 +68357,6 @@ function _r3dOpen(stationId) {
   const filter = _r3dEl('r3d-filter'), height = _r3dEl('r3d-height');
   if (filter) filter.value = String(_r3dFilterPct);
   if (height) height.value = String(_r3dHeightMaxKft);
-  const zs = _r3dEl('r3d-zone');
-  if (zs) zs.value = String(_r3dZoneSizeKm);
   _r3dUpdateFilterLabel();
   _r3dUpdateHeightLabel();
   _r3dUpdateLegend((ps || {}).value || 'ref');
@@ -68312,9 +68430,11 @@ function _r3dOnPaletteChange() {
 function _r3dZoneBbox(zone) {
   const kmLat = 111.32;
   const kmLng = 111.32 * Math.max(0.2, Math.cos(zone.lat * Math.PI / 180));
-  const half = R3D_ZONE_MAX_KM / 2;
-  return [zone.lng - half / kmLng, zone.lat - half / kmLat,
-          zone.lng + half / kmLng, zone.lat + half / kmLat];
+  // A footprint's worth of margin, so a gate whose centre is just outside
+  // still paints the part of itself that is inside.
+  const hx = zone.wKm / 2 + 2, hy = zone.hKm / 2 + 2;
+  return [zone.lng - hx / kmLng, zone.lat - hy / kmLat,
+          zone.lng + hx / kmLng, zone.lat + hy / kmLat];
 }
 
 function _r3dConsumeMeshZone(mesh, elevAngle, sitePos, zone, isVel, out) {
@@ -68530,11 +68650,16 @@ function _r3dNormByte(v, isVel) {
 }
 function _r3dByteStrength(b, isVel) { return isVel ? Math.abs(b - 128) : b; }
 
-function _r3dGridFrame(frame, sizeKm, isVel) {
-  const nx = R3D_GRID_N, ny = R3D_GRID_N, nz = R3D_GRID_NZ;
-  const cellXY = sizeKm / nx, cellZ = R3D_Z_MAX_KM / nz;
+function _r3dGridFrame(frame, zone, isVel) {
+  // Square cells sized off the box's longer side, so a wide box gets a
+  // wide grid and a tall one a tall grid; a big box gets more cells so
+  // the cell itself never grows past what the radar can resolve.
+  const wKm = zone.wKm, hKm = zone.hKm, longKm = Math.max(wKm, hKm);
+  const nMax = longKm > 120 ? 320 : R3D_GRID_N;
+  const cellXY = longKm / nMax, cellZ = R3D_Z_MAX_KM / R3D_GRID_NZ;
+  const nx = Math.max(8, Math.round(wKm / cellXY)), ny = Math.max(8, Math.round(hKm / cellXY)), nz = R3D_GRID_NZ;
   const grid = new Uint8Array(nx * ny * nz);           // idx = (iz*ny + iy)*nx + ix
-  const half = sizeKm / 2;
+  const halfX = wKm / 2, halfY = hKm / 2;
   const g = frame.gates, n = frame.count, rad = frame.radii || null;
   const layerStride = nx * ny;
 
@@ -68549,12 +68674,12 @@ function _r3dGridFrame(frame, sizeKm, isVel) {
     // smoothly with range otherwise stair-steps through the layers and
     // shows as rings around the radar.
     const rxy = rad ? rad[i * 2] : 0, rz = rad ? Math.max(rad[i * 2 + 1], cellZ * 0.75) : 0;
-    let ix0 = Math.floor((x - rxy + half) / cellXY), ix1 = Math.floor((x + rxy + half) / cellXY);
-    let iy0 = Math.floor((y - rxy + half) / cellXY), iy1 = Math.floor((y + rxy + half) / cellXY);
+    let ix0 = Math.floor((x - rxy + halfX) / cellXY), ix1 = Math.floor((x + rxy + halfX) / cellXY);
+    let iy0 = Math.floor((y - rxy + halfY) / cellXY), iy1 = Math.floor((y + rxy + halfY) / cellXY);
     let iz0 = Math.floor((z - rz) / cellZ), iz1 = Math.floor((z + rz) / cellZ);
     if (ix1 < 0 || ix0 >= nx || iy1 < 0 || iy0 >= ny || iz1 < 0 || iz0 >= nz) continue;
-    if (ix1 - ix0 > MAX_SPAN) { const c = Math.floor((x + half) / cellXY); ix0 = c - (MAX_SPAN >> 1); ix1 = c + (MAX_SPAN >> 1); }
-    if (iy1 - iy0 > MAX_SPAN) { const c = Math.floor((y + half) / cellXY); iy0 = c - (MAX_SPAN >> 1); iy1 = c + (MAX_SPAN >> 1); }
+    if (ix1 - ix0 > MAX_SPAN) { const c = Math.floor((x + halfX) / cellXY); ix0 = c - (MAX_SPAN >> 1); ix1 = c + (MAX_SPAN >> 1); }
+    if (iy1 - iy0 > MAX_SPAN) { const c = Math.floor((y + halfY) / cellXY); iy0 = c - (MAX_SPAN >> 1); iy1 = c + (MAX_SPAN >> 1); }
     if (iz1 - iz0 > MAX_SPAN) { const c = Math.floor(z / cellZ); iz0 = c - (MAX_SPAN >> 1); iz1 = c + (MAX_SPAN >> 1); }
     if (ix0 < 0) ix0 = 0; if (ix1 >= nx) ix1 = nx - 1;
     if (iy0 < 0) iy0 = 0; if (iy1 >= ny) iy1 = ny - 1;
@@ -68597,9 +68722,13 @@ function _r3dGridFrame(frame, sizeKm, isVel) {
       // it crosses the zone; a storm that low genuinely continues down, so
       // carry the lowest sample to the floor rather than leaving every
       // storm floating on air. Samples that START high stay high.
-      let lowest = -1;
-      for (let iz = 0; iz < nz; iz++) { if (grid[iz * layerStride + base]) { lowest = iz; break; } }
-      if (lowest > 0 && lowest * cellZ < 3.0) {
+      // Only for a column that is genuinely precipitation: the lowest sample
+      // within 1.5 km of the ground AND several layers of echo above it.
+      // A lone speck of clutter carried to the ground drew as a pillar, and
+      // a field of them as a city skyline.
+      let lowest = -1, filled = 0;
+      for (let iz = 0; iz < nz; iz++) { if (grid[iz * layerStride + base]) { filled++; if (lowest < 0) lowest = iz; } }
+      if (lowest > 0 && lowest * cellZ < 1.5 && filled >= 4) {
         const b0 = grid[lowest * layerStride + base];
         for (let k = 0; k < lowest; k++) grid[k * layerStride + base] = b0;
       }
@@ -68643,10 +68772,10 @@ function _r3dGridFrame(frame, sizeKm, isVel) {
     for (let i = low.start; i < low.end; i++) {
       const p = i * 4;
       const rxy = rad ? rad[i * 2] : 0;
-      let ix0 = Math.floor((g[p] - rxy + half) / cellXY), ix1 = Math.floor((g[p] + rxy + half) / cellXY);
-      let iy0 = Math.floor((g[p + 1] - rxy + half) / cellXY), iy1 = Math.floor((g[p + 1] + rxy + half) / cellXY);
-      if (ix1 - ix0 > MAX_SPAN) { const c = Math.floor((g[p] + half) / cellXY); ix0 = c - (MAX_SPAN >> 1); ix1 = c + (MAX_SPAN >> 1); }
-      if (iy1 - iy0 > MAX_SPAN) { const c = Math.floor((g[p + 1] + half) / cellXY); iy0 = c - (MAX_SPAN >> 1); iy1 = c + (MAX_SPAN >> 1); }
+      let ix0 = Math.floor((g[p] - rxy + halfX) / cellXY), ix1 = Math.floor((g[p] + rxy + halfX) / cellXY);
+      let iy0 = Math.floor((g[p + 1] - rxy + halfY) / cellXY), iy1 = Math.floor((g[p + 1] + rxy + halfY) / cellXY);
+      if (ix1 - ix0 > MAX_SPAN) { const c = Math.floor((g[p] + halfX) / cellXY); ix0 = c - (MAX_SPAN >> 1); ix1 = c + (MAX_SPAN >> 1); }
+      if (iy1 - iy0 > MAX_SPAN) { const c = Math.floor((g[p + 1] + halfY) / cellXY); iy0 = c - (MAX_SPAN >> 1); iy1 = c + (MAX_SPAN >> 1); }
       if (ix0 < 0) ix0 = 0; if (ix1 >= nx) ix1 = nx - 1;
       if (iy0 < 0) iy0 = 0; if (iy1 >= ny) iy1 = ny - 1;
       if (ix1 < ix0 || iy1 < iy0) continue;
@@ -68676,17 +68805,18 @@ function _r3dGridFrame(frame, sizeKm, isVel) {
     }
   }
 
-  return { grid, floor, occ, nx, ny, nz, cnx, cny, cnz, blockB: B, cellXY, cellZ, sizeKm };
+  return { grid, floor, occ, nx, ny, nz, cnx, cny, cnz, blockB: B, cellXY, cellZ, wKm, hKm };
 }
 
 // The grid for the CURRENT zone size, cached on the frame. Only one size is
 // kept per frame - switching sizes rebuilds in a few ms, and keeping every
 // size for every time-control frame would be memory for nothing.
 function _r3dGridFor(frame, isVel) {
-  const key = _r3dZoneSizeKm + '|' + (isVel ? 'v' : 'r');
+  const zone = _r3dZone || { wKm: 90, hKm: 90 };
+  const key = zone.wKm + 'x' + zone.hKm + '|' + (isVel ? 'v' : 'r');
   if (!frame._grids[key]) {
     frame._grids = {};
-    frame._grids[key] = _r3dGridFrame(frame, _r3dZoneSizeKm, isVel);
+    frame._grids[key] = _r3dGridFrame(frame, zone, isVel);
   }
   return frame._grids[key];
 }
@@ -68700,7 +68830,8 @@ async function _r3dLoad() {
   if (typeof _workerProcess !== 'function') { _r3dSay('this build has no radar decoder', 'bad'); return; }
   const where = _r3dEl('r3d-where');
   if (where) where.textContent = site.toUpperCase()
-    + (_r3dStationKm ? ' · ' + Math.round(_r3dStationKm) + ' km' : '');
+    + (_r3dStationKm ? ' · ' + Math.round(_r3dStationKm) + ' km' : '')
+    + (_r3dZone ? ' · ' + Math.round(_r3dZone.wKm) + '×' + Math.round(_r3dZone.hKm) + ' km' : '');
   if (_r3dBuilding) { _r3dSay('already loading a volume, one moment', 'busy'); return; }
   const token = ++_r3dToken;
   _r3dBuilding = true;
@@ -68928,17 +69059,17 @@ function _r3dLutFor(product, stepKm) {
 // hand stops) samples trilinearly at high resolution.
 let _r3dOffCv = null, _r3dImg = null;
 // The box actually marched: the zone, less whatever the cutaway removes.
-function _r3dMarchBox(half) {
-  const box = { minX: -half, maxX: half, minY: -half, maxY: half };
-  const cut = 2 * half * Math.max(0, Math.min(95, _r3dCutPct)) / 100;
-  if (_r3dCutSide === 'e') box.maxX = half - cut;
-  else if (_r3dCutSide === 'w') box.minX = -half + cut;
-  else if (_r3dCutSide === 'n') box.maxY = half - cut;
-  else if (_r3dCutSide === 's') box.minY = -half + cut;
+function _r3dMarchBox(halfX, halfY) {
+  const box = { minX: -halfX, maxX: halfX, minY: -halfY, maxY: halfY };
+  const pct = Math.max(0, Math.min(95, _r3dCutPct)) / 100;
+  if (_r3dCutSide === 'e') box.maxX = halfX - 2 * halfX * pct;
+  else if (_r3dCutSide === 'w') box.minX = -halfX + 2 * halfX * pct;
+  else if (_r3dCutSide === 'n') box.maxY = halfY - 2 * halfY * pct;
+  else if (_r3dCutSide === 's') box.minY = -halfY + 2 * halfY * pct;
   return box;
 }
 
-function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, half, topKm, exag, box) {
+function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, halfX, halfY, topKm, exag, box) {
   const fine = _r3dQuality === 'fine';
   // Fine mode renders at the canvas's own full resolution (capped only for
   // truly huge panels), so the settled picture has no upscale in it at all;
@@ -68969,7 +69100,7 @@ function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, f
   const layerStride = nx * ny;
   // The grid still spans the whole zone; the cutaway only narrows what is
   // marched, so gx/gy are figured from the zone's own edge (-half).
-  const zoneMin = -half;
+  const zoneMinX = -halfX, zoneMinY = -halfY;
   const minX = box.minX, maxX = box.maxX, minY = box.minY, maxY = box.maxY, maxZ = topKm * exag;
   const skipKm = B * Math.min(cellXY, cellZ * exag) * 0.9;
   const focalI = ih * 1.15;
@@ -69015,7 +69146,7 @@ function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, f
         // stepping cell by cell. The floor honours the Show Above filter
         // too - filtering down to the core should not leave the whole radar
         // map painted underneath.
-        let fxg = (camX + dx * floorT - zoneMin) * invCX - 0.5, fyg = (camY + dy * floorT - zoneMin) * invCX - 0.5;
+        let fxg = (camX + dx * floorT - zoneMinX) * invCX - 0.5, fyg = (camY + dy * floorT - zoneMinY) * invCX - 0.5;
         if (fxg < 0) fxg = 0; else if (fxg > nx - 1.001) fxg = nx - 1.001;
         if (fyg < 0) fyg = 0; else if (fyg > ny - 1.001) fyg = ny - 1.001;
         const fx0 = fxg | 0, fy0 = fyg | 0, ftx = fxg - fx0, fty = fyg - fy0;
@@ -69039,7 +69170,7 @@ function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, f
       let t = t0 + stepKm * (jitter < 0 ? jitter + 1 : jitter), guard = 0;
       while (t < t1 && accA < 0.96 && guard++ < 900) {
         const x = camX + dx * t, y = camY + dy * t, z = camZ + dz * t;
-        let gx = (x - zoneMin) * invCX, gy = (y - zoneMin) * invCX, gz = z * invCZ;
+        let gx = (x - zoneMinX) * invCX, gy = (y - zoneMinY) * invCX, gz = z * invCZ;
         if (gx < 0) gx = 0; else if (gx > nx - 0.001) gx = nx - 0.001;
         if (gy < 0) gy = 0; else if (gy > ny - 0.001) gy = ny - 0.001;
         if (gz < 0) gz = 0; else if (gz > nz - 0.001) gz = nz - 0.001;
@@ -69122,7 +69253,7 @@ function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, f
         // stepping cell by cell. The floor honours the Show Above filter
         // too - filtering down to the core should not leave the whole radar
         // map painted underneath.
-        let fxg = (camX + dx * floorT - zoneMin) * invCX - 0.5, fyg = (camY + dy * floorT - zoneMin) * invCX - 0.5;
+        let fxg = (camX + dx * floorT - zoneMinX) * invCX - 0.5, fyg = (camY + dy * floorT - zoneMinY) * invCX - 0.5;
         if (fxg < 0) fxg = 0; else if (fxg > nx - 1.001) fxg = nx - 1.001;
         if (fyg < 0) fyg = 0; else if (fyg > ny - 1.001) fyg = ny - 1.001;
         const fx0 = fxg | 0, fy0 = fyg | 0, ftx = fxg - fx0, fty = fyg - fy0;
@@ -69167,7 +69298,7 @@ function _r3dRender() {
 
   const frame = _r3dFrames[_r3dFrameIdx];
   const product = ((_r3dEl('r3d-product') || {}).value) || 'ref';
-  const half = _r3dZoneSizeKm / 2;
+  const halfX = (_r3dZone ? _r3dZone.wKm : 90) / 2, halfY = (_r3dZone ? _r3dZone.hKm : 90) / 2;
   const topKm = Math.max(1, Math.min(R3D_Z_MAX_KM, _r3dHeightMaxKft / R3D_KFT_PER_KM));
 
   const { yaw, pitch, dist } = _r3dCam;
@@ -69183,20 +69314,20 @@ function _r3dRender() {
   const ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
   const focal = h * 1.15;
 
-  const box = _r3dMarchBox(half);
+  const box = _r3dMarchBox(halfX, halfY);
   if (frame) {
     const G = _r3dGridFor(frame, product === 'vel');
-    _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, half, topKm, exag, box);
+    _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, halfX, halfY, topKm, exag, box);
   }
 
-  _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, half, topKm, dpr, exag, box);
+  _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, halfX, halfY, topKm, dpr, exag, box);
 
   if (!frame) {
     ctx.fillStyle = _r3dGoldFill(ctx, h);
     ctx.font = `${Math.round(12 * dpr)}px 'Comfortaa', sans-serif`;
     ctx.textAlign = 'center';
     ctx.fillText(_r3dBuilding ? 'Building the volume…'
-      : "Double-click or long-press the map and pick View in 3D here", w / 2, h / 2);
+      : "Double-click or long-press the map, pick Draw 3D zone, and drag out a box", w / 2, h / 2);
   }
 }
 
@@ -69212,7 +69343,7 @@ function _r3dGoldFill(ctx, h) {
   return g;
 }
 
-function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, half, topKm, dpr, exag, box) {
+function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, halfX, halfY, topKm, dpr, exag, box) {
   const unit = R3D_HEIGHT_UNITS[_r3dHeightUnit] || R3D_HEIGHT_UNITS.kft;
   const zOf = (v) => v / unit.perKm * exag;                // true height in the unit -> drawn height
   const topDrawn = topKm * exag;
@@ -69224,7 +69355,7 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
     return [w / 2 + (dx * rx + dy * ry + dz * rz) / zc * focal,
             h / 2 - (dx * ux + dy * uy + dz * uz) / zc * focal];
   };
-  const corners = [[-half, -half], [half, -half], [half, half], [-half, half]];
+  const corners = [[-halfX, -halfY], [halfX, -halfY], [halfX, halfY], [-halfX, halfY]];
   const line = (a, b) => {
     if (!a || !b) return;
     ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
@@ -69258,10 +69389,23 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   ctx.fillStyle = gold;
   ctx.font = `${Math.round(9.5 * dpr)}px 'Comfortaa', sans-serif`;
   ctx.textAlign = 'left';
+  // Labels never overlap: when the levels are too close on screen every
+  // k-th one is drawn, counted down from the top so the top label always
+  // survives.
+  const levels = [];
   for (let v = step; v <= topU + 1e-6; v += step) {
     const p = project(lc[0], lc[1], zOf(v));
-    if (p) ctx.fillText(Math.round(v) + ' ' + unit.label, p[0] + 4 * dpr, p[1] + 3 * dpr);
+    if (p) levels.push({ v, p });
   }
+  let every = 1;
+  if (levels.length > 1) {
+    const gap = Math.abs(levels[1].p[1] - levels[0].p[1]);
+    every = gap > 0 ? Math.max(1, Math.ceil(12 * dpr / gap)) : levels.length;
+  }
+  levels.forEach((lv, i) => {
+    if ((levels.length - 1 - i) % every !== 0) return;
+    ctx.fillText(Math.round(lv.v) + ' ' + unit.label, lv.p[0] + 4 * dpr, lv.p[1] + 3 * dpr);
+  });
 
   // The box itself.
   ctx.strokeStyle = 'rgba(111,182,255,0.55)';
@@ -69279,10 +69423,10 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   // The cutaway face, outlined in white where the box has been opened.
   if (box && _r3dCutSide !== 'off') {
     let face;
-    if (_r3dCutSide === 'e') face = [[box.maxX, -half], [box.maxX, half]];
-    else if (_r3dCutSide === 'w') face = [[box.minX, -half], [box.minX, half]];
-    else if (_r3dCutSide === 'n') face = [[-half, box.maxY], [half, box.maxY]];
-    else face = [[-half, box.minY], [half, box.minY]];
+    if (_r3dCutSide === 'e') face = [[box.maxX, -halfY], [box.maxX, halfY]];
+    else if (_r3dCutSide === 'w') face = [[box.minX, -halfY], [box.minX, halfY]];
+    else if (_r3dCutSide === 'n') face = [[-halfX, box.maxY], [halfX, box.maxY]];
+    else face = [[-halfX, box.minY], [halfX, box.minY]];
     ctx.strokeStyle = 'rgba(255,255,255,0.75)';
     ctx.lineWidth = Math.max(1, dpr * 1.1);
     const [a, b] = face;
@@ -69296,12 +69440,12 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   ctx.fillStyle = gold;
   ctx.textAlign = 'center';
   ctx.font = `${Math.round(10 * dpr)}px 'Comfortaa', sans-serif`;
-  const np = project(0, half, 0);
+  const np = project(0, halfY, 0);
   if (np) ctx.fillText('N', np[0], np[1] - 4 * dpr);
   if (isFinite(_r3dStationBrg) && _r3dStation) {
     const br = _r3dStationBrg * Math.PI / 180;
     const sx2 = Math.sin(br), cy2 = Math.cos(br);
-    const s = half / Math.max(Math.abs(sx2), Math.abs(cy2), 1e-6);
+    const s = 1 / Math.max(Math.abs(sx2) / halfX, Math.abs(cy2) / halfY, 1e-6);
     const sp = project(sx2 * s, cy2 * s, 0);
     if (sp) {
       ctx.beginPath(); ctx.arc(sp[0], sp[1], 3 * dpr, 0, Math.PI * 2); ctx.fill();
@@ -69397,13 +69541,6 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   };
   // The zone select re-grids gates already in hand and resizes the map
   // rectangle - no refetch, no re-decode, just a different crop of the sky.
-  const zs = _r3dEl('r3d-zone');
-  if (zs) zs.onchange = () => {
-    _r3dZoneSizeKm = Number(zs.value) || 90;
-    _r3dZoneRectSync();
-    _r3dCamFit();
-    _r3dInteract();
-  };
   const filter = _r3dEl('r3d-filter');
   if (filter) filter.oninput = () => { _r3dFilterPct = Number(filter.value); _r3dUpdateFilterLabel(); _r3dInteract(); };
   const height = _r3dEl('r3d-height');
@@ -69467,7 +69604,7 @@ const TOOL_DESCRIPTIONS = {
   'tool-inspector': 'Shows the radar value at the exact center of the map, and updates live as you pan.',
   'tool-export':    'Downloads what is on screen: the current picture as a PNG, or the whole loop as a video.',
   'tool-xsec':      'Cuts a vertical slice through a storm. A radar picture is one thin cone and says nothing about how tall the weather is, but a volume scan sweeps the same circle at rising angles, so sampling every one of them along a line on the ground stacks them into a side-on view. Drag the two ends of the line, press the arrow, and it shows where the core sits, whether it leans, and whether there is an overhang. Uses the volume already downloaded for the radar picture, so it costs no extra download.',
-  'tool-r3d':       'A storm’s real shape in three dimensions, rendered as a solid volume rather than a flat picture. Double-click or long-press the map and choose View in 3D here: a zone box appears on the map around that spot, and the panel ray-marches everything inside it from the nearest radar, tilt by tilt, resampled into a 3D grid so it reads as one continuous cloud with a solid core and a hazy edge. The box size select changes how wide an area the zone covers, the Show above slider hides weak returns, the Up to slider caps the height, and it draws coarse while you drag then sharpens the moment you stop. A site with no Level 2 archive, like a terminal TDWR at an airport, builds from its separate Level 3 tilt files instead, as a single frame with no time slider.',
+  'tool-r3d':       'A storm’s real shape in three dimensions, rendered as a solid volume rather than a flat picture. Double-click or long-press the map, choose Draw a 3D zone, and drag out any box you like, the way a screenshot is taken; or press the 3D button on the Radius or Polygon toolbar to use that shape\'s area. The panel ray-marches everything inside the box from the nearest radar, tilt by tilt, resampled into a 3D grid so it reads as one continuous cloud with a solid core and a hazy edge. The Show above slider hides weak returns, the Up to slider caps the height, and it draws coarse while you drag then sharpens the moment you stop. A site with no Level 2 archive, like a terminal TDWR at an airport, builds from its separate Level 3 tilt files instead, as a single frame with no time slider.',
 };
 
 let _tbFlyoutHideTimer = null;
