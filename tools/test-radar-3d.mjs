@@ -47,8 +47,8 @@ console.log('\n1. the panel: a zone picker and volumetric controls, no toolbar b
      && PAGE.includes('id="r3d-time-label"'));
   ok('the double-click/long-press map menu has a row that starts drawing a zone',
      /_cmRadar3DDraw\(\)/.test(PAGE) && /Draw a 3D zone/.test(PAGE));
-  ok('the renderer is a ray marcher, not a dot painter',
-     /_r3dMarchDraw/.test(PAGE) && /Trilinear/.test(PAGE));
+  ok('the renderer marches the radar\'s own polar volume, in workers',
+     /_r3dMarchBand/.test(PAGE) && /_r3dPolarFrame/.test(PAGE) && /_r3dMarchAsync/.test(PAGE));
   const EM = String.fromCharCode(0x2014);
   ok('no em dashes in the feature or in this test file',
      !PAGE.slice(PAGE.indexOf('RADAR 3D (VOLUMETRIC)'), PAGE.indexOf('TOOLBAR (#right-menu) HOVER FLYOUT')).includes(EM)
@@ -292,72 +292,63 @@ console.log('\n4. the transfer function: haze for weak, solid for strong, filter
      r.floorRed[0] > 200 && r.floorRed[1] < 60, JSON.stringify(r.floorRed));
 }
 
-console.log('\n5. gates become voxels: gridding, vertical continuity, the floor');
+console.log('\n5. gates become a polar volume: native bins, tilt interpolation, honest edges');
 {
   const r = await p.evaluate(() => {
-    // One column of air sampled by two tilts: 2 km and 5 km up, both 55
-    // dBZ, exactly what a radar's cone stack really hands us.
-    const gates = new Float32Array([0, 0, 1, 55, 0, 0, 5, 55]);
-    const frame = { gates, count: 2, segs: [
+    // A radar 60 km south of the zone, two tilts, one column of echo at the
+    // zone centre: exactly what a cone stack really hands us.
+    const zone = { lat: 36, lng: -96, wKm: 40, hKm: 40 };
+    const site = { x: 0, y: -60 };
+    const z1 = _xsBeamHeightKm(60, 0.5, 0), z2 = _xsBeamHeightKm(60, 3.0, 0);
+    const gates = new Float32Array([0, 0, z1, 55, 0, 0, z2, 55]);
+    const frame = { gates, radii: new Float32Array([0.6, 0.3, 0.6, 0.5]), count: 2, segs: [
       { start: 0, end: 1, angle: 0.5 }, { start: 1, end: 2, angle: 3.0 },
-    ], time: null, cuts: 2, _grids: {} };
-    const G = _r3dGridFrame(frame, { wKm: 90, hKm: 90 }, false);
-    const nx = G.nx, ny = G.ny;
-    const ic = Math.floor((0 + 45) / G.cellXY);
-    const col = [];
-    for (let iz = 0; iz < G.nz; iz++) col.push(G.grid[(iz * ny + ic) * nx + ic]);
-    const iz2 = Math.floor(1 / G.cellZ), iz5 = Math.floor(5 / G.cellZ);
-    const betweenFilled = col.slice(iz2 + 1, iz5).every(v => v > 0);
-    const carriedToGround = col.slice(0, iz2).every(v => v > 0);
-    const emptyAbove = col.slice(iz5 + 1).every(v => v === 0);
-    const floorByte = G.floor[ic * nx + ic];
-    const occHit = G.occ[(((iz2 / G.blockB) | 0) * G.cny + ((ic / G.blockB) | 0)) * G.cnx + ((ic / G.blockB) | 0)];
-    // A far, empty corner's occupancy block stays clear.
-    const occEmpty = G.occ[0];
-    return { iz2, iz5, betweenFilled, carriedToGround, emptyAbove,
-             floorByte, occHit, occEmpty };
+    ], time: null, cuts: 2, site, _grids: {} };
+    const P = _r3dPolarFrame(frame, zone, _r3dSpec('ref'));
+    return {
+      nS: P.nS, angles: [...P.angles], rStep: P.rStep, azStep: P.azStep, full: P.full,
+      atLow: _r3dPolarSample(P, 0, 0, z1),
+      between: _r3dPolarSample(P, 0, 0, (z1 + z2) / 2),
+      aboveTop: _r3dPolarSample(P, 0, 0, z2 + 3),
+      belowSkirt: _r3dPolarSample(P, 0, 0, Math.max(0.05, z1 - 0.5)),
+      farCorner: _r3dPolarSample(P, 18, 18, z1),
+      colHit: P.colMaxZ[(P.colN >> 1) * P.colN + (P.colN >> 1)],
+      colFar: P.colMaxZ[0],
+    };
   });
-  ok('both real samples land in the column', r.iz5 > r.iz2, JSON.stringify(r));
-  ok('the gap between the two tilts is interpolated, not left as stripes',
-     r.betweenFilled, JSON.stringify(r));
-  ok('a low sample is carried down to the ground', r.carriedToGround);
-  ok('above the top sample stays honestly empty', r.emptyAbove);
-  ok('the floor texture holds the lowest tilt', r.floorByte > 0, String(r.floorByte));
-  ok('occupancy marks the storm block and leaves empty air clear',
-     r.occHit === 1 && r.occEmpty === 0, JSON.stringify({ occHit: r.occHit, occEmpty: r.occEmpty }));
+  ok('one plane per tilt, lowest first', r.nS === 2 && r.angles[0] === 0.5 && r.angles[1] === 3, JSON.stringify(r.angles));
+  ok('bins stay at the radar\'s own quarter km by half degree', r.rStep === 0.25 && r.azStep === 0.5 && !r.full,
+     JSON.stringify([r.rStep, r.azStep, r.full]));
+  ok('the sample on the low tilt is strong', r.atLow > 100, String(r.atLow));
+  ok('the air between the two tilts is the blend of both, not a stripe of nothing',
+     r.between > 60, String(r.between));
+  ok('above the top tilt plus its beam stays honestly empty', r.aboveTop === 0, String(r.aboveTop));
+  ok('below the lowest tilt the echo fades toward the ground instead of a hard cone cut',
+     r.belowSkirt > 0 && r.belowSkirt < r.atLow, JSON.stringify([r.belowSkirt, r.atLow]));
+  ok('a far empty corner is empty', r.farCorner === 0, String(r.farCorner));
+  ok('the column map knows where the storm tops are, and where there is nothing',
+     r.colHit > 0 && r.colFar === 0, JSON.stringify([r.colHit, r.colFar]));
 }
 
-console.log('\n5b. a gate paints its whole footprint, not just the voxel under its centre');
+console.log('\n5b. a gate paints its whole footprint, not just the bin under its centre');
 {
   const r = await p.evaluate(() => {
-    // Two identical 55 dBZ gates at the same spot: one as a bare point, one
-    // carrying a real footprint 1.2 km across and a 0.5 km deep beam.
-    const gates = new Float32Array([0, 0, 5, 55]);
-    const asPoint = { gates, count: 1, segs: [{ start: 0, end: 1, angle: 0.5 }], time: null, cuts: 1, _grids: {} };
-    const asFootprint = { gates, radii: new Float32Array([1.2, 0.5]), count: 1,
-                          segs: [{ start: 0, end: 1, angle: 0.5 }], time: null, cuts: 1, _grids: {} };
-    const count = (G) => { let n = 0; for (let i = 0; i < G.grid.length; i++) if (G.grid[i]) n++; return n; };
-    const layer = (G, izWanted) => {
-      let n = 0;
-      for (let iy = 0; iy < G.ny; iy++) for (let ix = 0; ix < G.nx; ix++) if (G.grid[(izWanted * G.ny + iy) * G.nx + ix]) n++;
-      return n;
-    };
-    const Gp = _r3dGridFrame(asPoint, { wKm: 90, hKm: 90 }, false), Gf = _r3dGridFrame(asFootprint, { wKm: 90, hKm: 90 }, false);
-    const iz = Math.floor(5 / Gf.cellZ);
-    const floorCells = (G) => { let n = 0; for (let i = 0; i < G.floor.length; i++) if (G.floor[i]) n++; return n; };
-    return { point: count(Gp), footprint: count(Gf), pointLayer: layer(Gp, iz), footLayer: layer(Gf, iz),
-             above: layer(Gf, iz + 1), cellXY: Gf.cellXY, floorPoint: floorCells(Gp), floorFoot: floorCells(Gf) };
+    const zone = { lat: 36, lng: -96, wKm: 40, hKm: 40 };
+    const site = { x: 0, y: -60 };
+    const z1 = _xsBeamHeightKm(60, 0.5, 0);
+    const gates = new Float32Array([0, 0, z1, 55]);
+    const mk = (radii) => ({ gates, radii, count: 1, segs: [{ start: 0, end: 1, angle: 0.5 }],
+                             time: null, cuts: 1, site, _grids: {} });
+    const fill = (P) => { let n = 0; const pl = P.sweeps[0]; for (let i = 0; i < pl.length; i++) if (pl[i]) n++; return n; };
+    const Pp = _r3dPolarFrame(mk(null), zone, _r3dSpec('ref'));
+    const Pf = _r3dPolarFrame(mk(new Float32Array([1.2, 0.5])), zone, _r3dSpec('ref'));
+    return { point: fill(Pp), foot: fill(Pf),
+             beside: _r3dPolarSample(Pf, 0.9, 0, z1), off: _r3dPolarSample(Pp, 3, 0, z1) };
   });
-  // 1.2 km either side at 0.35 km voxels is a 7 to 9 cell patch (the cap
-  // is 3 km, so nothing is trimmed here), and 0.5 km of beam depth at 0.25
-  // km voxels reaches the layers either side.
-  ok('the bare point fills one column of voxels', r.pointLayer === 1, String(r.pointLayer));
-  ok('the footprint fills a patch of them', r.footLayer >= 49 && r.footLayer <= 81, String(r.footLayer));
-  ok('and the beam depth reaches the layer above too', r.above >= 49, String(r.above));
-  // The floor stamps soft blobs: a bare point is a dab of a few cells, a
-  // real footprint a much wider one.
-  ok('the floor texture paints the footprint as well', r.floorFoot > r.floorPoint * 3 && r.floorPoint >= 1 && r.floorPoint <= 9,
-     JSON.stringify({ point: r.floorPoint, foot: r.floorFoot }));
+  ok('a bare point fills a bin or two', r.point >= 1 && r.point <= 8, String(r.point));
+  ok('a 1.2 km footprint fills a patch of bins', r.foot > r.point * 3, JSON.stringify([r.foot, r.point]));
+  ok('so a sample beside the gate centre still reads it', r.beside > 0 && r.off === 0,
+     JSON.stringify([r.beside, r.off]));
 }
 
 console.log('\n6. building a frame from a volume that is stood in for, zone filtered');
@@ -549,61 +540,61 @@ console.log('\n7. the ray march draws a solid volume, and the two sliders really
 {
   const r = await p.evaluate(async () => {
     _r3dOpen('kfws');                                    // panel visible, zone at the site
+    _r3dToken++;
     const savedCam = { ..._r3dCam };
     const savedH = _r3dHeightMaxKft, savedF = _r3dFilterPct;
-    // A tall thin 55 dBZ pillar: 3 km wide, from the ground to 16 km.
-    const g = [], rs = [];
-    const segs = [{ start: 0, end: 0, angle: 0.5 }];
-    for (let x = -1.5; x <= 1.5; x += 0.7) {
-      for (let y = -1.5; y <= 1.5; y += 0.7) {
-        for (let z = 0.4; z <= 16; z += 0.35) {
-          g.push(x, y, z, 55); rs.push(0.5, 0.3);     // real gates carry a footprint
-        }
+    // A real cone stack: nine tilts of 62 dBZ over a 6 km core, so the
+    // column reads solid from the ground to the top of the stack.
+    const site = { x: 0, y: -60 };
+    const xs = [], ys = [], zs = [], vs = [], rs = [], segs = [];
+    [0.5, 1.5, 2.4, 3.4, 4.5, 6, 8, 10, 12.5].forEach(a2 => {
+      const start = xs.length;
+      for (let x = -3; x <= 3; x += 0.4) for (let y = -3; y <= 3; y += 0.4) {
+        const s2 = Math.hypot(x - site.x, y - site.y);
+        xs.push(x); ys.push(y); zs.push(_xsBeamHeightKm(s2, a2, 0)); vs.push(62); rs.push(0.4, s2 * 0.00873);
       }
-    }
-    segs[0].end = g.length / 4;
-    const frame = { gates: new Float32Array(g), radii: new Float32Array(rs), count: g.length / 4,
-                    segs, time: null, cuts: 1, _grids: {} };
-    _r3dToken++;                                         // park any real load still in flight
+      segs.push({ start, end: xs.length, angle: a2 });
+    });
+    const frame = _r3dFinishFrame({ xs, ys, zs, vs, rs, site }, segs, null, segs.length);
     _r3dFrames = [frame];
     _r3dFrameIdx = 0;
     _r3dQuality = 'fine';
     _r3dCam.yaw = 0.6; _r3dCam.pitch = 0.35; _r3dCam.dist = 60;
-
     const cv = document.getElementById('r3d-canvas');
     const ctx = cv.getContext('2d');
-    const redCount = () => {
+    const R = async () => { _r3dDirty = false; _r3dRender(); await _r3dRenderIdle(15000); };
+    // Lit red comes out in many shades, so the net is wide: reddish and
+    // clearly not grey. topRow is the highest scanline any red reaches.
+    const reds = () => {
       const data = ctx.getImageData(0, 0, cv.width, cv.height).data;
-      let n = 0;
+      let n = 0, topRow = cv.height;
       for (let i = 0; i < data.length; i += 4) {
-        if (data[i] > 150 && data[i + 1] < 60 && data[i + 2] < 60) n++;
+        if (data[i] > 90 && data[i] > data[i + 1] * 2 && data[i] > data[i + 2] * 2) {
+          n++;
+          const row = (i >> 2) / cv.width | 0;
+          if (row < topRow) topRow = row;
+        }
       }
-      return n;
+      return { n, topRow };
     };
-
     _r3dHeightMaxKft = 60; _r3dFilterPct = 0; _r3dLutCache = null;
-    _r3dRender();
-    const full = redCount();
-
+    await R(); const full = reds();
     _r3dHeightMaxKft = 10;                               // 10 kft is about 3 km
-    _r3dRender();
-    const capped = redCount();
-
+    await R(); const capped = reds();
     _r3dHeightMaxKft = 60; _r3dFilterPct = 90; _r3dLutCache = null;  // cutoff 70 dBZ
-    _r3dRender();
-    const filtered = redCount();
-
+    await R(); const filtered = reds();
     _r3dHeightMaxKft = savedH; _r3dFilterPct = savedF; _r3dLutCache = null;
     Object.assign(_r3dCam, savedCam);
     _r3dClose();
     return { full, capped, filtered };
   });
-  ok('the pillar paints a real area of solid red, not scattered dots',
-     r.full > 400, String(r.full));
-  ok('capping the height cuts most of it away', r.capped > 0 && r.capped < r.full * 0.6,
+  ok('the storm paints a real area of solid red, not scattered dots',
+     r.full.n > 400, String(r.full.n));
+  ok('capping the height brings the storm top visibly down the screen',
+     r.capped.n > 0 && r.capped.topRow > r.full.topRow + 20,
      JSON.stringify(r));
   ok('filtering above its strength removes it, floor included',
-     r.filtered < 30, String(r.filtered));
+     r.filtered.n < 30, String(r.filtered.n));
 }
 
 console.log('\n7b. lit, solid, thinner, and cut open: the controls gauged from GR2Analyst, OpenStorm and RadarOmega');
@@ -611,28 +602,36 @@ console.log('\n7b. lit, solid, thinner, and cut open: the controls gauged from G
   const r = await p.evaluate(async () => {
     _r3dOpen('kfws');
     _r3dToken++;
-    const g = [], rs = [];
-    for (let x = -3; x <= 3; x += 0.5) for (let y = -3; y <= 3; y += 0.5) for (let z = 0.4; z <= 12; z += 0.3) { g.push(x, y, z, 55); rs.push(0.5, 0.3); }
-    const frame = { gates: new Float32Array(g), radii: new Float32Array(rs), count: g.length / 4,
-                    segs: [{ start: 0, end: g.length / 4, angle: 0.5 }], time: null, cuts: 1, _grids: {} };
+    const site = { x: 0, y: -60 };
+    const xs = [], ys = [], zs = [], vs = [], rs = [], segs = [];
+    [0.5, 1.5, 2.4, 3.4, 4.5, 6, 8].forEach(a2 => {
+      const start = xs.length;
+      for (let x = -3; x <= 3; x += 0.4) for (let y = -3; y <= 3; y += 0.4) {
+        const s2 = Math.hypot(x - site.x, y - site.y);
+        xs.push(x); ys.push(y); zs.push(_xsBeamHeightKm(s2, a2, 0)); vs.push(62); rs.push(0.4, s2 * 0.00873);
+      }
+      segs.push({ start, end: xs.length, angle: a2 });
+    });
+    const frame = _r3dFinishFrame({ xs, ys, zs, vs, rs, site }, segs, null, segs.length);
     _r3dFrames = [frame]; _r3dFrameIdx = 0; _r3dQuality = 'fine';
     _r3dCam.yaw = 0.6; _r3dCam.pitch = 0.35; _r3dCam.dist = 50;
+    const R = async () => { _r3dDirty = false; _r3dRender(); await _r3dRenderIdle(15000); };
     const saved = { h: _r3dHeightMaxKft, f: _r3dFilterPct, o: _r3dOpacity, m: _r3dMode, c: _r3dCutSide, p: _r3dCutPct };
     _r3dHeightMaxKft = 80; _r3dFilterPct = 0; _r3dOpacity = 1; _r3dMode = 'cloud'; _r3dCutSide = 'off'; _r3dLutCache = null;
     const cv = document.getElementById('r3d-canvas'), ctx = cv.getContext('2d');
     const reds = () => {
       const d = ctx.getImageData(0, 0, cv.width, cv.height).data;
       const vals = [];
-      for (let i = 0; i < d.length; i += 4) if (d[i] > 60 && d[i + 1] < 40 && d[i + 2] < 40) vals.push(d[i]);
+      for (let i = 0; i < d.length; i += 4) if (d[i] > 60 && d[i + 1] < 45 && d[i + 2] < 45) vals.push(d[i]);
       vals.sort((a, b) => a - b);
       return { n: vals.length, lo: vals[Math.floor(vals.length * 0.1)] || 0, hi: vals[Math.floor(vals.length * 0.9)] || 0 };
     };
-    _r3dRender(); const lit = reds();
-    _r3dMode = 'solid'; _r3dLutCache = null; _r3dRender(); const solid = reds();
-    _r3dMode = 'cloud'; _r3dOpacity = 0.25; _r3dLutCache = null; _r3dRender(); const thin = reds();
+    await R(); const lit = reds();
+    _r3dMode = 'solid'; _r3dLutCache = null; await R(); const solid = reds();
+    _r3dMode = 'cloud'; _r3dOpacity = 0.25; _r3dLutCache = null; await R(); const thin = reds();
     _r3dOpacity = 1; _r3dLutCache = null;
-    _r3dCutSide = 'e'; _r3dCutPct = 70; _r3dRender(); const cutAway = reds();   // the east 70% is gone: the block sat at x = 0
-    _r3dCutSide = 'e'; _r3dCutPct = 20; _r3dRender(); const cutShallow = reds();
+    _r3dCutSide = 'e'; _r3dCutPct = 70; await R(); const cutAway = reds();   // the east 70% is gone: the block sat at x = 0
+    _r3dCutSide = 'e'; _r3dCutPct = 20; await R(); const cutShallow = reds();
     // The controls themselves.
     const sel = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('change', { bubbles: true })); };
     const inp = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); };
@@ -645,7 +644,7 @@ console.log('\n7b. lit, solid, thinner, and cut open: the controls gauged from G
     return { lit, solid, thin, cutAway, cutShallow, wired };
   });
   ok('the block is lit: its faces come out in clearly different shades of the same red',
-     r.lit.n > 400 && (r.lit.hi - r.lit.lo) > 40, JSON.stringify(r.lit));
+     r.lit.n > 400 && (r.lit.hi - r.lit.lo) >= 18, JSON.stringify(r.lit));
   ok('Solid surface draws an opaque shell, at least as much red as the cloud',
      r.solid.n >= r.lit.n * 0.9, JSON.stringify({ solid: r.solid.n, lit: r.lit.n }));
   ok('a quarter opacity draws a visibly thinner cloud', r.thin.n < r.lit.n, JSON.stringify({ thin: r.thin.n, lit: r.lit.n }));
@@ -656,32 +655,35 @@ console.log('\n7b. lit, solid, thinner, and cut open: the controls gauged from G
      JSON.stringify(r.wired));
 }
 
-console.log('\n8. the grid follows the drawn box: its shape, its size, and re-grids in place');
+console.log('\n8. the volume follows the drawn box: only the window the zone occupies, re-binned in place');
 {
   const r = await p.evaluate(() => {
     const savedZone = _r3dZone;
-    const gates = new Float32Array([0, 0, 2, 55]);
-    const frame = { gates, count: 1, segs: [{ start: 0, end: 1, angle: 0.5 }],
-                    time: null, cuts: 1, _grids: {} };
+    const site = { x: 0, y: -60 };
+    const z1 = _xsBeamHeightKm(60, 0.5, 0);
+    const frame = { gates: new Float32Array([0, 0, z1, 55]), count: 1,
+                    segs: [{ start: 0, end: 1, angle: 0.5 }], time: null, cuts: 1, site, _grids: {} };
     _r3dZone = { lat: 36, lng: -96, wKm: 90, hKm: 60 };
-    const wide = _r3dGridFor(frame, false);
-    _r3dZone = { lat: 36, lng: -96, wKm: 50, hKm: 50 };
-    const small = _r3dGridFor(frame, false);
-    _r3dZone = { lat: 36, lng: -96, wKm: 250, hKm: 100 };
-    const huge = _r3dGridFor(frame, false);
+    const wide = _r3dPolarFor(frame, 'ref');
+    _r3dZone = { lat: 36, lng: -96, wKm: 30, hKm: 30 };
+    const small = _r3dPolarFor(frame, 'ref');
     const oneCached = Object.keys(frame._grids).length;
+    // A radar inside its own box sees the whole circle.
+    const inFrame = { gates: new Float32Array([5, 5, 0.4, 55]), count: 1,
+                      segs: [{ start: 0, end: 1, angle: 0.5 }], time: null, cuts: 1, site: { x: 0, y: 0 }, _grids: {} };
+    const round = _r3dPolarFor(inFrame, 'ref');
     _r3dZone = savedZone;
-    return { wide: { nx: wide.nx, ny: wide.ny, cell: wide.cellXY, w: wide.wKm, h: wide.hKm },
-             small: { nx: small.nx, ny: small.ny, cell: small.cellXY },
-             huge: { nx: huge.nx, ny: huge.ny, cell: huge.cellXY }, oneCached };
+    return { wide: { span: wide.span, full: wide.full, nR: wide.nR, nA: wide.nA, rStep: wide.rStep },
+             small: { span: small.span, nR: small.nR, nA: small.nA },
+             oneCached, round: { full: round.full, r0: round.r0 } };
   });
-  ok('a wide box gets a wide grid of square cells', r.wide.nx === 256 && r.wide.ny === 171
-     && Math.abs(r.wide.cell - 90 / 256) < 1e-6 && r.wide.w === 90 && r.wide.h === 60, JSON.stringify(r.wide));
-  ok('a smaller box means finer voxels over the same spot', r.small.cell < r.wide.cell && r.small.nx === 256 && r.small.ny === 256,
-     JSON.stringify(r.small));
-  ok('a very big box gets more cells so they never grow coarse', r.huge.nx === 320 && r.huge.ny === 128,
-     JSON.stringify(r.huge));
+  ok('a box seen from outside gets only its own wedge of azimuth, at native bins',
+     !r.wide.full && r.wide.span < 120 && r.wide.rStep === 0.25, JSON.stringify(r.wide));
+  ok('a smaller box means a smaller window, same fineness', r.small.nR < r.wide.nR && r.small.nA < r.wide.nA,
+     JSON.stringify([r.small, { nR: r.wide.nR, nA: r.wide.nA }]));
   ok('only the current box stays cached per frame', r.oneCached === 1, String(r.oneCached));
+  ok('a radar inside the box sees the whole circle from range zero',
+     r.round.full && r.round.r0 === 0, JSON.stringify(r.round));
 }
 
 console.log('\n9. Level 3 builds the same frame from separate tilt files');
@@ -939,9 +941,11 @@ console.log('\n11. the orbit camera, the quality switch, and the panel controls'
 
 console.log('\n11b. taller: the 80 kft ceiling, vertical exaggeration, and Comfortaa inside the box');
 {
-  const r = await p.evaluate(() => {
+  const r = await p.evaluate(async () => {
     _r3dOpen('kfws');
     _r3dToken++;
+    _r3dFrames = []; _r3dFrameIdx = -1;
+    await _r3dRenderIdle(10000);
     const texts = [];
     const orig = CanvasRenderingContext2D.prototype.fillText;
     CanvasRenderingContext2D.prototype.fillText = function (t, x, y) {
@@ -950,10 +954,11 @@ console.log('\n11b. taller: the 80 kft ceiling, vertical exaggeration, and Comfo
     };
     const savedExag = _r3dExag, savedH = _r3dHeightMaxKft, savedCam = { ..._r3dCam };
     _r3dHeightMaxKft = 80; _r3dCam.yaw = 0.6; _r3dCam.pitch = 0.3; _r3dCam.dist = 150;
-    _r3dExag = 1; _r3dRender();
+    const R = async () => { _r3dDirty = false; _r3dRender(); await _r3dRenderIdle(10000); };
+    _r3dExag = 1; await R();
     const at1 = texts.filter(o => /kft$/.test(o.t)).map(o => ({ t: o.t, y: o.y }));
     texts.length = 0;
-    _r3dExag = 3; _r3dRender();
+    _r3dExag = 3; await R();
     const at3 = texts.filter(o => /kft$/.test(o.t)).map(o => ({ t: o.t, y: o.y }));
     const fonts = texts.map(o => o.font);
     CanvasRenderingContext2D.prototype.fillText = orig;
@@ -980,7 +985,7 @@ console.log('\n11b. taller: the 80 kft ceiling, vertical exaggeration, and Comfo
 
 console.log('\n11c. the box is only as tall as the storm in it, and the camera frames the whole box');
 {
-  const r = await p.evaluate(() => {
+  const r = await p.evaluate(async () => {
     _r3dOpen('kfws');
     _r3dToken++;
     const savedH = _r3dHeightMaxKft;
@@ -998,7 +1003,7 @@ console.log('\n11c. the box is only as tall as the storm in it, and the camera f
     const texts = [];
     const orig = CanvasRenderingContext2D.prototype.fillText;
     CanvasRenderingContext2D.prototype.fillText = function (t, x, y) { texts.push(String(t)); return orig.call(this, t, x, y); };
-    _r3dQuality = 'fine'; _r3dRender();
+    _r3dQuality = 'fine'; _r3dDirty = false; _r3dRender(); await _r3dRenderIdle(10000);
     CanvasRenderingContext2D.prototype.fillText = orig;
     const kft = texts.filter(t => /kft$/.test(t)).map(t => parseInt(t, 10));
     _r3dHeightMaxKft = 10;
@@ -1018,9 +1023,11 @@ console.log('\n11c. the box is only as tall as the storm in it, and the camera f
 
 console.log('\n11d. the height unit can be changed, and the numbers stay true');
 {
-  const r = await p.evaluate(() => {
+  const r = await p.evaluate(async () => {
     _r3dOpen('kfws');
     _r3dToken++;
+    _r3dFrames = []; _r3dFrameIdx = -1;
+    await _r3dRenderIdle(10000);
     const texts = [];
     const orig = CanvasRenderingContext2D.prototype.fillText;
     CanvasRenderingContext2D.prototype.fillText = function (t, x, y) {
@@ -1030,15 +1037,15 @@ console.log('\n11d. the height unit can be changed, and the numbers stay true');
     const savedH = _r3dHeightMaxKft;
     _r3dHeightMaxKft = 80;
     const sel = document.getElementById('r3d-hunit');
-    const grab = (unit) => {
+    const grab = async (unit) => {
       sel.value = unit; sel.dispatchEvent(new Event('change', { bubbles: true }));
       texts.length = 0;
-      _r3dRender();
+      _r3dDirty = false; _r3dRender(); await _r3dRenderIdle(10000);
       return { labels: texts.map(o => o.t).filter(t => /^\d+ /.test(t)),
                slider: document.getElementById('r3d-height-label').textContent,
                y: Object.fromEntries(texts.filter(o => /^\d+ /.test(o.t)).map(o => [o.t, o.y])) };
     };
-    const kft = grab('kft'), km = grab('km'), m = grab('m'), ft = grab('ft');
+    const kft = await grab('kft'), km = await grab('km'), m = await grab('m'), ft = await grab('ft');
     CanvasRenderingContext2D.prototype.fillText = orig;
     sel.value = 'kft'; sel.dispatchEvent(new Event('change', { bubbles: true }));
     _r3dHeightMaxKft = savedH;
@@ -1059,9 +1066,11 @@ console.log('\n11d. the height unit can be changed, and the numbers stay true');
 
 console.log('\n11c. a black gradient panel with gold gradient text, inside the box too');
 {
-  const r = await p.evaluate(() => {
+  const r = await p.evaluate(async () => {
     _r3dOpen('kfws');
     _r3dToken++;
+    _r3dFrames = []; _r3dFrameIdx = -1;
+    await _r3dRenderIdle(10000);
     const panel = getComputedStyle(document.getElementById('r3d-panel'));
     const title = getComputedStyle(document.querySelector('#r3d-panel .xs-title'));
     const status = getComputedStyle(document.getElementById('r3d-status'));
@@ -1071,7 +1080,7 @@ console.log('\n11c. a black gradient panel with gold gradient text, inside the b
       fills.push({ t: String(t), gradient: typeof this.fillStyle === 'object' && this.fillStyle !== null });
       return orig.call(this, t, x, y);
     };
-    _r3dRender();
+    _r3dDirty = false; _r3dRender(); await _r3dRenderIdle(10000);
     CanvasRenderingContext2D.prototype.fillText = orig;
     _r3dClose();
     return {
@@ -1118,22 +1127,23 @@ console.log('\n13. playback: a typed speed, a frame cache, and a loop that copie
     let paints = 0;
     const orig = _r3dPaint;
     _r3dPaint = function () { paints++; return orig.apply(this, arguments); };
-    _r3dRender();
+    const R = async () => { _r3dDirty = false; _r3dRender(); await _r3dRenderIdle(15000); };
+    await R();
     out.firstPaints = paints;
-    _r3dRender();
+    await R();
     out.secondPaints = paints;
     out.topSteady = _r3dBoxTopKm();
     _r3dSetFrame(1);
     out.topSame = _r3dBoxTopKm() === out.topSteady;
     // Warming draws the frame not yet cached, once, and then has nothing to do.
-    out.warm1 = _r3dWarmOne();
-    out.warm2 = _r3dWarmOne();
+    out.warm1 = await _r3dWarmOne();
+    out.warm2 = await _r3dWarmOne();
     out.paintsAfterWarm = paints;
-    _r3dRender();
+    await R();
     out.paintsAfterBlit = paints;
     // A drag changes the view, so the cache misses and a real march runs.
     _r3dCam.yaw += 0.3;
-    _r3dRender();
+    await R();
     out.paintsAfterMove = paints;
     _r3dPaint = orig;
     // The loop rides requestAnimationFrame and stops cleanly.

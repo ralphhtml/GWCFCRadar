@@ -737,9 +737,27 @@ const meanElevationAngle = (radar, elevationNumber) => {
     }
 };
 
+// The radar's own position comes from a record's volume block, but the cut
+// the parser lands on first can have none: a moment-filtered parse leaves a
+// split cut's surveillance sweep empty when only velocity was asked for.
+// Walk the cuts until one has it - every volume has it somewhere.
+const firstUsableHeader = (radar, elevations) => {
+    for (const el of elevations) {
+        try {
+            radar.setElevation(el);
+            const h = radar.getHeader(0);
+            if (h && h.volume && Number.isFinite(h.volume.latitude)) return h;
+        } catch (e) { /* next cut */ }
+    }
+    return null;
+};
+
 const level2TimeIso = (header) => {
     try {
-        return new Date((header.julian_date * 86400 * 1000) + header.mseconds - 3600000).toISOString();
+        // julian_date counts 1 January 1970 as day ONE, not day zero, so a
+        // day comes off before the epoch math. The old minus-one-hour fudge
+        // had every Level 2 stamp reading twenty-three hours ahead.
+        return new Date(((header.julian_date - 1) * 86400 * 1000) + header.mseconds).toISOString();
     } catch (e) {
         return null;
     }
@@ -765,11 +783,11 @@ self.onmessage = (event) => {
             const parserEndMs = toEpochMs(performance.now());
 
             const elevations = radar.listElevations();
-            radar.setElevation(elevations[0] || 1);
-
-            const recordHeader = radar.getHeader(0);
+            const recordHeader = firstUsableHeader(radar, elevations);
+            if (!recordHeader) throw new Error('no usable sweep in the chunks');
             const radarLocation = [recordHeader.volume.latitude, recordHeader.volume.longitude];
             const extent = recordHeader.radial_length;
+            radar.setElevation(radar.elevation || elevations[0] || 1);
 
             const { meshData, bounds, geojson } = processRadarData(radar, radarLocation, extent, chunkLayer, chunkOptions);
             const meshEndMs = toEpochMs(performance.now());
@@ -912,8 +930,8 @@ self.onmessage = (event) => {
                 wanted = reps.filter((_, i) => i % lanes === lane);
             }
             if (Array.isArray(wanted) && (wanted.length || distinctCount !== null)) {
-                radar.setElevation(elevations[0] || 1);
-                const h0 = radar.getHeader(0);
+                const h0 = firstUsableHeader(radar, elevations);
+                if (!h0) throw new Error('no usable sweep in this volume');
                 const radarLocation0 = [h0.volume.latitude, h0.volume.longitude];
                 const sweeps = [];
                 const transfer = [];
@@ -951,15 +969,16 @@ self.onmessage = (event) => {
                 return;
             }
 
+            const usable = firstUsableHeader(radar, elevations);
+            if (!usable) throw new Error('no usable sweep in this volume');
+            const radarLocation = [usable.volume.latitude, usable.volume.longitude];
             if (options?.elevation && elevations.includes(options.elevation)) {
                 radar.setElevation(options.elevation);
-            } else {
+            } else if (!elevations.includes(radar.elevation)) {
                 radar.setElevation(elevations[0] || 1);
             }
-
-            const header = radar.getHeader(0);
-            const radarLocation = [header.volume.latitude, header.volume.longitude];
-            const extent = header.radial_length;
+            const header = radar.getHeader(0) || usable;
+            const extent = header.radial_length || usable.radial_length;
 
             const { meshData, bounds, geojson } = processRadarData(radar, radarLocation, extent, layer, options);
             meshEndMs = toEpochMs(performance.now());
