@@ -11298,14 +11298,14 @@ body.clean-mode #clean-hint { opacity: 1; }
   <div class="xs-note"></div>
 </div>
 
-<!-- ─── RADAR 3D PANEL ─── -->
-<!-- No separate toolbar any more: it opens from the double-click / long-press
-     map menu already knowing which station to show, so there is no site
-     picker or "build" button left to put on one - everything that remains
-     (product, the two sliders, close) lives on the one panel. -->
+<!-- ─── RADAR 3D (VOLUMETRIC) PANEL ─── -->
+<!-- No separate toolbar: it opens from the double-click / long-press map
+     menu already knowing where to look. Tapping the map places a ZONE (the
+     rectangle drawn on the map); the panel renders only what is inside that
+     zone, from the nearest radar, as a ray-marched volume. -->
 <div id="r3d-panel">
   <div class="xs-head">
-    <span class="xs-title">Radar 3D</span>
+    <span class="xs-title">Volumetric 3D</span>
     <span class="xs-where" id="r3d-where"></span>
     <div class="xs-spacer"></div>
     <button class="xs-big" title="Expand">&#11036;</button>
@@ -11313,6 +11313,11 @@ body.clean-mode #clean-hint { opacity: 1; }
   </div>
   <div class="r3d-controls">
     <select class="xsec-sel" id="r3d-product" title="Which measurement to render"></select>
+    <select class="xsec-sel" id="r3d-zone" title="How wide an area the zone covers">
+      <option value="50">Small box</option>
+      <option value="90" selected>Medium box</option>
+      <option value="150">Large box</option>
+    </select>
     <span id="r3d-status"></span>
     <div class="xs-spacer"></div>
     <button class="dtb-btn" id="r3d-info-btn" title="What this does" type="button"></button>
@@ -11338,7 +11343,7 @@ body.clean-mode #clean-hint { opacity: 1; }
       <span id="r3d-time-label"></span>
     </div>
   </div>
-  <div class="xs-note">Drag to orbit, scroll or pinch to zoom. Uses this browser's own decoder, the same one Cross Section and Level 2 use, run once per tilt. Sites with no Level 2 archive (like a terminal TDWR at an airport) build the same shape from Level 3 tilt files instead, as one frame with no time slider.</div>
+  <div class="xs-note">Drag to orbit, scroll or pinch to zoom. The rectangle on the map is the zone being rendered; double-click or long-press somewhere else to move it. Sharpens a moment after you stop moving. Sites with no Level 2 archive (like a terminal TDWR at an airport) build from Level 3 tilt files instead, as one frame with no time slider.</div>
 </div>
 
     </div>
@@ -63957,6 +63962,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-17-a', date: 'Sep 17, 2026',
+    text: 'Rebuilt Radar 3D as true volumetric rendering, no more dots. Picking "View in 3D here" now draws a zone box on the map around the spot you tapped, and the panel renders only what is inside that box from the closest radar: every tilt is resampled into a 3D grid, the gaps between tilts are filled in so a storm reads as one continuous cloud with a solid core and a hazy edge, and a per-pixel ray marcher draws it with the radar picture painted on the box floor and heights marked in thousands of feet on the walls. A new box-size picker (small, medium, large) resizes the zone instantly with no re-download. It draws coarse while you drag and sharpens the moment you stop, so it stays smooth even on a phone.' },
   { id: '2026-09-16-h', date: 'Sep 16, 2026',
     text: 'Radar 3D now works at terminal (TDWR) radars too, the small airport radars that never publish a Level 2 archive: it builds the same 3D shape from their separate Level 3 tilt files instead, one file per elevation rather than one file with all of them. A regular NEXRAD site falls back to this too if its live Level 2 feed happens to be down. The only difference is no time slider on a Level 3 build, just the one live frame.' },
   { id: '2026-09-16-g', date: 'Sep 16, 2026',
@@ -67866,42 +67873,59 @@ function _xsDraw(slice, errText) {
 })();
 
 /* ══════════════════════════════════════════════════════════════════════════
-   RADAR 3D
+   RADAR 3D (VOLUMETRIC)
    ──────────────────────────────────────────────────────────────────────────
    A storm's real shape - where the core leans, whether there is an overhang,
    how tall it stands - inspired by JordanSchlick/OpenStorm, the desktop 3D
-   radar viewer. OpenStorm renders a full volumetric texture with a GPU ray
-   marching shader; this page has no WebGL anywhere in it and that is staying
-   true here too, so the approach is different where it has to be and the
-   same where it can be:
+   radar viewer. This page has no WebGL anywhere in it and that is staying
+   true, but the rendering is now a REAL volume ray march, done on the CPU:
 
+     - ZONE: tapping the map places a square zone (drawn as a rectangle on
+       the map). Only gates inside that zone are kept, from the nearest
+       radar to the tapped spot. A small piece of sky at full resolution
+       beats the whole 460 km disk at postage-stamp resolution.
+     - VOXELS: the in-zone gates from every tilt are resampled into a
+       regular 3D grid. The radar only measures along its discrete cones, so
+       columns are interpolated vertically between neighbouring tilts (and
+       the lowest sample is carried down to the ground when it sits low
+       enough to honestly belong there) - that continuity is what makes it
+       read as a cloud instead of dots.
+     - RENDERING: per-pixel ray marching through the grid with front-to-back
+       alpha compositing, a transfer function LUT (value -> colour+opacity),
+       empty-space skipping, and a radar floor plane inside the box. It
+       renders coarse while you drag and refines to full quality the moment
+       you stop, so it stays interactive without a GPU.
      - COLOUR: OpenStorm's own reflectivity and velocity ramps
        (RadarColorIndex.cpp), ported to plain JS HSL math.
-     - GEOMETRY: OpenStorm's volume shader (volume.ush) turns out to treat
-       the volume as a plain sphere centred on the radar - range, azimuth and
-       an angle straight off z/radius, no earth-curvature term anywhere in
-       it. This page already has a MORE accurate version of exactly that
-       conversion for Cross Section (_xsBeamHeightKm, the real 4/3-earth-
-       radius beam height), so points here are placed with that instead of
-       copying OpenStorm's simplification.
-     - RENDERING: no ray marching, no shader, no volume texture. Every gate
-       above a threshold becomes one point in 3D space, coloured off the
-       ramp; a plain 2D canvas projects and paints them back-to-front. Fewer
-       pixels of nuance than a ray march, but the same storm structure, and
-       it runs anywhere this page already runs.
+     - GEOMETRY: real 4/3-earth-radius beam height (_xsBeamHeightKm), the
+       same conversion Cross Section already trusts.
 
    Data comes from the exact same place Cross Section's does: the browser's
-   own Level 2 decoder, run once per tilt over a volume already downloaded
-   for the map (or fetched fresh the same way). No new dependency, no
-   server, no new download format.
+   own Level 2 decoder, run once per tilt (or Level 3 tilt files where no
+   Level 2 archive exists). No new dependency, no server, no new format.
 */
 
 const R3D_MAX_TILTS = 10;        // decoding is seconds each, same cap as Cross Section
-const R3D_MAX_POINTS = 70000;    // render budget; the rest are dropped by even stride
 const R3D_FRAMES = 6;            // recent volumes kept for the time control
-const R3D_MIN_DBZ = -10;         // true clear-air/noise floor - the value slider does the real filtering now
+const R3D_MIN_DBZ = -10;         // true clear-air/noise floor - the value slider does the real filtering
 const R3D_MIN_KT = 1;            // dead-zero noise floor - same idea
 const R3D_KFT_PER_KM = 3.28084;  // km -> thousands of feet
+
+// The zone. Gates are stored out to the LARGEST size at build time, so
+// switching to a smaller or larger box is a re-grid of data already in
+// hand, never a refetch or a re-decode.
+const R3D_ZONE_MAX_KM = 150;
+let _r3dZone = null;             // { lat, lng } - the tapped point, the zone's centre
+let _r3dZoneSizeKm = 90;         // current box edge, from the panel's own select
+let _r3dZoneRect = null;         // the Leaflet rectangle shown on the map
+
+// The voxel grid. One byte per voxel (0 = empty, 1..255 = the value mapped
+// onto the product's own range) - a byte grid is small enough to rebuild in
+// milliseconds and cheap enough to sample tens of thousands of times per
+// frame in plain JS.
+const R3D_GRID_N = 112;          // voxels across the zone horizontally
+const R3D_GRID_NZ = 48;          // voxels bottom-to-top
+const R3D_Z_MAX_KM = 60 / R3D_KFT_PER_KM;   // grid ceiling: 60 kft
 
 const R3D_PRODUCTS = [
   { id: 'ref', label: 'Reflectivity' },
@@ -67912,20 +67936,43 @@ let _r3dOn = false;
 let _r3dBuilding = false;
 let _r3dToken = 0;
 let _r3dStation = null;          // the station currently loaded, lowercase id
+let _r3dStationKm = 0;           // how far the zone centre is from that station
+let _r3dStationBrg = NaN;        // which way the station lies from the zone centre
 let _r3dFrames = [];             // oldest first, same convention as _l2Loop
 let _r3dFrameIdx = -1;
 let _r3dPlayTimer = null;
 let _r3dDirty = true;
 let _r3dLoopStarted = false;
-let _r3dCam = { yaw: 0.6, pitch: 0.5, dist: 190 };
-const R3D_DIST_MIN = 25, R3D_DIST_MAX = 500;
+let _r3dCam = { yaw: 0.6, pitch: 0.5, dist: 150 };
 const R3D_PITCH_MIN = -0.15, R3D_PITCH_MAX = 1.45;
+// Coarse while interacting, full quality the moment interaction stops.
+let _r3dQuality = 'fine';
+let _r3dFineTimer = null;
+let _r3dLutCache = null;         // { key, lut, floorRgb } - rebuilt when product/filter/step changes
 // The two sliders: "Show above" (0-100, mapped to an actual dBZ/kt cutoff
 // per product below) and "Up to" (a height ceiling in kft). Both are read
-// live in the render loop, not baked into the stored points, so dragging
-// either just redraws instantly with no new decode.
+// live at render time - the filter lives in the transfer function LUT and
+// the ceiling just clips the marched box, so dragging either redraws
+// instantly with no new decode.
 let _r3dFilterPct = 0;
 let _r3dHeightMaxKft = 60;
+
+// Camera distance limits scale with the zone, so a small box can be leaned
+// into and a large one can still be framed whole.
+function _r3dDistMin() { return _r3dZoneSizeKm * 0.55; }
+function _r3dDistMax() { return _r3dZoneSizeKm * 4.5; }
+function _r3dCamFit() {
+  _r3dCam.dist = Math.max(_r3dDistMin(), Math.min(_r3dDistMax(), _r3dZoneSizeKm * 1.7));
+}
+
+// Marks the view as needing a redraw at drag quality, and books the full
+// quality pass for the moment the hand stops moving.
+function _r3dInteract() {
+  _r3dQuality = 'fast';
+  _r3dDirty = true;
+  clearTimeout(_r3dFineTimer);
+  _r3dFineTimer = setTimeout(() => { _r3dQuality = 'fine'; _r3dDirty = true; }, 180);
+}
 
 function _r3dEl(id) { return document.getElementById(id); }
 function _r3dSay(msg, kind) {
@@ -67954,36 +68001,23 @@ function _r3dUpdateHeightLabel() {
   if (el) el.textContent = _r3dHeightMaxKft + ' kft';
 }
 
-// Called from the double-click / long-press map menu. Opening for the first
-// time shows whichever station is already up elsewhere on the page (the
-// Level 2/3 view you were just looking at); tapping a different spot while
-// it is already open jumps straight to that spot's own nearest station,
-// same as picking a new line for Cross Section.
+// Called from the double-click / long-press map menu. The tapped point IS
+// the zone: a box gets drawn on the map around it, the nearest radar to it
+// is chosen automatically, and the panel renders only what is inside.
+// Tapping somewhere else while it is open just moves the zone there.
 function _cmRadar3DHere() {
   const ll = _cmLatLng;
   _cmClose();
   if (!ll) return;
-  let stationId = null;
-  if (_r3dOn) {
-    const near = _r3dNearestStation(ll.lat, ll.lng);
-    if (near) stationId = near.id;
-  } else {
-    stationId = _r3dCurrentStationId();
-    if (!stationId) {
-      const near = _r3dNearestStation(ll.lat, ll.lng);
-      if (near) stationId = near.id;
-    }
+  const near = _r3dNearestStation(ll.lat, ll.lng);
+  if (!near) return;
+  if (near.km > 420) {
+    if (typeof showToast === 'function') showToast('No radar close enough to that spot for a 3D view.', 2800);
+    return;
   }
-  if (!stationId) return; // nothing near enough to show - quietly do nothing
-  _r3dOpen(stationId);
-}
-
-// The station already on screen elsewhere in the app, if any - Level 2's
-// own site first, then a Pi/Level 3 one.
-function _r3dCurrentStationId() {
-  if (typeof _l2Site !== 'undefined' && _l2Site) return _l2Site;
-  if (typeof _l3Station !== 'undefined' && _l3Station) return _l3Station;
-  return null;
+  _r3dZone = { lat: ll.lat, lng: ll.lng };
+  _r3dStationKm = near.km;
+  _r3dOpen(near.id);
 }
 
 function _r3dNearestStation(lat, lng) {
@@ -67996,10 +68030,48 @@ function _r3dNearestStation(lat, lng) {
   return best ? { id: best.id, km: bestKm } : null;
 }
 
+// The zone's box on the map, in real degrees for the current size.
+function _r3dZoneBounds(zone, sizeKm) {
+  const half = sizeKm / 2;
+  const dLat = half / 111.32;
+  const dLng = half / (111.32 * Math.max(0.2, Math.cos(zone.lat * Math.PI / 180)));
+  return [[zone.lat - dLat, zone.lng - dLng], [zone.lat + dLat, zone.lng + dLng]];
+}
+
+// Keeps the on-map rectangle in step with the zone's centre and size - the
+// same box the 3D view is marching through, so what you see on the map is
+// exactly what you get in the panel.
+function _r3dZoneRectSync() {
+  if (!_r3dZone || typeof map === 'undefined' || !map || typeof L === 'undefined') return;
+  const b = _r3dZoneBounds(_r3dZone, _r3dZoneSizeKm);
+  if (!_r3dZoneRect) {
+    try {
+      _r3dZoneRect = L.rectangle(b, {
+        color: '#6fb6ff', weight: 2, opacity: 0.9,
+        fillColor: '#6fb6ff', fillOpacity: 0.04, interactive: false,
+      }).addTo(map);
+    } catch (e) { _r3dZoneRect = null; }
+  } else {
+    try { _r3dZoneRect.setBounds(b); } catch (e) {}
+  }
+}
+
+function _r3dZoneRectRemove() {
+  if (_r3dZoneRect) {
+    try { map.removeLayer(_r3dZoneRect); } catch (e) {}
+    _r3dZoneRect = null;
+  }
+}
+
 function _r3dOpen(stationId) {
   if (typeof map === 'undefined' || !map) {
     if (typeof showToast === 'function') showToast('The map is still loading.', 2500);
     return;
+  }
+  // Opened without a zone (older callers, tests): centre it on the station.
+  if (!_r3dZone) {
+    const pos = _xsSiteLatLon(String(stationId || '').toLowerCase());
+    if (pos) { _r3dZone = { lat: pos.lat, lng: pos.lng }; _r3dStationKm = 0; }
   }
   _r3dOn = true;
   const panel = _r3dEl('r3d-panel');
@@ -68015,26 +68087,34 @@ function _r3dOpen(stationId) {
   const filter = _r3dEl('r3d-filter'), height = _r3dEl('r3d-height');
   if (filter) filter.value = String(_r3dFilterPct);
   if (height) height.value = String(_r3dHeightMaxKft);
+  const zs = _r3dEl('r3d-zone');
+  if (zs) zs.value = String(_r3dZoneSizeKm);
   _r3dUpdateFilterLabel();
   _r3dUpdateHeightLabel();
   _r3dUpdateLegend((ps || {}).value || 'ref');
+  _r3dZoneRectSync();
+  _r3dCamFit();
   if (!_r3dLoopStarted) { _r3dLoopStarted = true; _r3dTick(); }
-  _r3dLoadStation(stationId);
+  _r3dStation = String(stationId || '').toLowerCase();
+  _r3dLoad();
 }
 
 // Wired to the panel's own close (X) button. Deliberately does not disable
 // Radar or any other layer on the way out - Radar 3D was asked to sit
 // alongside the regular picture, not replace it, so it only tears down its
-// own state.
+// own state (including the zone rectangle it drew on the map).
 function _r3dClose() {
   _r3dOn = false;
   _r3dToken++;
   if (_r3dPlayTimer) { clearInterval(_r3dPlayTimer); _r3dPlayTimer = null; }
   const panel = _r3dEl('r3d-panel');
   if (panel) { panel.classList.remove('open'); panel.classList.remove('big'); }
+  _r3dZoneRectRemove();
+  _r3dZone = null;
   _r3dFrames = [];
   _r3dFrameIdx = -1;
   _r3dStation = null;
+  _r3dLutCache = null;
 }
 
 // ── Colour ramps, ported from OpenStorm's RadarColorIndex.cpp ──────────────
@@ -68106,60 +68186,59 @@ function _r3dVelocityColor(kt) {
 // ── Building one frame ───────────────────────────────────────────────────
 // A gate-cell's quad corners are already projected lon/lat (the worker
 // consumed range and azimuth to build them and did not send those back), so
-// this recovers range and bearing the same way Cross Section already does:
-// great-circle distance and a flat bearing off the centroid, against the
-// station's own known site position. Height is the real 4/3-earth-radius
-// beam height, at the sweep's one elevation angle, same as Cross Section.
-// Turns one decoded sweep's mesh into points appended onto the running
-// lon/lat-free x/y/z/value arrays a frame is built from, shared by the real
-// Level 2 volume path and the Level 3 tilt-by-tilt path below - both end up
-// with the same shape of mesh from the same worker, just fetched
-// differently. Returns the sum of the z values it added, so the caller can
-// keep a running centerZ without a second pass over the arrays.
-function _r3dConsumeMesh(mesh, elevAngle, sitePos, isVel, xs, ys, zs, vs) {
+// this recovers what it needs from the centroid: range from the station
+// (for the real 4/3-earth-radius beam height, same as Cross Section) and a
+// flat local east/north offset from the ZONE's centre, which is the box the
+// voxel grid lives in. Everything outside the largest zone size is dropped
+// on the spot - the cheap lon/lat box check runs before any trigonometry.
+function _r3dConsumeMeshZone(mesh, elevAngle, sitePos, zone, isVel, out) {
   const angle = isFinite(elevAngle) ? elevAngle : 0.5;
   // Only a true noise/clear-air floor here, not a "show me the strong
   // stuff" cutoff - that is what the Show Above slider is for, at render
   // time, so it can be turned back down without a re-decode.
   const minV = isVel ? -Infinity : R3D_MIN_DBZ;
-  let zSum = 0;
+  const kmLat = 111.32;
+  const kmLng = 111.32 * Math.max(0.2, Math.cos(zone.lat * Math.PI / 180));
+  const half = R3D_ZONE_MAX_KM / 2;
+  const latMin = zone.lat - half / kmLat, latMax = zone.lat + half / kmLat;
+  const lonMin = zone.lng - half / kmLng, lonMax = zone.lng + half / kmLng;
+  const xs = out.xs, ys = out.ys, zs = out.zs, vs = out.vs;
+  let added = 0;
   for (let i = 0; i < mesh.length; i += 9) {
     const v = mesh[i + 8];
     if (v !== v) continue;                            // NaN, a range fold
     if (isVel ? Math.abs(v) < R3D_MIN_KT : v < minV) continue;
     const lon = (mesh[i] + mesh[i + 2] + mesh[i + 4] + mesh[i + 6]) / 4;
+    if (lon < lonMin || lon > lonMax) continue;
     const lat = (mesh[i + 1] + mesh[i + 3] + mesh[i + 5] + mesh[i + 7]) / 4;
+    if (lat < latMin || lat > latMax) continue;
     const rangeKm = sitePos ? _xsKm(sitePos, { lat, lng: lon }) : 0;
-    const bearingDeg = sitePos ? _fxBearing(sitePos.lat, sitePos.lng, lat, lon) : 0;
-    const br = bearingDeg * Math.PI / 180;
-    const z = _xsBeamHeightKm(rangeKm, angle, 0);
-    xs.push(rangeKm * Math.sin(br));
-    ys.push(rangeKm * Math.cos(br));
-    zs.push(z);
+    xs.push((lon - zone.lng) * kmLng);
+    ys.push((lat - zone.lat) * kmLat);
+    zs.push(_xsBeamHeightKm(rangeKm, angle, 0));
     vs.push(v);
-    zSum += z;
+    added++;
   }
-  return zSum;
+  return added;
 }
 
-// Downsamples the running arrays into the frame's final Float32Array and
-// packages it up. Shared by both build paths for the same reason as above.
-function _r3dFinishFrame(xs, ys, zs, vs, zSum, timeIso, cuts) {
-  if (!xs.length) return null;
-  // Downsample by an even stride rather than truncating, so a thin frame
-  // still shows structure from every tilt instead of just the low ones that
-  // happened to be decoded first.
-  const stride = Math.max(1, Math.ceil(xs.length / R3D_MAX_POINTS));
-  const n = Math.ceil(xs.length / stride);
-  const pts = new Float32Array(n * 4);
-  let j = 0;
-  for (let i = 0; i < xs.length; i += stride, j += 4) {
-    pts[j] = xs[i]; pts[j + 1] = ys[i]; pts[j + 2] = zs[i]; pts[j + 3] = vs[i];
+// Packs the collected in-zone gates into one frame. `segs` remembers which
+// stretch of the arrays came from which tilt, so the floor texture can be
+// built from just the lowest cut later. The voxel grids themselves are
+// built lazily per zone size (`_grids`), so a box-size change is a re-grid
+// of these gates and never a refetch.
+function _r3dFinishFrame(out, segs, timeIso, cuts) {
+  const n = out.xs.length;
+  if (!n) return null;
+  const gates = new Float32Array(n * 4);
+  for (let i = 0, j = 0; i < n; i++, j += 4) {
+    gates[j] = out.xs[i]; gates[j + 1] = out.ys[i];
+    gates[j + 2] = out.zs[i]; gates[j + 3] = out.vs[i];
   }
-  return { pts, count: n, centerZ: zSum / xs.length, time: timeIso || null, cuts };
+  return { gates, count: n, segs, time: timeIso || null, cuts, _grids: {} };
 }
 
-async function _r3dBuildFrame(buf, layer, sitePos, token) {
+async function _r3dBuildFrame(buf, layer, sitePos, zone, token) {
   let first;
   try { first = await _workerProcess(buf.slice(0), layer, undefined); }
   catch (e) { return null; }
@@ -68170,13 +68249,17 @@ async function _r3dBuildFrame(buf, layer, sitePos, token) {
     : [meta.elevationNumber || 1];
   const isVel = layer === 'VEL';
 
-  const xs = [], ys = [], zs = [], vs = [];
-  let zSum = 0;
+  const out = { xs: [], ys: [], zs: [], vs: [] };
+  const segs = [];
+  let cuts = 0;
 
   const consume = (res) => {
     if (!res || !res.meshData || !res.bounds) return;
-    zSum += _r3dConsumeMesh(res.meshData, res.metadata && res.metadata.elevationAngle,
-                             sitePos, isVel, xs, ys, zs, vs);
+    const angle = res.metadata && res.metadata.elevationAngle;
+    const start = out.xs.length;
+    const added = _r3dConsumeMeshZone(res.meshData, angle, sitePos, zone, isVel, out);
+    if (added) segs.push({ start, end: start + added, angle: isFinite(angle) ? angle : 0.5 });
+    cuts++;
   };
   consume(first);
   for (let k = 0; k < elevs.length; k++) {
@@ -68189,7 +68272,7 @@ async function _r3dBuildFrame(buf, layer, sitePos, token) {
     consume(res);
     await new Promise(r => setTimeout(r, 0));           // let the page breathe between cuts
   }
-  return _r3dFinishFrame(xs, ys, zs, vs, zSum, meta.timeIso, elevs.length);
+  return _r3dFinishFrame(out, segs, meta.timeIso, cuts);
 }
 
 // A pseudo-volume for sites with no raw Level 2 archive at all - every
@@ -68199,7 +68282,7 @@ async function _r3dBuildFrame(buf, layer, sitePos, token) {
 // TDWR TZ*/TV* codes) is published as its own separate file. So each one is
 // fetched and decoded on its own, and the same mesh-to-points step above
 // combines them into one frame exactly as if they had come from one volume.
-async function _r3dBuildFrameL3(site, product, sitePos, token) {
+async function _r3dBuildFrameL3(site, product, sitePos, zone, token) {
   const family = PR_BUCKET[product === 'vel' ? 'velocity' : 'reflectivity'];
   if (!family) return null;
   const isTdwr = typeof _isTdwrSite === 'function' && _isTdwrSite(site);
@@ -68222,47 +68305,161 @@ async function _r3dBuildFrameL3(site, product, sitePos, token) {
   }));
   if (token !== _r3dToken) return null;
 
-  const xs = [], ys = [], zs = [], vs = [];
-  let zSum = 0, cuts = 0, timeIso = null;
+  const out = { xs: [], ys: [], zs: [], vs: [] };
+  const segs = [];
+  let cuts = 0, timeIso = null;
   for (const res of sweeps) {
     if (!res || !res.meshData) continue;
     const meta = res.metadata || {};
     if (!isFinite(meta.elevationAngle)) continue;      // no real angle, no honest height
-    zSum += _r3dConsumeMesh(res.meshData, meta.elevationAngle, sitePos, isVel, xs, ys, zs, vs);
+    const start = out.xs.length;
+    const added = _r3dConsumeMeshZone(res.meshData, meta.elevationAngle, sitePos, zone, isVel, out);
+    if (added) segs.push({ start, end: start + added, angle: meta.elevationAngle });
     if (meta.timeIso) timeIso = meta.timeIso;
     cuts++;
   }
   if (!cuts) return null;
-  return _r3dFinishFrame(xs, ys, zs, vs, zSum, timeIso, cuts);
+  return _r3dFinishFrame(out, segs, timeIso, cuts);
 }
 
-function _r3dMaxRangeKm(frame) {
-  let max = 0;
-  const pts = frame.pts;
-  for (let i = 0; i < pts.length; i += 4) {
-    const r2 = pts[i] * pts[i] + pts[i + 1] * pts[i + 1];
-    if (r2 > max) max = r2;
+// ── The voxel grid ───────────────────────────────────────────────────────
+// One byte per voxel: 0 means empty air, 1..255 is the value mapped onto
+// the product's own range (-20..80 dBZ, or -100..100 kt with 128 as calm).
+// The grid, the floor texture and a coarse occupancy mask (for skipping
+// empty space while marching) are built together, in milliseconds, from a
+// frame's stored in-zone gates - so re-gridding for a new box size costs
+// nothing anyone would notice.
+function _r3dNormByte(v, isVel) {
+  const t = isVel ? (Math.max(-100, Math.min(100, v)) + 100) / 200
+                  : (Math.max(-20, Math.min(80, v)) + 20) / 100;
+  return 1 + Math.round(t * 254);
+}
+function _r3dByteStrength(b, isVel) { return isVel ? Math.abs(b - 128) : b; }
+
+function _r3dGridFrame(frame, sizeKm, isVel) {
+  const nx = R3D_GRID_N, ny = R3D_GRID_N, nz = R3D_GRID_NZ;
+  const cellXY = sizeKm / nx, cellZ = R3D_Z_MAX_KM / nz;
+  const grid = new Uint8Array(nx * ny * nz);           // idx = (iz*ny + iy)*nx + ix
+  const half = sizeKm / 2;
+  const g = frame.gates, n = frame.count;
+  const layerStride = nx * ny;
+
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    const ix = Math.floor((g[p] + half) / cellXY);
+    if (ix < 0 || ix >= nx) continue;
+    const iy = Math.floor((g[p + 1] + half) / cellXY);
+    if (iy < 0 || iy >= ny) continue;
+    const iz = Math.floor(g[p + 2] / cellZ);
+    if (iz < 0 || iz >= nz) continue;
+    const b = _r3dNormByte(g[p + 3], isVel);
+    const idx = (iz * ny + iy) * nx + ix;
+    if (_r3dByteStrength(b, isVel) > _r3dByteStrength(grid[idx], isVel)) grid[idx] = b;
   }
-  return Math.sqrt(max);
+
+  // The radar only measures along its discrete cones, so a column of air
+  // has samples at a handful of heights with real gaps between them.
+  // Interpolating along each column between neighbouring filled voxels is
+  // what turns the stack of cones into something that reads as one
+  // continuous cloud. Gaps wider than ~5.5 km stay honest gaps.
+  const maxGap = Math.max(2, Math.round(5.5 / cellZ));
+  for (let iy = 0; iy < ny; iy++) {
+    for (let ix = 0; ix < nx; ix++) {
+      const base = iy * nx + ix;
+      let prev = -1;
+      for (let iz = 0; iz < nz; iz++) {
+        const b = grid[iz * layerStride + base];
+        if (!b) continue;
+        if (prev >= 0 && iz - prev > 1 && iz - prev <= maxGap) {
+          const b0 = grid[prev * layerStride + base];
+          for (let k = prev + 1; k < iz; k++) {
+            const t = (k - prev) / (iz - prev);
+            grid[k * layerStride + base] = Math.round(b0 + (b - b0) * t);
+          }
+        }
+        prev = iz;
+      }
+      // The lowest beam is already a kilometre or two off the ground where
+      // it crosses the zone; a storm that low genuinely continues down, so
+      // carry the lowest sample to the floor rather than leaving every
+      // storm floating on air. Samples that START high stay high.
+      let lowest = -1;
+      for (let iz = 0; iz < nz; iz++) { if (grid[iz * layerStride + base]) { lowest = iz; break; } }
+      if (lowest > 0 && lowest * cellZ < 3.0) {
+        const b0 = grid[lowest * layerStride + base];
+        for (let k = 0; k < lowest; k++) grid[k * layerStride + base] = b0;
+      }
+    }
+  }
+
+  // Floor texture: the lowest tilt alone, the same picture the flat radar
+  // map shows for this zone, drawn onto the box floor by the ray marcher.
+  const floor = new Uint8Array(nx * ny);
+  if (frame.segs && frame.segs.length) {
+    let low = frame.segs[0];
+    for (const s of frame.segs) { if (s.angle < low.angle) low = s; }
+    for (let i = low.start; i < low.end; i++) {
+      const p = i * 4;
+      const ix = Math.floor((g[p] + half) / cellXY);
+      const iy = Math.floor((g[p + 1] + half) / cellXY);
+      if (ix < 0 || ix >= nx || iy < 0 || iy >= ny) continue;
+      const b = _r3dNormByte(g[p + 3], isVel);
+      const idx = iy * nx + ix;
+      if (_r3dByteStrength(b, isVel) > _r3dByteStrength(floor[idx], isVel)) floor[idx] = b;
+    }
+  }
+
+  // Coarse occupancy, 4x4x4 voxel blocks: most of any zone is empty air,
+  // and the marcher leaps whole blocks of it instead of sampling through.
+  const B = 4;
+  const cnx = Math.ceil(nx / B), cny = Math.ceil(ny / B), cnz = Math.ceil(nz / B);
+  const occ = new Uint8Array(cnx * cny * cnz);
+  for (let iz = 0; iz < nz; iz++) {
+    for (let iy = 0; iy < ny; iy++) {
+      const row = (iz * ny + iy) * nx;
+      const orow = ((iz / B | 0) * cny + (iy / B | 0)) * cnx;
+      for (let ix = 0; ix < nx; ix++) {
+        if (grid[row + ix]) occ[orow + (ix / B | 0)] = 1;
+      }
+    }
+  }
+
+  return { grid, floor, occ, nx, ny, nz, cnx, cny, cnz, blockB: B, cellXY, cellZ, sizeKm };
 }
 
-async function _r3dLoadStation(stationId) {
+// The grid for the CURRENT zone size, cached on the frame. Only one size is
+// kept per frame - switching sizes rebuilds in a few ms, and keeping every
+// size for every time-control frame would be memory for nothing.
+function _r3dGridFor(frame, isVel) {
+  const key = _r3dZoneSizeKm + '|' + (isVel ? 'v' : 'r');
+  if (!frame._grids[key]) {
+    frame._grids = {};
+    frame._grids[key] = _r3dGridFrame(frame, _r3dZoneSizeKm, isVel);
+  }
+  return frame._grids[key];
+}
+
+async function _r3dLoad() {
   const ps = _r3dEl('r3d-product');
   const product = (ps || {}).value || 'ref';
-  const site = String(stationId || '').toLowerCase();
+  const site = _r3dStation;
   if (!site) { _r3dSay('no radar chosen', 'bad'); return; }
+  if (!_r3dZone) { _r3dSay('no zone chosen', 'bad'); return; }
   if (typeof _workerProcess !== 'function') { _r3dSay('this build has no radar decoder', 'bad'); return; }
-  _r3dStation = site;
   const where = _r3dEl('r3d-where');
-  if (where) where.textContent = site.toUpperCase();
+  if (where) where.textContent = site.toUpperCase()
+    + (_r3dStationKm ? ' · ' + Math.round(_r3dStationKm) + ' km' : '');
   if (_r3dBuilding) { _r3dSay('already loading a volume, one moment', 'busy'); return; }
   const token = ++_r3dToken;
   _r3dBuilding = true;
   _r3dFrames = [];
   _r3dFrameIdx = -1;
+  _r3dDirty = true;
   try {
     const layer = product === 'vel' ? 'VEL' : 'REF';
     const sitePos = _xsSiteLatLon(site);
+    const zone = _r3dZone;
+    _r3dStationBrg = sitePos
+      ? _fxBearing(zone.lat, zone.lng, sitePos.lat, sitePos.lng) : NaN;
     const isTdwr = typeof _isTdwrSite === 'function' && _isTdwrSite(site);
     let frame = null;
 
@@ -68286,7 +68483,7 @@ async function _r3dLoadStation(stationId) {
         }
         if (buf) {
           _r3dSay('decoding tilts', 'busy');
-          frame = await _r3dBuildFrame(buf, layer, sitePos, token);
+          frame = await _r3dBuildFrame(buf, layer, sitePos, zone, token);
         }
       } catch (e) { /* no Level 2 to be had - Level 3 below is the fallback */ }
       if (token !== _r3dToken) return;
@@ -68299,25 +68496,26 @@ async function _r3dLoadStation(stationId) {
     const usedL3 = !frame;
     if (usedL3) {
       _r3dSay('no Level 2 archive, trying Level 3 tilts for ' + site.toUpperCase(), 'busy');
-      frame = await _r3dBuildFrameL3(site, product, sitePos, token);
+      frame = await _r3dBuildFrameL3(site, product, sitePos, zone, token);
       if (token !== _r3dToken) return;
     }
-    if (!frame) throw new Error('no usable data for ' + site.toUpperCase());
+    if (!frame) {
+      _r3dSay('nothing above the noise floor in this zone', 'bad');
+      _r3dUpdateSlider();
+      _r3dDirty = true;
+      return;
+    }
 
     _r3dFrames = [frame];
     _r3dFrameIdx = 0;
-    // Start far enough back to see the whole loaded volume at once, rather
-    // than a fixed distance that crowds a wide storm or leaves a small one
-    // lost in the middle of the view.
-    _r3dCam.dist = Math.max(R3D_DIST_MIN, Math.min(R3D_DIST_MAX,
-      _r3dMaxRangeKm(frame) * 1.6 + 30));
-    _r3dSay(`${frame.count.toLocaleString()} points · ${frame.cuts} cuts`
+    _r3dSay(`${frame.count.toLocaleString()} gates · ${frame.cuts} cuts`
             + (usedL3 ? ' · Level 3' : ''));
     _r3dUpdateLegend(product);
     _r3dUpdateSlider();
+    _r3dQuality = 'fine';
     _r3dDirty = true;
 
-    // The shown frame owns the map alone at first; the rest of the time
+    // The shown frame owns the view alone at first; the rest of the time
     // control's history joins moments later, same idea as the NWS and Level
     // 2 loops already use elsewhere on this page. Level 3's own history
     // would mean juggling up to four separate per-tilt archives that do not
@@ -68330,7 +68528,7 @@ async function _r3dLoadStation(stationId) {
         const built = [];
         for (const b of older) {
           if (token !== _r3dToken) return;
-          const f = await _r3dBuildFrame(b, layer, sitePos, token);
+          const f = await _r3dBuildFrame(b, layer, sitePos, zone, token);
           if (f) built.push(f);
         }
         if (token !== _r3dToken || !built.length) return;
@@ -68411,6 +68609,208 @@ function _r3dTick() {
   requestAnimationFrame(_r3dTick);
 }
 
+// ── The transfer function ────────────────────────────────────────────────
+// Byte value -> premultiplied RGBA, once per state change, 256 entries.
+// Colour comes from the OpenStorm ramps; opacity is the volumetric part:
+// weak returns are a thin haze that only shows after many samples along a
+// ray, strong cores saturate in a few, so one march reads as mist wrapped
+// around a solid heart, exactly what the flat dots could never do. Alpha is
+// baked for the current march step length, so both quality modes look the
+// same, just at different sharpness. The "Show above" slider lives here
+// too: below its cutoff the alpha is exactly zero.
+function _r3dLutFor(product, stepKm) {
+  const key = product + '|' + _r3dFilterPct + '|' + stepKm.toFixed(3);
+  if (_r3dLutCache && _r3dLutCache.key === key) return _r3dLutCache;
+  const lut = new Float32Array(256 * 4);
+  const floorRgb = new Uint8Array(256 * 3);
+  const isVel = product === 'vel';
+  const t0 = Math.max(0, Math.min(0.98, _r3dFilterPct / 100));
+  for (let b = 1; b < 256; b++) {
+    const t = (b - 1) / 254;
+    let rgb, mag;
+    if (isVel) { const v = -100 + t * 200; rgb = _r3dVelocityColor(v); mag = Math.abs(v) / 100; }
+    else { const v = -20 + t * 100; rgb = _r3dReflectivityColor(v); mag = t; }
+    floorRgb[b * 3] = rgb[0]; floorRgb[b * 3 + 1] = rgb[1]; floorRgb[b * 3 + 2] = rgb[2];
+    let a = 0;
+    if (mag >= t0) {
+      const u = (mag - t0) / Math.max(0.02, 1 - t0);
+      a = Math.min(0.92, 0.015 + Math.pow(u, 1.5) * 0.75);   // opacity per km of cloud
+    }
+    a = 1 - Math.pow(1 - a, stepKm);                          // per-step, for this step length
+    lut[b * 4] = rgb[0] * a; lut[b * 4 + 1] = rgb[1] * a;
+    lut[b * 4 + 2] = rgb[2] * a; lut[b * 4 + 3] = a;
+  }
+  _r3dLutCache = { key, lut, floorRgb };
+  return _r3dLutCache;
+}
+
+// ── The ray marcher ──────────────────────────────────────────────────────
+// One ray per pixel, marched front-to-back through the voxel grid with
+// alpha compositing, empty blocks leapt over via the coarse occupancy mask,
+// and the radar floor composited where the ray meets the ground inside the
+// box. Renders into a small offscreen buffer and upscales with the canvas's
+// own bilinear smoothing - volumetric data is soft by nature, so the
+// upscale reads as antialiasing, not blur. Fast mode (while dragging)
+// samples nearest-voxel at a coarser resolution; fine mode (the moment the
+// hand stops) samples trilinearly at high resolution.
+let _r3dOffCv = null, _r3dImg = null;
+function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, half, topKm) {
+  const fine = _r3dQuality === 'fine';
+  const iw = fine ? Math.max(160, Math.min(460, Math.round(w / 1.7)))
+                  : Math.max(96, Math.min(200, Math.round(w / 4)));
+  const ih = Math.max(60, Math.round(iw * h / w));
+  const stepKm = Math.max(0.12, Math.min(2, G.cellXY * (fine ? 0.55 : 1.1)));
+  const product = ((_r3dEl('r3d-product') || {}).value) || 'ref';
+  const pack = _r3dLutFor(product, stepKm);
+  const lut = pack.lut, floorRgb = pack.floorRgb;
+
+  if (!_r3dOffCv) _r3dOffCv = document.createElement('canvas');
+  if (_r3dOffCv.width !== iw || _r3dOffCv.height !== ih) {
+    _r3dOffCv.width = iw; _r3dOffCv.height = ih; _r3dImg = null;
+  }
+  const octx = _r3dOffCv.getContext('2d');
+  if (!_r3dImg) _r3dImg = octx.createImageData(iw, ih);
+  const data = _r3dImg.data;
+  data.fill(0);
+
+  const nx = G.nx, ny = G.ny, nz = G.nz, grid = G.grid, occ = G.occ;
+  const cnx = G.cnx, cny = G.cny, B = G.blockB;
+  const cellXY = G.cellXY, cellZ = G.cellZ;
+  const invCX = 1 / cellXY, invCZ = 1 / cellZ;
+  const layerStride = nx * ny;
+  const minX = -half, maxX = half, minY = -half, maxY = half, maxZ = topKm;
+  const skipKm = B * Math.min(cellXY, cellZ) * 0.9;
+  const focalI = ih * 1.15;
+  const floorArr = G.floor;
+
+  let o = 0;
+  for (let py = 0; py < ih; py++) {
+    const sv = -((py + 0.5) - ih / 2) / focalI;
+    for (let px = 0; px < iw; px++, o += 4) {
+      const su = ((px + 0.5) - iw / 2) / focalI;
+      let dx = fx + rx * su + ux * sv, dy = fy + ry * su + uy * sv, dz = fz + rz * su + uz * sv;
+      const dl = Math.hypot(dx, dy, dz); dx /= dl; dy /= dl; dz /= dl;
+
+      // Slab test against the shown box (the height slider clips maxZ).
+      let t0 = 0.5, t1 = 1e9, inv, ta, tb, q;
+      inv = 1 / dx; ta = (minX - camX) * inv; tb = (maxX - camX) * inv;
+      if (ta > tb) { q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb;
+      inv = 1 / dy; ta = (minY - camY) * inv; tb = (maxY - camY) * inv;
+      if (ta > tb) { q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb;
+      inv = 1 / dz; ta = (0 - camZ) * inv; tb = (maxZ - camZ) * inv;
+      if (ta > tb) { q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb;
+      if (!(t1 > t0)) continue;
+
+      let accR = 0, accG = 0, accB = 0, accA = 0;
+
+      const floorT = dz !== 0 ? (0 - camZ) / dz : -1;
+      const hitsFloor = floorT >= t0 - 1e-3 && floorT <= t1 + 1e-3;
+      const floorFirst = hitsFloor && dz > 0;            // looking up from under the box
+
+      // No closure here on purpose: this loop runs up to ~100k times per
+      // frame and a per-pixel closure is a per-pixel allocation.
+      if (floorFirst) {
+        const fxk = camX + dx * floorT, fyk = camY + dy * floorT;
+        let gix = ((fxk - minX) * invCX) | 0, giy = ((fyk - minY) * invCX) | 0;
+        if (gix < 0) gix = 0; else if (gix >= nx) gix = nx - 1;
+        if (giy < 0) giy = 0; else if (giy >= ny) giy = ny - 1;
+        const fb = floorArr[giy * nx + gix];
+        let fr = 30, fg2 = 36, fb2 = 46, fa = 0.4;
+        // The floor honours the Show Above filter too - filtering down to
+        // the core should not leave the whole radar map painted underneath.
+        if (fb && lut[(fb << 2) + 3] > 0) {
+          const fi = fb * 3; fr = floorRgb[fi]; fg2 = floorRgb[fi + 1]; fb2 = floorRgb[fi + 2]; fa = 0.85;
+        }
+        const k = 1 - accA;
+        accR += k * fr * fa; accG += k * fg2 * fa; accB += k * fb2 * fa; accA += k * fa;
+      }
+
+      let t = t0 + stepKm * 0.5, guard = 0;
+      while (t < t1 && accA < 0.96 && guard++ < 700) {
+        const x = camX + dx * t, y = camY + dy * t, z = camZ + dz * t;
+        let gx = (x - minX) * invCX, gy = (y - minY) * invCX, gz = z * invCZ;
+        if (gx < 0) gx = 0; else if (gx > nx - 0.001) gx = nx - 0.001;
+        if (gy < 0) gy = 0; else if (gy > ny - 0.001) gy = ny - 0.001;
+        if (gz < 0) gz = 0; else if (gz > nz - 0.001) gz = nz - 0.001;
+        if (!occ[(((gz / B) | 0) * cny + ((gy / B) | 0)) * cnx + ((gx / B) | 0)]) {
+          t += skipKm;                                   // whole block of empty air
+          continue;
+        }
+        if (fine) {
+          // Trilinear, premultiplied through the LUT: blending COLOURS, not
+          // raw values, so a cloud edge fades to transparent instead of
+          // greying out toward the empty voxels next to it.
+          let ax = gx - 0.5, ay = gy - 0.5, az = gz - 0.5;
+          if (ax < 0) ax = 0; else if (ax > nx - 1.001) ax = nx - 1.001;
+          if (ay < 0) ay = 0; else if (ay > ny - 1.001) ay = ny - 1.001;
+          if (az < 0) az = 0; else if (az > nz - 1.001) az = nz - 1.001;
+          const ix0 = ax | 0, iy0 = ay | 0, iz0 = az | 0;
+          const tx = ax - ix0, ty = ay - iy0, tz = az - iz0;
+          const i000 = (iz0 * ny + iy0) * nx + ix0;
+          const b000 = grid[i000], b100 = grid[i000 + 1];
+          const b010 = grid[i000 + nx], b110 = grid[i000 + nx + 1];
+          const i001 = i000 + layerStride;
+          const b001 = grid[i001], b101 = grid[i001 + 1];
+          const b011 = grid[i001 + nx], b111 = grid[i001 + nx + 1];
+          if (b000 | b100 | b010 | b110 | b001 | b101 | b011 | b111) {
+            const w000 = (1 - tx) * (1 - ty) * (1 - tz), w100 = tx * (1 - ty) * (1 - tz);
+            const w010 = (1 - tx) * ty * (1 - tz), w110 = tx * ty * (1 - tz);
+            const w001 = (1 - tx) * (1 - ty) * tz, w101 = tx * (1 - ty) * tz;
+            const w011 = (1 - tx) * ty * tz, w111 = tx * ty * tz;
+            const l0 = b000 << 2, l1 = b100 << 2, l2 = b010 << 2, l3 = b110 << 2;
+            const l4 = b001 << 2, l5 = b101 << 2, l6 = b011 << 2, l7 = b111 << 2;
+            const sa = w000 * lut[l0 + 3] + w100 * lut[l1 + 3] + w010 * lut[l2 + 3] + w110 * lut[l3 + 3]
+                     + w001 * lut[l4 + 3] + w101 * lut[l5 + 3] + w011 * lut[l6 + 3] + w111 * lut[l7 + 3];
+            if (sa > 0.0015) {
+              const sr = w000 * lut[l0] + w100 * lut[l1] + w010 * lut[l2] + w110 * lut[l3]
+                       + w001 * lut[l4] + w101 * lut[l5] + w011 * lut[l6] + w111 * lut[l7];
+              const sg = w000 * lut[l0 + 1] + w100 * lut[l1 + 1] + w010 * lut[l2 + 1] + w110 * lut[l3 + 1]
+                       + w001 * lut[l4 + 1] + w101 * lut[l5 + 1] + w011 * lut[l6 + 1] + w111 * lut[l7 + 1];
+              const sb = w000 * lut[l0 + 2] + w100 * lut[l1 + 2] + w010 * lut[l2 + 2] + w110 * lut[l3 + 2]
+                       + w001 * lut[l4 + 2] + w101 * lut[l5 + 2] + w011 * lut[l6 + 2] + w111 * lut[l7 + 2];
+              const k = 1 - accA;
+              accR += k * sr; accG += k * sg; accB += k * sb; accA += k * sa;
+            }
+          }
+        } else {
+          const b = grid[((gz | 0) * ny + (gy | 0)) * nx + (gx | 0)];
+          if (b) {
+            const li = b << 2, sa = lut[li + 3], k = 1 - accA;
+            accR += k * lut[li]; accG += k * lut[li + 1]; accB += k * lut[li + 2]; accA += k * sa;
+          }
+        }
+        t += stepKm;
+      }
+
+      if (!floorFirst && hitsFloor && accA < 0.96) {
+        const fxk = camX + dx * floorT, fyk = camY + dy * floorT;
+        let gix = ((fxk - minX) * invCX) | 0, giy = ((fyk - minY) * invCX) | 0;
+        if (gix < 0) gix = 0; else if (gix >= nx) gix = nx - 1;
+        if (giy < 0) giy = 0; else if (giy >= ny) giy = ny - 1;
+        const fb = floorArr[giy * nx + gix];
+        let fr = 30, fg2 = 36, fb2 = 46, fa = 0.4;
+        // The floor honours the Show Above filter too - filtering down to
+        // the core should not leave the whole radar map painted underneath.
+        if (fb && lut[(fb << 2) + 3] > 0) {
+          const fi = fb * 3; fr = floorRgb[fi]; fg2 = floorRgb[fi + 1]; fb2 = floorRgb[fi + 2]; fa = 0.85;
+        }
+        const k = 1 - accA;
+        accR += k * fr * fa; accG += k * fg2 * fa; accB += k * fb2 * fa; accA += k * fa;
+      }
+
+      if (accA > 0.004) {
+        data[o] = accR / accA; data[o + 1] = accG / accA; data[o + 2] = accB / accA;
+        data[o + 3] = accA * 255;
+      }
+    }
+  }
+
+  octx.putImageData(_r3dImg, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  try { ctx.imageSmoothingQuality = 'high'; } catch (e) {}
+  ctx.drawImage(_r3dOffCv, 0, 0, w, h);
+}
+
 function _r3dRender() {
   const cv = _r3dEl('r3d-canvas');
   if (!cv || !cv.getContext) return;
@@ -68425,8 +68825,12 @@ function _r3dRender() {
   ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
 
   const frame = _r3dFrames[_r3dFrameIdx];
+  const product = ((_r3dEl('r3d-product') || {}).value) || 'ref';
+  const half = _r3dZoneSizeKm / 2;
+  const topKm = Math.max(1, Math.min(R3D_Z_MAX_KM, _r3dHeightMaxKft / R3D_KFT_PER_KM));
+
   const { yaw, pitch, dist } = _r3dCam;
-  const targetZ = frame ? frame.centerZ : 4;
+  const targetZ = topKm / 2;
   const horiz = dist * Math.cos(pitch);
   const camX = horiz * Math.sin(yaw), camY = horiz * Math.cos(yaw), camZ = targetZ + dist * Math.sin(pitch);
   // Look-at basis: forward toward the target, world-up projected off it.
@@ -68436,79 +68840,28 @@ function _r3dRender() {
   const rl = Math.hypot(rx, ry, rz) || 1; rx /= rl; ry /= rl; rz /= rl;
   const ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
   const focal = h * 1.15;
-  const product = ((_r3dEl('r3d-product') || {}).value) || 'ref';
-  const colorFor = product === 'vel' ? _r3dVelocityColor : _r3dReflectivityColor;
-  const heightMaxKm = _r3dHeightMaxKft / R3D_KFT_PER_KM;
-  const filterMinV = _r3dFilterValue(product, _r3dFilterPct);
 
-  _r3dDrawGround(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, frame, colorFor, dpr, heightMaxKm);
+  if (frame) {
+    const G = _r3dGridFor(frame, product === 'vel');
+    _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, half, topKm);
+  }
+
+  _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, half, topKm, dpr);
 
   if (!frame) {
     ctx.fillStyle = 'rgba(255,255,255,0.4)';
-    ctx.font = '12px sans-serif';
+    ctx.font = `${Math.round(12 * dpr)}px sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText("Open this from the map's double-click menu to load a volume", w / 2, h / 2);
-    return;
-  }
-  const pts = frame.pts, n = frame.count;
-  const sx = new Float32Array(n), sy = new Float32Array(n), depth = new Float32Array(n);
-  const order = new Int32Array(n);
-  let m = 0;
-  let minDepth = Infinity, maxDepth = 0;
-  for (let i = 0, p = 0; i < n; i++, p += 4) {
-    const v = pts[p + 3];
-    if (pts[p + 2] > heightMaxKm) continue;
-    if (product === 'vel' ? Math.abs(v) < filterMinV : v < filterMinV) continue;
-    const dx = pts[p] - camX, dy = pts[p + 1] - camY, dz = pts[p + 2] - camZ;
-    const zc = dx * fx + dy * fy + dz * fz;
-    if (zc <= 1) continue;
-    const xc = dx * rx + dy * ry + dz * rz, yc = dx * ux + dy * uy + dz * uz;
-    const px = w / 2 + xc / zc * focal, py = h / 2 - yc / zc * focal;
-    if (px < -40 || px > w + 40 || py < -40 || py > h + 40) continue;
-    sx[m] = px; sy[m] = py; depth[m] = zc; order[m] = p;
-    if (zc < minDepth) minDepth = zc;
-    if (zc > maxDepth) maxDepth = zc;
-    m++;
-  }
-  // Bucketed (counting-sort) painter's algorithm instead of a comparator
-  // sort: O(n) rather than O(n log n), so dragging to orbit stays smooth
-  // even with up to R3D_MAX_POINTS on screen at once.
-  const BUCKETS = 512;
-  const span = Math.max(1, maxDepth - minDepth);
-  const bucketCounts = new Int32Array(BUCKETS);
-  const bucketOf = new Int32Array(m);
-  for (let i = 0; i < m; i++) {
-    let b = Math.floor((depth[i] - minDepth) / span * BUCKETS);
-    if (b < 0) b = 0; else if (b >= BUCKETS) b = BUCKETS - 1;
-    bucketOf[i] = b;
-    bucketCounts[b]++;
-  }
-  // Farthest bucket first so nearer points land on top - the same result a
-  // descending depth sort gives, without the comparator overhead.
-  const bucketStart = new Int32Array(BUCKETS);
-  let acc = 0;
-  for (let b = BUCKETS - 1; b >= 0; b--) { bucketStart[b] = acc; acc += bucketCounts[b]; }
-  const painted = new Int32Array(m);
-  const cursor = bucketStart.slice();
-  for (let i = 0; i < m; i++) { const b = bucketOf[i]; painted[cursor[b]++] = i; }
-
-  for (let k = 0; k < m; k++) {
-    const i = painted[k];
-    const v = pts[order[i] + 3];
-    const [r, g, b, a] = colorFor(v);
-    const radius = Math.max(0.6, Math.min(7, focal * 0.012 / depth[i] * dpr));
-    ctx.fillStyle = `rgba(${r},${g},${b},${a})`;
-    ctx.beginPath(); ctx.arc(sx[i], sy[i], radius, 0, Math.PI * 2); ctx.fill();
+    ctx.fillText(_r3dBuilding ? 'Building the volume…'
+      : "Double-click or long-press the map and pick View in 3D here", w / 2, h / 2);
   }
 }
 
-// A wireframe box the size of the loaded volume, with a faint ground-plane
-// texture made from the frame's own points flattened to the floor (so the
-// box floor reads like a radar map, not empty black) and height labels in
-// kft climbing one corner - the same reference frame the OpenStorm desktop
-// viewer draws around its own storm, redrawn with this page's own
-// projection so it never drifts apart from the real points.
-function _r3dDrawGround(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, frame, colorFor, dpr, heightMaxKm) {
+// The wireframe box around the zone: edges, kft gridlines on the two far
+// walls with labels climbing the far corner, a north tick, and a tick on
+// the floor rim pointing back at the radar the data came from - the same
+// reference frame the OpenStorm desktop viewer draws around its own storm.
+function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, half, topKm, dpr) {
   const project = (x, y, z) => {
     const dx = x - camX, dy = y - camY, dz = z - camZ;
     const zc = dx * fx + dy * fy + dz * fz;
@@ -68516,57 +68869,74 @@ function _r3dDrawGround(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx,
     return [w / 2 + (dx * rx + dy * ry + dz * rz) / zc * focal,
             h / 2 - (dx * ux + dy * uy + dz * uz) / zc * focal];
   };
-  const R = Math.max(60, frame ? _r3dMaxRangeKm(frame) : 150);
-  const top = Math.max(1, heightMaxKm);
+  const corners = [[-half, -half], [half, -half], [half, half], [-half, half]];
+  const line = (a, b) => {
+    if (!a || !b) return;
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+  };
 
-  if (frame) {
-    const pts = frame.pts, n = frame.count;
-    const stride = Math.max(1, Math.floor(n / 6000));
-    for (let i = 0; i < n; i += stride) {
-      const p = i * 4;
-      const proj = project(pts[p], pts[p + 1], 0);
-      if (!proj) continue;
-      const [r, g, b] = colorFor(pts[p + 3]);
-      ctx.fillStyle = `rgba(${r},${g},${b},0.25)`;
-      ctx.beginPath(); ctx.arc(proj[0], proj[1], 1.6 * dpr, 0, Math.PI * 2); ctx.fill();
+  // kft gridlines first, on the two walls farthest from the camera, so the
+  // volume and the box edges both draw over them.
+  const wallDepth = (i) => {
+    const a = corners[i], b = corners[(i + 1) % 4];
+    const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+    return (mx - camX) * (mx - camX) + (my - camY) * (my - camY);
+  };
+  const wallOrder = [0, 1, 2, 3].sort((a, b) => wallDepth(b) - wallDepth(a));
+  const farWalls = wallOrder.slice(0, 2);
+  const topKft = topKm * R3D_KFT_PER_KM;
+  const step = topKft > 30 ? 10 : 5;
+  ctx.strokeStyle = 'rgba(255,255,255,0.13)';
+  ctx.lineWidth = Math.max(1, dpr * 0.8);
+  for (const wi of farWalls) {
+    const a = corners[wi], b = corners[(wi + 1) % 4];
+    for (let kft = step; kft <= topKft + 0.01; kft += step) {
+      const z = kft / R3D_KFT_PER_KM;
+      line(project(a[0], a[1], z), project(b[0], b[1], z));
     }
   }
 
-  const corners = [[-R, -R], [R, -R], [R, R], [-R, R]];
-  ctx.strokeStyle = 'rgba(232,184,0,0.55)'; ctx.lineWidth = 1;
-  const drawLoop = (z) => {
-    ctx.beginPath();
-    let started = false;
-    corners.forEach(([x, y]) => {
-      const p = project(x, y, z);
-      if (!p) { started = false; return; }
-      if (!started) { ctx.moveTo(p[0], p[1]); started = true; } else ctx.lineTo(p[0], p[1]);
-    });
-    if (started) ctx.closePath();
-    ctx.stroke();
-  };
-  drawLoop(0);
-  drawLoop(top);
-  corners.forEach(([x, y]) => {
-    const p0 = project(x, y, 0), p1 = project(x, y, top);
-    if (!p0 || !p1) return;
-    ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.stroke();
-  });
-
-  const topKft = top * R3D_KFT_PER_KM;
-  const step = topKft > 30 ? 10 : 5;
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  ctx.font = `${Math.round(10 * dpr)}px monospace`;
+  // The far corner the two far walls share carries the labels.
+  const shared = farWalls.includes((farWalls[0] + 1) % 4) ? (farWalls[0] + 1) % 4
+    : farWalls.includes((farWalls[1] + 1) % 4) ? (farWalls[1] + 1) % 4 : farWalls[0];
+  const lc = corners[shared];
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.font = `${Math.round(9.5 * dpr)}px monospace`;
   ctx.textAlign = 'left';
-  for (let kft = 0; kft <= topKft + 0.01; kft += step) {
-    const p = project(-R, -R, kft / R3D_KFT_PER_KM);
-    if (p) ctx.fillText(Math.round(kft) + 'k', p[0] + 4 * dpr, p[1] + 3 * dpr);
+  for (let kft = step; kft <= topKft + 0.01; kft += step) {
+    const p = project(lc[0], lc[1], kft / R3D_KFT_PER_KM);
+    if (p) ctx.fillText(Math.round(kft) + ' kft', p[0] + 4 * dpr, p[1] + 3 * dpr);
   }
 
-  const site = project(0, 0, 0);
-  if (site) {
-    ctx.fillStyle = '#e8b800';
-    ctx.beginPath(); ctx.arc(site[0], site[1], 4, 0, Math.PI * 2); ctx.fill();
+  // The box itself.
+  ctx.strokeStyle = 'rgba(111,182,255,0.55)';
+  ctx.lineWidth = Math.max(1, dpr * 0.9);
+  const drawLoop = (z) => {
+    for (let i = 0; i < 4; i++) {
+      line(project(corners[i][0], corners[i][1], z),
+           project(corners[(i + 1) % 4][0], corners[(i + 1) % 4][1], z));
+    }
+  };
+  drawLoop(0);
+  drawLoop(topKm);
+  corners.forEach(([x, y]) => line(project(x, y, 0), project(x, y, topKm)));
+
+  // North tick on the floor rim, and where the radar itself sits.
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.textAlign = 'center';
+  ctx.font = `${Math.round(10 * dpr)}px monospace`;
+  const np = project(0, half, 0);
+  if (np) ctx.fillText('N', np[0], np[1] - 4 * dpr);
+  if (isFinite(_r3dStationBrg) && _r3dStation) {
+    const br = _r3dStationBrg * Math.PI / 180;
+    const sx2 = Math.sin(br), cy2 = Math.cos(br);
+    const s = half / Math.max(Math.abs(sx2), Math.abs(cy2), 1e-6);
+    const sp = project(sx2 * s, cy2 * s, 0);
+    if (sp) {
+      ctx.fillStyle = '#e8b800';
+      ctx.beginPath(); ctx.arc(sp[0], sp[1], 3 * dpr, 0, Math.PI * 2); ctx.fill();
+      ctx.fillText(_r3dStation.toUpperCase(), sp[0], sp[1] - 6 * dpr);
+    }
   }
 }
 
@@ -68602,11 +68972,11 @@ function _r3dDrawGround(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx,
       _r3dCam.yaw = dragStart.yaw + dx * 0.008;
       _r3dCam.pitch = Math.max(R3D_PITCH_MIN, Math.min(R3D_PITCH_MAX,
         dragStart.pitch - dy * 0.008));
-      _r3dDirty = true;
+      _r3dInteract();
     } else if (pointers.size === 2 && pinchStart) {
       const ratio = pinchStart.dist / Math.max(1, pinchDist());
-      _r3dCam.dist = Math.max(R3D_DIST_MIN, Math.min(R3D_DIST_MAX, pinchStart.camDist * ratio));
-      _r3dDirty = true;
+      _r3dCam.dist = Math.max(_r3dDistMin(), Math.min(_r3dDistMax(), pinchStart.camDist * ratio));
+      _r3dInteract();
     }
   });
   const end = (e) => {
@@ -68618,8 +68988,8 @@ function _r3dDrawGround(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx,
   cv.addEventListener('pointercancel', end);
   cv.addEventListener('wheel', (e) => {
     e.preventDefault();
-    _r3dCam.dist = Math.max(R3D_DIST_MIN, Math.min(R3D_DIST_MAX, _r3dCam.dist * (1 + e.deltaY * 0.0015)));
-    _r3dDirty = true;
+    _r3dCam.dist = Math.max(_r3dDistMin(), Math.min(_r3dDistMax(), _r3dCam.dist * (1 + e.deltaY * 0.0015)));
+    _r3dInteract();
   }, { passive: false });
 })();
 
@@ -68644,11 +69014,20 @@ function _r3dDrawGround(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx,
   const play = _r3dEl('r3d-play');
   if (play) play.onclick = () => _r3dPlayToggle();
   const ps = _r3dEl('r3d-product');
-  if (ps) ps.onchange = () => { _r3dUpdateLegend(ps.value); _r3dUpdateFilterLabel(); if (_r3dStation) _r3dLoadStation(_r3dStation); };
+  if (ps) ps.onchange = () => { _r3dUpdateLegend(ps.value); _r3dUpdateFilterLabel(); if (_r3dStation) _r3dLoad(); };
+  // The zone select re-grids gates already in hand and resizes the map
+  // rectangle - no refetch, no re-decode, just a different crop of the sky.
+  const zs = _r3dEl('r3d-zone');
+  if (zs) zs.onchange = () => {
+    _r3dZoneSizeKm = Number(zs.value) || 90;
+    _r3dZoneRectSync();
+    _r3dCamFit();
+    _r3dInteract();
+  };
   const filter = _r3dEl('r3d-filter');
-  if (filter) filter.oninput = () => { _r3dFilterPct = Number(filter.value); _r3dUpdateFilterLabel(); _r3dDirty = true; };
+  if (filter) filter.oninput = () => { _r3dFilterPct = Number(filter.value); _r3dUpdateFilterLabel(); _r3dInteract(); };
   const height = _r3dEl('r3d-height');
-  if (height) height.oninput = () => { _r3dHeightMaxKft = Number(height.value); _r3dUpdateHeightLabel(); _r3dDirty = true; };
+  if (height) height.oninput = () => { _r3dHeightMaxKft = Number(height.value); _r3dUpdateHeightLabel(); _r3dInteract(); };
 })();
 
 // ── TOOLBAR (#right-menu) HOVER FLYOUT ──
@@ -68682,7 +69061,7 @@ const TOOL_DESCRIPTIONS = {
   'tool-inspector': 'Shows the radar value at the exact center of the map, and updates live as you pan.',
   'tool-export':    'Downloads what is on screen: the current picture as a PNG, or the whole loop as a video.',
   'tool-xsec':      'Cuts a vertical slice through a storm. A radar picture is one thin cone and says nothing about how tall the weather is, but a volume scan sweeps the same circle at rising angles, so sampling every one of them along a line on the ground stacks them into a side-on view. Drag the two ends of the line, press the arrow, and it shows where the core sits, whether it leans, and whether there is an overhang. Uses the volume already downloaded for the radar picture, so it costs no extra download.',
-  'tool-r3d':       'A storm’s real shape in three dimensions, not one flat slice through it. Double-click or long-press the map and choose View in 3D here to open it over whichever radar you tapped. Every gate becomes a point in space, coloured for reflectivity or velocity, drawn from a volume decoded the same way Cross Section and Level 2 already are, inside a box sized to the volume with height marked in thousands of feet. A site with no Level 2 archive, like a terminal TDWR at an airport, builds the same shape from its separate Level 3 tilt files instead, as a single frame with no time slider. The Show above slider hides weak points, the Up to slider caps how high it draws, and dragging orbits the view while scroll or pinch zooms.',
+  'tool-r3d':       'A storm’s real shape in three dimensions, rendered as a solid volume rather than a flat picture. Double-click or long-press the map and choose View in 3D here: a zone box appears on the map around that spot, and the panel ray-marches everything inside it from the nearest radar, tilt by tilt, resampled into a 3D grid so it reads as one continuous cloud with a solid core and a hazy edge. The box size select changes how wide an area the zone covers, the Show above slider hides weak returns, the Up to slider caps the height, and it draws coarse while you drag then sharpens the moment you stop. A site with no Level 2 archive, like a terminal TDWR at an airport, builds from its separate Level 3 tilt files instead, as a single frame with no time slider.',
 };
 
 let _tbFlyoutHideTimer = null;
