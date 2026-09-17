@@ -43907,7 +43907,11 @@ async function _s3VolumeList(station) {
   });
 }
 
-async function _fetchVolumeDirect(stationId) {
+// `cap` is how many bytes of the volume to pull; left out, it is the
+// connection-sized cap the flat picture wants (the low sweeps only). Radar
+// 3D passes a cap big enough for the whole volume, because it needs every
+// tilt, not just the bottom of the stack.
+async function _fetchVolumeDirect(stationId, cap) {
   const station = stationId.toUpperCase();
   const vols = await _s3VolumeList(station);
   if (!vols.length) throw new Error('no volumes for ' + station);
@@ -43951,7 +43955,7 @@ async function _fetchVolumeDirect(stationId) {
   _l2SkipNewest = null;
   for (let back = startBack; back < startBack + 4; back++) {
     const vol = vols[(at - back + vols.length) % vols.length];
-    const buf = await _assembleVolume(station, vol);
+    const buf = await _assembleVolume(station, vol, cap);
     if (buf) return buf;
   }
   throw new Error('no complete volume for ' + station);
@@ -44000,7 +44004,9 @@ async function _assembleVolume(station, vol, cap) {
 // number rollover exactly as _fetchVolumeDirect does), then assembles back
 // from there, skipping any that are still being written. Returns an array of
 // ArrayBuffers, which may be shorter than n near the start of a feed.
-async function _fetchRecentVolumes(station, n) {
+// `cap` (bytes per volume) and `startBack` (how many newest volumes to skip)
+// are for Radar 3D, which wants whole volumes and already holds the newest.
+async function _fetchRecentVolumes(station, n, cap, startBack) {
   station = station.toUpperCase();
   const vols = await _s3VolumeList(station);   // shared with the live load
   if (!vols.length) return [];
@@ -44030,15 +44036,16 @@ async function _fetchRecentVolumes(station, n) {
   // so a few run at once, at the cheaper history cap. The +6 still gives room
   // to skip half-written volumes without coming up short.
   const candidates = [];
-  for (let back = 0; back < n + 6; back++) {
+  const from = startBack || 0;
+  for (let back = from; back < from + n + 6; back++) {
     candidates.push(vols[(at - back + vols.length) % vols.length]);
   }
   const out = [];
-  const CONCURRENCY = 3;
+  const CONCURRENCY = cap ? 1 : 3;           // whole volumes are big: one at a time
   for (let i = 0; i < candidates.length && out.length < n; i += CONCURRENCY) {
     const batch = candidates.slice(i, i + CONCURRENCY);
     const bufs = await Promise.all(batch.map(v =>
-      _assembleVolume(station, v, L2_LOOP_CAP).catch(() => null)));
+      _assembleVolume(station, v, cap || L2_LOOP_CAP).catch(() => null)));
     for (const b of bufs) { if (b && out.length < n) out.push(b); }
   }
   return out;
@@ -46136,6 +46143,8 @@ function _fxSave() {
     localStorage.setItem(FX_FILTER_KEY, JSON.stringify(_fxFilter));
     localStorage.setItem(FX_COLORS_KEY, JSON.stringify(_fxColors));
   } catch (e) {}
+  // Radar 3D paints with these same colours and filters; tell it they moved.
+  if (typeof _r3dOnPaletteChange === 'function') try { _r3dOnPaletteChange(); } catch (e) {}
 }
 
 function _fxFilterFor(fam) {
@@ -63961,6 +63970,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-17-c', date: 'Sep 17, 2026',
+    text: 'Volumetric 3D fixes. The volume was missing because the radar picture only ever downloads the bottom few tilts of a Level 2 scan (all a flat map needs), and the 3D view was reusing that: it now fetches the whole volume itself, decodes every tilt up to the top of the storm several at a time, and shows the storm growing upward tilt by tilt while the rest lands. The colours are now your own: the 3D view paints with exactly the same radar palette as the flat picture, including your custom Radar Colors and value filter, and follows them the moment you change them.' },
   { id: '2026-09-17-b', date: 'Sep 17, 2026',
     text: 'Volumetric 3D polish: the settled picture now renders at the full resolution of the panel (no more upscaled softness), the 3D grid itself is finer, and a smoothing pass melts the blocky stair-steps between radar cells so the cloud reads smooth instead of pixelated. Zoom is no longer fenced off: scroll or pinch all the way in, right through the inside of the storm. The panel itself is now black, so the volume floats on darkness like the desktop viewers do.' },
   { id: '2026-09-17-a', date: 'Sep 17, 2026',
@@ -67896,18 +67907,26 @@ function _xsDraw(slice, errText) {
        empty-space skipping, and a radar floor plane inside the box. It
        renders coarse while you drag and refines to full quality the moment
        you stop, so it stays interactive without a GPU.
-     - COLOUR: OpenStorm's own reflectivity and velocity ramps
-       (RadarColorIndex.cpp), ported to plain JS HSL math.
+     - COLOUR: the app's own radar palette, through the same _meshColorFn
+       the flat picture uses - so the NWS bands by default, and the user's
+       custom Radar Colors (and value filter) the moment they are on.
      - GEOMETRY: real 4/3-earth-radius beam height (_xsBeamHeightKm), the
        same conversion Cross Section already trusts.
 
-   Data comes from the exact same place Cross Section's does: the browser's
-   own Level 2 decoder, run once per tilt (or Level 3 tilt files where no
-   Level 2 archive exists). No new dependency, no server, no new format.
+   Data is the browser's own Level 2 decoder, run once per tilt over the
+   WHOLE volume (the flat picture only ever downloads the bottom sweeps, so
+   this fetches its own full copy), or Level 3 tilt files where no Level 2
+   archive exists. No new dependency, no server, no new format.
 */
 
-const R3D_MAX_TILTS = 10;        // decoding is seconds each, same cap as Cross Section
-const R3D_FRAMES = 6;            // recent volumes kept for the time control
+// The flat radar picture only ever downloads the bottom of a Level 2 volume
+// (a few MB: the low sweeps are at the front of the file and are all a map
+// needs). A 3D view needs the WHOLE stack, so it fetches with a cap big
+// enough for any volume and decodes every tilt up to the top of the storm.
+const R3D_VOLUME_CAP = 48 * 1024 * 1024;
+const R3D_MAX_TILTS = 16;        // enough for every VCP's full stack
+const R3D_TOP_ANGLE = 20;        // tilts steeper than this see over every storm
+const R3D_FRAMES = 4;            // recent volumes kept for the time control (whole volumes are big)
 const R3D_MIN_DBZ = -10;         // true clear-air/noise floor - the value slider does the real filtering
 const R3D_MIN_KT = 1;            // dead-zero noise floor - same idea
 const R3D_KFT_PER_KM = 3.28084;  // km -> thousands of feet
@@ -68119,70 +68138,35 @@ function _r3dClose() {
   _r3dLutCache = null;
 }
 
-// ── Colour ramps, ported from OpenStorm's RadarColorIndex.cpp ──────────────
-// Same HSL math (_HSLToRGBhue2rgb/HSLToRGB) and the same band breakpoints;
-// the per-band alpha boosts in the original exist to compensate for how
-// sparse a ray marcher's hits are in the rarest bins, which does not apply
-// to a discrete point cloud, so alpha here is simplified to "stronger value,
-// less transparent" instead of copied literally.
-function _r3dHue2Rgb(p, q, t) {
-  if (t < 0) t += 1;
-  if (t > 1) t -= 1;
-  if (t < 1 / 6) return p + (q - p) * 6 * t;
-  if (t < 1 / 2) return q;
-  if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-  return p;
+// ── Colour: the app's own radar palette ──────────────────────────────────
+// Whatever the flat picture paints a value, the volume paints it too. This
+// goes through the very same _meshColorFn the mesh renderer uses, so it is
+// the built-in NWS bands by default and the user's own Radar Colors
+// palette the moment one is switched on for the family - and the Radar
+// Colors value filter is honoured the same way. Null means "the picture
+// would draw nothing here", and the volume leaves it transparent for the
+// same reason.
+let _r3dPaletteGen = 0;          // bumped whenever Radar Colors change, so the LUT rebuilds
+function _r3dColorFn(product) {
+  const fam = product === 'vel' ? 'vel' : 'ref';
+  const css = (typeof _meshColorFn === 'function') ? _meshColorFn(fam) : null;
+  const filt = (typeof _fxFilterFor === 'function') ? _fxFilterFor(fam) : null;
+  return (v) => {
+    if (filt && (v < filt.min || v > filt.max)) return null;
+    const c = css ? css(v) : null;
+    if (!c) return null;
+    const p = _meshRGBA(c);
+    if (!p || !p.a) return null;
+    return [p.u32 & 255, (p.u32 >> 8) & 255, (p.u32 >> 16) & 255];
+  };
 }
-function _r3dHsl(h, s, l) {
-  if (s === 0) { const v = Math.round(l * 255); return [v, v, v]; }
-  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-  const p = 2 * l - q;
-  return [
-    Math.round(_r3dHue2Rgb(p, q, h + 1 / 3) * 255),
-    Math.round(_r3dHue2Rgb(p, q, h) * 255),
-    Math.round(_r3dHue2Rgb(p, q, h - 1 / 3) * 255),
-  ];
-}
-function _r3dLerpHsl(band, t) {
-  const h = band[0] + (band[3] - band[0]) * t, s = band[1] + (band[4] - band[1]) * t,
-        l = band[2] + (band[5] - band[2]) * t;
-  return _r3dHsl(h, s, l);
-}
-// [h1,s1,l1, h2,s2,l2, lowerDbz, upperDbz]
-const R3D_REF_BANDS = [
-  [0, 0, 0.1,    0, 0, 0.4,      -20, 15],   // gray
-  [0.5, 0.6, 0.5,  0.66, 1, 0.5,  15, 30],   // blue
-  [0.4, 1, 0.5,    0.33, 1, 0.5,  30, 40],   // green
-  [0.25, 1, 0.5,   0.166, 1, 0.5, 40, 50],   // yellow
-  [0, 1, 0.5,      0, 1, 0.5,     50, 60],   // red
-  [0.92, 1, 0.5,   0.83, 1, 0.5,  60, 70],   // purple
-  [0.83, 0.3, 0.8,  0.83, 0, 1,   70, 80],   // white
-];
-function _r3dReflectivityColor(dbz) {
-  const v = Math.max(-20, Math.min(80, dbz));
-  const band = R3D_REF_BANDS.find(b => v >= b[6] && v <= b[7]) || R3D_REF_BANDS[R3D_REF_BANDS.length - 1];
-  const t = (v - band[6]) / (band[7] - band[6] || 1);
-  const [r, g, b] = _r3dLerpHsl(band, t);
-  // A discrete point cloud reads as "weird dots" unless most of it is fairly
-  // solid, so the floor here is high on purpose - a real ray march earns its
-  // transparency by blending hundreds of samples along one ray, which a
-  // single drawn circle never gets to do.
-  const alpha = Math.max(0.6, Math.min(1, (v + 20) / 100 * 1.6));
-  return [r, g, b, alpha];
-}
-const R3D_VEL_BANDS = [
-  [0.33, 1, 0.5,   0.33, 1, 0.5,   -100, -50],  // solid green
-  [0.33, 1, 0.5,   0.33, 0.2, 0.5, -50, 0],     // green fade
-  [0, 0.2, 0.5,    0, 1, 0.5,      0, 50],      // red fade
-  [0, 1, 0.5,      0, 1, 0.5,      50, 100],    // solid red
-];
-function _r3dVelocityColor(kt) {
-  const v = Math.max(-100, Math.min(100, kt));
-  const band = R3D_VEL_BANDS.find(b => v >= b[6] && v <= b[7]) || R3D_VEL_BANDS[R3D_VEL_BANDS.length - 1];
-  const t = (v - band[6]) / (band[7] - band[6] || 1);
-  const [r, g, b] = _r3dLerpHsl(band, t);
-  const alpha = Math.max(0.4, Math.min(1, Math.abs(v) / 100 * 2 + 0.3));
-  return [r, g, b, alpha];
+// Called from _fxSave, the one path every Radar Colors change goes through.
+function _r3dOnPaletteChange() {
+  _r3dPaletteGen++;
+  _r3dLutCache = null;
+  if (!_r3dOn) return;
+  _r3dUpdateLegend(((_r3dEl('r3d-product') || {}).value) || 'ref');
+  _r3dDirty = true;
 }
 
 // ── Building one frame ───────────────────────────────────────────────────
@@ -68240,9 +68224,24 @@ function _r3dFinishFrame(out, segs, timeIso, cuts) {
   return { gates, count: n, segs, time: timeIso || null, cuts, _grids: {} };
 }
 
-async function _r3dBuildFrame(buf, layer, sitePos, zone, token) {
+// One tilt decode. The playback decoder pool runs several at once on a
+// multi-core machine, which is what makes a 14-tilt volume arrive in
+// seconds rather than most of a minute; the interactive single-slot
+// decoder is the fallback where the pool is not on the page.
+function _r3dDecode(buf, layer, extra) {
+  if (typeof _pbDecode === 'function') return _pbDecode(buf, layer, extra);
+  return _workerProcess(buf, layer, extra);
+}
+
+// Decodes every tilt of a volume and collects the in-zone gates. Tilts are
+// decoded a few at a time through the worker pool, and `onTilt` (when
+// given) receives a fresh snapshot of the frame after each one lands, so
+// the storm can be watched growing upward on screen instead of staring at
+// a status line until the whole stack is done. Decoding stops once a tilt
+// steeper than R3D_TOP_ANGLE has been seen: nothing lives above that.
+async function _r3dBuildFrame(buf, layer, sitePos, zone, token, onTilt) {
   let first;
-  try { first = await _workerProcess(buf.slice(0), layer, undefined); }
+  try { first = await _r3dDecode(buf.slice(0), layer, undefined); }
   catch (e) { return null; }
   if (token !== _r3dToken) return null;
   const meta = (first && first.metadata) || {};
@@ -68253,7 +68252,8 @@ async function _r3dBuildFrame(buf, layer, sitePos, zone, token) {
 
   const out = { xs: [], ys: [], zs: [], vs: [] };
   const segs = [];
-  let cuts = 0;
+  let cuts = 0, done = 0;
+  let stopAbove = false;
 
   const consume = (res) => {
     if (!res || !res.meshData || !res.bounds) return;
@@ -68261,19 +68261,33 @@ async function _r3dBuildFrame(buf, layer, sitePos, zone, token) {
     const start = out.xs.length;
     const added = _r3dConsumeMeshZone(res.meshData, angle, sitePos, zone, isVel, out);
     if (added) segs.push({ start, end: start + added, angle: isFinite(angle) ? angle : 0.5 });
+    if (isFinite(angle) && angle > R3D_TOP_ANGLE) stopAbove = true;
     cuts++;
   };
-  consume(first);
-  for (let k = 0; k < elevs.length; k++) {
-    if (token !== _r3dToken) return null;
-    if (k === 0 && (meta.elevationNumber === elevs[0] || elevs.length === 1)) continue; // already consumed
-    let res;
-    try { res = await _workerProcess(buf.slice(0), layer, { elevation: elevs[k] }); }
-    catch (e) { continue; }                            // one bad cut costs one cut, not the volume
-    if (token !== _r3dToken) return null;
-    consume(res);
-    await new Promise(r => setTimeout(r, 0));           // let the page breathe between cuts
-  }
+  const todo = elevs.filter((el, k) => !(k === 0 && (meta.elevationNumber === elevs[0] || elevs.length === 1)));
+  const total = todo.length + 1;
+  const report = () => {
+    if (!onTilt || token !== _r3dToken) return;
+    try { onTilt(_r3dFinishFrame(out, segs.slice(), meta.timeIso, cuts), done, total); } catch (e) {}
+  };
+  consume(first); done++; report();
+
+  let next = 0;
+  const lane = async () => {
+    while (next < todo.length && !stopAbove) {
+      const el = todo[next++];
+      if (token !== _r3dToken) return;
+      let res = null;
+      try { res = await _r3dDecode(buf.slice(0), layer, { elevation: el }); }
+      catch (e) { /* one bad cut costs one cut, not the volume */ }
+      if (token !== _r3dToken) return;
+      consume(res); done++; report();
+      await new Promise(r => setTimeout(r, 0));         // let the page breathe between cuts
+    }
+  };
+  const lanes = Math.max(1, Math.min(4, typeof _pbPoolSize === 'function' ? _pbPoolSize() : 1));
+  await Promise.all(Array.from({ length: lanes }, lane));
+  if (token !== _r3dToken) return null;
   return _r3dFinishFrame(out, segs, meta.timeIso, cuts);
 }
 
@@ -68302,7 +68316,9 @@ async function _r3dBuildFrameL3(site, product, sitePos, zone, token) {
       const buf = await fetch(url, { signal: _abortSignal(20000) })
         .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); });
       if (token !== _r3dToken) return null;
-      return await _workerProcess(buf, code);
+      // Through the pool, not the single-slot interactive decoder: four
+      // tilts decoding at once would otherwise supersede one another.
+      return await _r3dDecode(buf, code);
     } catch (e) { return null; }                       // one missing tilt costs one cut, not the frame
   }));
   if (token !== _r3dToken) return null;
@@ -68494,26 +68510,34 @@ async function _r3dLoad() {
     let frame = null;
 
     // Level 2 first, for anything that might actually have it: one file with
-    // every tilt already in it, and often already sitting in cache from the
-    // picture already on the map. A TDWR terminal radar never publishes a
-    // Level 2 archive at all, so it skips straight to Level 3 below rather
-    // than spending a round trip finding that out the hard way.
+    // every tilt in it. The flat picture's cached volume is only the bottom
+    // few sweeps (it downloads to a connection-sized cap), so it is reused
+    // here ONLY when this view fetched it whole itself; otherwise the whole
+    // volume is pulled at R3D_VOLUME_CAP. A TDWR terminal radar never
+    // publishes a Level 2 archive at all, so it skips straight to Level 3
+    // below rather than spending a round trip finding that out the hard way.
     if (!isTdwr) {
       try {
-        _r3dSay('getting the volume for ' + site.toUpperCase(), 'busy');
+        _r3dSay('getting the whole volume for ' + site.toUpperCase(), 'busy');
         let buf = null;
         if (typeof _l2VolCache !== 'undefined' && _l2VolCache
-            && _l2VolCache.station === site && _l2VolCache.buf
+            && _l2VolCache.station === site && _l2VolCache.buf && _l2VolCache.full
             && Date.now() - _l2VolCache.at < 120000) {
           buf = _l2VolCache.buf;
         } else if (typeof _fetchVolumeDirect === 'function') {
-          buf = await _fetchVolumeDirect(site);
+          buf = await _fetchVolumeDirect(site, R3D_VOLUME_CAP);
           if (token !== _r3dToken) return;
-          try { _l2VolCache = { station: site, at: Date.now(), buf: buf.slice(0) }; } catch (e) {}
+          try { _l2VolCache = { station: site, at: Date.now(), buf: buf.slice(0), full: true }; } catch (e) {}
         }
         if (buf) {
           _r3dSay('decoding tilts', 'busy');
-          frame = await _r3dBuildFrame(buf, layer, sitePos, zone, token);
+          // Each tilt shows the moment it lands, so the storm grows upward
+          // on screen while the rest of the stack is still decoding.
+          frame = await _r3dBuildFrame(buf, layer, sitePos, zone, token, (snap, doneN, totalN) => {
+            if (token !== _r3dToken) return;
+            if (snap) { _r3dFrames = [snap]; _r3dFrameIdx = 0; _r3dQuality = 'fine'; _r3dDirty = true; }
+            _r3dSay(`decoding tilt ${doneN} of ${totalN}`, 'busy');
+          });
         }
       } catch (e) { /* no Level 2 to be had - Level 3 below is the fallback */ }
       if (token !== _r3dToken) return;
@@ -68547,19 +68571,22 @@ async function _r3dLoad() {
 
     // The shown frame owns the view alone at first; the rest of the time
     // control's history joins moments later, same idea as the NWS and Level
-    // 2 loops already use elsewhere on this page. Level 3's own history
-    // would mean juggling up to four separate per-tilt archives that do not
-    // scan at quite the same moment, so for now the time slider is a Level 2
-    // thing only - a Level 3 frame stands alone as the one live picture.
-    if (!usedL3 && typeof _fetchRecentVolumes === 'function') {
-      _fetchRecentVolumes(site, R3D_FRAMES).then(async (bufs) => {
-        if (token !== _r3dToken || !bufs || bufs.length < 2) return;
-        const older = bufs.slice(1);                    // [0] is the one already shown
+    // 2 loops already use elsewhere on this page. History volumes are whole
+    // volumes too (a history frame with only the bottom tilts would collapse
+    // the storm every time the slider crossed it), so on a metered or slow
+    // connection the history is skipped rather than pulled. Level 3's own
+    // history would mean juggling up to four separate per-tilt archives that
+    // do not scan at quite the same moment, so the time slider stays a
+    // Level 2 thing - a Level 3 frame stands alone as the one live picture.
+    const cheapLink = typeof L2_DIRECT_CAP !== 'undefined' && L2_DIRECT_CAP < 3 * 1024 * 1024;
+    if (!usedL3 && !cheapLink && typeof _fetchRecentVolumes === 'function') {
+      _fetchRecentVolumes(site, R3D_FRAMES - 1, R3D_VOLUME_CAP, 1).then(async (bufs) => {
+        if (token !== _r3dToken || !bufs || !bufs.length) return;
         const built = [];
-        for (const b of older) {
+        for (const b of bufs) {                          // newest first
           if (token !== _r3dToken) return;
           const f = await _r3dBuildFrame(b, layer, sitePos, zone, token);
-          if (f) built.push(f);
+          if (f && f.time !== frame.time) built.push(f);  // the live volume again is not history
         }
         if (token !== _r3dToken || !built.length) return;
         // Oldest first, newest (the one already on screen) last - _l2Loop's
@@ -68586,10 +68613,10 @@ function _r3dUpdateLegend(product) {
   const stops = product === 'vel'
     ? [[-80, 'toward'], [-20, ''], [0, ''], [20, ''], [80, 'away']]
     : [[10, ''], [25, ''], [40, ''], [55, ''], [70, '']];
-  const colorFor = product === 'vel' ? _r3dVelocityColor : _r3dReflectivityColor;
+  const colorFor = _r3dColorFn(product);
   el.innerHTML = stops.map(([v, label]) => {
-    const [r, g, b] = colorFor(v);
-    return `<i style="background:rgb(${r},${g},${b})"></i>${label || v}`;
+    const rgb = colorFor(v) || [40, 44, 52];
+    return `<i style="background:rgb(${rgb[0]},${rgb[1]},${rgb[2]})"></i>${label || v}`;
   }).join(' ');
 }
 
@@ -68649,17 +68676,19 @@ function _r3dTick() {
 // same, just at different sharpness. The "Show above" slider lives here
 // too: below its cutoff the alpha is exactly zero.
 function _r3dLutFor(product, stepKm) {
-  const key = product + '|' + _r3dFilterPct + '|' + stepKm.toFixed(3);
+  const key = product + '|' + _r3dFilterPct + '|' + stepKm.toFixed(3) + '|' + _r3dPaletteGen;
   if (_r3dLutCache && _r3dLutCache.key === key) return _r3dLutCache;
   const lut = new Float32Array(256 * 4);
   const floorRgb = new Uint8Array(256 * 3);
   const isVel = product === 'vel';
+  const colorOf = _r3dColorFn(product);
   const t0 = Math.max(0, Math.min(0.98, _r3dFilterPct / 100));
   for (let b = 1; b < 256; b++) {
     const t = (b - 1) / 254;
-    let rgb, mag;
-    if (isVel) { const v = -100 + t * 200; rgb = _r3dVelocityColor(v); mag = Math.abs(v) / 100; }
-    else { const v = -20 + t * 100; rgb = _r3dReflectivityColor(v); mag = t; }
+    const v = isVel ? -100 + t * 200 : -20 + t * 100;
+    const mag = isVel ? Math.abs(v) / 100 : t;
+    const rgb = colorOf(v);
+    if (!rgb) continue;                                       // the picture draws nothing here
     floorRgb[b * 3] = rgb[0]; floorRgb[b * 3 + 1] = rgb[1]; floorRgb[b * 3 + 2] = rgb[2];
     let a = 0;
     if (mag >= t0) {
