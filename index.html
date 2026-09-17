@@ -4493,6 +4493,7 @@ body.lite-mode #export-toolbar { display: none !important; }
   font-family: var(--sans); color: #e8edf5; overflow: hidden;
 }
 #r3d-panel.open { display: block; }
+#r3d-panel, #r3d-panel * { font-family: 'Comfortaa', sans-serif; }
 #r3d-panel.big { width: min(1100px, calc(100vw - 24px)); }
 #r3d-panel .xs-plot { padding: 8px 10px 4px; position: relative; }
 #r3d-panel canvas {
@@ -11330,8 +11331,18 @@ body.clean-mode #clean-hint { opacity: 1; }
     </label>
     <label class="r3d-slider-row">
       <span>Up to</span>
-      <input type="range" id="r3d-height" min="5" max="60" value="60" step="1" title="Show only up to this height">
-      <span id="r3d-height-label">60 kft</span>
+      <input type="range" id="r3d-height" min="5" max="80" value="80" step="1" title="Show only up to this height">
+      <span id="r3d-height-label">80 kft</span>
+    </label>
+    <label class="r3d-slider-row">
+      <span>Height &times;</span>
+      <select class="xsec-sel" id="r3d-exag" title="Stretch the picture upward so vertical structure is easy to see. Labels stay in true height.">
+        <option value="1">1&times; true scale</option>
+        <option value="2">2&times;</option>
+        <option value="3" selected>3&times;</option>
+        <option value="4">4&times;</option>
+        <option value="5">5&times;</option>
+      </select>
     </label>
   </div>
   <div class="xs-legend" id="r3d-legend"></div>
@@ -63971,6 +63982,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-17-e', date: 'Sep 17, 2026',
+    text: 'Volumetric 3D looks properly 3D now: the picture is stretched upward (3x by default, with a Height x picker from true scale to 5x) so a storm stands up instead of lying as a flat slab, while every label, the slider and the data stay in true height. The ceiling went up from 60 to 80 kft so the tallest overshooting tops fit, and every bit of text in the panel, including the height labels and radar tag drawn inside the 3D box, is now Comfortaa like the rest of the app.' },
   { id: '2026-09-17-d', date: 'Sep 17, 2026',
     text: 'Volumetric 3D got a station picker. The nearest radar to your zone is still chosen automatically, but the panel now lists the eight closest radars with their distances, so you can switch to a second radar for a different angle on the same storm, or step around one that is down for maintenance. The zone stays put; only the radar it is seen from changes.' },
   { id: '2026-09-17-c', date: 'Sep 17, 2026',
@@ -67947,8 +67960,13 @@ let _r3dZoneRect = null;         // the Leaflet rectangle shown on the map
 // milliseconds and cheap enough to sample tens of thousands of times per
 // frame in plain JS.
 const R3D_GRID_N = 160;          // voxels across the zone horizontally
-const R3D_GRID_NZ = 64;          // voxels bottom-to-top
-const R3D_Z_MAX_KM = 60 / R3D_KFT_PER_KM;   // grid ceiling: 60 kft
+const R3D_GRID_NZ = 80;          // voxels bottom-to-top
+const R3D_Z_MAX_KM = 80 / R3D_KFT_PER_KM;   // grid ceiling: 80 kft, above any storm top on record
+// Vertical exaggeration, for the eye only. A 90 km box is only 18 km tall
+// at true scale - a flat slab that hides every vertical feature - so the
+// picture is stretched upward by this factor. Every height label, the
+// slider and the data itself stay in true kft; only the drawing is taller.
+let _r3dExag = 3;
 
 const R3D_PRODUCTS = [
   { id: 'ref', label: 'Reflectivity' },
@@ -67978,7 +67996,7 @@ let _r3dLutCache = null;         // { key, lut, floorRgb } - rebuilt when produc
 // the ceiling just clips the marched box, so dragging either redraws
 // instantly with no new decode.
 let _r3dFilterPct = 0;
-let _r3dHeightMaxKft = 60;
+let _r3dHeightMaxKft = 80;
 
 // Zoom in as far as you like - all the way inside the cloud (the marcher
 // handles a camera inside the box, so there is no reason to stop short) -
@@ -68739,7 +68757,7 @@ function _r3dLutFor(product, stepKm) {
 // samples nearest-voxel at a coarser resolution; fine mode (the moment the
 // hand stops) samples trilinearly at high resolution.
 let _r3dOffCv = null, _r3dImg = null;
-function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, half, topKm) {
+function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, half, topKm, exag) {
   const fine = _r3dQuality === 'fine';
   // Fine mode renders at the canvas's own full resolution (capped only for
   // truly huge panels), so the settled picture has no upscale in it at all;
@@ -68764,10 +68782,12 @@ function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, f
   const nx = G.nx, ny = G.ny, nz = G.nz, grid = G.grid, occ = G.occ;
   const cnx = G.cnx, cny = G.cny, B = G.blockB;
   const cellXY = G.cellXY, cellZ = G.cellZ;
-  const invCX = 1 / cellXY, invCZ = 1 / cellZ;
+  // The march happens in drawn (exaggerated) space; dividing z by the
+  // exaggeration on the way into the grid keeps the data at true height.
+  const invCX = 1 / cellXY, invCZ = 1 / (cellZ * exag);
   const layerStride = nx * ny;
-  const minX = -half, maxX = half, minY = -half, maxY = half, maxZ = topKm;
-  const skipKm = B * Math.min(cellXY, cellZ) * 0.9;
+  const minX = -half, maxX = half, minY = -half, maxY = half, maxZ = topKm * exag;
+  const skipKm = B * Math.min(cellXY, cellZ * exag) * 0.9;
   const focalI = ih * 1.15;
   const floorArr = G.floor;
 
@@ -68918,7 +68938,8 @@ function _r3dRender() {
   const topKm = Math.max(1, Math.min(R3D_Z_MAX_KM, _r3dHeightMaxKft / R3D_KFT_PER_KM));
 
   const { yaw, pitch, dist } = _r3dCam;
-  const targetZ = topKm / 2;
+  const exag = _r3dExag;
+  const targetZ = topKm * exag / 2;
   const horiz = dist * Math.cos(pitch);
   const camX = horiz * Math.sin(yaw), camY = horiz * Math.cos(yaw), camZ = targetZ + dist * Math.sin(pitch);
   // Look-at basis: forward toward the target, world-up projected off it.
@@ -68931,14 +68952,14 @@ function _r3dRender() {
 
   if (frame) {
     const G = _r3dGridFor(frame, product === 'vel');
-    _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, half, topKm);
+    _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, half, topKm, exag);
   }
 
-  _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, half, topKm, dpr);
+  _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, half, topKm, dpr, exag);
 
   if (!frame) {
     ctx.fillStyle = 'rgba(255,255,255,0.4)';
-    ctx.font = `${Math.round(12 * dpr)}px sans-serif`;
+    ctx.font = `${Math.round(12 * dpr)}px 'Comfortaa', sans-serif`;
     ctx.textAlign = 'center';
     ctx.fillText(_r3dBuilding ? 'Building the volume…'
       : "Double-click or long-press the map and pick View in 3D here", w / 2, h / 2);
@@ -68949,7 +68970,9 @@ function _r3dRender() {
 // walls with labels climbing the far corner, a north tick, and a tick on
 // the floor rim pointing back at the radar the data came from - the same
 // reference frame the OpenStorm desktop viewer draws around its own storm.
-function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, half, topKm, dpr) {
+function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, half, topKm, dpr, exag) {
+  const zOf = (kft) => kft / R3D_KFT_PER_KM * exag;       // true kft -> drawn height
+  const topDrawn = topKm * exag;
   const project = (x, y, z) => {
     const dx = x - camX, dy = y - camY, dz = z - camZ;
     const zc = dx * fx + dy * fy + dz * fz;
@@ -68979,7 +69002,7 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   for (const wi of farWalls) {
     const a = corners[wi], b = corners[(wi + 1) % 4];
     for (let kft = step; kft <= topKft + 0.01; kft += step) {
-      const z = kft / R3D_KFT_PER_KM;
+      const z = zOf(kft);
       line(project(a[0], a[1], z), project(b[0], b[1], z));
     }
   }
@@ -68989,10 +69012,10 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
     : farWalls.includes((farWalls[1] + 1) % 4) ? (farWalls[1] + 1) % 4 : farWalls[0];
   const lc = corners[shared];
   ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  ctx.font = `${Math.round(9.5 * dpr)}px monospace`;
+  ctx.font = `${Math.round(9.5 * dpr)}px 'Comfortaa', sans-serif`;
   ctx.textAlign = 'left';
   for (let kft = step; kft <= topKft + 0.01; kft += step) {
-    const p = project(lc[0], lc[1], kft / R3D_KFT_PER_KM);
+    const p = project(lc[0], lc[1], zOf(kft));
     if (p) ctx.fillText(Math.round(kft) + ' kft', p[0] + 4 * dpr, p[1] + 3 * dpr);
   }
 
@@ -69006,13 +69029,13 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
     }
   };
   drawLoop(0);
-  drawLoop(topKm);
-  corners.forEach(([x, y]) => line(project(x, y, 0), project(x, y, topKm)));
+  drawLoop(topDrawn);
+  corners.forEach(([x, y]) => line(project(x, y, 0), project(x, y, topDrawn)));
 
   // North tick on the floor rim, and where the radar itself sits.
   ctx.fillStyle = 'rgba(255,255,255,0.55)';
   ctx.textAlign = 'center';
-  ctx.font = `${Math.round(10 * dpr)}px monospace`;
+  ctx.font = `${Math.round(10 * dpr)}px 'Comfortaa', sans-serif`;
   const np = project(0, half, 0);
   if (np) ctx.fillText('N', np[0], np[1] - 4 * dpr);
   if (isFinite(_r3dStationBrg) && _r3dStation) {
@@ -69126,6 +69149,15 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   if (filter) filter.oninput = () => { _r3dFilterPct = Number(filter.value); _r3dUpdateFilterLabel(); _r3dInteract(); };
   const height = _r3dEl('r3d-height');
   if (height) height.oninput = () => { _r3dHeightMaxKft = Number(height.value); _r3dUpdateHeightLabel(); _r3dInteract(); };
+  const exag = _r3dEl('r3d-exag');
+  if (exag) exag.onchange = () => { _r3dExag = Math.max(1, Number(exag.value) || 3); _r3dInteract(); };
+  // The canvas labels are drawn in Comfortaa too; make sure it is loaded
+  // before the first frame so they never fall back to a system font.
+  try {
+    if (document.fonts && document.fonts.load) {
+      document.fonts.load("10px 'Comfortaa'").then(() => { if (_r3dOn) _r3dDirty = true; }).catch(() => {});
+    }
+  } catch (e) {}
 })();
 
 // ── TOOLBAR (#right-menu) HOVER FLYOUT ──
