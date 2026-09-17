@@ -64011,6 +64011,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-17-j', date: 'Sep 17, 2026',
+    text: 'Volumetric 3D, finer still: the 3D grid is now 256 cells across and 96 tall (a third of a kilometre on a medium box, a quarter of a kilometre vertically), the radar picture on the box floor is blended smoothly between cells instead of stepping, and the coarse picture drawn while you drag is sharper too.' },
   { id: '2026-09-17-i', date: 'Sep 17, 2026',
     text: 'Volumetric 3D polish, checked against live radar renders: every gate now paints its real footprint (the beam is about a degree wide, so a gate is 1.6 km across at 90 km) instead of the one voxel under its centre, which removes the comb of vertical stripes the upper tilts used to draw; each beam is also at least a voxel layer thick and the smoothing runs vertically as well, which removes the stair-step rings around the radar. If you still see a flat wedge, hard-refresh: the page and its decoder are versioned together and an older cached copy is the old picture.' },
   { id: '2026-09-17-h', date: 'Sep 17, 2026',
@@ -68009,8 +68011,8 @@ let _r3dZoneRect = null;         // the Leaflet rectangle shown on the map
 // onto the product's own range) - a byte grid is small enough to rebuild in
 // milliseconds and cheap enough to sample tens of thousands of times per
 // frame in plain JS.
-const R3D_GRID_N = 160;          // voxels across the zone horizontally
-const R3D_GRID_NZ = 80;          // voxels bottom-to-top
+const R3D_GRID_N = 256;          // voxels across the zone horizontally (0.35 km on a medium box)
+const R3D_GRID_NZ = 96;          // voxels bottom-to-top (0.25 km)
 const R3D_Z_MAX_KM = 80 / R3D_KFT_PER_KM;   // grid ceiling: 80 kft, above any storm top on record
 // Vertical exaggeration, for the eye only. A 90 km box is only 18 km tall
 // at true scale - a flat slab that hides every vertical feature - so the
@@ -68509,7 +68511,7 @@ function _r3dGridFrame(frame, sizeKm, isVel) {
   // box so a far, coarse gate cannot flood the grid), keeping the strongest
   // value where footprints overlap - the same max rule the flat picture
   // uses when it merges gates.
-  const MAX_SPAN = 4;
+  const MAX_SPAN = 6;
   for (let i = 0, p = 0; i < n; i++, p += 4) {
     const x = g[p], y = g[p + 1], z = g[p + 2];
     // Never thinner than a voxel layer either side: a beam sheet climbing
@@ -68895,7 +68897,7 @@ function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, f
   // truly huge panels), so the settled picture has no upscale in it at all;
   // fast mode stays small so dragging never stutters.
   const iw = fine ? Math.min(w, 900)
-                  : Math.max(120, Math.min(260, Math.round(w / 3)));
+                  : Math.max(140, Math.min(320, Math.round(w / 2.5)));
   const ih = Math.max(60, Math.round(iw * h / w));
   const stepKm = Math.max(0.08, Math.min(2, G.cellXY * (fine ? 0.5 : 1.1)));
   const product = ((_r3dEl('r3d-product') || {}).value) || 'ref';
@@ -68950,19 +68952,26 @@ function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, f
       // No closure here on purpose: this loop runs up to ~100k times per
       // frame and a per-pixel closure is a per-pixel allocation.
       if (floorFirst) {
-        const fxk = camX + dx * floorT, fyk = camY + dy * floorT;
-        let gix = ((fxk - minX) * invCX) | 0, giy = ((fyk - minY) * invCX) | 0;
-        if (gix < 0) gix = 0; else if (gix >= nx) gix = nx - 1;
-        if (giy < 0) giy = 0; else if (giy >= ny) giy = ny - 1;
-        const fb = floorArr[giy * nx + gix];
-        let fr = 30, fg2 = 36, fb2 = 46, fa = 0.4;
-        // The floor honours the Show Above filter too - filtering down to
-        // the core should not leave the whole radar map painted underneath.
-        if (fb && lut[(fb << 2) + 3] > 0) {
-          const fi = fb * 3; fr = floorRgb[fi]; fg2 = floorRgb[fi + 1]; fb2 = floorRgb[fi + 2]; fa = 0.85;
+        // Bilinear over the four floor cells around the hit, blended in
+        // premultiplied colour so radar fades to bare ground rather than
+        // stepping cell by cell. The floor honours the Show Above filter
+        // too - filtering down to the core should not leave the whole radar
+        // map painted underneath.
+        let fxg = (camX + dx * floorT - minX) * invCX - 0.5, fyg = (camY + dy * floorT - minY) * invCX - 0.5;
+        if (fxg < 0) fxg = 0; else if (fxg > nx - 1.001) fxg = nx - 1.001;
+        if (fyg < 0) fyg = 0; else if (fyg > ny - 1.001) fyg = ny - 1.001;
+        const fx0 = fxg | 0, fy0 = fyg | 0, ftx = fxg - fx0, fty = fyg - fy0;
+        let pr = 0, pg = 0, pb = 0, pa = 0;
+        const fw = [(1 - ftx) * (1 - fty), ftx * (1 - fty), (1 - ftx) * fty, ftx * fty];
+        const fidx = [fy0 * nx + fx0, fy0 * nx + fx0 + 1, (fy0 + 1) * nx + fx0, (fy0 + 1) * nx + fx0 + 1];
+        for (let q = 0; q < 4; q++) {
+          const fb = floorArr[fidx[q]];
+          let cr = 30, cg = 36, cb = 46, ca = 0.4;
+          if (fb && lut[(fb << 2) + 3] > 0) { const fi = fb * 3; cr = floorRgb[fi]; cg = floorRgb[fi + 1]; cb = floorRgb[fi + 2]; ca = 0.85; }
+          pr += fw[q] * cr * ca; pg += fw[q] * cg * ca; pb += fw[q] * cb * ca; pa += fw[q] * ca;
         }
         const k = 1 - accA;
-        accR += k * fr * fa; accG += k * fg2 * fa; accB += k * fb2 * fa; accA += k * fa;
+        accR += k * pr; accG += k * pg; accB += k * pb; accA += k * pa;
       }
 
       let t = t0 + stepKm * 0.5, guard = 0;
@@ -69023,19 +69032,26 @@ function _r3dMarchDraw(ctx, w, h, G, camX, camY, camZ, rx, ry, rz, ux, uy, uz, f
       }
 
       if (!floorFirst && hitsFloor && accA < 0.96) {
-        const fxk = camX + dx * floorT, fyk = camY + dy * floorT;
-        let gix = ((fxk - minX) * invCX) | 0, giy = ((fyk - minY) * invCX) | 0;
-        if (gix < 0) gix = 0; else if (gix >= nx) gix = nx - 1;
-        if (giy < 0) giy = 0; else if (giy >= ny) giy = ny - 1;
-        const fb = floorArr[giy * nx + gix];
-        let fr = 30, fg2 = 36, fb2 = 46, fa = 0.4;
-        // The floor honours the Show Above filter too - filtering down to
-        // the core should not leave the whole radar map painted underneath.
-        if (fb && lut[(fb << 2) + 3] > 0) {
-          const fi = fb * 3; fr = floorRgb[fi]; fg2 = floorRgb[fi + 1]; fb2 = floorRgb[fi + 2]; fa = 0.85;
+        // Bilinear over the four floor cells around the hit, blended in
+        // premultiplied colour so radar fades to bare ground rather than
+        // stepping cell by cell. The floor honours the Show Above filter
+        // too - filtering down to the core should not leave the whole radar
+        // map painted underneath.
+        let fxg = (camX + dx * floorT - minX) * invCX - 0.5, fyg = (camY + dy * floorT - minY) * invCX - 0.5;
+        if (fxg < 0) fxg = 0; else if (fxg > nx - 1.001) fxg = nx - 1.001;
+        if (fyg < 0) fyg = 0; else if (fyg > ny - 1.001) fyg = ny - 1.001;
+        const fx0 = fxg | 0, fy0 = fyg | 0, ftx = fxg - fx0, fty = fyg - fy0;
+        let pr = 0, pg = 0, pb = 0, pa = 0;
+        const fw = [(1 - ftx) * (1 - fty), ftx * (1 - fty), (1 - ftx) * fty, ftx * fty];
+        const fidx = [fy0 * nx + fx0, fy0 * nx + fx0 + 1, (fy0 + 1) * nx + fx0, (fy0 + 1) * nx + fx0 + 1];
+        for (let q = 0; q < 4; q++) {
+          const fb = floorArr[fidx[q]];
+          let cr = 30, cg = 36, cb = 46, ca = 0.4;
+          if (fb && lut[(fb << 2) + 3] > 0) { const fi = fb * 3; cr = floorRgb[fi]; cg = floorRgb[fi + 1]; cb = floorRgb[fi + 2]; ca = 0.85; }
+          pr += fw[q] * cr * ca; pg += fw[q] * cg * ca; pb += fw[q] * cb * ca; pa += fw[q] * ca;
         }
         const k = 1 - accA;
-        accR += k * fr * fa; accG += k * fg2 * fa; accB += k * fb2 * fa; accA += k * fa;
+        accR += k * pr; accG += k * pg; accB += k * pb; accA += k * pa;
       }
 
       if (accA > 0.004) {
