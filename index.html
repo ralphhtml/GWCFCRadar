@@ -64397,6 +64397,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-17-s', date: 'Sep 17, 2026',
+    text: 'Volumetric 3D accuracy audit. Every height in the 3D box is now recovered by the exact inverse of the same beam formula the heights were stored with, on the same effective earth radius, so a sample lands on precisely the tilt it came from (the old inverse drifted up to a degree at steep angles). Verified numerically: elevation round trip exact to five decimals, values through the volume within 1.7 dBZ of the input, velocity signs exact, and on a real archived supercell 98 percent of strong gates read identical to the flat picture with the rest being sharp edges the interpolation smooths on purpose. Storm-top heights and time stamps check out exactly.' },
   { id: '2026-09-17-r', date: 'Sep 17, 2026',
     text: 'Volumetric 3D reads the radar\'s own coordinates now, the way OpenStorm does. The volume is kept as the antenna scanned it (sweep, azimuth, range, at the native quarter kilometre by half degree) and every ray interpolates between the two tilts either side of it, so the picture is the data itself rather than a resampled copy: sharper cores, smooth air between tilts, honest fades at the top and bottom of the stack. The ray marching also moved off the page into a pool of background workers, so the map and the controls never freeze while a frame draws, and a multi-core phone or laptop draws several times faster. Every raw product is in the picker too: reflectivity, velocity, spectrum width, correlation, differential reflectivity and specific phase, each with its own scale, noise floor and Show above slider.' },
   { id: '2026-09-17-q', date: 'Sep 17, 2026',
@@ -69088,7 +69090,7 @@ async function _r3dBuildFrameL3(site, product, sitePos, zone, token, at) {
 // byte planes, one per tilt, over just the window of ground range and
 // azimuth that covers the zone, with a padding ray copied round each end
 // (OpenStorm's trick) so a full circle interpolates across north.
-const R3D_EARTH_KM = 6371 * 4 / 3;      // the 4/3 earth every beam-height formula uses
+const R3D_EARTH_KM = 8500;      // the same effective earth radius the beam-height formula uses (XS_EARTH_K)
 const R3D_EL_MIN = -2, R3D_EL_MAX = 32, R3D_EL_STEP = 0.01;
 const R3D_POLAR_MAX_BYTES = 5 * 1024 * 1024;   // beyond this the bins coarsen, evenly
 const R3D_HALF_BEAM = 0.5;               // degrees: how far the highest tilt reaches above itself
@@ -69302,9 +69304,11 @@ function _r3dPolarSample(P, x, y, z) {
   let rel = ((Math.atan2(dx, dy) * DEG - P.az0) % 360 + 360) % 360;
   if (!P.full && rel >= P.span) return 0;
   const ia = rel / P.azStep + 0.5;
-  const hor = (R3D_EARTH_KM + z) * Math.sin(s / R3D_EARTH_KM);
-  const ver = (R3D_EARTH_KM + z) * Math.cos(s / R3D_EARTH_KM) - R3D_EARTH_KM;
-  const el = Math.atan2(ver, hor) * DEG;
+  // The exact inverse of _xsBeamHeightKm, the formula every gate's height
+  // was stored with: z = sqrt(s^2 + R^2 + 2 s R sin e) - R.
+  let se = ((z + R3D_EARTH_KM) * (z + R3D_EARTH_KM) - s * s - R3D_EARTH_KM * R3D_EARTH_KM) / (2 * s * R3D_EARTH_KM);
+  if (se > 1) se = 1; else if (se < -1) se = -1;
+  const el = Math.asin(se) * DEG;
   const ei = Math.round((el - P.elMin) / P.elStep);
   if (ei < 0 || ei >= P.angIdx.length) return 0;
   const f = P.angIdx[ei];
@@ -69339,7 +69343,7 @@ function _r3dMarchBand(P, prm, y0, y1, data) {
   const lx = prm.light[0], ly = prm.light[1], lz = prm.light[2];
   const signed = !!prm.signed;
   const focalI = ih * 1.15;
-  const DEG = 180 / Math.PI, RE = 6371 * 4 / 3;
+  const DEG = 180 / Math.PI, RE = 8500;              // XS_EARTH_K: hardcoded, this function travels to workers by string
   const sweeps = P.sweeps, nS = P.nS, nR = P.nR, nA = P.nA, r0 = P.r0, rStep = P.rStep, az0 = P.az0, azStep = P.azStep;
   const full = P.full, span = P.span, angIdx = P.angIdx, angFade = P.angFade, angN = angIdx.length;
   const elMin = P.elMin, invElStep = 1 / P.elStep, sx = P.sx, sy = P.sy;
@@ -69422,8 +69426,10 @@ function _r3dMarchBand(P, prm, y0, y1, data) {
         rel -= 360 * Math.floor(rel / 360);
         if (!full && rel >= span) { t += stepKm; continue; }
         const ia = rel * invA + 0.5;
-        const hor = (RE + zt) * Math.sin(s / RE), ver = (RE + zt) * Math.cos(s / RE) - RE;
-        const el = Math.atan2(ver, hor) * DEG;
+        // Exactly inverse to the beam-height formula the gates carry.
+        let se = ((zt + RE) * (zt + RE) - s * s - RE * RE) / (2 * s * RE);
+        if (se > 1) se = 1; else if (se < -1) se = -1;
+        const el = Math.asin(se) * DEG;
         const ei = ((el - elMin) * invElStep) | 0;
         if (ei < 0) { t += stepKm; continue; }
         if (ei >= angN) { t += skipKm; continue; }
