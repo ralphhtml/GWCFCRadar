@@ -695,6 +695,47 @@ console.log('\n11. the orbit camera, the quality switch, and the panel controls'
   ok('closing puts the panel away', !r.after.panel, JSON.stringify(r.after));
 }
 
+console.log('\n11b. taller: the 80 kft ceiling, vertical exaggeration, and Comfortaa inside the box');
+{
+  const r = await p.evaluate(() => {
+    _r3dOpen('kfws');
+    _r3dToken++;
+    const texts = [];
+    const orig = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (t, x, y) {
+      texts.push({ t: String(t), font: this.font, y });
+      return orig.call(this, t, x, y);
+    };
+    const savedExag = _r3dExag, savedH = _r3dHeightMaxKft, savedCam = { ..._r3dCam };
+    _r3dHeightMaxKft = 80; _r3dCam.yaw = 0.6; _r3dCam.pitch = 0.3; _r3dCam.dist = 150;
+    _r3dExag = 1; _r3dRender();
+    const at1 = texts.filter(o => /kft$/.test(o.t)).map(o => ({ t: o.t, y: o.y }));
+    texts.length = 0;
+    _r3dExag = 3; _r3dRender();
+    const at3 = texts.filter(o => /kft$/.test(o.t)).map(o => ({ t: o.t, y: o.y }));
+    const fonts = texts.map(o => o.font);
+    CanvasRenderingContext2D.prototype.fillText = orig;
+    const sel = document.getElementById('r3d-exag');
+    sel.value = '4'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+    const exagAfter = _r3dExag;
+    const panelFont = getComputedStyle(document.getElementById('r3d-status')).fontFamily;
+    _r3dExag = savedExag; _r3dHeightMaxKft = savedH; Object.assign(_r3dCam, savedCam);
+    sel.value = '3';
+    _r3dClose();
+    return { at1, at3, fonts, exagAfter, panelFont,
+             sliderMax: document.getElementById('r3d-height').max };
+  });
+  const top1 = r.at1.find(o => o.t === '80 kft'), top3 = r.at3.find(o => o.t === '80 kft');
+  ok('the height slider reaches 80 kft', r.sliderMax === '80', r.sliderMax);
+  ok('labels climb all the way to 80 kft, in true height', !!top1 && !!top3);
+  ok('at 3x the 80 kft mark sits much higher on screen than at true scale',
+     top1 && top3 && (top1.y - top3.y) > 25, JSON.stringify({ y1: top1 && top1.y, y3: top3 && top3.y }));
+  ok('the Height x picker changes the exaggeration', r.exagAfter === 4, String(r.exagAfter));
+  ok('every label drawn inside the box is Comfortaa',
+     r.fonts.length > 0 && r.fonts.every(f => /Comfortaa/.test(f)), r.fonts[0]);
+  ok('and the panel text itself is Comfortaa', /Comfortaa/.test(r.panelFont), r.panelFont);
+}
+
 console.log('\n12. nothing above threw');
 {
   const real = errs.filter(e => !/Failed to fetch|NetworkError|ERR_FAILED|net::/i.test(e));
