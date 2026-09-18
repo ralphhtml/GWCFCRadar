@@ -123,6 +123,15 @@ await page.evaluate(() => {
     const lit = stops.filter(([r, g, b]) => r + g + b > 24);
     return lit.length > 0 && lit.every(([r, g, b]) => r > g && r > b);
   };
+  // The house colour: the near-neutral black of the default theme. Every
+  // channel within a whisker of the others (a touch of blue is allowed in
+  // the lit stops), nothing bright.
+  // Neutrality is the test: black slabs and the translucent white sheens
+  // that sit on them both qualify; any colour cast (the old red, a stray
+  // blue) fails. A touch of blue is allowed, since the lit stops carry
+  // #26262e-style values.
+  window.__isHouse = (stops) => stops.length > 0 && stops.every(([r, g, b]) =>
+    Math.max(r, g, b) - Math.min(r, g, b) <= 16);
   // Cyan: blue leads and green is close behind it.
   window.__isCyan = (stops) => {
     const lit = stops.filter(([r, g, b]) => r + g + b > 24);
@@ -187,8 +196,8 @@ console.log('\n2. every panel shell is a gradient, and it is red');
      flat.length === 0, flat.join(' '));
 
   const notRed = await page.evaluate((sels) =>
-    sels.filter(s => !__isRed(__surfaceOrStub(s).stops)), PANELS);
-  ok('and every one of them is red', notRed.length === 0, notRed.join(' '));
+    sels.filter(s => !__isHouse(__surfaceOrStub(s).stops)), PANELS);
+  ok('and every one of them is the house black', notRed.length === 0, notRed.join(' '));
 
   const noBevel = all.filter(([, r]) => !/inset/.test(r.shadow)).map(([s]) => s);
   ok('each has the inset bevel that makes the edge read as an edge',
@@ -208,7 +217,7 @@ console.log('\n2b. the overlay panels are black, and the overlay list is not');
     sels.filter(s => !__isInk(__surfaceOrStub(s).stops)), OVERLAY_PANELS);
   ok('and black rather than red', notInk.length === 0, notInk.join(' '));
   // The distinction that was actually chosen: panels black, list red.
-  const listRed = await page.evaluate(() => __isRed(__surfaceOrStub('#overlay-pills-row').stops));
+  const listRed = await page.evaluate(() => __isHouse(__surfaceOrStub("#overlay-pills-row").stops));
   ok('while the overlay list itself stays in the house colour', listRed);
 }
 
@@ -222,8 +231,8 @@ console.log('\n3. the dim behind a modal is red too, not neutral black');
   const flat = all.filter(([, r]) => !r.gradient).map(([s]) => s);
   ok('each is a gradient rather than one flat wash', flat.length === 0, flat.join(' '));
   const notRed = await page.evaluate((sels) =>
-    sels.filter(s => !__isRed(__surfaceOrStub(s).stops)), SCRIMS);
-  ok('and warm rather than neutral, so the page carries through it',
+    sels.filter(s => !__isHouse(__surfaceOrStub(s).stops)), SCRIMS);
+  ok('and the house black rather than a colour cast',
      notRed.length === 0, notRed.join(' '));
 }
 
@@ -257,10 +266,17 @@ console.log('\n4. Settings, which is what started this');
   ok('and every piece of it is a gradient', flat.length === 0, flat.join(' '));
 
   const notRed = await page.evaluate((sels) =>
-    sels.filter(s => { const v = __surface(s); return !v.missing && !__isRed(v.stops); }),
-    entries.map(([s]) => s));
-  ok('the whole panel is in the app\'s red, not the greys it was',
+    sels.filter(s => { const v = __surface(s); return !v.missing && !__isHouse(v.stops); }),
+    entries.map(([s]) => s).filter(s => s !== '.lqm-set-tab'));
+  ok('the whole panel is in the house black',
      notRed.length === 0, notRed.join(' '));
+  // The chosen tab is the one deliberate splash of colour: it wears the
+  // toolbar's gold, which is what says "you are here".
+  const tabGold = await page.evaluate(() => {
+    const v = __surface('.lqm-set-tab.on') || __surface('.lqm-set-tab');
+    return !v.missing && v.stops.some(([r, g, b]) => r > 180 && g > 120 && b < 90);
+  });
+  ok('and the selected tab wears the gold', tabGold);
   ok('there is a selected tab and an unselected one to compare', r.onOff.haveBoth);
   ok('a selected tab does not look like an unselected one',
      r.onOff.haveBoth && !r.onOff.same, `on=${r.onOff.on} off=${r.onOff.off}`);
@@ -329,7 +345,7 @@ console.log('\n6. the right-click menu and the map controls');
     return { menu };
   });
   ok('the right-click menu is a gradient', r.menu.gradient, r.menu.image);
-  ok('and it is red', await page.evaluate(s => __isRed(s), r.menu.stops),
+  ok('and it is the house black', await page.evaluate(s => __isHouse(s), r.menu.stops),
      JSON.stringify(r.menu.stops));
 
   const c = await page.evaluate((sels) =>
@@ -380,9 +396,9 @@ console.log('\n7. the pop-out window, which is its own document');
   const reds = await page.evaluate((vals) => vals.map(v => {
     const stops = [...String(v).matchAll(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/g)]
       .map(m => [Number(m[1]), Number(m[2]), Number(m[3])]);
-    return __isRed(stops);
+    return __isHouse(stops);
   }), [r.body, r.header, r.row]);
-  ok('and all three are red, so a pinned window matches the app it came from',
+  ok('and all three are the house black, so a pinned window matches the app it came from',
      reds.every(Boolean), JSON.stringify(reds));
   const easHues = await page.evaluate((vals) => vals.map(v => {
     const stops = [...String(v).matchAll(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/g)]
@@ -410,8 +426,8 @@ console.log('\n8. the bars that are always on screen');
   const flat = all.filter(([, v]) => !v.gradient).map(([s]) => s);
   ok('and every one of them is a gradient', flat.length === 0, flat.join(' '));
   const notRed = await page.evaluate((sels) =>
-    sels.filter(s => !__isRed(__surfaceOrStub(s).stops)), BARS);
-  ok('and red', notRed.length === 0, notRed.join(' '));
+    sels.filter(s => !__isHouse(__surfaceOrStub(s).stops)), BARS);
+  ok('and the house black', notRed.length === 0, notRed.join(' '));
 }
 
 console.log('\n8b. the two surfaces that keep their own colour');

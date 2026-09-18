@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>GWCFC Radar</title>
 <meta name="description" content="Live NEXRAD radar, NWS warnings, satellite, models and storm tools on one map.">
-<meta name="theme-color" content="#140404">
+<meta name="theme-color" content="#0b0b0e">
 
 <!-- Link preview. Absolute URLs are required: Slack, Discord, iMessage and X
      fetch these server-side, where a relative path has no origin to resolve
@@ -108,11 +108,13 @@ setTimeout(function(){var e=document.getElementById('loading');if(e){e.style.tra
 
 <style>
 :root {
-  --bg:       #5a0000;
-  --surface:  #720000;
-  --panel:    #850000;
-  --border:   #AA0000;
-  --border2:  #AA0000;
+  /* The default look is black and gold now; the old red lives on as the
+     Ralph's Red preset in Settings -> Theme. */
+  --bg:       #0d0d11;
+  --surface:  #141419;
+  --panel:    #1b1b22;
+  --border:   #3d3d49;
+  --border2:  #3d3d49;
   --accent:   #e8b800;
   --accent2:  #008CBA;
   --warn:     #cc2200;
@@ -4493,7 +4495,7 @@ body.lite-mode #export-toolbar { display: none !important; }
 .r3d-slider-row input[type=range] { flex: 1 1 auto; }
 .r3d-slider-row span:last-child { width: 46px; flex-shrink: 0; text-align: right; }
 #r3d-panel {
-  position: fixed; left: 12px; bottom: 186px; z-index: 1150; display: none;
+  position: fixed; left: 12px; bottom: 96px; z-index: 1150; display: none;
   width: min(560px, calc(100vw - 24px));
   background: linear-gradient(180deg, rgba(30,30,36,0.98) 0%, rgba(12,12,15,0.99) 45%, #000 100%);
   backdrop-filter: blur(16px) saturate(1.2);
@@ -4505,6 +4507,9 @@ body.lite-mode #export-toolbar { display: none !important; }
 }
 #r3d-panel.open { display: block; }
 #r3d-panel, #r3d-panel * { font-family: 'Comfortaa', sans-serif; }
+#r3d-panel .xs-head { cursor: grab; }
+#r3d-panel .xs-head:active { cursor: grabbing; }
+#r3d-drag { margin-right: 6px; }
 /* Gold gradient text: painted as a background clipped to the glyphs. The
    legend's swatches are children with their own backgrounds, so they keep
    their real colours; the words beside them go gold. */
@@ -4554,7 +4559,7 @@ body.lite-mode #export-toolbar { display: none !important; }
   min-width: 46px; text-align: right; flex-shrink: 0;
 }
 @media (max-width: 640px) {
-  #r3d-panel { left: 8px; right: 8px; width: auto; bottom: 108px; }
+  #r3d-panel { left: 8px; right: 8px; width: auto; bottom: 72px; }
   #r3d-panel canvas { height: 220px; }
 }
 
@@ -6551,8 +6556,8 @@ body.shot-mode #map-wrap > div:not(#map) {
   max-width: calc(100vw - 36px);
   box-sizing: border-box;
   z-index: 1150;
-  background: rgb(18,0,0);
-  border: 1px solid rgba(170,0,0,0.45);
+  background: rgb(14,14,19);
+  border: 1px solid rgba(232,184,0,0.30);
   border-radius: 11px;
   padding: 3px 4px;
   display: flex;
@@ -11351,6 +11356,7 @@ body.clean-mode #clean-hint { opacity: 1; }
      zone, from the nearest radar, as a ray-marched volume. -->
 <div id="r3d-panel">
   <div class="xs-head">
+    <div class="dtb-drag" id="r3d-drag" title="Drag to move">⠿</div>
     <span class="xs-title">Volumetric 3D</span>
     <span class="xs-where" id="r3d-where"></span>
     <div class="xs-spacer"></div>
@@ -12630,10 +12636,10 @@ function _popCss(accent) {
   // panel, orange for EAS. It used to be red either way, so a pinned EAS
   // window and the orange panel it came out of did not look related.
   const SKIN = {
-    '#ff5555': { body: ['#3d0101', '#170000'], head: ['#7e1010', '#440101'],
-                 row: 'rgba(255,120,110,0.13)', hov: ['#a81818', '#6d0404'],
-                 edge: 'rgba(190,20,20,0.55)', lip: 'rgba(255,186,176,0.30)',
-                 text: '#ffe9e6', dim: 'rgba(255,230,225,0.60)' },
+    '#ff5555': { body: ['#1a1a20', '#050506'], head: ['#26262e', '#0e0e12'],
+                 row: 'rgba(255,255,255,0.09)', hov: ['#3a3a44', '#1c1c22'],
+                 edge: 'rgba(232,184,0,0.45)', lip: 'rgba(255,222,140,0.26)',
+                 text: '#f2ecdd', dim: 'rgba(240,232,212,0.60)' },
     '#ff8c00': { body: ['#3a1a00', '#180900'], head: ['#8a4400', '#4a2000'],
                  row: 'rgba(255,170,60,0.16)', hov: ['#c46a08', '#7d3800'],
                  edge: 'rgba(255,140,0,0.55)', lip: 'rgba(255,196,120,0.32)',
@@ -54294,11 +54300,11 @@ function selectProduct(p) {
 // Tokens are flat colours the whole app inherits. Surfaces are the lit slabs
 // panels and buttons are cut from, and they can be a solid or a gradient.
 const THEME_TOKENS = [
-  { v: '--bg',      l: 'Background',    d: '#5a0000' },
-  { v: '--surface', l: 'Surface',       d: '#720000' },
-  { v: '--panel',   l: 'Panel',         d: '#850000' },
-  { v: '--border',  l: 'Border',        d: '#aa0000' },
-  { v: '--border2', l: 'Border (alt)',  d: '#aa0000' },
+  { v: '--bg',      l: 'Background',    d: '#0d0d11' },
+  { v: '--surface', l: 'Surface',       d: '#141419' },
+  { v: '--panel',   l: 'Panel',         d: '#1b1b22' },
+  { v: '--border',  l: 'Border',        d: '#3d3d49' },
+  { v: '--border2', l: 'Border (alt)',  d: '#3d3d49' },
   { v: '--accent',  l: 'Accent',        d: '#e8b800' },
   { v: '--accent2', l: 'Accent 2',      d: '#008cba' },
   { v: '--text',    l: 'Text',          d: '#d4e8ff' },
@@ -54311,17 +54317,29 @@ const THEME_TOKENS = [
 // The shipped gradients, kept here as the thing Reset returns to and as what
 // the editor starts from when a surface has never been touched.
 const THEME_SURFACES = [
-  { v: '--grad-panel',   l: 'Panels',        d: { type: 'grad', angle: 180, stops: ['#7e1010', '#560303', '#2e0000'] } },
-  { v: '--grad-surface', l: 'Cards',         d: { type: 'grad', angle: 180, stops: ['#6b0c0c', '#3a0101'] } },
-  { v: '--grad-raise',   l: 'Buttons',       d: { type: 'grad', angle: 180, stops: ['#a81818', '#6d0404'] } },
-  { v: '--grad-raise-h', l: 'Buttons hover', d: { type: 'grad', angle: 180, stops: ['#c62020', '#8a0808'] } },
-  { v: '--grad-sunk',    l: 'Pressed',       d: { type: 'grad', angle: 180, stops: ['#2b0000', '#4d0404'] } },
+  { v: '--grad-panel',   l: 'Panels',        d: { type: 'grad', angle: 180, stops: ['#26262e', '#131318', '#000000'] } },
+  { v: '--grad-surface', l: 'Cards',         d: { type: 'grad', angle: 180, stops: ['#1e1e25', '#0a0a0d'] } },
+  { v: '--grad-raise',   l: 'Buttons',       d: { type: 'grad', angle: 180, stops: ['#e8bc22', '#ae820c'] } },
+  { v: '--grad-raise-h', l: 'Buttons hover', d: { type: 'grad', angle: 180, stops: ['#ffd44d', '#b8860b'] } },
+  { v: '--grad-sunk',    l: 'Pressed',       d: { type: 'grad', angle: 180, stops: ['#050507', '#1a1a20'] } },
 ];
 
 // Whole looks, not just accents: a preset that only moved the accent would
 // leave a blue theme sitting on a red panel.
 const THEME_PRESETS = {
-  gwcfc:    { label: 'GWCFC Red (default)', tokens: {}, surfaces: {} },
+  gwcfc:    { label: 'GWCFC Black & Gold (default)', tokens: {}, surfaces: {} },
+  // The look the app shipped with for years, kept exactly: pick it and
+  // everything wears the old red again.
+  ralphred: { label: "Ralph's Red",
+    tokens: { '--bg': '#5a0000', '--surface': '#720000', '--panel': '#850000',
+              '--border': '#aa0000', '--border2': '#aa0000', '--accent': '#e8b800',
+              '--accent2': '#008cba', '--text': '#d4e8ff', '--muted': '#5c7a9a' },
+    surfaces: {
+      '--grad-panel':   { type: 'grad', angle: 180, stops: ['#7e1010', '#560303', '#2e0000'] },
+      '--grad-surface': { type: 'grad', angle: 180, stops: ['#6b0c0c', '#3a0101'] },
+      '--grad-raise':   { type: 'grad', angle: 180, stops: ['#a81818', '#6d0404'] },
+      '--grad-raise-h': { type: 'grad', angle: 180, stops: ['#c62020', '#8a0808'] },
+      '--grad-sunk':    { type: 'grad', angle: 180, stops: ['#2b0000', '#4d0404'] } } },
   midnight: { label: 'Midnight Navy',
     tokens: { '--bg': '#0b1220', '--surface': '#111a2e', '--panel': '#16203a',
               '--border': '#2a3c66', '--border2': '#2a3c66', '--accent': '#5ec8ff',
@@ -64496,6 +64514,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-18-c', date: 'Sep 18, 2026',
+    text: 'A new look, and the old one kept. The app wears black and gold by default now: the red gradient panels are black gradients, the toolbar buttons are gold, and the overlay button, the search bar and the account pill stand on black with gold trim. The old look is one tap away as Ralph\'s Red in Settings under Theme, exactly as it was. The Volumetric 3D panel also sits lower on the screen, closer to the playbar, and has a drag handle in its corner - grab it to put the panel anywhere.' },
   { id: '2026-09-18-b', date: 'Sep 18, 2026',
     text: 'The map scroll lag is fixed. The Weather Forecasts dots were eight hundred separate page elements, each one dragged through every pan and re-created from scratch after every scroll, which is what made moving the map away from your own area feel stuck. They are one drawn canvas now: panning drags a single element, zooming animates one thing instead of eight hundred, and a scroll only adds the few towns that came into view instead of rebuilding them all. Hovering still names the town and its temperature, and clicking still opens its forecast.' },
   { id: '2026-09-18-a', date: 'Sep 18, 2026',
@@ -71547,29 +71567,28 @@ function closeCredits() {
 
 :root {
   /* The slab a panel is cut from. Lit from above. */
-  --grad-panel:   linear-gradient(180deg, #7e1010 0%, #560303 38%, #2e0000 100%);
+  --grad-panel:   linear-gradient(180deg, #26262e 0%, #131318 45%, #000000 100%);
   /* A card sitting inside a panel: the same light, one step down. */
-  --grad-surface: linear-gradient(180deg, #6b0c0c 0%, #3a0101 100%);
+  --grad-surface: linear-gradient(180deg, #1e1e25 0%, #0a0a0d 100%);
   /* A row or chip inside a card. Kept translucent so the panel shows through
      and the stack still reads as three depths rather than three colours. */
-  --grad-card:    linear-gradient(180deg, rgba(255,120,110,0.13) 0%, rgba(0,0,0,0.26) 100%);
-  /* Something meant to be pressed. */
-  --grad-raise:   linear-gradient(180deg, #a81818 0%, #6d0404 100%);
-  --grad-raise-h: linear-gradient(180deg, #c62020 0%, #8a0808 100%);
+  --grad-card:    linear-gradient(180deg, rgba(255,255,255,0.09) 0%, rgba(0,0,0,0.30) 100%);
+  /* Something meant to be pressed: the toolbar's gold. */
+  --grad-raise:   linear-gradient(180deg, #e8bc22 0%, #ae820c 100%);
+  --grad-raise-h: linear-gradient(180deg, #ffd44d 0%, #b8860b 100%);
   /* Something already pressed, lit from below so it reads as pushed in. */
-  --grad-sunk:    linear-gradient(180deg, #2b0000 0%, #4d0404 100%);
-  /* The dim behind a modal. Warm rather than neutral black, so the red of
-     the page carries through it. */
+  --grad-sunk:    linear-gradient(180deg, #050507 0%, #1a1a20 100%);
+  /* The dim behind a modal: neutral black, the page carries through it. */
   --grad-scrim:   radial-gradient(130% 100% at 50% 0%,
-                    rgba(94,4,4,0.80) 0%, rgba(10,0,0,0.90) 70%, rgba(0,0,0,0.94) 100%);
+                    rgba(20,20,26,0.82) 0%, rgba(5,5,8,0.92) 70%, rgba(0,0,0,0.95) 100%);
 
   /* The bevel. Top lip catches the light, bottom lip falls into shadow. */
-  --edge-3d: inset 0 1px 0 rgba(255,186,176,0.30), inset 0 -1px 0 rgba(0,0,0,0.60);
-  --edge-3d-soft: inset 0 1px 0 rgba(255,186,176,0.18), inset 0 -1px 0 rgba(0,0,0,0.42);
+  --edge-3d: inset 0 1px 0 rgba(255,222,140,0.28), inset 0 -1px 0 rgba(0,0,0,0.60);
+  --edge-3d-soft: inset 0 1px 0 rgba(255,222,140,0.16), inset 0 -1px 0 rgba(0,0,0,0.42);
   /* And the drop, so the slab has somewhere to sit. */
   --lift-3d: 0 12px 30px -10px rgba(0,0,0,0.85), 0 2px 6px rgba(0,0,0,0.45);
   --lift-3d-sm: 0 6px 16px -6px rgba(0,0,0,0.75);
-  --edge-red: rgba(190,20,20,0.55);
+  --edge-red: rgba(232,184,0,0.45);
 }
 
 /* ── 1. Panel shells ──────────────────────────────────────────────────── */
@@ -71703,17 +71722,17 @@ function closeCredits() {
   background-image: var(--grad-panel);
 }
 #lqm-set-rail {
-  background-image: linear-gradient(180deg, #4a0202 0%, #240000 100%);
+  background-image: linear-gradient(180deg, #202027 0%, #0a0a0d 100%);
   border-right: 1px solid var(--edge-red);
 }
 #lqm-set-content {
-  background-image: linear-gradient(180deg, #3d0101 0%, #1e0000 100%);
+  background-image: linear-gradient(180deg, #1a1a20 0%, #0b0b0e 100%);
 }
 .lqm-settings-group {
   border-color: var(--edge-red);
 }
 .lqm-settings-category {
-  background-image: linear-gradient(180deg, rgba(255,120,110,0.16) 0%, rgba(0,0,0,0.10) 100%);
+  background-image: linear-gradient(180deg, rgba(255,255,255,0.11) 0%, rgba(0,0,0,0.12) 100%);
   border-radius: 7px;
   padding: 5px 8px;
   box-shadow: var(--edge-3d-soft);
@@ -71888,12 +71907,12 @@ function closeCredits() {
 .tool-btn {
   background-image: var(--grad-raise);
   border-color: var(--edge-red);
-  color: #ffdedb;
+  color: #241a04;
   box-shadow: var(--edge-3d-soft);
 }
 .tool-btn:hover {
   background-image: var(--grad-raise-h);
-  color: #fff;
+  color: #000;
   border-color: rgba(255,90,80,0.85);
 }
 .tool-btn.active {
@@ -72138,8 +72157,28 @@ function closeCredits() {
 }
 /* The page itself, and the floor the map sits on where a tile has not arrived. */
 body {
-  background-image: linear-gradient(180deg, #7a0505 0%, #3a0000 55%, #180000 100%);
+  background-image: linear-gradient(180deg, #1c1c22 0%, #0c0c10 55%, #000000 100%);
   background-attachment: fixed;
+}
+/* The overlay button, the search bar and the account pill stand on black
+   gradients while the rest of the pressable controls wear the gold: three
+   fixed way-posts that frame the map rather than compete with it. */
+#overlay-toggle-btn,
+#overlay-toggle-btn:hover {
+  background-image: var(--grad-panel);
+  border-color: rgba(232,184,0,0.40);
+  color: #ffe9a8;
+}
+#overlay-toggle-btn:hover { background-image: var(--grad-surface); }
+#top-search-bar {
+  background: #0e0e13;
+  background-image: var(--grad-panel);
+  border-color: rgba(232,184,0,0.30);
+}
+#lqm-profile-btn {
+  background: #0e0e13;
+  background-image: var(--grad-panel);
+  border-color: rgba(232,184,0,0.40);
 }
 #map { background-image: linear-gradient(180deg, #24070a 0%, #0b0204 100%); }
 
