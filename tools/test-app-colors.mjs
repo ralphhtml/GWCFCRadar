@@ -235,7 +235,7 @@ console.log('\n3g. the themes');
 {
   const blk = (PAGE.match(/const THEME_PRESETS = \{[\s\S]*?\n\};/) || [''])[0];
   const P = new Function(blk + '\nreturn THEME_PRESETS;')();
-  ok('thirty themes ship', Object.keys(P).length === 30, String(Object.keys(P).length));
+  ok('thirty-one themes ship', Object.keys(P).length === 31, String(Object.keys(P).length));
   // Thirty hand-typed options would be thirty chances for the list and the
   // table to disagree, so the picker is built from the table.
   ok('the picker is filled from the table rather than typed out',
