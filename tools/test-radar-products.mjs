@@ -196,8 +196,13 @@ console.log('\n3. _l3BucketCode hands back the right file for the right site');
   ok('a tilt past the end clamps to the last real one rather than failing',
      got.KTLX.corrcoeff[4] === 'N3C', String(got.KTLX.corrcoeff[4]));
   ok('a product with no raw feed answers null rather than a guess',
-     await page.evaluate(() => _l3BucketCode('KTLX', 'vil', 1) === null
-                            && _l3BucketCode('KTLX', 'composite', 1) === null));
+     await page.evaluate(() => _l3BucketCode('KTLX', 'composite', 1) === null
+                            && _l3BucketCode('KTLX', 'spectrum', 1) === null));
+  ok('VIL, the two accumulations and the surface classifier decode raw now',
+     await page.evaluate(() => _l3BucketCode('KTLX', 'vil', 1) === 'DVL'
+                            && _l3BucketCode('KTLX', 'onehour', 1) === 'DAA'
+                            && _l3BucketCode('KTLX', 'stormtotal', 1) === 'DTA'
+                            && _l3BucketCode('KTLX', 'hydrohybrid', 1) === 'HHC'));
 }
 
 console.log('\n4. _prSiteCanMake tells the truth before anything is fetched');

@@ -23,6 +23,8 @@ const getLevel2MomentForLayer = (layer) => {
         return 'phi';
     case 'SW':
         return 'spectrum';
+    case 'PHI':
+        return 'phi';
     case 'ZDR':
         return 'zdr';
     default:
@@ -221,6 +223,9 @@ const processRadarData = (radar, radarLocation, extent, layer, options = {}) => 
         KDP: () => radar.getHighresDiffPhase(),
         SW:  () => radar.getHighresSpectrum(),
         ZDR: () => radar.getHighresDiffReflectivity(),
+        // The raw differential phase itself, the moment KDP is derived
+        // from: the propagation phase shift in degrees, 0 to 360.
+        PHI: () => radar.getHighresDiffPhase(),
     };
     const momentEmpty = (d) => !Array.isArray(d) || d.length === 0
         || d.every((item) => item === undefined);
@@ -827,7 +832,7 @@ self.onmessage = (event) => {
         const upperLayer = typeof layer === 'string' ? layer.toUpperCase() : '';
         // Include ZDR as a Level-II (super-res) product so ZDR archive files are
         // parsed with the Level2 parser instead of being misclassified as Level3.
-        const isLevel2Product = upperLayer === 'REF' || upperLayer === 'VEL' || upperLayer === 'CC' || upperLayer === 'KDP' || upperLayer === 'SW' || upperLayer === 'ZDR';
+        const isLevel2Product = upperLayer === 'REF' || upperLayer === 'VEL' || upperLayer === 'CC' || upperLayer === 'KDP' || upperLayer === 'SW' || upperLayer === 'ZDR' || upperLayer === 'PHI';
         const isLevel3 = !isLevel2Product;
         const buffer = Buffer.from(arrayBuffer);
 

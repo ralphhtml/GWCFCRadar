@@ -24048,6 +24048,15 @@ const PR_PRODUCTS = {
   // mesocyclone couplet the ground-relative "velocity" entry above washes
   // out under a strong environmental wind.
   srvelocity:   { label: 'Storm Rel. Velocity', l3: 'n0s', l3Tilts: ['n0s', 'n1s'] },
+  // The raw differential phase itself, the moment KDP is computed from:
+  // how far the horizontal wave has slipped behind the vertical one on the
+  // way out and back, in degrees. Level 2 only - Level 3 publishes only
+  // the derived KDP.
+  phi:          { label: 'Diff. Phase',     l2: 'phi' },
+  // The classifier run on the hybrid scan: the best unblocked tilt over
+  // every spot, so this is "what is reaching the GROUND", where the tilted
+  // N0H..N3H rows each answer for one antenna angle.
+  hydrohybrid:  { label: 'Hydro. Class (sfc)' },
   onehour:      { label: '1-Hr Precip',     l3: 'ohp' },
   stormtotal:   { label: 'Storm Total',     l3: 'stp' },
   vil:          { label: 'VIL',             l3: 'dvl' },
@@ -24543,7 +24552,11 @@ const PR_BUCKET = {
   diffrefl:     { k: ['N0X', 'N1X', 'N2X', 'N3X'] },   // 159
   kdp:          { k: ['N0K', 'N1K', 'N2K', 'N3K'] },   // 163
   hydroclass:   { k: ['N0H', 'N1H', 'N2H', 'N3H'] },   // 165
+  hydrohybrid:  { k: ['HHC'] },                        // 177: the hybrid-scan classifier
   echotops:     { k: ['EET'] },                        // 135
+  vil:          { k: ['DVL'] },                        // 134: high resolution digital VIL
+  onehour:      { k: ['DAA'] },                        // 170: digital one hour accumulation
+  stormtotal:   { k: ['DTA'] },                        // 172: digital storm total
 };
 
 // Which products a terminal radar physically cannot make, said once so the
@@ -24554,7 +24567,8 @@ const PR_BUCKET = {
 // Echo tops and storm relative velocity are computed by a NEXRAD's RPG from a
 // full volume the terminal's product generator does not build.
 const TDWR_CANNOT = ['corrcoeff', 'diffrefl', 'kdp', 'hydroclass',
-                     'echotops', 'srvelocity'];
+                     'echotops', 'srvelocity', 'phi', 'hydrohybrid',
+                     'vil', 'onehour', 'stormtotal'];
 
 // Everything that still has no raw feed this browser can decode correctly.
 // VIL, composite reflectivity and spectrum width are all published as the old
@@ -24562,8 +24576,7 @@ const TDWR_CANNOT = ['corrcoeff', 'diffrefl', 'kdp', 'hydroclass',
 // number, and the table that turns those codes back into kg/m² or dBZ is not
 // in the decoder yet. The Pi renders them as finished pictures instead, which
 // is why they still appear for the radars the Pi covers and nowhere else.
-const PR_PICTURE_ONLY = ['vil', 'composite', 'spectrum',
-                         'onehour', 'stormtotal'];
+const PR_PICTURE_ONLY = ['composite', 'spectrum'];
 
 // Can this site make this product at all? Answered from the tables above
 // rather than from a failed download, so the menu can say so before the tap.
@@ -24987,13 +25000,13 @@ async function _l2ArcVolumes(site, at, n, cap, startBack) {
 // uses: same worker, same mesh renderer, same colours.
 async function _l2ArcShow(site, at) {
   const longMap = { reflectivity: 'ref', velocity: 'vel', corrcoeff: 'cc',
-                    diffrefl: 'zdr', kdp: 'kdp' };
-  const shortOk = ['ref', 'vel', 'cc', 'zdr', 'kdp', 'sw'];
+                    diffrefl: 'zdr', kdp: 'kdp', phi: 'phi' };
+  const shortOk = ['ref', 'vel', 'cc', 'zdr', 'kdp', 'sw', 'phi'];
   const want = (typeof _prProduct !== 'undefined' && _prProduct) || '';
   const product = longMap[want] || (shortOk.includes(want) ? want : null)
     || (typeof currentProduct !== 'undefined' && shortOk.includes(currentProduct)
         ? currentProduct : 'ref');
-  const layer = { cc: 'CC', zdr: 'ZDR', vel: 'VEL', ref: 'REF', kdp: 'KDP', sw: 'SW' }[product];
+  const layer = { cc: 'CC', zdr: 'ZDR', vel: 'VEL', ref: 'REF', kdp: 'KDP', sw: 'SW', phi: 'PHI' }[product];
   const atEl = document.getElementById('anim-time');
   if (atEl) atEl.textContent = 'Reading the Level 2 tape archive…';
   try {
@@ -33360,6 +33373,8 @@ const RADAR_L2_BUBBLES = [
     icon:'<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gauge></use></svg>' },
   { id:'l2-sw', product:'sw', label:'Spectrum Width',
     icon:'<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-sliders></use></svg>' },
+  { id:'l2-phi', product:'phi', label:'Diff. Phase',
+    icon:'<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-hex></use></svg>' },
 ];
 
 // The two products the Pi renders, named the way the pickers name them so the
@@ -42046,7 +42061,7 @@ function _cmGoRadar() {
   if (!s) return;
   map.flyTo([s.lat, s.lon], Math.max(map.getZoom(), 8));
   if (typeof _isTdwrSite === 'function' && _isTdwrSite(s.id)
-      && ['cc', 'zdr', 'kdp'].includes(currentProduct)) {
+      && ['cc', 'zdr', 'kdp', 'phi'].includes(currentProduct)) {
     currentProduct = 'ref';
   }
   toggleRadarSub();
@@ -43668,7 +43683,7 @@ function _animSource() {
     // times, from a layer nobody could see, under a satellite that was blank.
     if (activeLayers && activeLayers.satellite)
       return mk('sat', goesFrames.map(f => f.time), goesCurrentFrame);
-    if (['hc', 'accum', 'boha', 'cc', 'zdr', 'kdp', 'sw'].indexOf(currentProduct) !== -1)
+    if (['hc', 'accum', 'boha', 'cc', 'zdr', 'kdp', 'sw', 'phi'].indexOf(currentProduct) !== -1)
       return mk('dp', _dpFrames.map(f => new Date(f.time * 1000)), _dpCurrentFrame);
     if (currentProduct === 'vel')
       return mk('vel', velFrames.map(f => new Date(f.time * 1000)), velCurrentFrame);
@@ -44612,7 +44627,7 @@ let _radarWorkerPending = null;  // { resolve, reject } for current request
 // is a new URL, and a page from before the build keeps the URL its decoder
 // answers to. A mismatched pair is how "Parse failed" appears on one device
 // while the same click works everywhere else.
-var RADAR_WORKER_V = '0729362f';
+var RADAR_WORKER_V = '0da718d3';
 
 function _getRadarWebWorker() {
   if (_radarWebWorker) return _radarWebWorker;
@@ -45169,7 +45184,7 @@ async function _l2LoopBuild(product, station, curImg) {
   try {
     const bufs = await _fetchRecentVolumes(station, L2_LOOP_MAX, undefined, undefined, undefined, _l2Loop.abort.signal);
     if (token !== _l2Loop.token) return;          // superseded by a newer draw
-    const layerMap = { cc: 'CC', zdr: 'ZDR', vel: 'VEL', ref: 'REF', kdp: 'KDP', sw: 'SW' };
+    const layerMap = { cc: 'CC', zdr: 'ZDR', vel: 'VEL', ref: 'REF', kdp: 'KDP', sw: 'SW', phi: 'PHI' };
     const layer = layerMap[product] || product.toUpperCase();
     // bufs[0] is the newest, already drawn as frame 0; decode the older ones
     // on the pool, several at a time. The volumes are already in hand here,
@@ -45915,7 +45930,7 @@ async function _loadL3DataInner(product, stationOverride, retried, gen, signal, 
     }
   }
 
-  var layerMap = { cc: 'CC', zdr: 'ZDR', vel: 'VEL', ref: 'REF', kdp: 'KDP', sw: 'SW' };
+  var layerMap = { cc: 'CC', zdr: 'ZDR', vel: 'VEL', ref: 'REF', kdp: 'KDP', sw: 'SW', phi: 'PHI' };
   var layer = layerMap[product] || product.toUpperCase();
   var result;
   try {
@@ -46494,8 +46509,12 @@ function _meshFamily(product) {
   if (p === 'cc'  || /^n\dc$/.test(p)) return 'cc';
   if (p === 'zdr' || /^n\dx$/.test(p)) return 'zdr';
   if (p === 'kdp' || /^n\dk$/.test(p)) return 'kdp';
-  if (/^n\dh$/.test(p)) return 'hc';
+  if (/^n\dh$/.test(p) || p === 'hhc' || p === 'hydrohybrid') return 'hc';
   if (p === 'eet') return 'et';
+  if (p === 'dvl' || p === 'vil') return 'vil';
+  if (p === 'daa' || p === 'onehour') return 'onehour';
+  if (p === 'dta' || p === 'stormtotal') return 'stormtotal';
+  if (p === 'phi') return 'phi';
   return null;
 }
 
@@ -46517,6 +46536,14 @@ const RADAR_FAMS = {
   kdp: { label: 'Spec. Diff. Phase', unit: '°/km', min: -2,  max: 7,   step: 0.1 },
   hc:  { label: 'Hydro. Class.',     unit: '',     min: 0,   max: 160, step: 10 },
   et:  { label: 'Echo Tops',         unit: 'kft',  min: 0,   max: 70,  step: 1 },
+  // Raw now, not just a Pi picture: DVL, DAA and DTA decode in this
+  // browser for every NEXRAD, so these three carry real numbers a value
+  // filter and a custom palette can work on. The ramp stays for the Pi's
+  // prebuilt pictures, which recolor by ramp rather than by value.
+  vil:        { label: 'VIL',           unit: 'kg/m²', min: 0, max: 80,  step: 1, ramp: 'heat' },
+  onehour:    { label: '1-Hr Precip',   unit: 'mm',    min: 0, max: 75,  step: 1, ramp: 'precip' },
+  stormtotal: { label: 'Storm Total',   unit: 'mm',    min: 0, max: 200, step: 5, ramp: 'precip' },
+  phi:        { label: 'Diff. Phase',   unit: '°',     min: 0, max: 360, step: 5 },
 };
 
 // The four Level 3 products with no raw feed at all: the Pi bakes them
@@ -46733,6 +46760,24 @@ const VEL_BANDS = [
   [80, '#ff5050'], [100, '#ff9090'], [140, '#ffd0d0'],
 ];
 
+// Vertically integrated liquid, in kg/m². The classic hail ladder: under 10
+// is rain, the 20s are storms worth watching, 45 and up grows hail, and the
+// purple top of the scale is the day the car gets dents.
+const VIL_BANDS = [
+  [0.05, '#50506e'], [1, '#5a5a96'], [2, '#4040c0'], [5, '#00a0f0'], [10, '#00e000'],
+  [15, '#00b400'], [20, '#ffff00'], [25, '#ffc800'], [30, '#ff9000'],
+  [35, '#ff5000'], [40, '#f00000'], [45, '#c00000'], [55, '#ff00ff'],
+  [65, '#c050ff'], [80, '#ffffff'],
+];
+// Rain accumulation in millimetres, one table for the hour and the storm
+// total: the same scale the Pi's precip ramp walks, as discrete bands.
+const PRECIP_BANDS = [
+  [0.2, '#b4b4b4'], [2.5, '#00c8c8'], [6, '#0096f0'], [12, '#0032c8'],
+  [19, '#00fa00'], [25, '#00b400'], [32, '#ffff00'], [44, '#ffc800'],
+  [57, '#ff6400'], [75, '#e60000'], [100, '#b40000'], [125, '#ff00ff'],
+  [150, '#a064ff'], [200, '#ffffff'],
+];
+
 // Specific differential phase, in degrees per kilometre. How much the rain
 // between here and there has slowed the horizontal wave against the vertical
 // one, which is the closest thing radar has to a direct measure of liquid
@@ -46825,6 +46870,19 @@ function _meshColorFn(product) {
     var t = v / 15; t = t < 0 ? 0 : t > 1 ? 1 : t;
     return 'hsl(' + Math.round(60 - t * 60) + ',80%,45%)'; // yellow (calm) -> red (turbulent)
   };
+  if (fam === 'vil') return function(v) {
+    return _bandColor(VIL_BANDS, v);
+  };
+  if (fam === 'onehour' || fam === 'stormtotal') return function(v) {
+    return _bandColor(PRECIP_BANDS, v);
+  };
+  if (fam === 'phi') return function(v) {
+    // The full colour wheel across 0-360: phase is cyclic, so the scale
+    // should be too, and every degree lands on its own hue.
+    if (v == null || v !== v) return null;
+    var d = ((v % 360) + 360) % 360;
+    return 'hsl(' + Math.round(d) + ',85%,50%)';
+  };
   if (fam === 'vel') return function(v) {
     // Knots at both levels: Level 2 is converted by the decoder and Level 3
     // the moment it lands, so one number means one speed everywhere.
@@ -46868,6 +46926,14 @@ function _l3MeshNormalize(meshData, code) {
     for (var j = 8; j < meshData.length; j += 9) {
       var w = meshData[j];
       if (w === w && w >= 150) meshData[j] = w - 150; // topped flag off
+    }
+  } else if (c === 'daa' || c === 'dta') {
+    // The accumulation files count in inches; everything else in this app
+    // that measures rain depth (the Pi pictures, the family scale) speaks
+    // millimetres, so one filter number means one depth everywhere.
+    for (var q = 8; q < meshData.length; q += 9) {
+      var u = meshData[q];
+      if (u === u) meshData[q] = u * 25.4;
     }
   }
 }
@@ -46952,6 +47018,7 @@ const FX_DEFAULT_STOPS = {
   hc:  ['#8a8f98', '#3b82f6', '#22c55e', '#f97316', '#ef4444'],
   et:  ['#3050d0', '#30b0d0', '#30d060', '#e0c030', '#e03030'],
   vil:        ['#0a1050', '#2050c0', '#40a020', '#e0c020', '#e02020'],
+  phi:        ['#d04040', '#d0d040', '#40d040', '#40d0d0', '#4040d0'],
   composite:  ['#04e9e7', '#019ff4', '#02fd02', '#fdf802', '#fd0000'],
   onehour:    ['#c8f0c8', '#3cbe6e', '#288cdc', '#8c3cc8', '#e63c78'],
   stormtotal: ['#c8f0c8', '#3cbe6e', '#288cdc', '#8c3cc8', '#e63c78'],
@@ -47003,7 +47070,10 @@ function _fxUiSync() {
     sel.appendChild(rawGrp);
     var picGrp = document.createElement('optgroup');
     picGrp.label = 'Picture only (colors, no filter)';
-    Object.keys(RADAR_PICTURE_FAMS).forEach(function (id) {
+    // A family that graduated to raw values (VIL and the accumulations
+    // decode in this browser now) already sits in the group above; listing
+    // it here again would offer the same product twice.
+    Object.keys(RADAR_PICTURE_FAMS).filter(function (id) { return !RADAR_FAMS[id]; }).forEach(function (id) {
       var d = RADAR_PICTURE_FAMS[id];
       var o = document.createElement('option');
       o.value = id;
@@ -47667,7 +47737,7 @@ async function _siteView(s) {
     // falls back to reflectivity, and the menu redraws to this site's
     // real offerings.
     if (typeof _isTdwrSite === 'function' && _isTdwrSite(s.id) &&
-        ['cc', 'zdr', 'kdp'].includes(currentProduct)) {
+        ['cc', 'zdr', 'kdp', 'phi'].includes(currentProduct)) {
       currentProduct = 'ref';
     }
     if (document.getElementById('sub-l2-ref')) toggleRadarL2Sub();
@@ -47711,7 +47781,7 @@ async function _siteView(s) {
   } else if (currentProduct === 'hc' || currentProduct === 'accum' || currentProduct === 'boha') {
     loadDualPolData(currentProduct, s.id);
     _refreshNexradSiteStyles();
-  } else if (currentProduct === 'cc' || currentProduct === 'zdr' || currentProduct === 'kdp' || currentProduct === 'sw') {
+  } else if (currentProduct === 'cc' || currentProduct === 'zdr' || currentProduct === 'kdp' || currentProduct === 'sw' || currentProduct === 'phi') {
     loadL3Data(currentProduct, s.id);
     _refreshNexradSiteStyles();
   } else {
@@ -47811,7 +47881,7 @@ function _rcMainSite() {
   else if (currentProduct === 'ref') s = _refStation;
   else if (currentProduct === 'vel') s = _velStation;
   else if (currentProduct === 'hc' || currentProduct === 'accum' || currentProduct === 'boha') s = _dpStation;
-  else if (['cc', 'zdr', 'kdp', 'sw'].includes(currentProduct)) s = _l3Station;
+  else if (['cc', 'zdr', 'kdp', 'sw', 'phi'].includes(currentProduct)) s = _l3Station;
   return s ? String(s).toLowerCase() : null;
 }
 
@@ -48115,7 +48185,7 @@ async function _rcMeshSlot(slot, plan, alive) {
         .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); });
     } else {
       product = plan.product;
-      const lm = { cc: 'CC', zdr: 'ZDR', vel: 'VEL', ref: 'REF', kdp: 'KDP', sw: 'SW' };
+      const lm = { cc: 'CC', zdr: 'ZDR', vel: 'VEL', ref: 'REF', kdp: 'KDP', sw: 'SW', phi: 'PHI' };
       layerName = lm[product] || String(product).toUpperCase();
       try {
         buf = await _fetchVolumeDirect(lc);
@@ -48164,7 +48234,7 @@ function _rcMainTimeMs() {
       const st = _prLoop.frames[_prLoop.idx];
       return st ? _prStampToMs(st) : Date.now();
     }
-    if (_radarSource === 'l2' || ['cc', 'zdr', 'kdp', 'sw'].includes(currentProduct)) {
+    if (_radarSource === 'l2' || ['cc', 'zdr', 'kdp', 'sw', 'phi'].includes(currentProduct)) {
       const f = _l2Loop.frames[_l2Loop.idx]; return f ? f.time : Date.now();
     }
     if (currentProduct === 'ref') { const f = _refSiteFrames[currentFrame]; return f ? _rcMs(f.time) : Date.now(); }
@@ -52587,7 +52657,7 @@ function selectProduct(p) {
     _dpLayerPool.forEach(l => { try { map.removeLayer(l); } catch(e){} });
     _dpLayerPool = []; _dpPoolLoaded = [];
     loadDualPolData(p);
-  } else if (p === 'cc' || p === 'zdr' || p === 'kdp' || p === 'sw') {
+  } else if (p === 'cc' || p === 'zdr' || p === 'kdp' || p === 'sw' || p === 'phi') {
     if (playing)     { _stopRAF(); playing     = false; document.getElementById('play-btn').innerHTML = '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg>'; document.getElementById('play-btn').classList.remove('active'); }
     if (playingBack) { _stopRAF(); playingBack = false; document.getElementById('play-back-btn').classList.remove('active'); document.getElementById('play-back-btn').innerHTML = '<svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(180deg)><use href=#ic-play></use></svg>'; }
     try { _refreshPlayButtonsEnabled(); } catch(e) {}
@@ -64397,6 +64467,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-18-a', date: 'Sep 18, 2026',
+    text: 'Five more raw radar products. On Level 3, for every NEXRAD in the country: digital VIL (how much water a storm column holds, the classic hail clue), one-hour rainfall, storm-total rainfall, and the surface hydrometeor class (what is actually reaching the ground - rain, snow, hail). VIL, 1-Hr Precip and Storm Total used to be pictures for a handful of Pi radars; they now decode raw in your browser everywhere, which also means the Time Machine, the value filter and your custom colours all work on them. On Level 2: differential phase (PHI), the raw dual-pol moment KDP is computed from, on its own colour wheel, in the Level 2 menu and in Volumetric 3D. Rain totals show in millimetres wherever they appear.' },
   { id: '2026-09-17-s', date: 'Sep 17, 2026',
     text: 'Volumetric 3D accuracy audit. Every height in the 3D box is now recovered by the exact inverse of the same beam formula the heights were stored with, on the same effective earth radius, so a sample lands on precisely the tilt it came from (the old inverse drifted up to a degree at steep angles). Verified numerically: elevation round trip exact to five decimals, values through the volume within 1.7 dBZ of the input, velocity signs exact, and on a real archived supercell 98 percent of strong gates read identical to the flat picture with the rest being sharp edges the interpolation smooths on purpose. Storm-top heights and time stamps check out exactly.' },
   { id: '2026-09-17-r', date: 'Sep 17, 2026',
@@ -68101,7 +68173,7 @@ async function _xsBuildInner(token) {
   }
   if (!buf) throw new Error('no volume for ' + site.toUpperCase());
 
-  const layerMap = { cc: 'CC', zdr: 'ZDR', vel: 'VEL', ref: 'REF', kdp: 'KDP', sw: 'SW' };
+  const layerMap = { cc: 'CC', zdr: 'ZDR', vel: 'VEL', ref: 'REF', kdp: 'KDP', sw: 'SW', phi: 'PHI' };
   const layer = layerMap[product] || product.toUpperCase();
 
   // One decode to find out what angles the volume actually holds. A VCP is
@@ -68439,6 +68511,7 @@ const R3D_PRODUCTS = [
   { id: 'cc', label: 'Correlation (CC)', layer: 'CC', l3: 'corrcoeff', min: 0.2, max: 1.05, unit: '', inverted: true, floor: null, filter: 0 },
   { id: 'zdr', label: 'Differential (ZDR)', layer: 'ZDR', l3: 'diffrefl', min: -8, max: 8, unit: 'dB', absolute: true, floor: null, filter: 0 },
   { id: 'kdp', label: 'Specific phase (KDP)', layer: 'KDP', l3: 'kdp', min: -2, max: 7, unit: 'deg/km', floor: null, filter: 0 },
+  { id: 'phi', label: 'Differential phase', layer: 'PHI', l3: null, min: 0, max: 360, unit: 'deg', floor: null, filter: 0 },
 ];
 function _r3dSpec(id) { return R3D_PRODUCTS.find(p => p.id === id) || R3D_PRODUCTS[0]; }
 function _r3dSpecByLayer(layer) { return R3D_PRODUCTS.find(p => p.layer === String(layer || '').toUpperCase()) || R3D_PRODUCTS[0]; }

@@ -361,19 +361,20 @@ console.log('\n7. warming, and knowing when not to');
   s3Requests = [];
   const r = await page.evaluate(async () => {
     _prProduct = 'reflectivity'; _prTilt = 1;
-    _arcMem.clear(); _arcWarmAt = 0;
+    _arcMem.clear(); _arcHourMem.clear(); _arcWarmAt = 0;
     _arcWarm('KTLX');
     await new Promise(res => setTimeout(res, 350));
-    const afterOne = performance.now();
-    // A click straight after should find the listing already in hand.
-    const t = performance.now();
-    const keys = await _arcDayKeys('KTLX', 'N0B', Date.now());
-    return { warmed: keys.length, msAfterWarm: performance.now() - t };
+    // A click straight after asks for the newest scan, which reads the
+    // same hour listings the warm just cached - so it must answer from
+    // memory, with no new request.
+    const before = performance.now();
+    const url = await _l3BucketNewest('KTLX', 'N0B');
+    return { url: !!url, msAfterWarm: performance.now() - before };
   });
   ok('warming a site reads its listing', s3Requests.length >= 1,
      `${s3Requests.length} requests`);
   ok('and the click that follows finds it already there',
-     r.msAfterWarm < 5, r.msAfterWarm.toFixed(2) + ' ms');
+     r.url && r.msAfterWarm < 5, r.msAfterWarm.toFixed(2) + ' ms');
 
   // Somebody on a metered connection did not ask for this.
   const saved = await page.evaluate(async () => {
