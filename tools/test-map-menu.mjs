@@ -58,10 +58,14 @@ await page.goto('file://' + join(ROOT, 'index.html'),
 await page.waitForTimeout(3500);
 
 // A right-click, the way Leaflet delivers one.
-const rclick = (lat, lng) => page.evaluate(([lat, lng]) =>
+const rclick = (lat, lng) => page.evaluate(([lat, lng]) => {
+  // Braces on purpose: map.fire returns the map itself, and the map now
+  // carries a canvas renderer whose object graph is too deep for the
+  // harness to serialize back.
   map.fire('contextmenu', { latlng: L.latLng(lat, lng),
     originalEvent: { clientX: 400, clientY: 300, preventDefault() {},
-                     stopPropagation() {} } }), [lat, lng]);
+                     stopPropagation() {} } });
+}, [lat, lng]);
 const menuOpen = () => page.evaluate(() => {
   const el = document.getElementById('map-ctx-menu');
   return !!(el && el.classList.contains('open'));
