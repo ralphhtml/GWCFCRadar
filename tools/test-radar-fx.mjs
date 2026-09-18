@@ -269,8 +269,8 @@ console.log('\n6. the Settings panel drives it all');
                    + document.getElementById('lqm-fx-max').max;
     return { opts: opts.join(','), velRange, velLabel, refRange };
   });
-  ok('the picker offers every family',
-     ui.opts === 'ref,vel,sw,cc,zdr,kdp,hc,et,vil,composite,onehour,stormtotal', ui.opts);
+  ok('the picker offers every family, each exactly once',
+     ui.opts === 'ref,vel,sw,cc,zdr,kdp,hc,et,vil,onehour,stormtotal,phi,composite', ui.opts);
   ok('velocity gets its own knots range', ui.velRange === '-100..100'
      && / kt$/.test(ui.velLabel), ui.velRange + ' / ' + ui.velLabel);
   ok('reflectivity gets the dBZ range', ui.refRange === '-30..80', ui.refRange);
@@ -297,7 +297,7 @@ console.log('\n6. the Settings panel drives it all');
 console.log('\n6b. picture-only families hide the filter, raw families keep it');
 {
   const rows = await page.evaluate(() => {
-    _fxUiPick('vil');
+    _fxUiPick('composite');
     const pic = {
       filter: document.getElementById('lqm-fx-filter-row').style.display,
       min: document.getElementById('lqm-fx-min-row').style.display,
@@ -313,7 +313,7 @@ console.log('\n6b. picture-only families hide the filter, raw families keep it')
     };
     return { pic, raw };
   });
-  ok('VIL (picture-only) hides the filter/min/max rows and shows the note',
+  ok('Composite (picture-only) hides the filter/min/max rows and shows the note',
      rows.pic.filter === 'none' && rows.pic.min === 'none'
      && rows.pic.max === 'none' && rows.pic.note !== 'none',
      JSON.stringify(rows.pic));
@@ -706,7 +706,8 @@ console.log('\n14. every product covers the range it claims to cover');
   const r = await page.evaluate(() => {
     _fxUiResetAll();
     const pick = { ref: 'ref', vel: 'vel', sw: 'sw', cc: 'cc',
-                   zdr: 'zdr', kdp: 'kdp', hc: 'n0h', et: 'eet' };
+                   zdr: 'zdr', kdp: 'kdp', hc: 'n0h', et: 'eet',
+                   vil: 'dvl', onehour: 'daa', stormtotal: 'dta', phi: 'phi' };
     const out = {};
     Object.keys(RADAR_FAMS).forEach(fam => {
       const d = RADAR_FAMS[fam];

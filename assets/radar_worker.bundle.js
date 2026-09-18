@@ -58,10 +58,10 @@
       var lookup = [];
       var revLookup = [];
       var Arr = typeof Uint8Array !== "undefined" ? Uint8Array : Array;
-      var code41 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-      for (i = 0, len = code41.length; i < len; ++i) {
-        lookup[i] = code41[i];
-        revLookup[code41.charCodeAt(i)] = i;
+      var code42 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+      for (i = 0, len = code42.length; i < len; ++i) {
+        lookup[i] = code42[i];
+        revLookup[code42.charCodeAt(i)] = i;
       }
       var i;
       var len;
@@ -1546,9 +1546,9 @@
             throw new TypeError("Unknown encoding: " + encoding);
           }
           if (val.length === 1) {
-            const code41 = val.charCodeAt(0);
-            if (encoding === "utf8" && code41 < 128 || encoding === "latin1") {
-              val = code41;
+            const code42 = val.charCodeAt(0);
+            if (encoding === "utf8" && code42 < 128 || encoding === "latin1") {
+              val = code42;
             }
           }
         } else if (typeof val === "number") {
@@ -3489,11 +3489,11 @@
       /*.Len*/
     );
   };
-  var bi_reverse = (code41, len) => {
+  var bi_reverse = (code42, len) => {
     let res = 0;
     do {
-      res |= code41 & 1;
-      code41 >>>= 1;
+      res |= code42 & 1;
+      code42 >>>= 1;
       res <<= 1;
     } while (--len > 0);
     return res >>> 1;
@@ -3579,12 +3579,12 @@
   };
   var gen_codes = (tree, max_code, bl_count) => {
     const next_code = new Array(MAX_BITS$1 + 1);
-    let code41 = 0;
+    let code42 = 0;
     let bits;
     let n;
     for (bits = 1; bits <= MAX_BITS$1; bits++) {
-      code41 = code41 + bl_count[bits - 1] << 1;
-      next_code[bits] = code41;
+      code42 = code42 + bl_count[bits - 1] << 1;
+      next_code[bits] = code42;
     }
     for (n = 0; n <= max_code; n++) {
       let len = tree[n * 2 + 1];
@@ -3598,29 +3598,29 @@
     let n;
     let bits;
     let length;
-    let code41;
+    let code42;
     let dist;
     const bl_count = new Array(MAX_BITS$1 + 1);
     length = 0;
-    for (code41 = 0; code41 < LENGTH_CODES$1 - 1; code41++) {
-      base_length[code41] = length;
-      for (n = 0; n < 1 << extra_lbits[code41]; n++) {
-        _length_code[length++] = code41;
+    for (code42 = 0; code42 < LENGTH_CODES$1 - 1; code42++) {
+      base_length[code42] = length;
+      for (n = 0; n < 1 << extra_lbits[code42]; n++) {
+        _length_code[length++] = code42;
       }
     }
-    _length_code[length - 1] = code41;
+    _length_code[length - 1] = code42;
     dist = 0;
-    for (code41 = 0; code41 < 16; code41++) {
-      base_dist[code41] = dist;
-      for (n = 0; n < 1 << extra_dbits[code41]; n++) {
-        _dist_code[dist++] = code41;
+    for (code42 = 0; code42 < 16; code42++) {
+      base_dist[code42] = dist;
+      for (n = 0; n < 1 << extra_dbits[code42]; n++) {
+        _dist_code[dist++] = code42;
       }
     }
     dist >>= 7;
-    for (; code41 < D_CODES$1; code41++) {
-      base_dist[code41] = dist << 7;
-      for (n = 0; n < 1 << extra_dbits[code41] - 7; n++) {
-        _dist_code[256 + dist++] = code41;
+    for (; code42 < D_CODES$1; code42++) {
+      base_dist[code42] = dist << 7;
+      for (n = 0; n < 1 << extra_dbits[code42] - 7; n++) {
+        _dist_code[256 + dist++] = code42;
       }
     }
     for (bits = 0; bits <= MAX_BITS$1; bits++) {
@@ -3705,7 +3705,7 @@
     let dist;
     let lc;
     let sx = 0;
-    let code41;
+    let code42;
     let extra;
     if (s.sym_next !== 0) {
       do {
@@ -3715,19 +3715,19 @@
         if (dist === 0) {
           send_code(s, lc, ltree);
         } else {
-          code41 = _length_code[lc];
-          send_code(s, code41 + LITERALS$1 + 1, ltree);
-          extra = extra_lbits[code41];
+          code42 = _length_code[lc];
+          send_code(s, code42 + LITERALS$1 + 1, ltree);
+          extra = extra_lbits[code42];
           if (extra !== 0) {
-            lc -= base_length[code41];
+            lc -= base_length[code42];
             send_bits(s, lc, extra);
           }
           dist--;
-          code41 = d_code(dist);
-          send_code(s, code41, dtree);
-          extra = extra_dbits[code41];
+          code42 = d_code(dist);
+          send_code(s, code42, dtree);
+          extra = extra_dbits[code42];
           if (extra !== 0) {
-            dist -= base_dist[code41];
+            dist -= base_dist[code42];
             send_bits(s, dist, extra);
           }
         }
@@ -8198,12 +8198,12 @@
   var MODE_MAINTENANCE = 0;
   var MODE_CLEAN_AIR = 1;
   var MODE_PRECIPITATION = 2;
-  var parseProductDescription = (raf, product25) => {
+  var parseProductDescription = (raf, product26) => {
     const divider = raf.readShort();
     if (divider !== -1) throw new Error(`Invalid product description divider: ${divider}`);
     const result = {
-      abbreviation: product25.abbreviation,
-      description: product25.description,
+      abbreviation: product26.abbreviation,
+      description: product26.description,
       latitude: raf.readInt() / 1e3,
       longitude: raf.readInt() / 1e3,
       height: raf.readShort(),
@@ -8217,16 +8217,16 @@
       productDate: raf.readShort(),
       productTime: raf.readInt(),
       // halfwords 27-28 are product dependent
-      ...product25?.productDescription?.halfwords27_28?.(raf.read(4)) ?? { dependent27_28: raf.read(4) },
+      ...product26?.productDescription?.halfwords27_28?.(raf.read(4)) ?? { dependent27_28: raf.read(4) },
       elevationNumber: raf.readShort(),
       // halfwords 30-53 are product dependent
-      ...product25?.productDescription?.halfwords30_53?.(raf.read(48)) ?? { dependent30_53: raf.read(48) },
+      ...product26?.productDescription?.halfwords30_53?.(raf.read(48)) ?? { dependent30_53: raf.read(48) },
       version: raf.readByte(),
       spotBlank: raf.readByte(),
       offsetSymbology: raf.readInt(),
       offsetGraphic: raf.readInt(),
       offsetTabular: raf.readInt(),
-      supplemental: product25.supplemental
+      supplemental: product26.supplemental
     };
     return result;
   };
@@ -8301,7 +8301,7 @@
     default: () => tabular_default
   });
   init_inject_buffer();
-  var parse7 = (raf, product25) => {
+  var parse7 = (raf, product26) => {
     const blockDivider = raf.readShort();
     const blockId = raf.readShort();
     const blockLength = raf.readInt();
@@ -8310,7 +8310,7 @@
     if (blockLength < 1 || blockLength > 65535) throw new Error(`Invalid block length ${blockLength}`);
     if (blockLength + raf.getPos() - 8 > raf.getLength()) throw new Error(`Block length ${blockLength} overruns file length for block id: ${blockId}`);
     const messageHeader2 = message_default(raf);
-    const productDescription2 = parseProductDescription(raf, product25);
+    const productDescription2 = parseProductDescription(raf, product26);
     const blockDivider2 = raf.readShort();
     if (blockDivider2 !== -1) throw new Error(`Invalid second tabular block divider: ${blockDivider2}`);
     const result = {
@@ -9815,7 +9815,7 @@
   }
   var __default21 = product10;
 
-  // src/parse/level3/src/products/135/index.js
+  // src/parse/level3/src/products/134/index.js
   var __exports22 = {};
   __export(__exports22, {
     abbreviation: () => abbreviation11,
@@ -9825,9 +9825,16 @@
     halfwords30_53: () => halfwords30_538
   });
   init_inject_buffer();
-  var code27 = 135;
-  var abbreviation11 = ["EET"];
-  var description27 = "Enhanced Echo Tops";
+  var code27 = 134;
+  var abbreviation11 = ["DVL"];
+  var description27 = "High Resolution Digital VIL";
+  var codedFloat16 = (value) => {
+    const sign = value >> 15 & 1;
+    const exponent = value >> 10 & 31;
+    const fraction = value & 1023;
+    const magnitude = exponent === 0 ? fraction * 2 ** -24 : 2 ** (exponent - 25) * (1024 + fraction);
+    return sign ? -magnitude : magnitude;
+  };
   var deltaTime3 = (value) => ({
     deltaTime: (value & 65504) >> 5,
     nonSupplementalScan: (value & 31) === 0,
@@ -9835,6 +9842,80 @@
     mrleScan: (value & 31) === 2
   });
   var halfwords30_538 = (data) => {
+    const raf = new RandomAccessFile2(data);
+    const dependent30 = raf.readShort();
+    const linearScale = codedFloat16(raf.readUShort());
+    const linearOffset = codedFloat16(raf.readUShort());
+    const logStart = raf.readShort();
+    const logScale = codedFloat16(raf.readUShort());
+    const logOffset = codedFloat16(raf.readUShort());
+    const decodeVil = (packed) => {
+      if (!Number.isFinite(packed)) return null;
+      if (packed === 0) return null;
+      if (packed === 1) return null;
+      if (packed < logStart || logScale === 0) {
+        const lin = linearScale === 0 ? null : (packed - linearOffset) / linearScale;
+        return lin === null ? null : lin < 0 ? 0 : lin;
+      }
+      return Math.exp((packed - logOffset) / logScale);
+    };
+    return {
+      elevationAngle: 0,
+      // VIL is a whole column, not a tilt
+      plot: {
+        minimumDataValue: 0,
+        dataIncrement: 1,
+        dataLevels: 255,
+        decodeDataLevel: decodeVil,
+        linearScale,
+        linearOffset,
+        logStart,
+        logScale,
+        logOffset
+      },
+      dependent30,
+      dependent36_46: raf.read(22),
+      maxDigitalVil: raf.readShort(),
+      artifactEditedRadials: raf.readShort(),
+      dependent49: raf.read(2),
+      ...deltaTime3(raf.readShort()),
+      compressionMethod: raf.readShort(),
+      uncompressedProductSize: (raf.readUShort() << 16) + raf.readUShort()
+    };
+  };
+  var product11 = {
+    code: code27,
+    abbreviation: abbreviation11,
+    description: description27,
+    productDescription: {
+      halfwords30_53: halfwords30_538
+    }
+  };
+  if (typeof module !== "undefined") {
+    module.exports = product11;
+  }
+  var __default22 = product11;
+
+  // src/parse/level3/src/products/135/index.js
+  var __exports23 = {};
+  __export(__exports23, {
+    abbreviation: () => abbreviation12,
+    code: () => code28,
+    default: () => __default23,
+    description: () => description28,
+    halfwords30_53: () => halfwords30_539
+  });
+  init_inject_buffer();
+  var code28 = 135;
+  var abbreviation12 = ["EET"];
+  var description28 = "Enhanced Echo Tops";
+  var deltaTime4 = (value) => ({
+    deltaTime: (value & 65504) >> 5,
+    nonSupplementalScan: (value & 31) === 0,
+    sailsScan: (value & 31) === 1,
+    mrleScan: (value & 31) === 2
+  });
+  var halfwords30_539 = (data) => {
     const raf = new RandomAccessFile2(data);
     const dependent30 = raf.readShort();
     const dataMask = raf.readShort();
@@ -9868,34 +9949,34 @@
       dependent35_46: raf.read(24),
       maxEchoTop: raf.readShort(),
       dependent48_49: raf.read(4),
-      ...deltaTime3(raf.readShort()),
+      ...deltaTime4(raf.readShort()),
       compressionMethod: raf.readShort(),
       uncompressedProductSize: (raf.readUShort() << 16) + raf.readUShort()
     };
   };
-  var product11 = {
-    code: code27,
-    abbreviation: abbreviation11,
-    description: description27,
+  var product12 = {
+    code: code28,
+    abbreviation: abbreviation12,
+    description: description28,
     productDescription: {
-      halfwords30_53: halfwords30_538
+      halfwords30_53: halfwords30_539
     }
   };
   if (typeof module !== "undefined") {
-    module.exports = product11;
+    module.exports = product12;
   }
-  var __default22 = product11;
+  var __default23 = product12;
 
   // src/parse/level3/src/products/141/index.js
-  var __exports23 = {};
-  __export(__exports23, {
-    abbreviation: () => abbreviation12,
-    code: () => code28,
-    default: () => __default23,
-    description: () => description28,
+  var __exports24 = {};
+  __export(__exports24, {
+    abbreviation: () => abbreviation13,
+    code: () => code29,
+    default: () => __default24,
+    description: () => description29,
     formatter: () => formatter_default4,
     halfwords27_28: () => halfwords27_28,
-    halfwords30_53: () => halfwords30_539
+    halfwords30_53: () => halfwords30_5310
   });
   init_inject_buffer();
 
@@ -9951,9 +10032,9 @@
   var formatter_default4 = formatter4;
 
   // src/parse/level3/src/products/141/index.js
-  var code28 = 141;
-  var abbreviation12 = ["NMD"];
-  var description28 = "Mesocyclone";
+  var code29 = 141;
+  var abbreviation13 = ["NMD"];
+  var description29 = "Mesocyclone";
   var halfwords27_28 = (data) => {
     const raf = new RandomAccessFile2(data);
     return {
@@ -9961,41 +10042,41 @@
       overlapDisplayFilter: raf.readShort()
     };
   };
-  var halfwords30_539 = (data) => {
+  var halfwords30_5310 = (data) => {
     const raf = new RandomAccessFile2(data);
     return {
       filterStrengthRank: raf.readShort()
     };
   };
-  var product12 = {
-    code: code28,
-    abbreviation: abbreviation12,
-    description: description28,
+  var product13 = {
+    code: code29,
+    abbreviation: abbreviation13,
+    description: description29,
     formatter: formatter_default4,
     productDescription: {
       halfwords27_28,
-      halfwords30_53: halfwords30_539
+      halfwords30_53: halfwords30_5310
     }
   };
   if (typeof module !== "undefined") {
-    module.exports = product12;
+    module.exports = product13;
   }
-  var __default23 = product12;
+  var __default24 = product13;
 
   // src/parse/level3/src/products/153/index.js
-  var __exports24 = {};
-  __export(__exports24, {
-    abbreviation: () => abbreviation13,
-    code: () => code29,
-    default: () => __default24,
-    description: () => description29,
-    halfwords30_53: () => halfwords30_5310
+  var __exports25 = {};
+  __export(__exports25, {
+    abbreviation: () => abbreviation14,
+    code: () => code30,
+    default: () => __default25,
+    description: () => description30,
+    halfwords30_53: () => halfwords30_5311
   });
   init_inject_buffer();
-  var code29 = 153;
-  var abbreviation13 = ["NXB", "NYB", "NZB", "N0B", "NAB", "N1B", "NBB", "N2B", "N3B"];
-  var description29 = "Super Resolution Base Reflectivity";
-  var halfwords30_5310 = (data) => {
+  var code30 = 153;
+  var abbreviation14 = ["NXB", "NYB", "NZB", "N0B", "NAB", "N1B", "NBB", "N2B", "N3B"];
+  var description30 = "Super Resolution Base Reflectivity";
+  var halfwords30_5311 = (data) => {
     const raf = new RandomAccessFile2(data);
     return {
       elevationAngle: raf.readShort() / 10,
@@ -10007,55 +10088,6 @@
       dependent34_46: raf.read(26),
       maxReflectivity: raf.readShort(),
       // dBZ
-      dependent48_49: raf.read(4),
-      ...deltaTime4(raf.readShort()),
-      compressionMethod: raf.readShort(),
-      uncompressedProductSize: (raf.readUShort() << 16) + raf.readUShort()
-    };
-  };
-  var deltaTime4 = (value) => ({
-    deltaTime: (value & 65504) >> 5,
-    nonSupplementalScan: (value & 31) === 0,
-    sailsScan: (value & 31) === 1,
-    mrleScan: (value & 31) === 2
-  });
-  var product13 = {
-    code: code29,
-    abbreviation: abbreviation13,
-    description: description29,
-    productDescription: {
-      halfwords30_53: halfwords30_5310
-    }
-  };
-  if (typeof module !== "undefined") {
-    module.exports = product13;
-  }
-  var __default24 = product13;
-
-  // src/parse/level3/src/products/154/index.js
-  var __exports25 = {};
-  __export(__exports25, {
-    abbreviation: () => abbreviation14,
-    code: () => code30,
-    default: () => __default25,
-    description: () => description30,
-    halfwords30_53: () => halfwords30_5311
-  });
-  init_inject_buffer();
-  var code30 = 154;
-  var abbreviation14 = ["NXG", "NYG", "NZG", "N0G", "NAG", "N1G"];
-  var description30 = "Super Resolution Base Velocity";
-  var halfwords30_5311 = (data) => {
-    const raf = new RandomAccessFile2(data);
-    return {
-      elevationAngle: raf.readShort() / 10,
-      plot: {
-        minimumDataValue: raf.readShort() / 10,
-        dataIncrement: raf.readShort() / 10,
-        dataLevels: raf.readShort()
-      },
-      dependent34_46: raf.read(26),
-      maxVelocity: raf.readShort(),
       dependent48_49: raf.read(4),
       ...deltaTime5(raf.readShort()),
       compressionMethod: raf.readShort(),
@@ -10081,20 +10113,69 @@
   }
   var __default25 = product14;
 
-  // src/parse/level3/src/products/159/index.js
+  // src/parse/level3/src/products/154/index.js
   var __exports26 = {};
   __export(__exports26, {
     abbreviation: () => abbreviation15,
     code: () => code31,
     default: () => __default26,
     description: () => description31,
-    halfwords27_28: () => halfwords27_282,
     halfwords30_53: () => halfwords30_5312
   });
   init_inject_buffer();
-  var code31 = 159;
-  var abbreviation15 = ["NXX", "NYX", "NZX", "N0X", "NAX", "N1X", "NBX", "N2X", "N3X"];
-  var description31 = "Digital Differential Reflectivity";
+  var code31 = 154;
+  var abbreviation15 = ["NXG", "NYG", "NZG", "N0G", "NAG", "N1G"];
+  var description31 = "Super Resolution Base Velocity";
+  var halfwords30_5312 = (data) => {
+    const raf = new RandomAccessFile2(data);
+    return {
+      elevationAngle: raf.readShort() / 10,
+      plot: {
+        minimumDataValue: raf.readShort() / 10,
+        dataIncrement: raf.readShort() / 10,
+        dataLevels: raf.readShort()
+      },
+      dependent34_46: raf.read(26),
+      maxVelocity: raf.readShort(),
+      dependent48_49: raf.read(4),
+      ...deltaTime6(raf.readShort()),
+      compressionMethod: raf.readShort(),
+      uncompressedProductSize: (raf.readUShort() << 16) + raf.readUShort()
+    };
+  };
+  var deltaTime6 = (value) => ({
+    deltaTime: (value & 65504) >> 5,
+    nonSupplementalScan: (value & 31) === 0,
+    sailsScan: (value & 31) === 1,
+    mrleScan: (value & 31) === 2
+  });
+  var product15 = {
+    code: code31,
+    abbreviation: abbreviation15,
+    description: description31,
+    productDescription: {
+      halfwords30_53: halfwords30_5312
+    }
+  };
+  if (typeof module !== "undefined") {
+    module.exports = product15;
+  }
+  var __default26 = product15;
+
+  // src/parse/level3/src/products/159/index.js
+  var __exports27 = {};
+  __export(__exports27, {
+    abbreviation: () => abbreviation16,
+    code: () => code32,
+    default: () => __default27,
+    description: () => description32,
+    halfwords27_28: () => halfwords27_282,
+    halfwords30_53: () => halfwords30_5313
+  });
+  init_inject_buffer();
+  var code32 = 159;
+  var abbreviation16 = ["NXX", "NYX", "NZX", "N0X", "NAX", "N1X", "NBX", "N2X", "N3X"];
+  var description32 = "Digital Differential Reflectivity";
   var halfwords27_282 = (data) => {
     const raf = new RandomAccessFile2(data);
     return {
@@ -10102,7 +10183,7 @@
       totalTime: raf.readShort()
     };
   };
-  var halfwords30_5312 = (data) => {
+  var halfwords30_5313 = (data) => {
     const raf = new RandomAccessFile2(data);
     return {
       elevationAngle: raf.readShort() / 10,
@@ -10126,34 +10207,34 @@
   var leadingFlags = (data) => ({
     noData: data & false
   });
-  var product15 = {
-    code: code31,
-    abbreviation: abbreviation15,
-    description: description31,
+  var product16 = {
+    code: code32,
+    abbreviation: abbreviation16,
+    description: description32,
     productDescription: {
       halfwords27_28: halfwords27_282,
-      halfwords30_53: halfwords30_5312
+      halfwords30_53: halfwords30_5313
     }
   };
   if (typeof module !== "undefined") {
-    module.exports = product15;
+    module.exports = product16;
   }
-  var __default26 = product15;
+  var __default27 = product16;
 
   // src/parse/level3/src/products/161/index.js
-  var __exports27 = {};
-  __export(__exports27, {
-    abbreviation: () => abbreviation16,
-    code: () => code32,
-    default: () => __default27,
-    description: () => description32,
+  var __exports28 = {};
+  __export(__exports28, {
+    abbreviation: () => abbreviation17,
+    code: () => code33,
+    default: () => __default28,
+    description: () => description33,
     halfwords27_28: () => halfwords27_283,
-    halfwords30_53: () => halfwords30_5313
+    halfwords30_53: () => halfwords30_5314
   });
   init_inject_buffer();
-  var code32 = 161;
-  var abbreviation16 = ["NXC", "NYC", "NZC", "N0C", "NAC", "N1C", "NBC", "N2C", "N3C"];
-  var description32 = "Digital Correlation Coefficient";
+  var code33 = 161;
+  var abbreviation17 = ["NXC", "NYC", "NZC", "N0C", "NAC", "N1C", "NBC", "N2C", "N3C"];
+  var description33 = "Digital Correlation Coefficient";
   var halfwords27_283 = (data) => {
     const raf = new RandomAccessFile2(data);
     return {
@@ -10161,7 +10242,7 @@
       totalTime: raf.readShort()
     };
   };
-  var halfwords30_5313 = (data) => {
+  var halfwords30_5314 = (data) => {
     const raf = new RandomAccessFile2(data);
     return {
       elevationAngle: raf.readShort() / 10,
@@ -10185,34 +10266,34 @@
   var leadingFlags2 = (data) => ({
     noData: data & false
   });
-  var product16 = {
-    code: code32,
-    abbreviation: abbreviation16,
-    description: description32,
+  var product17 = {
+    code: code33,
+    abbreviation: abbreviation17,
+    description: description33,
     productDescription: {
       halfwords27_28: halfwords27_283,
-      halfwords30_53: halfwords30_5313
+      halfwords30_53: halfwords30_5314
     }
   };
   if (typeof module !== "undefined") {
-    module.exports = product16;
+    module.exports = product17;
   }
-  var __default27 = product16;
+  var __default28 = product17;
 
   // src/parse/level3/src/products/163/index.js
-  var __exports28 = {};
-  __export(__exports28, {
-    abbreviation: () => abbreviation17,
-    code: () => code33,
-    default: () => __default28,
-    description: () => description33,
+  var __exports29 = {};
+  __export(__exports29, {
+    abbreviation: () => abbreviation18,
+    code: () => code34,
+    default: () => __default29,
+    description: () => description34,
     halfwords27_28: () => halfwords27_284,
-    halfwords30_53: () => halfwords30_5314
+    halfwords30_53: () => halfwords30_5315
   });
   init_inject_buffer();
-  var code33 = 163;
-  var abbreviation17 = ["NXK", "NYK", "NZK", "N0K", "NAK", "N1K", "NBK", "N2K", "N3K"];
-  var description33 = "Digital Specific Differential Phase";
+  var code34 = 163;
+  var abbreviation18 = ["NXK", "NYK", "NZK", "N0K", "NAK", "N1K", "NBK", "N2K", "N3K"];
+  var description34 = "Digital Specific Differential Phase";
   var halfwords27_284 = (data) => {
     const raf = new RandomAccessFile2(data);
     return {
@@ -10220,7 +10301,7 @@
       totalTime: raf.readShort()
     };
   };
-  var halfwords30_5314 = (data) => {
+  var halfwords30_5315 = (data) => {
     const raf = new RandomAccessFile2(data);
     return {
       elevationAngle: raf.readShort() / 10,
@@ -10244,35 +10325,35 @@
   var leadingFlags3 = (data) => ({
     noData: data & false
   });
-  var product17 = {
-    code: code33,
-    abbreviation: abbreviation17,
-    description: description33,
+  var product18 = {
+    code: code34,
+    abbreviation: abbreviation18,
+    description: description34,
     productDescription: {
       halfwords27_28: halfwords27_284,
-      halfwords30_53: halfwords30_5314
+      halfwords30_53: halfwords30_5315
     }
   };
   if (typeof module !== "undefined") {
-    module.exports = product17;
+    module.exports = product18;
   }
-  var __default28 = product17;
+  var __default29 = product18;
 
   // src/parse/level3/src/products/165/index.js
-  var __exports29 = {};
-  __export(__exports29, {
-    abbreviation: () => abbreviation18,
-    code: () => code34,
-    default: () => __default29,
-    description: () => description34,
+  var __exports30 = {};
+  __export(__exports30, {
+    abbreviation: () => abbreviation19,
+    code: () => code35,
+    default: () => __default30,
+    description: () => description35,
     halfwords27_28: () => halfwords27_285,
-    halfwords30_53: () => halfwords30_5315,
+    halfwords30_53: () => halfwords30_5316,
     key: () => key
   });
   init_inject_buffer();
-  var code34 = 165;
-  var abbreviation18 = ["N0H", "N1H", "N2H", "N3H"];
-  var description34 = "Hydrometeor Classification";
+  var code35 = 165;
+  var abbreviation19 = ["N0H", "N1H", "N2H", "N3H"];
+  var description35 = "Hydrometeor Classification";
   var key = {
     0: "ND: Below Threshold",
     10: "BI: Biological",
@@ -10293,52 +10374,52 @@
   var halfwords27_285 = (data) => ({
     halfwords27_28: data
   });
-  var halfwords30_5315 = (data) => {
+  var halfwords30_5316 = (data) => {
     const raf = new RandomAccessFile2(data);
     return {
       elevationAngle: raf.readShort() / 10,
       dependent31_49: raf.read(38),
-      ...deltaTime6(raf.readShort()),
+      ...deltaTime7(raf.readShort()),
       compressionMethod: raf.readShort(),
       uncompressedSize: (raf.readUShort() << 16) + raf.readUShort(),
       plot: { maxDataValue: 150 }
     };
   };
-  var deltaTime6 = (value) => ({
+  var deltaTime7 = (value) => ({
     deltaTime: (value & 65504) >> 5,
     nonSupplementalScan: (value & 31) === 0,
     sailsScan: (value & 31) === 1,
     mrleScan: (value & 31) === 2
   });
-  var product18 = {
-    code: code34,
-    abbreviation: abbreviation18,
-    description: description34,
+  var product19 = {
+    code: code35,
+    abbreviation: abbreviation19,
+    description: description35,
     productDescription: {
       halfwords27_28: halfwords27_285,
-      halfwords30_53: halfwords30_5315
+      halfwords30_53: halfwords30_5316
     },
     supplemental: { key }
   };
   if (typeof module !== "undefined") {
-    module.exports = product18;
+    module.exports = product19;
   }
-  var __default29 = product18;
+  var __default30 = product19;
 
   // src/parse/level3/src/products/170/index.js
-  var __exports30 = {};
-  __export(__exports30, {
-    abbreviation: () => abbreviation19,
-    code: () => code35,
-    default: () => __default30,
-    description: () => description35,
+  var __exports31 = {};
+  __export(__exports31, {
+    abbreviation: () => abbreviation20,
+    code: () => code36,
+    default: () => __default31,
+    description: () => description36,
     halfwords27_28: () => halfwords27_286,
-    halfwords30_53: () => halfwords30_5316
+    halfwords30_53: () => halfwords30_5317
   });
   init_inject_buffer();
-  var code35 = 170;
-  var abbreviation19 = "DAA";
-  var description35 = "Digital One Hour Accumulation";
+  var code36 = 170;
+  var abbreviation20 = "DAA";
+  var description36 = "Digital One Hour Accumulation";
   var halfwords27_286 = (data) => {
     const raf = new RandomAccessFile2(data);
     return {
@@ -10346,7 +10427,7 @@
       totalTime: raf.readShort()
     };
   };
-  var halfwords30_5316 = (data) => {
+  var halfwords30_5317 = (data) => {
     const raf = new RandomAccessFile2(data);
     return {
       nullProductFlag: nullProductFlag(raf.readShort()),
@@ -10406,34 +10487,34 @@
   var leadingFlags4 = (data) => ({
     noData: data & false
   });
-  var product19 = {
-    code: code35,
-    abbreviation: abbreviation19,
-    description: description35,
+  var product20 = {
+    code: code36,
+    abbreviation: abbreviation20,
+    description: description36,
     productDescription: {
       halfwords27_28: halfwords27_286,
-      halfwords30_53: halfwords30_5316
+      halfwords30_53: halfwords30_5317
     }
   };
   if (typeof module !== "undefined") {
-    module.exports = product19;
+    module.exports = product20;
   }
-  var __default30 = product19;
+  var __default31 = product20;
 
   // src/parse/level3/src/products/172/index.js
-  var __exports31 = {};
-  __export(__exports31, {
-    abbreviation: () => abbreviation20,
-    code: () => code36,
-    default: () => __default31,
-    description: () => description36,
+  var __exports32 = {};
+  __export(__exports32, {
+    abbreviation: () => abbreviation21,
+    code: () => code37,
+    default: () => __default32,
+    description: () => description37,
     halfwords27_28: () => halfwords27_287,
-    halfwords30_53: () => halfwords30_5317
+    halfwords30_53: () => halfwords30_5318
   });
   init_inject_buffer();
-  var code36 = 172;
-  var abbreviation20 = "DTA";
-  var description36 = "Storm Total Precipitation";
+  var code37 = 172;
+  var abbreviation21 = "DTA";
+  var description37 = "Storm Total Precipitation";
   var halfwords27_287 = (data) => {
     const raf = new RandomAccessFile2(data);
     return {
@@ -10441,7 +10522,7 @@
       accumulationStartMinutes: raf.readShort()
     };
   };
-  var halfwords30_5317 = (data) => {
+  var halfwords30_5318 = (data) => {
     const raf = new RandomAccessFile2(data);
     return {
       nullProductFlag: nullProductFlag2(raf.readShort()),
@@ -10501,38 +10582,38 @@
   var leadingFlags5 = (data) => ({
     noData: data & false
   });
-  var product20 = {
-    code: code36,
-    abbreviation: abbreviation20,
-    description: description36,
+  var product21 = {
+    code: code37,
+    abbreviation: abbreviation21,
+    description: description37,
     productDescription: {
       halfwords27_28: halfwords27_287,
-      halfwords30_53: halfwords30_5317
+      halfwords30_53: halfwords30_5318
     }
   };
   if (typeof module !== "undefined") {
-    module.exports = product20;
+    module.exports = product21;
   }
-  var __default31 = product20;
+  var __default32 = product21;
 
   // src/parse/level3/src/products/177/index.js
-  var __exports32 = {};
-  __export(__exports32, {
-    abbreviation: () => abbreviation21,
-    code: () => code37,
-    default: () => __default32,
-    description: () => description37,
+  var __exports33 = {};
+  __export(__exports33, {
+    abbreviation: () => abbreviation22,
+    code: () => code38,
+    default: () => __default33,
+    description: () => description38,
     halfwords27_28: () => halfwords27_288,
-    halfwords30_53: () => halfwords30_5318
+    halfwords30_53: () => halfwords30_5319
   });
   init_inject_buffer();
-  var code37 = 177;
-  var abbreviation21 = "HHC";
-  var description37 = "Hybrid Hydrometeor Classification";
+  var code38 = 177;
+  var abbreviation22 = "HHC";
+  var description38 = "Hybrid Hydrometeor Classification";
   var halfwords27_288 = (data) => ({
     halfwords27_28: data
   });
-  var halfwords30_5318 = (data) => {
+  var halfwords30_5319 = (data) => {
     const raf = new RandomAccessFile2(data);
     return {
       dependent30_46: raf.read(34),
@@ -10545,35 +10626,35 @@
       plot: { maxDataValue: 150 }
     };
   };
-  var product21 = {
-    code: code37,
-    abbreviation: abbreviation21,
-    description: description37,
+  var product22 = {
+    code: code38,
+    abbreviation: abbreviation22,
+    description: description38,
     productDescription: {
       halfwords27_28: halfwords27_288,
-      halfwords30_53: halfwords30_5318
+      halfwords30_53: halfwords30_5319
     },
     supplemental: { key }
   };
   if (typeof module !== "undefined") {
-    module.exports = product21;
+    module.exports = product22;
   }
-  var __default32 = product21;
+  var __default33 = product22;
 
   // src/parse/level3/src/products/180/index.js
-  var __exports33 = {};
-  __export(__exports33, {
-    abbreviation: () => abbreviation22,
-    code: () => code38,
-    default: () => __default33,
-    description: () => description38,
-    halfwords30_53: () => halfwords30_5319
+  var __exports34 = {};
+  __export(__exports34, {
+    abbreviation: () => abbreviation23,
+    code: () => code39,
+    default: () => __default34,
+    description: () => description39,
+    halfwords30_53: () => halfwords30_5320
   });
   init_inject_buffer();
-  var code38 = 180;
-  var abbreviation22 = ["TZ0", "TZ1", "TZ2", "TZ3"];
-  var description38 = "TDWR Base Reflectivity";
-  var halfwords30_5319 = (data) => {
+  var code39 = 180;
+  var abbreviation23 = ["TZ0", "TZ1", "TZ2", "TZ3"];
+  var description39 = "TDWR Base Reflectivity";
+  var halfwords30_5320 = (data) => {
     const raf = new RandomAccessFile2(data);
     return {
       elevationAngle: raf.readShort() / 10,
@@ -10585,50 +10666,6 @@
       dependent34_46: raf.read(26),
       maxReflectivity: raf.readShort(),
       // dBZ
-      dependent48_49: raf.read(4),
-      deltaTime: raf.readShort(),
-      compressionMethod: raf.readShort(),
-      uncompressedProductSize: (raf.readUShort() << 16) + raf.readUShort()
-    };
-  };
-  var product22 = {
-    code: code38,
-    abbreviation: abbreviation22,
-    description: description38,
-    productDescription: {
-      halfwords30_53: halfwords30_5319
-    }
-  };
-  if (typeof module !== "undefined") {
-    module.exports = product22;
-  }
-  var __default33 = product22;
-
-  // src/parse/level3/src/products/182/index.js
-  var __exports34 = {};
-  __export(__exports34, {
-    abbreviation: () => abbreviation23,
-    code: () => code39,
-    default: () => __default34,
-    description: () => description39,
-    halfwords30_53: () => halfwords30_5320
-  });
-  init_inject_buffer();
-  var code39 = 182;
-  var abbreviation23 = ["TV0", "TV1", "TV2", "TV3"];
-  var description39 = "TDWR Base Velocity";
-  var halfwords30_5320 = (data) => {
-    const raf = new RandomAccessFile2(data);
-    return {
-      elevationAngle: raf.readShort() / 10,
-      plot: {
-        minimumDataValue: raf.readShort() / 10,
-        dataIncrement: raf.readShort() / 10,
-        dataLevels: raf.readShort()
-      },
-      dependent34_46: raf.read(26),
-      maxVelocity: raf.readShort(),
-      // kt
       dependent48_49: raf.read(4),
       deltaTime: raf.readShort(),
       compressionMethod: raf.readShort(),
@@ -10648,7 +10685,7 @@
   }
   var __default34 = product23;
 
-  // src/parse/level3/src/products/186/index.js
+  // src/parse/level3/src/products/182/index.js
   var __exports35 = {};
   __export(__exports35, {
     abbreviation: () => abbreviation24,
@@ -10658,9 +10695,9 @@
     halfwords30_53: () => halfwords30_5321
   });
   init_inject_buffer();
-  var code40 = 186;
-  var abbreviation24 = ["TZL"];
-  var description40 = "TDWR Long Range Base Reflectivity";
+  var code40 = 182;
+  var abbreviation24 = ["TV0", "TV1", "TV2", "TV3"];
+  var description40 = "TDWR Base Velocity";
   var halfwords30_5321 = (data) => {
     const raf = new RandomAccessFile2(data);
     return {
@@ -10671,8 +10708,8 @@
         dataLevels: raf.readShort()
       },
       dependent34_46: raf.read(26),
-      maxReflectivity: raf.readShort(),
-      // dBZ
+      maxVelocity: raf.readShort(),
+      // kt
       dependent48_49: raf.read(4),
       deltaTime: raf.readShort(),
       compressionMethod: raf.readShort(),
@@ -10691,6 +10728,50 @@
     module.exports = product24;
   }
   var __default35 = product24;
+
+  // src/parse/level3/src/products/186/index.js
+  var __exports36 = {};
+  __export(__exports36, {
+    abbreviation: () => abbreviation25,
+    code: () => code41,
+    default: () => __default36,
+    description: () => description41,
+    halfwords30_53: () => halfwords30_5322
+  });
+  init_inject_buffer();
+  var code41 = 186;
+  var abbreviation25 = ["TZL"];
+  var description41 = "TDWR Long Range Base Reflectivity";
+  var halfwords30_5322 = (data) => {
+    const raf = new RandomAccessFile2(data);
+    return {
+      elevationAngle: raf.readShort() / 10,
+      plot: {
+        minimumDataValue: raf.readShort() / 10,
+        dataIncrement: raf.readShort() / 10,
+        dataLevels: raf.readShort()
+      },
+      dependent34_46: raf.read(26),
+      maxReflectivity: raf.readShort(),
+      // dBZ
+      dependent48_49: raf.read(4),
+      deltaTime: raf.readShort(),
+      compressionMethod: raf.readShort(),
+      uncompressedProductSize: (raf.readUShort() << 16) + raf.readUShort()
+    };
+  };
+  var product25 = {
+    code: code41,
+    abbreviation: abbreviation25,
+    description: description41,
+    productDescription: {
+      halfwords30_53: halfwords30_5322
+    }
+  };
+  if (typeof module !== "undefined") {
+    module.exports = product25;
+  }
+  var __default36 = product25;
 
   // src/parse/level3/src/browser.js
   var toModule = (mod) => mod?.default ?? mod;
@@ -10726,16 +10807,17 @@
     toProduct(__exports32),
     toProduct(__exports33),
     toProduct(__exports34),
-    toProduct(__exports35)
+    toProduct(__exports35),
+    toProduct(__exports36)
   ];
   var products = {};
-  productsRaw.forEach((product25) => {
-    if (products[product25.code]) {
-      throw new Error(`Duplicate product code ${product25.code}`);
+  productsRaw.forEach((product26) => {
+    if (products[product26.code]) {
+      throw new Error(`Duplicate product code ${product26.code}`);
     }
-    products[product25.code] = product25;
+    products[product26.code] = product26;
   });
-  var productAbbreviations = productsRaw.map((product25) => product25.abbreviation).flat();
+  var productAbbreviations = productsRaw.map((product26) => product26.abbreviation).flat();
   var combineOptions2 = (newOptions) => {
     let logger = newOptions?.logger ?? console;
     if (logger === false) logger = nullLogger2;
@@ -10779,11 +10861,11 @@
     if (!minimalOutput) {
       result.messageHeader = parsedMessageHeader;
     }
-    const product25 = products[parsedMessageHeader.code.toString()];
-    if (!product25) {
+    const product26 = products[parsedMessageHeader.code.toString()];
+    if (!product26) {
       throw new Error(`Unsupported product code: ${parsedMessageHeader.code}`);
     }
-    const parsedProductDescription = parseProductDescription2(raf, product25);
+    const parsedProductDescription = parseProductDescription2(raf, product26);
     result.productDescription = parsedProductDescription;
     let decompressed;
     if (parsedProductDescription.compressionMethod > 0) {
@@ -10836,7 +10918,7 @@
           throw new Error(`Invalid tabular offset: ${parsedProductDescription.offsetTabular}`);
         }
         decompressed.seek(offsetTabularBytes);
-        result.tabular = tabularHeader(decompressed, product25);
+        result.tabular = tabularHeader(decompressed, product26);
       }
     } catch (error) {
       options.logger.warn(error.stack);
@@ -10844,7 +10926,7 @@
     }
     try {
       if (options.parseFormatted) {
-        const formatted = product25?.formatter?.(result);
+        const formatted = product26?.formatter?.(result);
         if (formatted) result.formatted = formatted;
       }
     } catch (error) {
@@ -11752,6 +11834,8 @@
         return "phi";
       case "SW":
         return "spectrum";
+      case "PHI":
+        return "phi";
       case "ZDR":
         return "zdr";
       default:
@@ -11878,7 +11962,10 @@
       CC: () => radar.getHighresCorrelationCoefficient(),
       KDP: () => radar.getHighresDiffPhase(),
       SW: () => radar.getHighresSpectrum(),
-      ZDR: () => radar.getHighresDiffReflectivity()
+      ZDR: () => radar.getHighresDiffReflectivity(),
+      // The raw differential phase itself, the moment KDP is derived
+      // from: the propagation phase shift in degrees, 0 to 360.
+      PHI: () => radar.getHighresDiffPhase()
     };
     const momentEmpty = (d) => !Array.isArray(d) || d.length === 0 || d.every((item) => item === void 0);
     let radarData;
@@ -12163,7 +12250,7 @@
     const numberBins = packet19.numberBins ?? 0;
     const radials = packet19.radials || [];
     const range = readRangeOptions(options);
-    const code41 = radar.productDescription?.code;
+    const code42 = radar.productDescription?.code;
     const FIXED_BIN_KM = {
       135: 1,
       // enhanced echo tops:      346 bins x 1.00 km = 346 km
@@ -12174,20 +12261,20 @@
       186: 0.3
       // TDWR long range refl:   1390 bins x 0.30 km = 417 km
     };
-    const fixedBinKm = FIXED_BIN_KM[code41];
-    const scaleFactor = fixedBinKm ? fixedBinKm * 1e3 : code41 === 56 || code41 === 170 || code41 === 172 ? 1e3 : 250;
+    const fixedBinKm = FIXED_BIN_KM[code42];
+    const scaleFactor = fixedBinKm ? fixedBinKm * 1e3 : code42 === 56 || code42 === 170 || code42 === 172 ? 1e3 : 250;
     const rangeScaleKm = fixedBinKm ? 1 : packet19.rangeScale ?? 1;
     const binKm = rangeScaleKm * scaleFactor / 1e3;
-    const isVelocity = code41 === 25 || code41 === 27 || code41 === 55 || code41 === 56 || code41 === 99;
-    const isCorrelation = code41 === 161;
+    const isVelocity = code42 === 25 || code42 === 27 || code42 === 55 || code42 === 56 || code42 === 99;
+    const isCorrelation = code42 === 161;
     const decodeBin = (raw) => {
       if (raw == null) return null;
-      if (code41 === 56) {
+      if (code42 === 56) {
         if (raw === 15) return "rf";
         const level = SRV_LEVELS[raw];
         return level === void 0 ? raw : level;
       }
-      if ((code41 === 170 || code41 === 172) && raw === "rf") return 0;
+      if ((code42 === 170 || code42 === 172) && raw === "rf") return 0;
       return raw;
     };
     const numberOfRadarIterations = radials.length;
@@ -12360,7 +12447,7 @@
       let parserEndMs = null;
       let meshEndMs = null;
       const upperLayer = typeof layer === "string" ? layer.toUpperCase() : "";
-      const isLevel2Product = upperLayer === "REF" || upperLayer === "VEL" || upperLayer === "CC" || upperLayer === "KDP" || upperLayer === "SW" || upperLayer === "ZDR";
+      const isLevel2Product = upperLayer === "REF" || upperLayer === "VEL" || upperLayer === "CC" || upperLayer === "KDP" || upperLayer === "SW" || upperLayer === "ZDR" || upperLayer === "PHI";
       const isLevel3 = !isLevel2Product;
       const buffer = import_buffer5.Buffer.from(arrayBuffer);
       if (isLevel3) {
