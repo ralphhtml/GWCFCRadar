@@ -52227,17 +52227,30 @@ function tempColor(f) {
   return '#AA0000';
 }
 
+// One shared canvas for every city dot. These used to be DOM markers, one
+// element each, and a busy view mounted EIGHT HUNDRED of them: every zoom
+// ran eight hundred transform handlers, every pan dragged eight hundred
+// nodes, and the rebuild after each pan re-created them all. That was the
+// map-wide scroll lag. A canvas renderer draws the same dots as one
+// element and one repaint, and hover and click still work through
+// Leaflet's own canvas hit testing.
+let _cityCanvas = null;
+function _cityRenderer() {
+  if (!_cityCanvas) _cityCanvas = L.canvas({ pane: _ovMarkerPane('forecasts'), padding: 0.2 });
+  return _cityCanvas;
+}
+function _cityTipText(city, temp) {
+  const tempC = temp !== null ? Math.round((temp - 32) * 5 / 9) : null;
+  return `${city.name}${temp !== null ? ` · ${Math.round(temp)}°F / ${tempC}°C` : ''}`;
+}
 function makeCityMarker(city, temp) {
-  const color    = temp !== null ? tempColor(temp) : '#888';
-  const tempC    = temp !== null ? Math.round((temp - 32) * 5 / 9) : null;
-  const tempLabel = temp !== null ? ` · ${Math.round(temp)}°F / ${tempC}°C` : '';
-  const icon = L.divIcon({
-    className: '',
-    html: `<div class="city-dot" style="background:${color};box-shadow:0 0 5px ${color}88;border-color:rgba(255,255,255,0.7);"></div>`,
-    iconSize: [10, 10], iconAnchor: [5, 5]
-  });
-  return L.marker([city.lat, city.lon], { icon, pane: _ovMarkerPane('forecasts') })
-    .bindTooltip(`${city.name}${tempLabel}`, { permanent: false, direction: 'top', className: 'city-tooltip', offset: [0, -6] })
+  const color = temp !== null ? tempColor(temp) : '#888';
+  return L.circleMarker([city.lat, city.lon], {
+    renderer: _cityRenderer(), pane: _ovMarkerPane('forecasts'),
+    radius: 4.5, weight: 1.5, color: 'rgba(255,255,255,0.7)',
+    fillColor: color, fillOpacity: 1,
+  })
+    .bindTooltip(_cityTipText(city, temp), { permanent: false, direction: 'top', className: 'city-tooltip', offset: [0, -6] })
     .on('click', () => openForecastModal(city));
 }
 
@@ -52390,15 +52403,31 @@ async function _refreshVisibleCityTemps() {
   if (gen !== _cityRefreshGen || !activeLayers.forecasts || !cityMarkersLayer) return;
   if (!list) {
     list = CITIES.filter(city => bounds.contains([city.lat, city.lon]));
+    // The hand-typed list has no cap of its own; a continent-wide view
+    // must not mount a dot per town anyway.
+    if (list.length > 400) {
+      list.sort((a, b) => (b.pop || 0) - (a.pop || 0));
+      list = list.slice(0, 400);
+    }
   }
   const ck = c => c.lat.toFixed(3) + ',' + c.lon.toFixed(3);
 
-  // Phase 1 , render immediately from cache (grey dots if not yet loaded)
-  cityMarkersLayer.clearLayers();
-  _cityMarkerRefs.clear();
+  // A pan brings a few new towns into view and slides a few out; it does
+  // not change the eight hundred in between. So the dots are DIFFED: only
+  // what left is removed, only what arrived is added, and a temperature
+  // that came in later restyles the dot in place. The old clear-and-rebuild
+  // re-created every marker after every pan, and that churn was most of
+  // the scroll lag this layer caused.
+  const wanted = new Map();
   list.forEach(city => {
     if (!_ptInPolyUnion(city.lat, city.lon)) return;
-    const key = ck(city);
+    wanted.set(ck(city), city);
+  });
+  for (const [key, m] of _cityMarkerRefs) {
+    if (!wanted.has(key)) { cityMarkersLayer.removeLayer(m); _cityMarkerRefs.delete(key); }
+  }
+  wanted.forEach((city, key) => {
+    if (_cityMarkerRefs.has(key)) return;
     const m = makeCityMarker(city,
       _cityTempCache.has(key) ? _cityTempCache.get(key) : null);
     m.addTo(cityMarkersLayer);
@@ -52417,12 +52446,12 @@ async function _refreshVisibleCityTemps() {
       const temp = _nearestTemp(city.lat, city.lon);
       _cityTempCache.set(key, temp); // null = no station in range (valid, don't retry)
       // Replace grey dot with colored one
-      const old = _cityMarkerRefs.get(key);
-      if (old && cityMarkersLayer.hasLayer(old)) {
-        cityMarkersLayer.removeLayer(old);
-        const m = makeCityMarker(city, temp);
-        m.addTo(cityMarkersLayer);
-        _cityMarkerRefs.set(key, m);
+      const m = _cityMarkerRefs.get(key);
+      if (m && cityMarkersLayer.hasLayer(m)) {
+        // Restyled in place: a canvas dot changes colour with one setStyle,
+        // no teardown, no new layer.
+        m.setStyle({ fillColor: temp !== null ? tempColor(temp) : '#888' });
+        if (m.getTooltip()) m.setTooltipContent(_cityTipText(city, temp));
       }
     });
   } catch(e) {
@@ -64467,6 +64496,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-18-b', date: 'Sep 18, 2026',
+    text: 'The map scroll lag is fixed. The Weather Forecasts dots were eight hundred separate page elements, each one dragged through every pan and re-created from scratch after every scroll, which is what made moving the map away from your own area feel stuck. They are one drawn canvas now: panning drags a single element, zooming animates one thing instead of eight hundred, and a scroll only adds the few towns that came into view instead of rebuilding them all. Hovering still names the town and its temperature, and clicking still opens its forecast.' },
   { id: '2026-09-18-a', date: 'Sep 18, 2026',
     text: 'Five more raw radar products. On Level 3, for every NEXRAD in the country: digital VIL (how much water a storm column holds, the classic hail clue), one-hour rainfall, storm-total rainfall, and the surface hydrometeor class (what is actually reaching the ground - rain, snow, hail). VIL, 1-Hr Precip and Storm Total used to be pictures for a handful of Pi radars; they now decode raw in your browser everywhere, which also means the Time Machine, the value filter and your custom colours all work on them. On Level 2: differential phase (PHI), the raw dual-pol moment KDP is computed from, on its own colour wheel, in the Level 2 menu and in Volumetric 3D. Rain totals show in millimetres wherever they appear.' },
   { id: '2026-09-17-s', date: 'Sep 17, 2026',
