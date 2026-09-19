@@ -64514,6 +64514,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-19-a', date: 'Sep 19, 2026',
+    text: 'Theme touch-up: the layer bubbles keep the red they have always worn, and the overlay pills go black to match the overlay button that opens them. Toolbar stays gold, panels stay black.' },
   { id: '2026-09-18-c', date: 'Sep 18, 2026',
     text: 'A new look, and the old one kept. The app wears black and gold by default now: the red gradient panels are black gradients, the toolbar buttons are gold, and the overlay button, the search bar and the account pill stand on black with gold trim. The old look is one tap away as Ralph\'s Red in Settings under Theme, exactly as it was. The Volumetric 3D panel also sits lower on the screen, closer to the playbar, and has a drag handle in its corner - grab it to put the panel anywhere.' },
   { id: '2026-09-18-b', date: 'Sep 18, 2026',
@@ -72180,6 +72182,33 @@ body {
   background-image: var(--grad-panel);
   border-color: rgba(232,184,0,0.40);
 }
+/* The LAYER bubbles keep the red they have always worn: they are the app's
+   signature control, and the black-and-gold rework was asked to leave them
+   alone. Spelled out here because the shared raise gradient they used to
+   inherit is the toolbar's gold now. */
+.layer-row,
+.sub-bubble,
+.sat-region-bubble {
+  background-image: linear-gradient(180deg, #a81818 0%, #6d0404 100%);
+}
+.sub-bubble:hover,
+.layer-row:hover,
+.sat-region-bubble:hover {
+  background-image: linear-gradient(180deg, #c62020 0%, #8a0808 100%);
+}
+.sub-bubble.active,
+.layer-row.active {
+  background-image: linear-gradient(180deg, #2b0000 0%, #4d0404 100%);
+}
+/* The OVERLAY pills go the other way: black gradients, like the overlay
+   button that opens them, so the whole overlay family reads as one thing. */
+.ov-pill,
+.overlay-pill-demo {
+  background-image: var(--grad-panel);
+}
+.ov-pill:hover { background-image: var(--grad-surface); }
+.ov-pill.active,
+.overlay-pill-demo.active { background-image: var(--grad-sunk); }
 #map { background-image: linear-gradient(180deg, #24070a 0%, #0b0204 100%); }
 
 /* ── The city dots, shaded rather than recoloured ─────────────────────── */
