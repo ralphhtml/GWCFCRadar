@@ -193,6 +193,30 @@ console.log('\n4. no Pi, no mirror: the built-in list carries the dots');
   ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
 }
 
+
+console.log('\nX. searching a place flies there AND opens its forecast');
+{
+  ok('every place pick goes through one door',
+     /function _srchGoPlace\(/.test(PAGE)
+     && PAGE.split('_srchGoPlace(').length >= 5,      // definition plus the search, suggestion and star paths
+     String(PAGE.split('_srchGoPlace(').length - 1));
+  ok('and that door opens the forecast card',
+     /_srchGoPlace[\s\S]{0,600}openForecastModal\(\{ name: name, lat: lat, lon: lng \}\)/.test(PAGE));
+  const r = await p.evaluate(async () => {
+    _srchGoPlace(41.88, -87.63, 'Chicago, Illinois, United States');
+    await new Promise(res => setTimeout(res, 250));
+    const modal = document.getElementById('forecast-modal');
+    const c = map.getCenter();
+    const out = { open: modal && modal.style.display === 'flex',
+                  title: (document.getElementById('forecast-city-name') || {}).textContent,
+                  lat: +c.lat.toFixed(1), lng: +c.lng.toFixed(1) };
+    modal.style.display = 'none';
+    return out;
+  });
+  ok('the forecast card opens, titled with the town alone, and the map heads there',
+     r.open && r.title === 'Chicago', JSON.stringify(r));
+}
+
 await b.close();
 console.log(fail ? `\n${fail} FAILED, ${pass} passed` : `\nall ${pass} passed`);
 process.exit(fail ? 1 : 0);
