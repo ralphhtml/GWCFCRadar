@@ -55659,10 +55659,8 @@ async function lqmDoSearch() {
     const label = [loc.name, loc.admin1, loc.country].filter(Boolean).join(', ');
     status.style.color = 'var(--success)';
     status.innerHTML = '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-pin></use></svg> ' + _ccEsc(label);
-    // Fly map to location
-    if (window.map) {
-      map.flyTo([loc.latitude, loc.longitude], Math.max(map.getZoom(), 8), { duration: 1.2 });
-    }
+    // Fly there and open the place's forecast, one action.
+    _srchGoPlace(loc.latitude, loc.longitude, label);
     inp.value = '';
     setTimeout(lqmCloseSearch, 1200);
   } catch(e) {
@@ -64514,6 +64512,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-19-b', date: 'Sep 19, 2026',
+    text: 'Searching a city takes you all the way there now: the map flies to it AND its forecast card opens, the same one a tap on a city dot gives. Works from the search button, the suggestion rows under the search bar, and your starred places.' },
   { id: '2026-09-19-a', date: 'Sep 19, 2026',
     text: 'Theme touch-up: the layer bubbles keep the red they have always worn, and the overlay pills go black to match the overlay button that opens them. Toolbar stays gold, panels stay black.' },
   { id: '2026-09-18-c', date: 'Sep 18, 2026',
@@ -65158,8 +65158,8 @@ function _starGlyph(item) {
 }
 
 function _starOpen(item) {
-  if (item.kind === 'location' && window.map && isFinite(item.lat) && isFinite(item.lng)) {
-    map.flyTo([item.lat, item.lng], Math.max(map.getZoom(), 8), { duration: 1.2 });
+  if (item.kind === 'location' && isFinite(item.lat) && isFinite(item.lng)) {
+    _srchGoPlace(item.lat, item.lng, item.label);
     lqmCloseSearch();
     return;
   }
@@ -65232,8 +65232,21 @@ function _srchPickCatalog(idx) {
 
 function _srchPickLocation(loc, label) {
   _srchSaveRecent(label, '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-pin></use></svg>');
-  if (window.map) map.flyTo([loc.latitude, loc.longitude], Math.max(map.getZoom(),8), { duration:1.2 });
+  _srchGoPlace(loc.latitude, loc.longitude, label);
   lqmCloseSearch();
+}
+
+// Where every found place ends up: the map flies there AND its forecast
+// opens, the same card a tap on a city dot gives. Finding a city and then
+// having to hunt for its dot was answering half the question.
+function _srchGoPlace(lat, lng, label) {
+  if (window.map) {
+    try { map.flyTo([lat, lng], Math.max(map.getZoom(), 8), { duration: 1.2 }); } catch (e) {}
+  }
+  try {
+    const name = String(label || '').split(',')[0].trim() || label;
+    openForecastModal({ name: name, lat: lat, lon: lng });
+  } catch (e) {}
 }
 
 function _srchShowDefault() {
