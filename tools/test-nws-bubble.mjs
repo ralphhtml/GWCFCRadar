@@ -69,8 +69,20 @@ console.log('\n1. the source keeps the shape of the feature');
   ok('an RTMA domain without the field sits the variable out',
      /if \(x\.man\.fields && !x\.man\.fields\[field\]\) return;/.test(PAGE));
   ok('and a field no domain built fails with an honest message',
-     /err\.userMsg = 'The Pi has not built this RTMA product yet\./.test(PAGE)
+     /err\.userMsg = 'The Pi has not built this ' \+ NAME \+ ' product yet\./.test(PAGE)
      && /\(e && e\.userMsg\) \|\|/.test(PAGE));
+  ok('the analyses play by opacity swap on pooled overlays, never a URL swap',
+     /_nwsBuildPiAnalysis/.test(PAGE)
+     && !/setUrl\(f\.urls/.test(PAGE)
+     && /if \(i === runs\.length - 1\) l\.addTo\(map\);/.test(PAGE));
+  ok('HRRR stands beside RTMA and NDFD as a source',
+     /\['rtma', 'hrrr', 'ndfd'\]\.forEach/.test(PAGE)
+     && /\['rtma', 'hrrr', 'ndfd'\]\.filter/.test(PAGE)
+     && /'nws-hrrr'/.test(PAGE));
+  ok('HRRR reflectivity has a row of its own',
+     /v: 'refc',\s*label: 'HRRR Reflectivity', hrrr: 'refc'/.test(PAGE));
+  ok('a domain on a slower clock only joins frames whose run it really has',
+     /r\.entry\.runs\.indexOf\(run\) < 0\) return;/.test(PAGE));
   ok('the pipeline derives RH for the analyses that lack it',
      /if "rh2m" not in found and "t2m" in found and "d2m" in found:/.test(
        readFileSync(join(ROOT, 'pi/gfs_pipeline.py'), 'utf8')));
