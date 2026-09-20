@@ -45391,7 +45391,13 @@ const ARC_LS_MAX = 400;           // days kept across a reload
 // The bucket spells a site without its leading K, and with the T of a
 // terminal radar left on.
 function _arcSid(site) {
-  return String(site || '').toUpperCase().replace(/^K/, '');
+  const up = String(site || '').toUpperCase();
+  // The bucket spells a NEXRAD without its leading K, and - measured
+  // against the live listing - a terminal radar without its leading T:
+  // Dallas Love is DAL_TZ0_..., Houston Hobby HOU_TZ0_.... TJUA is the
+  // one T-named NEXRAD, and _isTdwrSite already knows it.
+  if (typeof _isTdwrSite === 'function' && _isTdwrSite(up)) return up.replace(/^T/, '');
+  return up.replace(/^K/, '');
 }
 function _arcDayStr(ms) {
   const d = new Date(ms);
@@ -64555,6 +64561,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-20-b', date: 'Sep 20, 2026',
+    text: 'Cross Section now works on every radar product: reflectivity, velocity, storm relative velocity, correlation coefficient, differential reflectivity, specific differential phase, spectrum width, differential phase, and hydrometeor class. Terminal (TDWR) radars and sites without a Level 2 feed fall back to per-tilt Level 3 data, and the Time Machine slices the archive at your chosen moment.' },
   { id: '2026-09-20-a', date: 'Sep 20, 2026',
     text: 'Three fixes. The overlay pills are properly black now (a higher-priority rule was still painting their resting state gold). Your custom Radar Colors and value filters follow your account: paint a palette on one device, sign in anywhere, and it is there, along with the Pi picture recolours. And a palette loaded from a .pal file is treated as the boss: presets and the account sync never overwrite it silently - the newest uploaded file always wins and is what syncs to your other devices.' },
   { id: '2026-09-19-b', date: 'Sep 19, 2026',
@@ -68000,13 +68008,23 @@ function _xsSay(msg, kind) {
 // Which products can be sliced. Only the ones the browser's own Level 2
 // decoder produces raw numbers for: a cross section is made of values, and
 // the Pi's ready made pictures are pixels with no values behind them.
+// Every product with a vertical dimension, from whichever feed carries it:
+// `layer` is the Level 2 decoder moment (null = Level 2 does not carry it),
+// `l3` is the PR_BUCKET family whose per-tilt files can stand in (null =
+// Level 3 has no per-tilt feed), and `colorAs` is a code the colour system
+// already understands, so each slice paints in its product's own scale.
+// Column products (VIL, precip, echo tops) have no vertical structure to
+// slice, so they are honestly absent rather than drawn as a flat sheet.
 const XS_PRODUCTS = [
-  { id: 'ref', label: 'Reflectivity' },
-  { id: 'vel', label: 'Velocity' },
-  { id: 'cc',  label: 'Corr. Coeff.' },
-  { id: 'zdr', label: 'Diff. Refl.' },
-  { id: 'kdp', label: 'Spec. Diff. Phase' },
-  { id: 'sw',  label: 'Spectrum Width' },
+  { id: 'ref', label: 'Reflectivity',       layer: 'REF', l3: 'reflectivity', colorAs: 'ref' },
+  { id: 'vel', label: 'Velocity',           layer: 'VEL', l3: 'velocity',     colorAs: 'vel' },
+  { id: 'srv', label: 'Storm Rel. Velocity', layer: null, l3: 'srvelocity',   colorAs: 'n0s' },
+  { id: 'cc',  label: 'Corr. Coeff.',       layer: 'CC',  l3: 'corrcoeff',    colorAs: 'cc' },
+  { id: 'zdr', label: 'Diff. Refl.',        layer: 'ZDR', l3: 'diffrefl',     colorAs: 'zdr' },
+  { id: 'kdp', label: 'Spec. Diff. Phase',  layer: 'KDP', l3: 'kdp',          colorAs: 'kdp' },
+  { id: 'sw',  label: 'Spectrum Width',     layer: 'SW',  l3: null,           colorAs: 'sw' },
+  { id: 'phi', label: 'Diff. Phase',        layer: 'PHI', l3: null,           colorAs: 'phi' },
+  { id: 'hc',  label: 'Hydro. Class',       layer: null,  l3: 'hydroclass',   colorAs: 'n0h' },
 ];
 
 function toggleCrossSection() {
@@ -68263,48 +68281,12 @@ async function _xsBuild() {
 
 async function _xsBuildInner(token) {
   const product = (_xsEl('xsec-product') || {}).value || 'ref';
+  const spec = XS_PRODUCTS.find(p => p.id === product) || XS_PRODUCTS[0];
   const site = ((_xsEl('xsec-site') || {}).value || '').toLowerCase();
   if (!site) throw new Error('no radar chosen');
-
-  // The volume. Almost always already here: the map keeps the last one for
-  // two minutes and a cross section is normally cut right after looking at
-  // the picture it came from.
-  _xsSay('getting the volume for ' + site.toUpperCase(), 'busy');
-  let buf = null;
-  if (typeof _l2VolCache !== 'undefined' && _l2VolCache
-      && _l2VolCache.station === site && _l2VolCache.buf
-      && Date.now() - _l2VolCache.at < 120000) {
-    buf = _l2VolCache.buf;
-  } else if (typeof _fetchVolumeDirect === 'function') {
-    buf = await _fetchVolumeDirect(site);
-    if (token !== _xsToken) return;
-    try { _l2VolCache = { station: site, at: Date.now(), buf: buf.slice(0) }; } catch (e) {}
-  } else {
-    throw new Error('cannot reach a radar volume from here');
-  }
-  if (!buf) throw new Error('no volume for ' + site.toUpperCase());
-
-  const layerMap = { cc: 'CC', zdr: 'ZDR', vel: 'VEL', ref: 'REF', kdp: 'KDP', sw: 'SW', phi: 'PHI' };
-  const layer = layerMap[product] || product.toUpperCase();
-
-  // One decode to find out what angles the volume actually holds. A VCP is
-  // not fixed: a clear air pattern has five cuts and a severe one fourteen.
-  _xsSay('reading the first cut', 'busy');
-  let first;
-  try {
-    first = await _workerProcess(buf.slice(0), layer, undefined);
-  } catch (e) {
-    if (/superseded/.test(String(e && e.message))) {
-      throw new Error('the map started its own radar job, so this one stopped');
-    }
-    throw e;
-  }
-  if (token !== _xsToken) return;
-
-  const meta = (first && first.metadata) || {};
-  const elevs = Array.isArray(meta.availableElevations) && meta.availableElevations.length
-    ? meta.availableElevations.slice(0, XS_MAX_TILTS)
-    : [meta.elevationNumber || 1];
+  const isTdwr = typeof _isTdwrSite === 'function' && _isTdwrSite(site);
+  // The radar's own moment: a travelled Time Machine slices the archive.
+  const at = (typeof _tmAt !== 'undefined' && _tmAt != null) ? _tmAt : null;
 
   // Sample points along the line, evenly in lat/lon. Two hundred metres a
   // step is finer than a gate, so the cap is what decides.
@@ -68319,56 +68301,145 @@ async function _xsBuildInner(token) {
       km: lenKm * t,
     });
   }
-
   const sitePos = _xsSiteLatLon(site);
-  const cuts = [];
-  for (let k = 0; k < elevs.length; k++) {
-    if (token !== _xsToken) return;
-    _xsSay(`cut ${k + 1} of ${elevs.length}`, 'busy');
-    let res;
-    if (k === 0 && (meta.elevationNumber === elevs[0] || elevs.length === 1)) {
-      res = first;                                   // already decoded
-    } else {
-      try {
-        res = await _workerProcess(buf.slice(0), layer, { elevation: elevs[k] });
-      } catch (e) {
-        if (/superseded/.test(String(e && e.message))) {
-          throw new Error('the map started its own radar job, so this one stopped');
-        }
-        // One bad cut is not a reason to lose the rest of the volume.
-        console.warn('[xsec] cut', elevs[k], 'failed:', e);
-        continue;
-      }
-    }
-    if (token !== _xsToken) return;
-    if (!res || !res.meshData || !res.bounds) continue;
+
+  // One decoded tilt becomes one row of samples along the line.
+  const sampleCut = (res, fallbackAngle) => {
     const angle = (res.metadata && res.metadata.elevationAngle);
+    const a = isFinite(angle) ? angle : fallbackAngle;
     const idx = _xsIndex(res.meshData, res.bounds);
-    const row = pts.map(p => {
-      const v = _xsLookup(idx, p.lng, p.lat);
-      const rangeKm = sitePos ? _xsKm(sitePos, p) : p.km;
-      return {
-        v,
-        // How far along the line this sample is. It lives on the sample and
-        // not only on the point list because the draw loop reads rows, and a
-        // row without it drew every box at NaN, which paints nothing at all
-        // and looks exactly like "no data here".
-        km: p.km,
-        z: _xsBeamHeightKm(rangeKm, isFinite(angle) ? angle : 0.5, 0),
-      };
+    return {
+      angle: isFinite(angle) ? angle : null,
+      row: pts.map(p => {
+        const v = _xsLookup(idx, p.lng, p.lat);
+        const rangeKm = sitePos ? _xsKm(sitePos, p) : p.km;
+        return { v, km: p.km, z: _xsBeamHeightKm(rangeKm, isFinite(a) ? a : 0.5, 0) };
+      }),
+    };
+  };
+
+  const cuts = [];
+  let timeIso = null, vcp = null, source = '';
+
+  // ── Leg one: the Level 2 volume, live or off the tape archive ──────────
+  if (spec.layer && !isTdwr) {
+    try {
+      let buf = null;
+      if (at != null) {
+        _xsSay('reading the Level 2 tape archive', 'busy');
+        const vols = await _l2ArcVolumes(site, at, 1, R3D_VOLUME_CAP, 0);
+        if (token !== _xsToken) return;
+        if (vols.length && Math.abs(vols[0].when - at) <= 90 * 60000) buf = vols[0].buffer;
+      } else if (typeof _l2VolCache !== 'undefined' && _l2VolCache
+          && _l2VolCache.station === site && _l2VolCache.buf
+          && Date.now() - _l2VolCache.at < 120000) {
+        buf = _l2VolCache.buf;
+      } else if (typeof _fetchVolumeDirect === 'function') {
+        _xsSay('getting the volume for ' + site.toUpperCase(), 'busy');
+        buf = await _fetchVolumeDirect(site);
+        if (token !== _xsToken) return;
+        try { _l2VolCache = { station: site, at: Date.now(), buf: buf.slice(0) }; } catch (e) {}
+      }
+      if (buf) {
+        // One decode to find out what angles the volume actually holds. A
+        // VCP is not fixed: clear air has five cuts and a severe day fourteen.
+        _xsSay('reading the first cut', 'busy');
+        let first;
+        try {
+          first = await _workerProcess(buf.slice(0), spec.layer, undefined);
+        } catch (e) {
+          if (/superseded/.test(String(e && e.message))) {
+            throw new Error('the map started its own radar job, so this one stopped');
+          }
+          throw e;
+        }
+        if (token !== _xsToken) return;
+        const meta = (first && first.metadata) || {};
+        timeIso = meta.timeIso || null; vcp = meta.vcp || null;
+        const elevs = Array.isArray(meta.availableElevations) && meta.availableElevations.length
+          ? meta.availableElevations.slice(0, XS_MAX_TILTS)
+          : [meta.elevationNumber || 1];
+        for (let k = 0; k < elevs.length; k++) {
+          if (token !== _xsToken) return;
+          _xsSay(`cut ${k + 1} of ${elevs.length}`, 'busy');
+          let res;
+          if (k === 0 && (meta.elevationNumber === elevs[0] || elevs.length === 1)) {
+            res = first;                                   // already decoded
+          } else {
+            try { res = await _workerProcess(buf.slice(0), spec.layer, { elevation: elevs[k] }); }
+            catch (e) {
+              if (/superseded/.test(String(e && e.message))) {
+                throw new Error('the map started its own radar job, so this one stopped');
+              }
+              console.warn('[xsec] cut', elevs[k], 'failed:', e);   // one bad cut, not the volume
+              continue;
+            }
+          }
+          if (token !== _xsToken) return;
+          if (!res || !res.meshData || !res.bounds) continue;
+          const cut = sampleCut(res, 0.5);
+          cut.elev = elevs[k];
+          cuts.push(cut);
+          // Let the page breathe between cuts: each decode is real worker time.
+          await new Promise(r => setTimeout(r, 0));
+        }
+        source = at != null ? 'Level 2 archive' : 'Level 2';
+      }
+    } catch (e) {
+      if (/superseded|radar job/.test(String(e && e.message))) throw e;
+      console.warn('[xsec] Level 2 leg failed, trying Level 3:', e);
+    }
+  }
+
+  // ── Leg two: the Level 3 per-tilt files - every terminal radar, any
+  // NEXRAD whose feed is down, and the products Level 2 never carried
+  // (storm relative velocity, the hydrometeor classes). ──────────────────
+  if (!cuts.length && spec.l3 && typeof PR_BUCKET !== 'undefined') {
+    const fam = PR_BUCKET[spec.l3] || {};
+    const codes = (isTdwr ? fam.t : fam.k) || [];
+    const usable = codes.filter(c => c !== 'TZL').slice(0, XS_MAX_TILTS);
+    if (!usable.length) {
+      throw new Error(isTdwr
+        ? 'a terminal radar does not make ' + spec.label.toLowerCase()
+        : spec.label + ' has no per-tilt feed for ' + site.toUpperCase());
+    }
+    _xsSay('reading Level 3 tilts for ' + site.toUpperCase(), 'busy');
+    const results = await Promise.all(usable.map(async (code) => {
+      try {
+        const url = await _l3BucketNewest(site, code, at == null ? undefined : at);
+        if (!url) return null;
+        const buf2 = await fetch(url, { signal: _abortSignal(20000) })
+          .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); });
+        if (token !== _xsToken) return null;
+        const res = typeof _pbDecode === 'function'
+          ? await _pbDecode(buf2, code) : await _workerProcess(buf2, code);
+        if (typeof _l3MeshNormalize === 'function') _l3MeshNormalize(res.meshData, code);
+        return res;
+      } catch (e) { return null; }                     // one missing tilt costs one cut
+    }));
+    if (token !== _xsToken) return;
+    results.forEach((res, k) => {
+      if (!res || !res.meshData || !res.bounds) return;
+      const meta2 = res.metadata || {};
+      if (!isFinite(meta2.elevationAngle)) return;     // no real angle, no honest height
+      if (meta2.timeIso && !timeIso) timeIso = meta2.timeIso;
+      const cut = sampleCut(res, meta2.elevationAngle);
+      cut.elev = k + 1;
+      cuts.push(cut);
     });
-    cuts.push({ elev: elevs[k], angle: isFinite(angle) ? angle : null, row });
-    // Let the page breathe between cuts. Each decode is seconds of worker
-    // time and this keeps the map responsive while they run.
-    await new Promise(r => setTimeout(r, 0));
+    source = at != null ? 'Level 3 archive' : 'Level 3';
   }
 
   if (token !== _xsToken) return;
-  if (!cuts.length) throw new Error('no cut in this volume had usable data');
+  if (!cuts.length) {
+    throw new Error(spec.label + ' could not be read from ' + site.toUpperCase()
+      + (at != null ? ' at that moment' : ''));
+  }
+  cuts.sort((a, b) => (a.angle ?? 99) - (b.angle ?? 99));
 
-  _xsLast = { cuts, pts, product, site, lenKm,
-              timeIso: meta.timeIso || null, vcp: meta.vcp || null };
-  _xsSay(`${cuts.length} cuts · ${n} pts`);
+  _xsLast = { cuts, pts, product, colorAs: spec.colorAs, site, lenKm,
+              source, timeIso, vcp };
+  _xsSay(`${cuts.length} cuts · ${pts.length} pts · ${source}`);
   _xsDraw(_xsLast);
 }
 
@@ -68456,7 +68527,7 @@ function _xsDraw(slice, errText) {
   // knows - it has not measured anything between two elevation angles - and
   // drawing it as a smooth field would invent the part it cannot see.
   const colorFn = (typeof _meshColorFn === 'function')
-    ? _meshColorFn(slice.product) : null;
+    ? _meshColorFn(slice.colorAs || slice.product) : null;
   const cellW = PW / Math.max(1, slice.pts.length - 1);
   const sorted = slice.cuts.slice().sort((a, b) => (a.angle || 0) - (b.angle || 0));
   for (let ci = 0; ci < sorted.length; ci++) {
@@ -68488,7 +68559,7 @@ function _xsDraw(slice, errText) {
     legend.innerHTML = `<span>cuts:</span><span>${angles.join('  ')}</span>`;
   }
   if (note) {
-    const fam = (typeof _meshFamily === 'function') ? _meshFamily(slice.product) : null;
+    const fam = (typeof _meshFamily === 'function') ? _meshFamily(slice.colorAs || slice.product) : null;
     const meta = (typeof RADAR_FAMS !== 'undefined' && fam && RADAR_FAMS[fam]) || null;
     const when = slice.timeIso ? new Date(slice.timeIso) : null;
     note.innerHTML =
