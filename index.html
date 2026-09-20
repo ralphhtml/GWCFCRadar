@@ -10227,11 +10227,113 @@ window._themeApply = function (cfg) {
     const css = window._themeSurfaceCss(sfs[k]);
     if (css && /^--[a-z0-9-]+$/.test(k)) r.style.setProperty(k, css);
   });
+  // A theme change writes the opaque gradients back; glass, when on, thins
+  // them again so the new theme arrives already glassy.
+  if (window._glassReady && window._glassSync) window._glassSync();
 };
 try {
   const raw = localStorage.getItem(window.THEME_KEY);
   if (raw) window._themeApply(JSON.parse(raw));
 } catch (e) { /* a corrupt theme must never cost the page its stylesheet */ }
+
+// ── LIQUID GLASS ─────────────────────────────────────────────────────────
+// Glass is the same chrome with the alpha turned down and a backdrop blur
+// turned on. Rather than hand-maintain a translucent twin of every theme,
+// _glassSync() takes whichever gradients are in force right now, whether
+// the shipped ones or a saved theme's, rewrites each colour stop with a
+// lower alpha, and writes the result back into the very same tokens. Every
+// surface that wears a token goes glassy at once; the blur and the bright
+// top lip live in the stylesheet under [data-glass].
+window.GLASS_KEY = 'gwcfc_glass';
+window._glassLevel = null;
+try {
+  const g = localStorage.getItem(window.GLASS_KEY);
+  if (g === 'subtle' || g === 'medium' || g === 'full') window._glassLevel = g;
+} catch (e) {}
+// How see-through each level is. p is panels and pills, b is pressable
+// buttons, kept a touch more solid so a gold button still reads as gold
+// over a busy storm.
+window.GLASS_ALPHA = {
+  subtle: { p: 0.84, b: 0.92 },
+  medium: { p: 0.62, b: 0.80 },
+  full:   { p: 0.42, b: 0.66 },
+};
+// Rewrites every colour in a gradient string at a lower alpha. rgb()/rgba()
+// first, then hex, in that order: the first pass emits rgba() text that the
+// second pass must not touch again.
+window._glassify = function (css, a) {
+  css = String(css);
+  css = css.replace(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([0-9.]+))?\s*\)/g,
+    function (m, r, g, b, ba) {
+      const base = ba != null ? parseFloat(ba) : 1;
+      return 'rgba(' + r + ',' + g + ',' + b + ',' + (base * a).toFixed(3) + ')';
+    });
+  css = css.replace(/#([0-9a-fA-F]{6})([0-9a-fA-F]{2})?(?![0-9a-fA-F])/g,
+    function (m, h, aa) {
+      const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16),
+            b = parseInt(h.slice(4, 6), 16);
+      const base = aa != null ? parseInt(aa, 16) / 255 : 1;
+      return 'rgba(' + r + ',' + g + ',' + b + ',' + (base * a).toFixed(3) + ')';
+    });
+  return css;
+};
+window._glassSync = function () {
+  const r = document.documentElement;
+  const KEYS = ['--grad-panel', '--grad-surface', '--grad-card',
+                '--grad-raise', '--grad-raise-h', '--grad-sunk'];
+  const lvl = window._glassLevel;
+  // The opaque truth for each token: the saved theme's own surface when it
+  // has one, else whatever the stylesheet ships. Read from storage rather
+  // than from the tokens themselves, because once glass has run the tokens
+  // hold the already-thinned copies and thinning twice fades to nothing.
+  const over = {};
+  try {
+    const t = JSON.parse(localStorage.getItem(window.THEME_KEY) || 'null');
+    if (t && t.surfaces) Object.keys(t.surfaces).forEach(function (k) {
+      const css = window._themeSurfaceCss(t.surfaces[k]);
+      if (css && /^--[a-z0-9-]+$/.test(k)) over[k] = css;
+    });
+  } catch (e) {}
+  if (!lvl) {
+    r.removeAttribute('data-glass');
+    KEYS.forEach(function (k) {
+      if (over[k]) r.style.setProperty(k, over[k]); else r.style.removeProperty(k);
+    });
+    return;
+  }
+  const A = window.GLASS_ALPHA[lvl];
+  r.setAttribute('data-glass', lvl);
+  KEYS.forEach(function (k) {
+    let base = over[k];
+    if (!base) {
+      r.style.removeProperty(k);
+      base = getComputedStyle(r).getPropertyValue(k).trim();
+    }
+    if (!base) return;
+    const a = (k === '--grad-raise' || k === '--grad-raise-h') ? A.b : A.p;
+    r.style.setProperty(k, window._glassify(base, a));
+  });
+};
+window._glassSet = function (lvl) {
+  window._glassLevel =
+    (lvl === 'subtle' || lvl === 'medium' || lvl === 'full') ? lvl : null;
+  try {
+    if (window._glassLevel) localStorage.setItem(window.GLASS_KEY, window._glassLevel);
+    else localStorage.removeItem(window.GLASS_KEY);
+  } catch (e) {}
+  window._glassSync();
+};
+// The attribute goes on right now so the blur is there from the first
+// painted frame; the token rewrite has to wait for the stylesheet that
+// defines the shipped gradients, which sits further down the document.
+if (window._glassLevel) {
+  document.documentElement.setAttribute('data-glass', window._glassLevel);
+}
+(function () {
+  function go() { window._glassReady = true; window._glassSync(); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go);
+  else go();
+})();
 </script>
 <!-- Firebase SDK loaded dynamically so it never blocks window.load or init() -->
 <script>
@@ -11880,20 +11982,33 @@ function initMap() {
   try { map.getContainer().addEventListener('touchstart', ()=>{}, {passive:true}); } catch(e){}
   let _zoomTimer = null;
   map.on('zoomstart', () => {
-    // Suspend non-current radar frames during zoom to prevent tile avalanche.
-    // Current frame is left alone so its tiles stay visible through the zoom transition.
+    // Detach every non-current radar frame for the duration of the zoom.
+    // A hidden tile layer still rides the zoom animation (a transform update
+    // per layer per frame) and then re-fetches its whole viewport the moment
+    // the zoom ends, and with a full pool that is hundreds of requests and
+    // decodes landing in one burst - which is exactly the zoom lag people
+    // felt. Their old tiles were drawn for the old zoom anyway, so nothing
+    // visible is lost: the current frame stays put, and the window is
+    // rebuilt a beat after the zoom settles.
     if (_radarPoolBuilt) {
-      _radarLayerPool.forEach((l, i) => {
-        if (l) l.options.updateWhenZooming = (i === currentFrame);
-      });
+      for (let i = 0; i < _radarLayerPool.length; i++) {
+        if (i === currentFrame) continue;
+        if (_radarLayerPool[i]) {
+          try { map.removeLayer(_radarLayerPool[i]); } catch (e) {}
+          _radarLayerPool[i] = null;
+          _radarLayerLoaded[i] = false;
+        }
+        if (_canadaLayerPool[i]) {
+          try { map.removeLayer(_canadaLayerPool[i]); } catch (e) {}
+          _canadaLayerPool[i] = null;
+          _canadaLayerLoaded[i] = false;
+        }
+      }
+      _lastWindowS = -1; _lastWindowE = -1;
     }
   });
   map.on('zoomend', () => {
     _applyRadarPolyMask();
-    // Re-enable updateWhenZooming on all layers (was suppressed during zoom)
-    if (_radarPoolBuilt) {
-      _radarLayerPool.forEach(l => { if (l) l.options.updateWhenZooming = false; });
-    }
     // Re-assert current frame opacity immediately after zoom (tiles may have been
     // re-requested; opacity state is preserved but call ensures nothing slipped to 0)
     if (activeLayers.nexrad && _radarPoolBuilt) showFrame(currentFrame);
@@ -12248,8 +12363,10 @@ function _poolWindow(idx) {
   // fetching tiles at whatever opacity, which is the same growth that used to
   // kill the tab on iOS - just further up the scale. So desktop gets a window
   // too. It is wide enough that a whole play-through of a normal loop is
-  // still preloaded, and it slides for the long ones.
-  const sz = 48, half = 24;
+  // still preloaded, and it slides for the long ones. 24 covers a whole
+  // two-hour loop; wider than that bought smoothness nobody could see while
+  // costing a tile fetch per layer on every pan and zoom.
+  const sz = 24, half = 12;
   if (n <= sz) return { s: 0, e: n - 1 };
   let s = Math.max(0, idx - half);
   let e = Math.min(n - 1, s + sz - 1);
@@ -12412,6 +12529,7 @@ function _ensureCanadaLayer(i) {
 let _lastWindowS = -1, _lastWindowE = -1;
 
 
+let _awToken = 0;
 function _activateWindow(idx) {
   const { s, e } = _poolWindow(idx);
   if (s === _lastWindowS && e === _lastWindowE) return;
@@ -12436,9 +12554,26 @@ function _activateWindow(idx) {
       _canadaLayerLoaded[i] = false;
     }
   }
+  // The current frame goes on right away; its neighbours a beat later; the
+  // rest in small timed batches. A freshly emptied window (right after a
+  // zoom) used to fire every layer's tile requests in one synchronous burst,
+  // and that burst was most of the post-zoom stutter. The token cancels a
+  // stale schedule when the window moves again before it finishes.
+  const tok = ++_awToken;
+  _ensureNexradLayer(idx);
+  const near = [], far = [];
   for (let i = s; i <= e; i++) {
-    _ensureNexradLayer(i);
+    if (i === idx) continue;
+    (Math.abs(i - idx) <= 3 ? near : far).push(i);
   }
+  setTimeout(() => {
+    if (tok !== _awToken || !_radarPoolBuilt) return;
+    near.forEach(i => _ensureNexradLayer(i));
+  }, 120);
+  far.forEach((i, k) => setTimeout(() => {
+    if (tok !== _awToken || !_radarPoolBuilt) return;
+    _ensureNexradLayer(i);
+  }, 300 + Math.floor(k / 4) * 200));
   // Canada WMS: only current ±1 to avoid hundreds of extra tile requests
   for (let i = Math.max(s, idx - 1); i <= Math.min(e, idx + 1); i++) {
     _ensureCanadaLayer(i);
@@ -54336,8 +54471,8 @@ const THEME_TOKENS = [
 const THEME_SURFACES = [
   { v: '--grad-panel',   l: 'Panels',        d: { type: 'grad', angle: 180, stops: ['#26262e', '#131318', '#000000'] } },
   { v: '--grad-surface', l: 'Cards',         d: { type: 'grad', angle: 180, stops: ['#1e1e25', '#0a0a0d'] } },
-  { v: '--grad-raise',   l: 'Buttons',       d: { type: 'grad', angle: 180, stops: ['#e8bc22', '#ae820c'] } },
-  { v: '--grad-raise-h', l: 'Buttons hover', d: { type: 'grad', angle: 180, stops: ['#ffd44d', '#b8860b'] } },
+  { v: '--grad-raise',   l: 'Buttons',       d: { type: 'grad', angle: 180, stops: ['#5cd8f7', '#16abd8', '#008cba'] } },
+  { v: '--grad-raise-h', l: 'Buttons hover', d: { type: 'grad', angle: 180, stops: ['#8ce7ff', '#3fc6ea', '#14a5d6'] } },
   { v: '--grad-sunk',    l: 'Pressed',       d: { type: 'grad', angle: 180, stops: ['#050507', '#1a1a20'] } },
 ];
 
@@ -55171,6 +55306,7 @@ function themeReset() {
   _themeClearProps();
   _themePartsApply();   // or the injected sheet survives the reset
   try { localStorage.removeItem(THEME_KEY); } catch (e) {}
+  if (window._glassSync) window._glassSync();  // re-thin the shipped gradients
   _themeRender();
 }
 
@@ -64561,6 +64697,10 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-20-d', date: 'Sep 20, 2026',
+    text: 'New coat of paint: the pressable buttons now wear the animation bar\'s blue so the controls read as one family, the overlay button and its pills wear the gold, and the account pill is black with a red outline.' },
+  { id: '2026-09-20-c', date: 'Sep 20, 2026',
+    text: 'Zooming with radar on is much smoother. Hidden animation frames used to ride along through every zoom and then re-download all at once when it ended; now they step aside during the zoom and come back in quiet batches after.' },
   { id: '2026-09-20-b', date: 'Sep 20, 2026',
     text: 'Cross Section now works on every radar product: reflectivity, velocity, storm relative velocity, correlation coefficient, differential reflectivity, specific differential phase, spectrum width, differential phase, and hydrometeor class. Terminal (TDWR) radars and sites without a Level 2 feed fall back to per-tilt Level 3 data, and the Time Machine slices the archive at your chosen moment.' },
   { id: '2026-09-20-a', date: 'Sep 20, 2026',
@@ -71704,9 +71844,10 @@ function closeCredits() {
   /* A row or chip inside a card. Kept translucent so the panel shows through
      and the stack still reads as three depths rather than three colours. */
   --grad-card:    linear-gradient(180deg, rgba(255,255,255,0.09) 0%, rgba(0,0,0,0.30) 100%);
-  /* Something meant to be pressed: the toolbar's gold. */
-  --grad-raise:   linear-gradient(180deg, #e8bc22 0%, #ae820c 100%);
-  --grad-raise-h: linear-gradient(180deg, #ffd44d 0%, #b8860b 100%);
+  /* Something meant to be pressed: the animation bar's cyan, so every
+     pressable control and the bar it lives beside read as one family. */
+  --grad-raise:   linear-gradient(180deg, #5cd8f7 0%, #16abd8 48%, #008cba 100%);
+  --grad-raise-h: linear-gradient(180deg, #8ce7ff 0%, #3fc6ea 48%, #14a5d6 100%);
   /* Something already pressed, lit from below so it reads as pushed in. */
   --grad-sunk:    linear-gradient(180deg, #050507 0%, #1a1a20 100%);
   /* The dim behind a modal: neutral black, the page carries through it. */
@@ -72038,7 +72179,9 @@ function closeCredits() {
 .tool-btn {
   background-image: var(--grad-raise);
   border-color: var(--edge-red);
-  color: #241a04;
+  /* Pure black, not the near-black brown: on the cyan gradient's darkest
+     stop the brown sat at exactly 4.5:1 and black clears 5.4:1. */
+  color: #000;
   box-shadow: var(--edge-3d-soft);
 }
 .tool-btn:hover {
@@ -72050,16 +72193,16 @@ function closeCredits() {
 /* Placed AFTER every shared-gradient group above, so these per-family
    choices always win the tie: the cascade resolves equal specificity by
    file order, and an override that sits earlier is no override at all. */
-/* The overlay button, the search bar and the account pill stand on black
-   gradients while the rest of the pressable controls wear the gold: three
-   fixed way-posts that frame the map rather than compete with it. */
+/* The overlay button wears the gold now, with its pills, so the whole
+   overlay family reads as one warm thing against the cyan buttons. The
+   search bar stays black; the account pill goes black with a red outline. */
 #overlay-toggle-btn,
 #overlay-toggle-btn:hover {
-  background-image: var(--grad-panel);
-  border-color: rgba(232,184,0,0.40);
-  color: #ffe9a8;
+  background-image: linear-gradient(180deg, #e8bc22 0%, #ae820c 100%);
+  border-color: rgba(120,80,0,0.55);
+  color: #241a04;
 }
-#overlay-toggle-btn:hover { background-image: var(--grad-surface); }
+#overlay-toggle-btn:hover { background-image: linear-gradient(180deg, #ffd44d 0%, #b8860b 100%); }
 #top-search-bar {
   background: #0e0e13;
   background-image: var(--grad-panel);
@@ -72068,7 +72211,7 @@ function closeCredits() {
 #lqm-profile-btn {
   background: #0e0e13;
   background-image: var(--grad-panel);
-  border-color: rgba(232,184,0,0.40);
+  border-color: rgba(200,20,20,0.85);
 }
 /* The LAYER bubbles keep the red they have always worn: they are the app's
    signature control, and the black-and-gold rework was asked to leave them
@@ -72285,13 +72428,18 @@ function closeCredits() {
    specificity that actually wins. */
 
 #overlay-pills-row .ov-pill {
-  background-image: var(--grad-panel);
+  background-image: linear-gradient(180deg, #e8bc22 0%, #ae820c 100%);
   box-shadow: var(--lift-3d-sm), var(--edge-3d);
+  border-color: rgba(120,80,0,0.55);
+  color: #241a04;
 }
-#overlay-pills-row .ov-pill:hover { background-image: var(--grad-surface); }
+#overlay-pills-row .ov-pill:hover { background-image: linear-gradient(180deg, #ffd44d 0%, #b8860b 100%); }
 #overlay-pills-row .ov-pill.active {
-  background-image: var(--grad-sunk);
+  /* Pressed gold: the same metal lit from below, darker, with the light
+     text the dark face needs. */
+  background-image: linear-gradient(180deg, #4d3a05 0%, #7a5c08 100%);
   box-shadow: var(--edge-3d), inset 0 2px 5px rgba(0,0,0,0.55);
+  color: #ffe9a8;
 }
 .ov-bullet {
   background-image: radial-gradient(circle at 35% 30%, #7fe3ff 0%, #008CBA 55%, #004a63 100%);
@@ -72300,14 +72448,24 @@ function closeCredits() {
   background-image: radial-gradient(circle at 35% 30%, #ff9d92 0%, #d02020 55%, #6a0000 100%);
 }
 
-#lqm-profile-btn, #lqm-search-go, #past-alerts-toggle, #clean-hint {
+#lqm-search-go, #past-alerts-toggle, #clean-hint {
   background-image: var(--grad-raise);
   box-shadow: var(--edge-3d-soft);
   border-color: var(--edge-red);
 }
-#lqm-profile-btn:hover, #lqm-search-go:hover, #past-alerts-toggle:hover {
+#lqm-search-go:hover, #past-alerts-toggle:hover {
   background-image: var(--grad-raise-h);
 }
+/* The account pill: black slab, red outline, as asked for by name. It sat
+   in the raise group above, which is why it kept coming out gold. */
+#lqm-profile-btn, #lqm-profile-btn:hover {
+  background: #0e0e13;
+  background-image: var(--grad-panel);
+  border-color: rgba(200,20,20,0.85);
+  box-shadow: var(--lift-3d-sm), var(--edge-3d-soft);
+  color: #ffe9e6;
+}
+#lqm-profile-btn:hover { background-image: var(--grad-surface); }
 #lqm-profile-avatar-sm {
   background-image: linear-gradient(180deg, #b02020 0%, #5a0000 100%);
   box-shadow: var(--edge-3d-soft);
@@ -72451,6 +72609,149 @@ body {
   background-image: var(--grad-ink);
   box-shadow: var(--lift-3d), var(--edge-3d-ink);
   border-color: var(--edge-ink);
+}
+
+/* ── 16. Liquid glass ─────────────────────────────────────────────────── */
+/* Off unless <html data-glass="subtle|medium|full"> says otherwise. The
+   gradients themselves are thinned by _glassSync() in the boot script, so
+   this sheet only carries what CSS alone can: the blur behind each floating
+   surface, the bright top lip that sells the pane of glass, and the knobs
+   that make the three levels three levels. The touch/PS5 kill-switch at the
+   top of the page still wins: there backdrop-filter stays off and glass
+   degrades to a translucent tint, which is the cheap half of the look. */
+:root[data-glass="subtle"] {
+  --glass-blur: 8px;  --glass-sat: 1.12;
+  --glass-edge: rgba(255,255,255,0.16); --glass-a-panel: 0.84; --glass-a-btn: 0.92;
+}
+:root[data-glass="medium"] {
+  --glass-blur: 14px; --glass-sat: 1.30;
+  --glass-edge: rgba(255,255,255,0.26); --glass-a-panel: 0.62; --glass-a-btn: 0.80;
+}
+:root[data-glass="full"] {
+  --glass-blur: 22px; --glass-sat: 1.50;
+  --glass-edge: rgba(255,255,255,0.38); --glass-a-panel: 0.42; --glass-a-btn: 0.66;
+}
+
+/* Everything that floats over the map or over other chrome gets the blur.
+   background-color goes transparent because a translucent gradient IMAGE
+   over an opaque colour is still opaque: the colour under it has to step
+   aside for the map to show through. */
+:root[data-glass] #alerts-panel,
+:root[data-glass] #eas-panel,
+:root[data-glass] #nwr-rec-panel,
+:root[data-glass] #tropical-model-panel,
+:root[data-glass] #severe-model-panel,
+:root[data-glass] #snd-panel,
+:root[data-glass] #hd-panel,
+:root[data-glass] #fnv3-panel,
+:root[data-glass] #stormcone-panel,
+:root[data-glass] #sc-style-panel,
+:root[data-glass] #sc-points-panel,
+:root[data-glass] #gps-hud,
+:root[data-glass] #inspector-readout,
+:root[data-glass] #ov-info-tooltip,
+:root[data-glass] #overlay-pills-row,
+:root[data-glass] #map-ctx-menu,
+:root[data-glass] #txt-font-menu,
+:root[data-glass] #forecast-panel,
+:root[data-glass] #gm-shell,
+:root[data-glass] #ad-shell,
+:root[data-glass] #dtb-color-modal,
+:root[data-glass] #tutorial-modal-inner,
+:root[data-glass] #spc-controls, :root[data-glass] #wpc-controls,
+:root[data-glass] #fw-controls, :root[data-glass] #cpc-controls,
+:root[data-glass] #ec-controls, :root[data-glass] #meso-panel,
+:root[data-glass] #storm-reports-panel, :root[data-glass] #tornado-tracks-panel,
+:root[data-glass] .models-style-panel,
+:root[data-glass] .ss-firstrun-card,
+:root[data-glass] .sg-page-picker-card,
+:root[data-glass] .cyc-ens-panel,
+:root[data-glass] .draw-toolbar, :root[data-glass] .text-toolbar,
+:root[data-glass] .measure-toolbar, :root[data-glass] .stormcone-toolbar,
+:root[data-glass] .tool-flyout,
+:root[data-glass] #r3d-panel,
+:root[data-glass] #xsec-panel,
+:root[data-glass] #lqm-set-shell,
+:root[data-glass] #overlay-toggle-btn,
+:root[data-glass] #top-search-bar,
+:root[data-glass] #lqm-profile-btn,
+:root[data-glass] .layer-row,
+:root[data-glass] .sub-bubble,
+:root[data-glass] .sat-region-bubble,
+:root[data-glass] .ov-pill,
+:root[data-glass] .overlay-pill-demo,
+:root[data-glass] .tool-btn,
+:root[data-glass] .nav-btn,
+:root[data-glass] #nav-fab {
+  background-color: transparent !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) !important;
+}
+/* The lip: glass catches light along its top edge. Kept as its own rule so
+   it restates each family's lift shadow rather than flattening it. */
+:root[data-glass] #alerts-panel, :root[data-glass] #forecast-panel,
+:root[data-glass] #overlay-pills-row, :root[data-glass] #map-ctx-menu,
+:root[data-glass] #r3d-panel, :root[data-glass] #xsec-panel,
+:root[data-glass] #lqm-set-shell, :root[data-glass] #gm-shell,
+:root[data-glass] #ad-shell, :root[data-glass] #tutorial-modal-inner {
+  box-shadow: var(--lift-3d), inset 0 1px 0 var(--glass-edge),
+              inset 0 -1px 0 rgba(0,0,0,0.40);
+}
+/* The map popups keep their !important gradients, which are already thinned
+   through the token; they only need the blur added. */
+:root[data-glass] .ap-popup-container .leaflet-popup-content-wrapper,
+:root[data-glass] .data-popup .leaflet-popup-content-wrapper,
+:root[data-glass] .nwr-popup .leaflet-popup-content-wrapper,
+:root[data-glass] .hh-popup .leaflet-popup-content-wrapper,
+:root[data-glass] .alert-popup .leaflet-popup-content-wrapper,
+:root[data-glass] .cc-popup .leaflet-popup-content-wrapper {
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) !important;
+}
+/* The layer bubbles wear their red as literal hex, not a token, so their
+   translucent twin is spelled here with the level's own alpha. */
+:root[data-glass] .layer-row,
+:root[data-glass] .sub-bubble,
+:root[data-glass] .sat-region-bubble {
+  background-image: linear-gradient(180deg,
+    rgba(168,24,24,var(--glass-a-btn)) 0%, rgba(109,4,4,var(--glass-a-btn)) 100%);
+}
+:root[data-glass] .sub-bubble:hover,
+:root[data-glass] .layer-row:hover,
+:root[data-glass] .sat-region-bubble:hover {
+  background-image: linear-gradient(180deg,
+    rgba(198,32,32,var(--glass-a-btn)) 0%, rgba(138,8,8,var(--glass-a-btn)) 100%);
+}
+:root[data-glass] .sub-bubble.active,
+:root[data-glass] .layer-row.active {
+  background-image: linear-gradient(180deg,
+    rgba(43,0,0,var(--glass-a-btn)) 0%, rgba(77,4,4,var(--glass-a-btn)) 100%);
+}
+/* The overlay family wears its gold as literal hex, so its translucent
+   twin is spelled here the same way the layer bubbles' red is. */
+:root[data-glass] #overlay-toggle-btn,
+:root[data-glass] #overlay-toggle-btn:hover,
+:root[data-glass] #overlay-pills-row .ov-pill {
+  background-image: linear-gradient(180deg,
+    rgba(232,188,34,var(--glass-a-btn)) 0%, rgba(174,130,12,var(--glass-a-btn)) 100%);
+}
+:root[data-glass] #overlay-toggle-btn:hover,
+:root[data-glass] #overlay-pills-row .ov-pill:hover {
+  background-image: linear-gradient(180deg,
+    rgba(255,212,77,var(--glass-a-btn)) 0%, rgba(184,134,11,var(--glass-a-btn)) 100%);
+}
+:root[data-glass] #overlay-pills-row .ov-pill.active {
+  background-image: linear-gradient(180deg,
+    rgba(77,58,5,var(--glass-a-btn)) 0%, rgba(122,92,8,var(--glass-a-btn)) 100%);
+}
+/* The settings rail and content pane are literal hex too. */
+:root[data-glass] #lqm-set-rail {
+  background-image: linear-gradient(180deg,
+    rgba(32,32,39,var(--glass-a-panel)) 0%, rgba(10,10,13,var(--glass-a-panel)) 100%);
+}
+:root[data-glass] #lqm-set-content {
+  background-image: linear-gradient(180deg,
+    rgba(26,26,32,var(--glass-a-panel)) 0%, rgba(11,11,14,var(--glass-a-panel)) 100%);
 }
 </style>
 <div id="feedback-modal-overlay" onclick="if(event.target===this)closeFeedback()">
