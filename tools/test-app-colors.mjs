@@ -492,13 +492,16 @@ else {
   ok('the token rows render', r.rows === 12, String(r.rows));
   ok('and one block per surface', r.surfaceBlocks === 5, String(r.surfaceBlocks));
   ok('a preset changes the accent', r.midAccent === '#5ec8ff', r.midAccent);
+  // Liquid glass rewrites each stop as rgba at the level's alpha, so the
+  // colour may arrive as hex or as its rgb triplet - both are the preset.
   ok('and the panel gradient with it',
-     /1c2947/.test(r.midPanel), r.midPanel);
+     /1c2947|rgba\(28,\s*41,\s*71/.test(r.midPanel), r.midPanel);
   ok('a real button on screen picks up the new surface',
      /gradient/.test(r.btnBg), r.btnBg);
   ok('a custom colour applies', r.customAccent === '#00ff00', r.customAccent);
   ok('a surface can be made solid',
-     r.solidRaise === 'linear-gradient(180deg, #123456 0%, #123456 100%)', r.solidRaise);
+     /^linear-gradient\(180deg, (#123456|rgba\(18,\s*52,\s*86,\s*[0-9.]+\)) 0%, (#123456|rgba\(18,\s*52,\s*86,\s*[0-9.]+\)) 100%\)$/.test(r.solidRaise),
+     r.solidRaise);
   ok('reset really goes back to the shipped colour',
      r.afterReset === r.shippedAccent, r.afterReset + ' vs ' + r.shippedAccent);
   ok('a theme survives the copy out and paste in round trip',
