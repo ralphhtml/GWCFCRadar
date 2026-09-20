@@ -30373,6 +30373,7 @@ const LAYER_DESCRIPTIONS = {
   'wind-jet':     'Wind speed at the 250 hPa pressure level (roughly 34,000 ft) - the jet stream, the fast-moving upper-air river of wind that steers most weather systems.',
   'nws-rtma':     'RTMA (Real-Time Mesoscale Analysis): the Weather Service\'s best estimate of what is actually happening at this moment, built from observations at 2.5 km over CONUS, Alaska, Hawaii and Puerto Rico at once. Not a forecast - the thing to check a forecast against. Rendered by the Pi; the animation bar scrubs back through recent hourly analyses.',
   'nws-ndfd':     'NDFD (National Digital Forecast Database): the official NWS forecast, the same grids behind forecast.weather.gov. Human forecasters made these numbers, not just a model. The animation bar plays forward through the next two days.',
+  'nws-hrrr':     'HRRR analysis: the newest hourly runs of the High-Resolution Rapid Refresh at their starting hour, which is the model\'s own 3 km read of right now. Sits between RTMA (pure observations) and a forecast: it is what the model believes is happening as it launches. Rendered by the Pi; the animation bar scrubs back through recent runs.',
   // The NWS rows inside the bubbles, one per variable. The key is the row's
   // own id (nws-<bubble>-<variable>), which is how the info button finds it.
   'nws-temperature-temp': 'Air temperature at 2 metres from the National Weather Service: the RTMA analysis says what it is right now, the NDFD forecast says what forecasters expect over the next two days.',
@@ -36105,20 +36106,21 @@ const _MODELS_PANELS = {
 // NDFD plays forward through the forecast.
 const NWS_SRC_VARS = {
   temperature: [
-    { v: 'temp', label: 'Temperature',    om: 'air-temp',  rtma: 't2m',  ndfd: 'temp' },
-    { v: 'dew',  label: 'Dew Point',      om: 'dew-point', rtma: 'd2m',  ndfd: 'td' },
+    { v: 'temp', label: 'Temperature',    om: 'air-temp',  rtma: 't2m',  hrrr: 't2m',  ndfd: 'temp' },
+    { v: 'dew',  label: 'Dew Point',      om: 'dew-point', rtma: 'd2m',  hrrr: 'd2m',  ndfd: 'td' },
     { v: 'maxt', label: 'Max Temp',                     ndfd: 'maxt' },
-    { v: 'rh',   label: 'Humidity',       rtma: 'rh2m' },
+    { v: 'rh',   label: 'Humidity',       rtma: 'rh2m', hrrr: 'rh2m' },
   ],
   wind: [
-    { v: 'wind', label: 'Wind Speed',     om: 'wind-surface', rtma: 'wind', ndfd: 'wind' },
-    { v: 'gust', label: 'Wind Gusts',     rtma: 'gust' },
+    { v: 'wind', label: 'Wind Speed',     om: 'wind-surface', rtma: 'wind', hrrr: 'wind', ndfd: 'wind' },
+    { v: 'gust', label: 'Wind Gusts',     rtma: 'gust', hrrr: 'gust' },
     { v: 'wdir', label: 'Wind Direction',               ndfd: 'wdir' },
   ],
   pressure: [
-    { v: 'pres', label: 'Surface Pressure', om: 'surface', rtma: 'pres' },
+    { v: 'pres', label: 'Surface Pressure', om: 'surface', rtma: 'pres', hrrr: 'mslp' },
   ],
   radar: [
+    { v: 'refc',  label: 'HRRR Reflectivity', hrrr: 'refc' },
     { v: 'pop12', label: 'Precip Chance',  ndfd: 'pop12' },
     { v: 'qpf',   label: 'Precip Amount',  ndfd: 'qpf' },
     { v: 'snow',  label: 'Snow Amount',    ndfd: 'snow' },
@@ -36128,9 +36130,9 @@ const NWS_SRC_VARS = {
     { v: 'waveh', label: 'Wave Height',    om: 'wave-height', ndfd: 'waveheight' },
   ],
   air: [
-    { v: 'vis',  label: 'Visibility',      rtma: 'vis' },
-    { v: 'sky',  label: 'Sky Cover',       rtma: 'tcc', ndfd: 'sky' },
-    { v: 'ceil', label: 'Cloud Ceiling',   rtma: 'ceil' },
+    { v: 'vis',  label: 'Visibility',      rtma: 'vis',  hrrr: 'vis' },
+    { v: 'sky',  label: 'Sky Cover',       rtma: 'tcc',  hrrr: 'tcc', ndfd: 'sky' },
+    { v: 'ceil', label: 'Cloud Ceiling',   rtma: 'ceil', hrrr: 'ceil' },
   ],
 };
 const NWS_OPACITY = 0.78;          // matches the bubbles' Open-Meteo maps
@@ -36145,7 +36147,7 @@ let _nwsGen = 0;                   // stale async builds bail
 
 // Which Leaflet pane each whole-box "Open-Meteo bubble" layer paints into -
 // both its own Open-Meteo grid and, when picked instead, the shared RTMA/NDFD
-// source underneath it (_nwsBuildRtma/_nwsBuildNdfd). Every one of these is
+// source underneath it (_nwsBuildPiAnalysis/_nwsBuildNdfd). Every one of these is
 // now its own row in Layer Order, so each needs its own pane: two bubbles
 // sharing one pane can never be independently restacked against each other,
 // only against everything outside that pane. Radar is the one exception -
@@ -36185,20 +36187,13 @@ function _nwsLoopShow(idx) {
   idx = Math.max(0, Math.min(fr.length - 1, idx));
   _nwsLoop.idx = idx;
   fr.forEach((f, i) => (f.layers || []).forEach(pair => {
-    // RTMA repaints by URL swap on shared per-region overlays; NDFD swaps
-    // opacity across its pooled WMS layers. Both shapes land here. A frame
-    // scrubbed to before the lazy add has caught up joins the map here.
+    // Every source is pooled now - RTMA and HRRR as per-run image overlays,
+    // NDFD as per-time WMS layers - and playback is one opacity swap. A
+    // frame scrubbed to before the lazy add has caught up joins the map here.
     if (i === idx && pair.addTo) { try { if (!map.hasLayer(pair)) pair.addTo(map); } catch (e) {} }
     if (pair.setOpacity) pair.setOpacity(i === idx ? NWS_OPACITY : 0);
   }));
   const f = fr[idx];
-  if (f.urls) {
-    _nwsLayers.forEach((l, k) => {
-      if (!f.urls[k]) return;
-      if (l._gwUrl !== f.urls[k]) { l.setUrl(f.urls[k]); l._gwUrl = f.urls[k]; }
-      l.setOpacity(NWS_OPACITY);
-    });
-  }
   const at = document.getElementById('anim-time');
   if (at && _nwsOn) {
     const d = new Date(f.time);
@@ -36208,7 +36203,7 @@ function _nwsLoopShow(idx) {
       at.textContent = `NDFD · valid ${hh}:${mm} UTC`;
       at.style.color = '#e8b800';  // a forecast, and the bar says so
     } else {
-      at.textContent = `RTMA · ${hh}:${mm} UTC analysis`;
+      at.textContent = `${_nwsOn.src.toUpperCase()} · ${hh}:${mm} UTC analysis`;
       at.style.color = '';
     }
   }
@@ -36247,13 +36242,13 @@ async function _nwsEnable(bubble, v, src) {
   _nwsOn = { bubble, v, src, label: def.label, field: def[src] };
   _nwsRefreshMenu();
   try {
-    if (src === 'rtma') await _nwsBuildRtma(def.rtma, gen);
-    else _nwsBuildNdfd(def.ndfd, gen);
+    if (src === 'ndfd') _nwsBuildNdfd(def.ndfd, gen);
+    else await _nwsBuildPiAnalysis(src, def[src], gen);
   } catch (e) {
     console.warn('[nws] layer failed:', e);
     if (typeof showToast === 'function') {
-      showToast((e && e.userMsg) || (src === 'rtma'
-        ? 'RTMA is not answering right now (the Pi may be busy or away). Try again in a minute.'
+      showToast((e && e.userMsg) || (src !== 'ndfd'
+        ? src.toUpperCase() + ' is not answering right now (the Pi may be busy or away). Try again in a minute.'
         : 'The NWS forecast server is not answering right now.'), 5000);
     }
     if (gen === _nwsGen) _nwsDisable();
@@ -36261,26 +36256,30 @@ async function _nwsEnable(bubble, v, src) {
     return;
   }
   if (gen !== _nwsGen) return;
-  _nwsLoopShow(_nwsOn.src === 'rtma' ? _nwsLoop.frames.length - 1 : 0);
+  _nwsLoopShow(_nwsOn.src !== 'ndfd' ? _nwsLoop.frames.length - 1 : 0);
   try { _syncAnimbarTrack(); } catch (e) {}
   _nwsRefreshMenu();
 }
 
-// RTMA: every domain the Pi builds (CONUS, Alaska, Hawaii, Puerto Rico),
-// each as one image overlay whose URL swaps per frame, over the last few
-// hourly runs. F+000 always: an analysis has no forecast hours.
-async function _nwsBuildRtma(field, gen) {
+// A Pi analysis (RTMA or HRRR): every domain the Pi builds, over the last
+// few runs, F+000 always - an analysis is the model's own "now", not a
+// forecast hour. Playback used to swap one image URL per frame, which
+// blanked the overlay while each new PNG decoded; now every frame gets its
+// own overlay at opacity 0 and playback is the same instant opacity swap
+// NDFD always had, so scrubbing never shows a gap.
+async function _nwsBuildPiAnalysis(modelKey, field, gen) {
+  const NAME = String(modelKey || '').toUpperCase();
   if (typeof _hdResolveBase !== 'function') throw new Error('no Pi engine');
   const base = (typeof _hdBase !== 'undefined' && _hdBase) || await _hdResolveBase();
   if (!base) throw new Error('no Pi address');
   if (typeof _hdBase !== 'undefined' && !_hdBase) _hdBase = base;
   const index = await _hdFreshIndex();
   if (gen !== _nwsGen) return;
-  const model = index && index.models && index.models.rtma;
-  if (!model || !model.regions) throw new Error('Pi has no RTMA');
+  const model = index && index.models && index.models[modelKey];
+  if (!model || !model.regions) throw new Error('Pi has no ' + NAME);
   const pane = _bubblePane(_nwsOn.bubble);
   const regionNames = Object.keys(model.regions);
-  // All four domains asked at once: waited on in turn, Puerto Rico's
+  // All domains asked at once: waited on in turn, Puerto Rico's
   // manifest was queued behind Alaska's and the first paint paid for it.
   const mans = await Promise.all(regionNames.map(rn => {
     const entry = model.regions[rn];
@@ -36309,23 +36308,38 @@ async function _nwsBuildRtma(field, gen) {
   });
   if (sawRegion && !regs.length) {
     const err = new Error('field not built');
-    err.userMsg = 'The Pi has not built this RTMA product yet. '
+    err.userMsg = 'The Pi has not built this ' + NAME + ' product yet. '
       + 'It usually appears within an hour of an update.';
     throw err;
   }
-  if (!regs.length || !runs || !runs.length) throw new Error('no RTMA regions');
+  if (!regs.length || !runs || !runs.length) throw new Error('no ' + NAME + ' regions');
   const urlFor = (entry, run) =>
     `${base}/models/${entry.path.replace(/[^/]+\/manifest\.json$/, run)}`
     + `/${field}_f000.png`;
-  _nwsLayers = regs.map(r =>
-    L.imageOverlay(urlFor(r.entry, runs[runs.length - 1]), r.bounds,
-      { opacity: 0, interactive: false, pane }).addTo(map));
-  _nwsLoop.frames = runs.map(run => ({
-    time: _nwsRunMs(run),
-    urls: regs.map(r => urlFor(r.entry, run)),
-  }));
-  // Warm the cache so scrubbing repaints instead of refetching.
-  _nwsLoop.frames.forEach(f => f.urls.forEach(u => { const i = new Image(); i.src = u; }));
+  // One overlay per run per region. A region that runs on a slower clock
+  // (HRRR's Alaska is 3-hourly beside CONUS's hourly) only joins the frames
+  // whose run it really has, so no frame asks for a picture that never
+  // existed. The newest frame's overlays go on the map right away; the rest
+  // follow a moment later, or on demand when someone scrubs sooner - the
+  // lazy add in _nwsLoopShow covers that.
+  _nwsLayers = [];
+  _nwsLoop.frames = runs.map((run, i) => {
+    const layers = [];
+    regs.forEach(r => {
+      if (Array.isArray(r.entry.runs) && r.entry.runs.length
+          && r.entry.runs.indexOf(run) < 0) return;
+      const l = L.imageOverlay(urlFor(r.entry, run), r.bounds,
+        { opacity: 0, interactive: false, pane });
+      if (i === runs.length - 1) l.addTo(map);
+      layers.push(l);
+      _nwsLayers.push(l);
+    });
+    return { time: _nwsRunMs(run), layers };
+  });
+  setTimeout(() => {
+    if (gen !== _nwsGen) return;
+    _nwsLayers.forEach(l => { try { if (!map.hasLayer(l)) l.addTo(map); } catch (e) {} });
+  }, 1200);
 }
 function _nwsRunMs(run) {
   const m = /^(\d{4})(\d{2})(\d{2})_(\d{2})$/.exec(String(run || ''));
@@ -36469,7 +36483,7 @@ function _nwsAppendRows(wrap, bubble) {
     el.className = 'sub-bubble' + (on ? ' active' : '');
     el.id = 'sub-nws-' + bubble + '-' + d.v;
     el.innerHTML = `<span class="sb-icon">${SB_ICON_NWS}</span><span class="sb-label">${d.label}</span>`;
-    const srcs = ['rtma', 'ndfd'].filter(k => d[k]);
+    const srcs = ['rtma', 'hrrr', 'ndfd'].filter(k => d[k]);
     el.onclick = () => {
       // One source is not a choice: the row IS the switch, and the layer
       // goes on the moment it is tapped. Two sources open the screen.
@@ -36545,7 +36559,7 @@ function toggleNwsSourceSub(bubble, v) {
     };
     wrap.appendChild(el);
   }
-  ['rtma', 'ndfd'].forEach(src => {
+  ['rtma', 'hrrr', 'ndfd'].forEach(src => {
     if (!def[src]) return;
     const on = _nwsOn && _nwsOn.bubble === bubble && _nwsOn.v === v && _nwsOn.src === src;
     const el = document.createElement('div');
@@ -64697,6 +64711,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-20-e', date: 'Sep 20, 2026',
+    text: 'RTMA playback is smooth now: every frame keeps its own picture ready and scrubbing is an instant swap, no more blink while a frame reloads. And HRRR analysis is a new source in the layer bubbles, beside RTMA and NDFD: the newest hourly HRRR runs at their starting hour, 3 km, including a new HRRR Reflectivity row under Radar.' },
   { id: '2026-09-20-d', date: 'Sep 20, 2026',
     text: 'New coat of paint: the pressable buttons now wear the animation bar\'s blue so the controls read as one family, the overlay button and its pills wear the gold, and the account pill is black with a red outline.' },
   { id: '2026-09-20-c', date: 'Sep 20, 2026',
