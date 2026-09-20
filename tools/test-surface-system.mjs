@@ -271,12 +271,13 @@ console.log('\n4. Settings, which is what started this');
   ok('the whole panel is in the house black',
      notRed.length === 0, notRed.join(' '));
   // The chosen tab is the one deliberate splash of colour: it wears the
-  // toolbar's gold, which is what says "you are here".
-  const tabGold = await page.evaluate(() => {
+  // buttons' cyan (the animation bar's blue), which is what says "you are
+  // here".
+  const tabRaise = await page.evaluate(() => {
     const v = __surface('.lqm-set-tab.on') || __surface('.lqm-set-tab');
-    return !v.missing && v.stops.some(([r, g, b]) => r > 180 && g > 120 && b < 90);
+    return !v.missing && v.stops.some(([r, g, b]) => b > 150 && g > 120 && r < 150);
   });
-  ok('and the selected tab wears the gold', tabGold);
+  ok('and the selected tab wears the button blue', tabRaise);
   ok('there is a selected tab and an unselected one to compare', r.onOff.haveBoth);
   ok('a selected tab does not look like an unselected one',
      r.onOff.haveBoth && !r.onOff.same, `on=${r.onOff.on} off=${r.onOff.off}`);
