@@ -1,27 +1,25 @@
 #!/usr/bin/env node
 /*
- * The animation bar's clock pill never crowds its tick labels into looking
- * like overlapping text.
+ * The animation bar's clock never crowds its tick labels into looking like
+ * overlapping text.
  *
  *     node tools/test-animbar-time-overlap.mjs
  *
- * #anim-time-display ("01:40 PM EDT MON") sits beside the timeline in
- * #animbar's own flex row. On a phone narrow enough that #speed-wrap is
- * already hidden, there was not enough width left for the pill AND a
- * legible track, so the track's own flex:1 got squeezed down toward
- * nothing, and the tick labels under it ("09:41 ... 11:48") ended up
- * crammed right against the pill's text - reading, on screen, as one run
- * of overlapping, jumbled characters.
+ * History: #anim-time-display ("01:40 PM EDT MON") used to sit beside the
+ * timeline in #animbar's own flex row, and on narrow phones it squeezed the
+ * track's tick labels into a jumble. The first fix hid it at the narrowest
+ * breakpoint and clipped it with an ellipsis elsewhere.
  *
- * Two things fix it: at that narrowest breakpoint the pill is simply
- * hidden now, the same trade already made for the speed control there (the
- * time is still readable off the tick labels, and the hold-to-change-
- * timezone gesture it also offered has a full equivalent in
- * Settings -> Timezone). At the wider phone widths where it stays visible,
- * a plain div would otherwise wrap onto a second line and spill out the
- * bottom of its own fixed-height box the moment it runs out of room, so it
- * is clipped to one line with an ellipsis instead - a safety net for
- * whatever squeeze is left once the pill is not the one thing giving way.
+ * The clock has since moved OUT of the row entirely: the stamp chip
+ * (#anim-stamp) sits centred ABOVE the bar, absolutely positioned, so it
+ * competes with nothing in the row at any width. The old pill stays in the
+ * DOM (the timezone machinery reads it, and it is the chip's data heartbeat)
+ * but never renders. What this suite now holds:
+ *   - the pill is display:none at every width
+ *   - the chip exists, renders above the bar, in Comfortaa
+ *   - the chip carries the valid moment in z time plus an Updated line
+ *   - scrubbing moves the chip's time
+ *   - the timeline keeps real width on the narrowest phones
  */
 
 import { readFileSync } from 'node:fs';
@@ -37,12 +35,21 @@ const ok = (name, cond, extra) => {
   else { fail++; console.log('  FAIL ' + name + (extra ? '  <' + extra + '>' : '')); }
 };
 
-console.log('\n1. the two fixes are in the page');
+console.log('\n1. the replacement is in the page');
 {
-  ok('the pill cannot wrap onto a second line or overflow its own box',
-     /#anim-time-display \{[\s\S]{0,1400}?white-space: nowrap; overflow: hidden; text-overflow: ellipsis;/.test(PAGE));
-  ok('and on the narrowest phones it steps aside entirely, the same trade already made for the speed control',
-     /#speed-wrap \{ display: none; \}[\s\S]{0,900}?#anim-time-display \{ display: none; \}/.test(PAGE));
+  ok('the old pill is retired at every width, not just the narrowest',
+     /#anim-time-display \{ display: none !important; \}/.test(PAGE));
+  ok('the stamp chip exists and floats above the bar',
+     /id="anim-stamp"/.test(PAGE)
+     && /#anim-stamp \{[\s\S]{0,400}?bottom: calc\(100% \+ 10px\);/.test(PAGE));
+  ok('and it is set in Comfortaa',
+     /#anim-stamp \{[\s\S]{0,700}?font-family: 'Comfortaa', sans-serif;/.test(PAGE));
+  ok('the chip reads every playback source through one cascade',
+     /_stampState/.test(PAGE) && /_stampRefresh/.test(PAGE)
+     && /new MutationObserver\(kick\)/.test(PAGE));
+  ok('the timezone hold moved with the clock',
+     /_tzAnchorEl/.test(PAGE)
+     && /\[el, document\.getElementById\('anim-stamp'\)\]/.test(PAGE));
   const EM = String.fromCharCode(0x2014);
   ok('no em dashes here or in the page',
      !PAGE.includes(EM)
@@ -91,57 +98,58 @@ async function boot(width) {
   return p;
 }
 
-console.log('\n2. the narrowest phones: the pill steps aside, the track gets its room back');
+console.log('\n2. the narrowest phones: nothing competes with the track');
 {
-  const p = await boot(360);   // well inside the <=480px breakpoint, same as the screenshot this fixes
+  const p = await boot(360);
   ok('the page boots clean', errs.length === 0, errs[0]);
   const r = await p.evaluate(() => {
     const pill = document.getElementById('anim-time-display');
     const wrap = document.getElementById('timeline-wrap');
+    const chip = document.getElementById('anim-stamp');
+    const bar = document.getElementById('animbar');
+    const cr = chip.getBoundingClientRect();
+    const br = bar.getBoundingClientRect();
     return {
       pillDisplay: getComputedStyle(pill).display,
       wrapWidth: wrap.getBoundingClientRect().width,
+      chipShown: getComputedStyle(chip).display !== 'none' && cr.width > 0,
+      chipAboveBar: cr.bottom <= br.top,
+      chipFont: getComputedStyle(chip).fontFamily,
     };
   });
-  ok('the clock pill does not render at all here', r.pillDisplay === 'none', JSON.stringify(r));
-  // With the pill out of the row, the track is the only flexible child left
-  // and should get real width back rather than being squeezed toward zero -
-  // the actual mechanism behind the crowding in the screenshot.
-  ok('and the timeline, freed of competing with it, has real width to work with',
-     r.wrapWidth > 100, JSON.stringify(r));
+  ok('the clock pill does not render at all', r.pillDisplay === 'none', JSON.stringify(r));
+  // The row has grown buttons since the 100px day (zoom step, fullscreen,
+  // frame steps), and 96px is what a 360px phone honestly leaves the track
+  // now, measured identically on main before the chip existed. The guard
+  // is against the squeeze-toward-zero that caused the original jumble,
+  // not against the row having controls.
+  ok('the timeline keeps real width with nothing beside it',
+     r.wrapWidth > 80, JSON.stringify(r));
+  ok('the stamp chip renders, wholly above the bar, out of the row',
+     r.chipShown && r.chipAboveBar, JSON.stringify(r));
+  ok('and it is drawn in Comfortaa', /Comfortaa/.test(r.chipFont), r.chipFont);
   await p.close();
 }
 
-console.log('\n3. above 480px the pill stays visible, and the ellipsis backstop actually clips rather than wraps');
+console.log('\n3. the chip carries the stamp, and scrubbing moves it');
 {
-  const p = await boot(490);   // just above the 480px breakpoint: the pill stays visible
-  const r = await p.evaluate(() => {
-    const el = document.getElementById('anim-time-display');
-    return { display: getComputedStyle(el).display };
+  const p = await boot(900);
+  const r = await p.evaluate(async () => {
+    const main = document.getElementById('anim-stamp-main');
+    const sub = document.getElementById('anim-stamp-sub');
+    const before = main.textContent;
+    seekFrame(1);
+    await new Promise(res => setTimeout(res, 400));
+    const after = main.textContent;
+    return { before, after, sub: sub.textContent,
+             zform: /^\w{3} \d{2}\/\d{2}\/\d{2} \d{2}:\d{2}z$/.test(after) };
   });
-  ok('the pill is shown here, unlike the narrowest phones', r.display !== 'none', JSON.stringify(r));
-
-  // #anim-time-display never shrinks itself below its own content width
-  // (flex-shrink: 0, unchanged by this fix) - real squeeze here falls on
-  // #timeline-wrap beside it instead, which is the point of hiding the
-  // pill entirely one breakpoint down. What the ellipsis rule guards is a
-  // narrower case: whatever the reason the box ends up tighter than its
-  // text one day (a longer localised time string, a future style tweak),
-  // it clips instead of spilling a second line out the bottom - checked
-  // directly here by forcing that width, rather than by hoping today's
-  // flex arithmetic happens to produce it.
-  const forced = await p.evaluate(() => {
-    const el = document.getElementById('anim-time-display');
-    el.textContent = '01:40 PM EDT MONDAY, SEPTEMBER';
-    el.style.width = '60px';
-    const rect = el.getBoundingClientRect();
-    return { width: rect.width, height: rect.height,
-             overflowing: el.scrollWidth > el.clientWidth };
-  });
-  ok('forced narrow, there really is more text than room for it',
-     forced.overflowing, JSON.stringify(forced));
-  ok('and it still stays exactly one line tall - clipped with an ellipsis, not wrapped',
-     forced.height > 0 && forced.height < 34, JSON.stringify(forced));
+  ok('the top line is the valid moment, stamped in z time',
+     r.zform, r.after);
+  ok('the bottom line says when the data arrived',
+     /^Updated: \d{1,2}:\d{2} (AM|PM)$/.test(r.sub), r.sub);
+  ok('scrubbing moves the stamp', r.before !== r.after,
+     r.before + ' -> ' + r.after);
   ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
   await p.close();
 }

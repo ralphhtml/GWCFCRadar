@@ -655,6 +655,46 @@ body {
 }
 #anim-time-display:hover  { background: rgba(0,0,0,0.12); }
 #anim-time-display:active { background: rgba(0,0,0,0.20); }
+/* Replaced by the stamp chip above the bar; kept in the DOM because the
+   timezone machinery and a few tests still read it. */
+#anim-time-display { display: none !important; }
+
+/* ── The time stamp chip ─────────────────────────────────────────────────
+   Sits centred on top of the animation bar, like the stamp a broadcast
+   radar wears: the frame's valid moment on the top line, and underneath,
+   when the data on screen last arrived. Driven by _stampRefresh() from
+   whichever playback source owns the bar, models included. */
+#anim-stamp {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(12,12,16,0.92);
+  border: 2px solid rgba(255,255,255,0.16);
+  border-radius: 14px;
+  padding: 5px 18px 7px;
+  text-align: center;
+  font-family: 'Comfortaa', sans-serif;
+  z-index: 5;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px -6px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.10);
+}
+#anim-stamp-main {
+  font-size: 15px; font-weight: 700; letter-spacing: 0.5px;
+  color: #6fd3ff;
+}
+#anim-stamp-sub {
+  font-size: 10px; font-weight: 500; margin-top: 1px;
+  color: rgba(255,255,255,0.78);
+}
+@media (max-width: 640px) {
+  #anim-stamp { padding: 4px 12px 6px; bottom: calc(100% + 8px); }
+  #anim-stamp-main { font-size: 12px; }
+  #anim-stamp-sub { font-size: 9px; }
+}
 .animbar-sep {
   width: 1px; height: 24px; background: var(--border2); margin: 0 6px; flex-shrink: 0;
 }
@@ -11267,6 +11307,10 @@ body.clean-mode #clean-hint { opacity: 1; }
         <div id="timeline-labels"></div>
       </div>
       <div id="anim-time-display" title="Hold to change timezone">--:-- --- --</div>
+      <div id="anim-stamp" title="Hold to change timezone" style="display:none;">
+        <div id="anim-stamp-main">--:--z</div>
+        <div id="anim-stamp-sub"></div>
+      </div>
       <button id="fullscreen-btn" onclick="_fsToggle()" title="Full screen">
         <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-fullscreen></use></svg>
       </button>
@@ -67200,9 +67244,16 @@ function _formatTimeInTZ(dateObj, tzId) {
   } catch (e) { return '--:--'; }
 }
 
+// The timezone popover anchors to the stamp chip when it is on screen, and
+// falls back to the old in-bar display it replaced.
+function _tzAnchorEl() {
+  const chip = document.getElementById('anim-stamp');
+  if (chip && chip.offsetParent) return chip;
+  return document.getElementById('anim-time-display');
+}
 function _openTZPopover() {
   const popover = document.getElementById('tz-popover');
-  const anchor = document.getElementById('anim-time-display');
+  const anchor = _tzAnchorEl();
   if (!popover || !anchor) return;
 
   let currentTime = null;
@@ -67254,8 +67305,9 @@ function _closeTZPopover() {
 
 function _closeTZPopoverOnClick(e) {
   const popover = document.getElementById('tz-popover');
-  const anchor = document.getElementById('anim-time-display');
-  if (popover && !popover.contains(e.target) && e.target !== anchor) _closeTZPopover();
+  const anchor = _tzAnchorEl();
+  if (popover && !popover.contains(e.target) && e.target !== anchor
+      && !(anchor && anchor.contains(e.target))) _closeTZPopover();
 }
 
 function _selectTimezone(tz) {
@@ -67289,13 +67341,156 @@ function _selectTZandClose(tz) {
   function attach() {
     const el = document.getElementById('anim-time-display');
     if (!el) { setTimeout(attach, 300); return; }
-    el.addEventListener('pointerdown', start, { passive: true });
-    el.addEventListener('pointermove', move, { passive: true });
-    el.addEventListener('pointerup', end, { passive: true });
-    el.addEventListener('pointercancel', end, { passive: true });
+    // The hold lives on the stamp chip too, which is the timestamp people
+    // actually see now; the old display keeps its wiring for the fallback.
+    [el, document.getElementById('anim-stamp')].forEach(t => {
+      if (!t) return;
+      t.addEventListener('pointerdown', start, { passive: true });
+      t.addEventListener('pointermove', move, { passive: true });
+      t.addEventListener('pointerup', end, { passive: true });
+      t.addEventListener('pointercancel', end, { passive: true });
+    });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attach);
   else attach();
+})();
+
+// ── THE TIME STAMP CHIP ──────────────────────────────────────────────────
+// The bar's little clock grew into a chip above the bar. Top line: the
+// frame's valid moment, always in UTC with a z, the way a met product is
+// stamped. Bottom line: when the data on screen last arrived, in the
+// viewer's own clock. It reads whichever playback source owns the bar right
+// now by walking the same cascade the step buttons use, so a model loop, a
+// satellite loop or an NWS analysis all stamp themselves; anything it does
+// not recognise falls back to mirroring the bar's own text, so nothing that
+// used to be readable goes missing.
+function _stampT(v) {
+  if (v == null) return null;
+  if (v instanceof Date) return +v;
+  const n = +v;
+  if (!isFinite(n) || n <= 0) return null;
+  return n > 1e12 ? n : n * 1000;
+}
+function _stampState() {
+  try {
+    const last = f => f[f.length - 1];
+    if (typeof _l2LoopActive === 'function' && _l2LoopActive()) {
+      const f = _l2Loop.frames;
+      return { src: 'l2', ms: _stampT(f[_l2Loop.idx] && f[_l2Loop.idx].time),
+               n: f.length, newest: _stampT(last(f) && last(f).time) };
+    }
+    if (typeof _prLoopActive === 'function' && _prLoopActive()) {
+      const f = _prLoop.frames;
+      return { src: 'pr', ms: _prStampToMs(f[_prLoop.idx]),
+               n: f.length, newest: _prStampToMs(last(f)) };
+    }
+    if (typeof _mrmsLoopActive === 'function' && _mrmsLoopActive()) {
+      const f = _mrmsLoop.frames;
+      const t = x => {
+        if (!x) return null;
+        const a = _stampT(x.time);
+        return a != null ? a : _mrmsStampMs(x.time != null ? x.time : x);
+      };
+      return { src: 'mrms', ms: t(f[_mrmsLoop.idx]), n: f.length, newest: t(last(f)) };
+    }
+    if (typeof activeLayers !== 'undefined' && activeLayers.satellite
+        && typeof goesFrames !== 'undefined' && goesFrames.length) {
+      const f = goesFrames;
+      return { src: 'sat', ms: _stampT(f[goesCurrentFrame] && f[goesCurrentFrame].time),
+               n: f.length, newest: _stampT(last(f) && last(f).time) };
+    }
+    if (typeof currentProduct !== 'undefined' && currentProduct === 'vel'
+        && typeof velFrames !== 'undefined' && velFrames.length) {
+      const f = velFrames;
+      return { src: 'vel', ms: _stampT(f[velCurrentFrame] && f[velCurrentFrame].time),
+               n: f.length, newest: _stampT(last(f) && last(f).time) };
+    }
+    if (typeof _dpFrames !== 'undefined' && _dpFrames.length
+        && ['hc', 'accum', 'boha', 'cc', 'zdr', 'kdp', 'sw'].includes(currentProduct)) {
+      const f = _dpFrames;
+      return { src: 'dp', ms: _stampT(f[_dpCurrentFrame] && f[_dpCurrentFrame].time),
+               n: f.length, newest: _stampT(last(f) && last(f).time) };
+    }
+    if (typeof _refSiteFrames !== 'undefined' && _refSiteFrames.length
+        && currentProduct === 'ref' && typeof _refStation !== 'undefined' && _refStation) {
+      const f = _refSiteFrames;
+      return { src: 'site', ms: _stampT(f[currentFrame] && f[currentFrame].time),
+               n: f.length, newest: _stampT(last(f) && last(f).time) };
+    }
+    if (typeof _nwsLoopActive === 'function' && _nwsLoopActive()) {
+      const f = _nwsLoop.frames;
+      return { src: 'nws-' + (_nwsOn ? _nwsOn.src : ''),
+               ms: _stampT(f[_nwsLoop.idx] && f[_nwsLoop.idx].time),
+               n: f.length, newest: _stampT(last(f) && last(f).time) };
+    }
+    // No layer-flag check here: the mosaic frames are the bar's default
+    // owner (stepFrame falls through to them the same way), and the old
+    // display printed their time whatever the radar toggle said.
+    if (typeof radarFrames !== 'undefined' && radarFrames.length) {
+      const f = radarFrames;
+      const nw = f[typeof lastPastIdx === 'number' ? lastPastIdx : f.length - 1];
+      return { src: 'mosaic', ms: _stampT(f[currentFrame] && f[currentFrame].time),
+               n: f.length, newest: _stampT(nw && nw.time) };
+    }
+  } catch (e) {}
+  return null;
+}
+let _stampUpdSig = '', _stampUpdMs = 0;
+function _stampRefresh() {
+  const box = document.getElementById('anim-stamp');
+  const main = document.getElementById('anim-stamp-main');
+  const sub = document.getElementById('anim-stamp-sub');
+  if (!box || !main || !sub) return;
+  const st = _stampState();
+  if (st && st.ms != null && isFinite(st.ms)) {
+    const d = new Date(st.ms);
+    const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()];
+    const p = n => String(n).padStart(2, '0');
+    main.textContent = `${wd} ${p(d.getUTCMonth() + 1)}/${p(d.getUTCDate())}/`
+      + `${String(d.getUTCFullYear()).slice(2)} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}z`;
+    // "Updated" is when this loop's data last changed under us: the moment
+    // the source, its length or its newest frame moved, that is a refresh.
+    const sig = st.src + '|' + st.n + '|' + st.newest;
+    if (sig !== _stampUpdSig) { _stampUpdSig = sig; _stampUpdMs = Date.now(); }
+    const u = new Date(_stampUpdMs);
+    let h = u.getHours(); const am = h < 12 ? 'AM' : 'PM'; h = h % 12 || 12;
+    sub.textContent = `Updated: ${h}:${String(u.getMinutes()).padStart(2, '0')} ${am}`;
+    sub.style.display = '';
+    box.style.display = '';
+  } else {
+    const at = document.getElementById('anim-time');
+    const txt = at ? at.textContent.trim() : '';
+    if (txt && txt !== '--:-- UTC') {
+      main.textContent = txt;
+      sub.style.display = 'none';
+      box.style.display = '';
+    } else {
+      box.style.display = 'none';
+    }
+  }
+}
+(function _stampWire() {
+  function go() {
+    let raf = null;
+    const kick = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => { raf = null; _stampRefresh(); });
+    };
+    // Every source announces a frame change by rewriting one of the bar's
+    // two old readouts, so watching those catches all of them without
+    // touching a dozen writers.
+    try {
+      const mo = new MutationObserver(kick);
+      const at = document.getElementById('anim-time');
+      const disp = document.getElementById('anim-time-display');
+      if (at) mo.observe(at, { childList: true, characterData: true, subtree: true });
+      if (disp) mo.observe(disp, { childList: true, characterData: true, subtree: true });
+    } catch (e) {}
+    setInterval(kick, 30000);
+    kick();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go);
+  else go();
 })();
 
 // Times printed under the slider, taken from whatever _animSource says is
