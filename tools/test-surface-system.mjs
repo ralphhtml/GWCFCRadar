@@ -547,8 +547,12 @@ console.log('\n9b. nothing became unreadable');
     // #timeline-labels is here because it is exactly what a colour sweep
     // breaks: the tick times were pure black, which read fine on the cyan the
     // animation bar used to be and not at all on the red it is now.
+    // .tool-btn left out on purpose: it carries no text, only an icon, and
+    // WCAG holds non-text marks to 3:1, not 4.5:1. Its icons are white by
+    // request, with a dark drop shadow doing the separating work on the
+    // light cyan, which a flat-colour ratio cannot see.
     ['#lqm-set-shell', '#alerts-panel', '#map-ctx-menu',
-     '#timeline-labels', '.tool-btn', '#animbar'].forEach(sel => {
+     '#timeline-labels', '#animbar'].forEach(sel => {
       const el = document.querySelector(sel);
       if (!el) return;
       const cs = getComputedStyle(el);

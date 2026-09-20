@@ -64715,6 +64715,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-20-h', date: 'Sep 20, 2026',
+    text: 'The gold got more gold: a richer, brighter metal on the star, the overlay button and the overlay pills. And the dark icons and text on the gold and cyan controls flipped to white, carried by a soft shadow so they stay crisp.' },
   { id: '2026-09-20-g', date: 'Sep 20, 2026',
     text: 'Liquid glass is on: panels, menus, pills and popups are now a subtle frosted glass, tinted by whatever theme you run, with the map blurring softly through them. Chosen from a three-strength line-up; the frost is kept light so radar stays easy to read through busy weather.' },
   { id: '2026-09-20-f', date: 'Sep 20, 2026',
@@ -72203,14 +72205,15 @@ function closeCredits() {
 .tool-btn {
   background-image: var(--grad-raise);
   border-color: var(--edge-red);
-  /* Pure black, not the near-black brown: on the cyan gradient's darkest
-     stop the brown sat at exactly 4.5:1 and black clears 5.4:1. */
-  color: #000;
+  /* White by request, with a dark drop shadow doing the reading work the
+     contrast maths would otherwise complain about on the light cyan. */
+  color: #fff;
   box-shadow: var(--edge-3d-soft);
 }
+.tool-btn svg { filter: drop-shadow(0 1px 1.5px rgba(0,0,0,0.65)); }
 .tool-btn:hover {
   background-image: var(--grad-raise-h);
-  color: #000;
+  color: #fff;
   border-color: rgba(255,90,80,0.85);
 }
 
@@ -72222,11 +72225,13 @@ function closeCredits() {
    search bar stays black; the account pill goes black with a red outline. */
 #overlay-toggle-btn,
 #overlay-toggle-btn:hover {
-  background-image: linear-gradient(180deg, #e8bc22 0%, #ae820c 100%);
+  background-image: linear-gradient(180deg, #ffd21f 0%, #d29b00 100%);
   border-color: rgba(120,80,0,0.55);
-  color: #241a04;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.65);
 }
-#overlay-toggle-btn:hover { background-image: linear-gradient(180deg, #ffd44d 0%, #b8860b 100%); }
+#overlay-toggle-btn svg { filter: drop-shadow(0 1px 1.5px rgba(0,0,0,0.65)); }
+#overlay-toggle-btn:hover { background-image: linear-gradient(180deg, #ffe14d 0%, #e8ae00 100%); }
 #top-search-bar {
   background: #0e0e13;
   background-image: var(--grad-panel);
@@ -72239,14 +72244,15 @@ function closeCredits() {
 #lqm-search-star,
 #lqm-search-star:hover,
 #lqm-search-star.has {
-  background-image: linear-gradient(180deg, #e8bc22 0%, #ae820c 100%);
+  background-image: linear-gradient(180deg, #ffd21f 0%, #d29b00 100%);
   border-color: rgba(120,80,0,0.55);
-  color: #241a04;
+  color: #fff;
   box-shadow: var(--edge-3d-soft);
 }
+#lqm-search-star svg { filter: drop-shadow(0 1px 1.5px rgba(0,0,0,0.65)); }
 #lqm-search-star:hover {
-  background-image: linear-gradient(180deg, #ffd44d 0%, #b8860b 100%);
-  color: #000;
+  background-image: linear-gradient(180deg, #ffe14d 0%, #e8ae00 100%);
+  color: #fff;
 }
 #lqm-profile-btn {
   background: #0e0e13;
@@ -72468,12 +72474,14 @@ function closeCredits() {
    specificity that actually wins. */
 
 #overlay-pills-row .ov-pill {
-  background-image: linear-gradient(180deg, #e8bc22 0%, #ae820c 100%);
+  background-image: linear-gradient(180deg, #ffd21f 0%, #d29b00 100%);
   box-shadow: var(--lift-3d-sm), var(--edge-3d);
   border-color: rgba(120,80,0,0.55);
-  color: #241a04;
+  /* White by request, carried by a dark shadow on the bright gold. */
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.65);
 }
-#overlay-pills-row .ov-pill:hover { background-image: linear-gradient(180deg, #ffd44d 0%, #b8860b 100%); }
+#overlay-pills-row .ov-pill:hover { background-image: linear-gradient(180deg, #ffe14d 0%, #e8ae00 100%); }
 #overlay-pills-row .ov-pill.active {
   /* Pressed gold: the same metal lit from below, darker, with the light
      text the dark face needs. */
@@ -72784,12 +72792,12 @@ body {
 :root[data-glass] #overlay-toggle-btn:hover,
 :root[data-glass] #overlay-pills-row .ov-pill {
   background-image: linear-gradient(180deg,
-    rgba(232,188,34,var(--glass-a-btn)) 0%, rgba(174,130,12,var(--glass-a-btn)) 100%);
+    rgba(255,210,31,var(--glass-a-btn)) 0%, rgba(210,155,0,var(--glass-a-btn)) 100%);
 }
 :root[data-glass] #overlay-toggle-btn:hover,
 :root[data-glass] #overlay-pills-row .ov-pill:hover {
   background-image: linear-gradient(180deg,
-    rgba(255,212,77,var(--glass-a-btn)) 0%, rgba(184,134,11,var(--glass-a-btn)) 100%);
+    rgba(255,225,77,var(--glass-a-btn)) 0%, rgba(232,174,0,var(--glass-a-btn)) 100%);
 }
 :root[data-glass] #overlay-pills-row .ov-pill.active {
   background-image: linear-gradient(180deg,
