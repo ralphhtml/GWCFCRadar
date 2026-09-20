@@ -155,16 +155,24 @@ console.log('\n2. tap the variable, get just its sources');
     out.presTwo = !!document.getElementById('sub-nwssrc-openmeteo')
       && !!document.getElementById('sub-nwssrc-rtma')
       && !document.getElementById('sub-nwssrc-ndfd');
-    // Radar gains new rows for the forecasts it never had. One source is
-    // not a choice: tapping the row turns the layer on right there, and no
-    // source screen ever appears.
+    // Radar's forecast rows live one level deeper now, behind a single
+    // Observations bubble, so the radar menu itself stays one screen tall.
     toggleRadarSub();
-    out.radarRow = !!document.getElementById('sub-nws-radar-pop12');
+    out.radarObs = !!document.getElementById('sub-nws-obs-radar');
+    out.radarRowsNotInline = !document.getElementById('sub-nws-radar-pop12');
+    document.getElementById('sub-nws-obs-radar').click();
+    out.radarRow = !!document.getElementById('sub-nws-radar-pop12')
+      && !!document.getElementById('sub-nws-radar-refc');
+    // One source is not a choice: tapping the row turns the layer on right
+    // there, and no source screen ever appears.
     document.getElementById('sub-nws-radar-pop12').click();
     out.radarDirect = !document.getElementById('sub-nwssrc-ndfd')
       && _nwsOn && _nwsOn.v === 'pop12' && _nwsOn.src === 'ndfd';
     out.radarRowLit = document.getElementById('sub-nws-radar-pop12')
       && document.getElementById('sub-nws-radar-pop12').classList.contains('active');
+    // Back from the Observations screen lands on the radar menu.
+    document.querySelector('#sub-bubbles .sub-bubble').click();
+    out.radarBackHome = !!document.getElementById('sub-nws-obs-radar');
     _nwsDisable();
     // Sky Cover has two sources, so IT still opens the screen.
     toggleAirSub();
@@ -183,9 +191,12 @@ console.log('\n2. tap the variable, get just its sources');
   ok('Back returns to the Waves menu', r.backHome);
   ok('Air Temp offers all three sources', r.tempAllThree);
   ok('Surface Pressure offers Open-Meteo and RTMA', r.presTwo);
-  ok('Radar gains a Precip Chance row', r.radarRow);
-  ok('with one source it toggles on directly, no screen',
+  ok('the radar menu offers one Observations bubble, not five loose rows',
+     r.radarObs && r.radarRowsNotInline);
+  ok('Observations opens Precip Chance and HRRR Reflectivity rows', r.radarRow);
+  ok('with one source a row toggles on directly, no screen',
      r.radarDirect && r.radarRowLit);
+  ok('Back from Observations lands on the radar menu', r.radarBackHome);
   ok('Air gains visibility, sky cover and ceiling rows', r.airRows);
   ok('Sky Cover, with two sources, still opens the screen', r.skyScreen);
 }
@@ -195,8 +206,10 @@ console.log('\n3. NDFD draws, loops, and owns the quiet animation bar');
   const r = await p.evaluate(async () => {
     const wait = ms => new Promise(res => setTimeout(res, ms));
     const out = {};
-    // Through the UI: one tap on the single-source row, on the clock.
+    // Through the UI: open Observations, then one tap on the
+    // single-source row, on the clock.
     toggleRadarSub();
+    document.getElementById('sub-nws-obs-radar').click();
     const t0 = performance.now();
     document.getElementById('sub-nws-radar-pop12').click();
     out.msToOn = performance.now() - t0;
@@ -265,6 +278,7 @@ console.log('\n4. the Inspector reads it, swaps clear it, off means off');
     const out = {};
     // Tapping the lit single-source row again turns the layer off.
     toggleRadarSub();
+    document.getElementById('sub-nws-obs-radar').click();
     document.getElementById('sub-nws-radar-pop12').click();
     out.srcTapOff = _nwsOn === null;
     // The Open-Meteo row on a shared screen drives the bubble's own layer,

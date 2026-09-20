@@ -39,9 +39,11 @@ console.log('\n1. the replacement is in the page');
 {
   ok('the old pill is retired at every width, not just the narrowest',
      /#anim-time-display \{ display: none !important; \}/.test(PAGE));
-  ok('the stamp chip exists and floats above the bar',
+  ok('the stamp chip exists and is welded to the bar top like a browser tab',
      /id="anim-stamp"/.test(PAGE)
-     && /#anim-stamp \{[\s\S]{0,400}?bottom: calc\(100% \+ 10px\);/.test(PAGE));
+     && /#anim-stamp \{[\s\S]{0,500}?bottom: calc\(100% - 3px\);/.test(PAGE)
+     && /#anim-stamp::before,/.test(PAGE)
+     && /radial-gradient\(circle at 0 0,/.test(PAGE));
   ok('and it is set in Comfortaa',
      /#anim-stamp \{[\s\S]{0,700}?font-family: 'Comfortaa', sans-serif;/.test(PAGE));
   ok('the chip reads every playback source through one cascade',
@@ -113,7 +115,12 @@ console.log('\n2. the narrowest phones: nothing competes with the track');
       pillDisplay: getComputedStyle(pill).display,
       wrapWidth: wrap.getBoundingClientRect().width,
       chipShown: getComputedStyle(chip).display !== 'none' && cr.width > 0,
-      chipAboveBar: cr.bottom <= br.top,
+      // The chip overlaps the bar's top edge on purpose: that shared edge
+      // is what welds the two into one tab-and-strip shape. Its bottom
+      // lands 6px in (the 3px weld measured from the padding box, which
+      // sits inside the 3px border), so anything within 7px is the weld
+      // and anything deeper would be the chip drowning in the bar.
+      chipAboveBar: cr.bottom <= br.top + 7,
       chipFont: getComputedStyle(chip).fontFamily,
     };
   });
@@ -125,7 +132,7 @@ console.log('\n2. the narrowest phones: nothing competes with the track');
   // not against the row having controls.
   ok('the timeline keeps real width with nothing beside it',
      r.wrapWidth > 80, JSON.stringify(r));
-  ok('the stamp chip renders, wholly above the bar, out of the row',
+  ok('the stamp chip renders, grown out of the bar top, out of the row',
      r.chipShown && r.chipAboveBar, JSON.stringify(r));
   ok('and it is drawn in Comfortaa', /Comfortaa/.test(r.chipFont), r.chipFont);
   await p.close();

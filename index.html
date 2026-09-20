@@ -660,19 +660,24 @@ body {
 #anim-time-display { display: none !important; }
 
 /* ── The time stamp chip ─────────────────────────────────────────────────
-   Sits centred on top of the animation bar, like the stamp a broadcast
-   radar wears: the frame's valid moment on the top line, and underneath,
-   when the data on screen last arrived. Driven by _stampRefresh() from
+   Grows out of the animation bar's top edge the way a browser tab grows
+   out of its tab strip: the same cyan fill as the bar, one continuous red
+   outline, and a concave flare on each side where the two meet. The chip
+   overlaps the bar's own 3px border so the outline reads as one shape,
+   and each flare is a radial gradient that keeps tracing the red line
+   around the curve. Top line: the frame's valid moment; underneath, when
+   the data on screen last arrived. Driven by _stampRefresh() from
    whichever playback source owns the bar, models included. */
 #anim-stamp {
   position: absolute;
-  bottom: calc(100% + 10px);
+  bottom: calc(100% - 3px);
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(12,12,16,0.92);
-  border: 2px solid rgba(255,255,255,0.16);
-  border-radius: 14px;
-  padding: 5px 18px 7px;
+  background: linear-gradient(180deg, #8ce7ff 0%, #5cd8f7 100%);
+  border: 3px solid #AA0000;
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  padding: 4px 18px 5px;
   text-align: center;
   font-family: 'Comfortaa', sans-serif;
   z-index: 5;
@@ -680,18 +685,37 @@ body {
   user-select: none;
   -webkit-tap-highlight-color: transparent;
   white-space: nowrap;
-  box-shadow: 0 6px 18px -6px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.10);
+  box-shadow: 0 -6px 14px -6px rgba(0,0,0,0.55);
+}
+#anim-stamp::before,
+#anim-stamp::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+}
+#anim-stamp::before {
+  left: -14px;
+  background: radial-gradient(circle at 0 0,
+    rgba(0,0,0,0) 11px, #AA0000 11px, #AA0000 14px, #5cd8f7 14px);
+}
+#anim-stamp::after {
+  right: -14px;
+  background: radial-gradient(circle at 100% 0,
+    rgba(0,0,0,0) 11px, #AA0000 11px, #AA0000 14px, #5cd8f7 14px);
 }
 #anim-stamp-main {
   font-size: 15px; font-weight: 700; letter-spacing: 0.5px;
-  color: #6fd3ff;
+  color: #000;
 }
 #anim-stamp-sub {
-  font-size: 10px; font-weight: 500; margin-top: 1px;
-  color: rgba(255,255,255,0.78);
+  font-size: 10px; font-weight: 600; margin-top: 0;
+  color: rgba(0,0,0,0.72);
 }
 @media (max-width: 640px) {
-  #anim-stamp { padding: 4px 12px 6px; bottom: calc(100% + 8px); }
+  #anim-stamp { padding: 3px 12px 4px; }
   #anim-stamp-main { font-size: 12px; }
   #anim-stamp-sub { font-size: 9px; }
 }
@@ -30422,6 +30446,7 @@ const LAYER_DESCRIPTIONS = {
   'nws-rtma':     'RTMA (Real-Time Mesoscale Analysis): the Weather Service\'s best estimate of what is actually happening at this moment, built from observations at 2.5 km over CONUS, Alaska, Hawaii and Puerto Rico at once. Not a forecast - the thing to check a forecast against. Rendered by the Pi; the animation bar scrubs back through recent hourly analyses.',
   'nws-ndfd':     'NDFD (National Digital Forecast Database): the official NWS forecast, the same grids behind forecast.weather.gov. Human forecasters made these numbers, not just a model. The animation bar plays forward through the next two days.',
   'nws-hrrr':     'HRRR analysis: the newest hourly runs of the High-Resolution Rapid Refresh at their starting hour, which is the model\'s own 3 km read of right now. Sits between RTMA (pure observations) and a forecast: it is what the model believes is happening as it launches. Rendered by the Pi; the animation bar scrubs back through recent runs.',
+  'nws-observations': 'The Weather Service\'s gridded extras for the radar picture, one level down so the radar menu stays short: HRRR simulated reflectivity for right now, and the official NDFD forecasts of precip chance, precip amount, snow amount and weather type. Each row picks its source and joins the animation bar.',
   // The NWS rows inside the bubbles, one per variable. The key is the row's
   // own id (nws-<bubble>-<variable>), which is how the info button finds it.
   'nws-temperature-temp': 'Air temperature at 2 metres from the National Weather Service: the RTMA analysis says what it is right now, the NDFD forecast says what forecasters expect over the next two days.',
@@ -36517,13 +36542,67 @@ function _nwsFamilyOn(bubble, omId) {
 
 // One row per NWS-only variable; the variables the bubble already offered
 // keep their own rows and are intercepted in their menus instead.
+// The Radar bubble is the exception: its five NWS rows live one level
+// deeper, behind a single Observations bubble, so the radar menu itself
+// stays short enough for a phone screen.
+let _nwsObsScreen = null;   // bubble name while the Observations screen is open
+function toggleNwsObsSub(bubble) {
+  const wrap = document.getElementById('sub-bubbles');
+  const defs = NWS_SRC_VARS[bubble];
+  if (!wrap || !defs) return;
+  _nwsObsScreen = bubble;
+  _nwsScreen = null;
+  wrap.innerHTML = '';
+  _radarBackBubble(wrap, () => {
+    _nwsObsScreen = null;
+    try { _NWS_MENU_FNS[bubble] && _NWS_MENU_FNS[bubble](); } catch (e) {}
+  });
+  defs.forEach(d => {
+    if (d.om) return;
+    const on = _nwsOn && _nwsOn.bubble === bubble && _nwsOn.v === d.v;
+    const el = document.createElement('div');
+    el.className = 'sub-bubble' + (on ? ' active' : '');
+    el.id = 'sub-nws-' + bubble + '-' + d.v;
+    el.innerHTML = `<span class="sb-icon">${SB_ICON_NWS}</span><span class="sb-label">${d.label}</span>`;
+    const srcs = ['rtma', 'hrrr', 'ndfd'].filter(k => d[k]);
+    el.onclick = () => {
+      if (srcs.length === 1) {
+        if (on) { _nwsDisable(); }
+        else _nwsEnable(bubble, d.v, srcs[0]).then(() => _nwsRepaintBubble(bubble));
+        _nwsRepaintBubble(bubble);
+        return;
+      }
+      toggleNwsSourceSub(bubble, d.v);
+    };
+    if (typeof _makeInfoBtn === 'function' && typeof _sbDescribe === 'function') {
+      el.appendChild(_makeInfoBtn(_sbDescribe(el)));
+    }
+    wrap.appendChild(el);
+  });
+  wrap.style.display = 'flex';
+}
 function _nwsAppendRows(wrap, bubble) {
   const defs = NWS_SRC_VARS[bubble];
   if (!defs || !wrap) return;
   // A bubble menu on screen means no source screen is: without this, a
   // screen left behind by an earlier visit hijacked the next repaint.
   _nwsScreen = null;
+  _nwsObsScreen = null;
   _nwsWarm();   // the Pi handshake starts NOW, not on the click
+  if (bubble === 'radar') {
+    const groupOn = _nwsOn && _nwsOn.bubble === bubble
+      && defs.some(d => !d.om && d.v === _nwsOn.v);
+    const el = document.createElement('div');
+    el.className = 'sub-bubble' + (groupOn ? ' active' : '');
+    el.id = 'sub-nws-obs-' + bubble;
+    el.innerHTML = `<span class="sb-icon">${SB_ICON_NWS}</span><span class="sb-label">Observations</span>`;
+    el.onclick = () => toggleNwsObsSub(bubble);
+    if (typeof _makeInfoBtn === 'function' && LAYER_DESCRIPTIONS['nws-observations']) {
+      el.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS['nws-observations']));
+    }
+    wrap.appendChild(el);
+    return;
+  }
   defs.forEach(d => {
     if (d.om) return;      // the bubble's own row opens the screen for this
     const on = _nwsOn && _nwsOn.bubble === bubble && _nwsOn.v === d.v;
@@ -36556,6 +36635,7 @@ function _nwsAppendRows(wrap, bubble) {
 // only while that menu is still the one on screen.
 function _nwsRepaintBubble(bubble) {
   if (_nwsScreen) { _nwsRefreshMenu(); return; }
+  if (_nwsObsScreen === bubble) { toggleNwsObsSub(bubble); return; }
   if (document.querySelector('#sub-bubbles [id^="sub-nws-' + bubble + '-"]')) {
     try { _NWS_MENU_FNS[bubble] && _NWS_MENU_FNS[bubble](); } catch (e) {}
   }
@@ -36589,6 +36669,9 @@ function toggleNwsSourceSub(bubble, v) {
   wrap.innerHTML = '';
   _radarBackBubble(wrap, () => {
     _nwsScreen = null;
+    // A radar row was reached through the Observations screen, so Back
+    // returns there rather than skipping a level up to the radar menu.
+    if (bubble === 'radar') { toggleNwsObsSub(bubble); return; }
     try { _NWS_MENU_FNS[bubble] && _NWS_MENU_FNS[bubble](); } catch (e) {}
   });
   if (def.om && _NWS_FAMILIES[bubble]) {
@@ -64759,6 +64842,10 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-20-j', date: 'Sep 20, 2026',
+    text: 'The radar menu got shorter: HRRR Reflectivity, Precip Chance, Precip Amount, Snow Amount and Weather Type now live behind one Observations bubble, one tap deeper, instead of five rows stacked in the menu.' },
+  { id: '2026-09-20-i', date: 'Sep 20, 2026',
+    text: 'A new time stamp grows out of the top of the animation bar, like a browser tab out of its strip: the frame\'s valid moment in z time, and under it, when the data last arrived. It follows whatever is playing, radar, satellite, analyses or models, and holding it still changes the timezone.' },
   { id: '2026-09-20-h', date: 'Sep 20, 2026',
     text: 'The gold got more gold: a richer, brighter metal on the star, the overlay button and the overlay pills. And the dark icons and text on the gold and cyan controls flipped to white, carried by a soft shadow so they stay crisp.' },
   { id: '2026-09-20-g', date: 'Sep 20, 2026',
