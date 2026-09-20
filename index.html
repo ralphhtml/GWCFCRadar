@@ -64711,6 +64711,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-20-f', date: 'Sep 20, 2026',
+    text: 'The search row got its colours: the star button wears the gold, the bar wears a red outline, and the search button wears the layer bubbles\' red. Toolbar icons draw in black on their blue buttons.' },
   { id: '2026-09-20-e', date: 'Sep 20, 2026',
     text: 'RTMA playback is smooth now: every frame keeps its own picture ready and scrubbing is an instant swap, no more blink while a frame reloads. And HRRR analysis is a new source in the layer bubbles, beside RTMA and NDFD: the newest hourly HRRR runs at their starting hour, 3 km, including a new HRRR Reflectivity row under Radar.' },
   { id: '2026-09-20-d', date: 'Sep 20, 2026',
@@ -72222,7 +72224,23 @@ function closeCredits() {
 #top-search-bar {
   background: #0e0e13;
   background-image: var(--grad-panel);
-  border-color: rgba(232,184,0,0.30);
+  /* A red frame, by request: the bar outline joined the red family. */
+  border-color: rgba(200,20,20,0.80);
+}
+/* The star recalls saved places, and it wears the gold now; the magnifier
+   fires the search, and it wears the layer bubbles' red. Both sit on the
+   black bar, so the row reads gold - black - red at a glance. */
+#lqm-search-star,
+#lqm-search-star:hover,
+#lqm-search-star.has {
+  background-image: linear-gradient(180deg, #e8bc22 0%, #ae820c 100%);
+  border-color: rgba(120,80,0,0.55);
+  color: #241a04;
+  box-shadow: var(--edge-3d-soft);
+}
+#lqm-search-star:hover {
+  background-image: linear-gradient(180deg, #ffd44d 0%, #b8860b 100%);
+  color: #000;
 }
 #lqm-profile-btn {
   background: #0e0e13;
@@ -72464,13 +72482,24 @@ function closeCredits() {
   background-image: radial-gradient(circle at 35% 30%, #ff9d92 0%, #d02020 55%, #6a0000 100%);
 }
 
-#lqm-search-go, #past-alerts-toggle, #clean-hint {
+#past-alerts-toggle, #clean-hint {
   background-image: var(--grad-raise);
   box-shadow: var(--edge-3d-soft);
   border-color: var(--edge-red);
 }
-#lqm-search-go:hover, #past-alerts-toggle:hover {
+#past-alerts-toggle:hover {
   background-image: var(--grad-raise-h);
+}
+/* The search button in the layer bubbles' red, by request - it left the
+   shared raise group above so the buttons' cyan cannot pull it back. */
+#lqm-search-go, #lqm-search-go:hover {
+  background-image: linear-gradient(180deg, #a81818 0%, #6d0404 100%);
+  border-color: rgba(200,20,20,0.80);
+  color: #ffe9e6;
+  box-shadow: var(--edge-3d-soft);
+}
+#lqm-search-go:hover {
+  background-image: linear-gradient(180deg, #c62020 0%, #8a0808 100%);
 }
 /* The account pill: black slab, red outline, as asked for by name. It sat
    in the raise group above, which is why it kept coming out gold. */
