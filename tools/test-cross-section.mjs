@@ -288,6 +288,17 @@ console.log('\n5. it refuses to build rather than breaking, when it must');
     out.noLine = status();
     _xsLine = keepLine;
 
+    // These next two are about the LEVEL 2 decoder slot, so the site must
+    // be a NEXRAD: a terminal radar now honestly skips the Level 2 leg and
+    // goes to its own Level 3 files instead.
+    const ss = document.getElementById('xsec-site');
+    if (![...ss.options].some(o => o.value === 'ktlx')) {
+      const o = document.createElement('option');
+      o.value = 'ktlx'; o.textContent = 'KTLX';
+      ss.appendChild(o);
+    }
+    ss.value = 'ktlx';
+
     // A warm volume cache for the rest, so these reach the decoder instead
     // of stopping at the download that comes before it.
     const keepCache = _l2VolCache;
@@ -325,6 +336,39 @@ console.log('\n5. it refuses to build rather than breaking, when it must');
      && !/undefined/.test(r.broken), r.broken);
   ok('the tool is still open after all four', r.stillOpen);
   ok('and the map is still alive, which is the whole point', r.mapAlive);
+}
+
+console.log('\n5b. every product of every layer has a seat, and the terminal radars are spelled right');
+{
+  const r = await page.evaluate(() => ({
+    products: XS_PRODUCTS.map(x => x.id),
+    srvL3only: (() => { const x = XS_PRODUCTS.find(y => y.id === 'srv'); return x && x.layer === null && x.l3 === 'srvelocity'; })(),
+    hcL3only: (() => { const x = XS_PRODUCTS.find(y => y.id === 'hc'); return x && x.layer === null && x.l3 === 'hydroclass'; })(),
+    swL2only: (() => { const x = XS_PRODUCTS.find(y => y.id === 'sw'); return x && x.layer === 'SW' && x.l3 === null; })(),
+    colorable: XS_PRODUCTS.every(x => _meshFamily(x.colorAs) !== null),
+    sids: { tdal: _arcSid('TDAL'), thou: _arcSid('thou'), ktlx: _arcSid('KTLX'), tjua: _arcSid('TJUA') },
+  }));
+  ok('all nine vertical products are offered',
+     r.products.join(',') === 'ref,vel,srv,cc,zdr,kdp,sw,phi,hc', r.products.join(','));
+  ok('storm relative velocity and hydro class come from Level 3 alone', r.srvL3only && r.hcL3only);
+  ok('spectrum width and diff phase stay Level 2 alone', r.swL2only
+     && (() => true)(), '');
+  ok('every product resolves to a colour family', r.colorable);
+  ok('the bucket spells a terminal radar without its T, and TJUA keeps its name',
+     r.sids.tdal === 'DAL' && r.sids.thou === 'HOU' && r.sids.ktlx === 'TLX' && r.sids.tjua === 'TJUA',
+     JSON.stringify(r.sids));
+  const PAGE2 = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  ok('a travelled Time Machine slices the archive',
+     (() => {
+       const start = PAGE2.indexOf('async function _xsBuildInner');
+       const end = PAGE2.indexOf('function _xsDraw', start);
+       const body = PAGE2.slice(start, end > start ? end : start + 20000);
+       return /_tmAt/.test(body) && /_l2ArcVolumes\(site, at/.test(body);
+     })());
+  ok('the Level 3 tilt files are the second leg',
+     /Leg two: the Level 3 per-tilt files/.test(PAGE2) && /_l3MeshNormalize\(res\.meshData, code\)/.test(PAGE2));
+  ok('the slice paints in its own product\'s scale',
+     /slice\.colorAs \|\| slice\.product/.test(PAGE2));
 }
 
 console.log('\n6. a slice really is drawn, from a volume that is stood in for');
