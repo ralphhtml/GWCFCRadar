@@ -10245,10 +10245,13 @@ try {
 // surface that wears a token goes glassy at once; the blur and the bright
 // top lip live in the stylesheet under [data-glass].
 window.GLASS_KEY = 'gwcfc_glass';
-window._glassLevel = null;
+// Subtle is the house default, chosen from the three-level line-up; a
+// stored level (or 'off') still wins for anyone who set one.
+window._glassLevel = 'subtle';
 try {
   const g = localStorage.getItem(window.GLASS_KEY);
   if (g === 'subtle' || g === 'medium' || g === 'full') window._glassLevel = g;
+  else if (g === 'off') window._glassLevel = null;
 } catch (e) {}
 // How see-through each level is. p is panels and pills, b is pressable
 // buttons, kept a touch more solid so a gold button still reads as gold
@@ -10318,8 +10321,9 @@ window._glassSet = function (lvl) {
   window._glassLevel =
     (lvl === 'subtle' || lvl === 'medium' || lvl === 'full') ? lvl : null;
   try {
-    if (window._glassLevel) localStorage.setItem(window.GLASS_KEY, window._glassLevel);
-    else localStorage.removeItem(window.GLASS_KEY);
+    // 'off' is stored explicitly: an absent key now means "use the default",
+    // and the default is no longer off.
+    localStorage.setItem(window.GLASS_KEY, window._glassLevel || 'off');
   } catch (e) {}
   window._glassSync();
 };
@@ -64711,6 +64715,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-20-g', date: 'Sep 20, 2026',
+    text: 'Liquid glass is on: panels, menus, pills and popups are now a subtle frosted glass, tinted by whatever theme you run, with the map blurring softly through them. Chosen from a three-strength line-up; the frost is kept light so radar stays easy to read through busy weather.' },
   { id: '2026-09-20-f', date: 'Sep 20, 2026',
     text: 'The search row got its colours: the star button wears the gold, the bar wears a red outline, and the search button wears the layer bubbles\' red. Toolbar icons draw in black on their blue buttons.' },
   { id: '2026-09-20-e', date: 'Sep 20, 2026',

@@ -3,7 +3,7 @@ GWCFC RADAR - FULL FEATURE OVERVIEW
 ================================================================================
 
 Live site:  https://ralphhtml.github.io/GWCFCRadar/
-Generated:  29 August 2026
+Generated:  20 September 2026
 
 Everything below was read out of the source, not written from memory. Counts
 are real. Where a catalogue is built at runtime from a manifest rather than
@@ -14,7 +14,7 @@ hardcoded, that is said explicitly.
 1. WHAT IT IS
 ================================================================================
 
-A browser weather application. One HTML page, 64,455 lines, no build step, no
+A browser weather application. One HTML page, 78,116 lines, no build step, no
 framework. It runs from GitHub Pages and talks to a Raspberry Pi that does the
 heavy decoding and model rendering. Free, no accounts required for the map, no
 paid tier, no advertising.
@@ -49,13 +49,17 @@ Environment Canada composite for Canadian coverage.
 Raw NEXRAD Level 2 volume scans decoded in the browser, at full super
 resolution. A single sweep is about 1.3 million quads and 45 MB in memory.
 
-Nine products:
+Ten products:
 
   Reflectivity              Velocity
   Hydrometeor Classification    Storm Total Accumulation
   1-Hour Accumulation       Correlation Coefficient
   Differential Reflectivity Specific Differential Phase
-  Spectrum Width
+  Spectrum Width            Differential Phase (raw PHI)
+
+Specific Differential Phase is computed from the raw differential phase
+moment in the browser, the way research code does it, rather than read from
+a pre-baked product.
 
 Every WSR-88D site plus TDWR terminal radars. The site list is discovered from
 the bucket listing at runtime rather than hardcoded, so a new site appears
@@ -65,7 +69,7 @@ without a code change.
 2.3 LEVEL 3 (single site, Pi-decoded)
 --------------------------------------------------------------------------------
 
-13 products, decoded on the Pi and served as georeferenced frames:
+14 products, decoded on the Pi and served as georeferenced frames:
 
   Reflectivity              Velocity
   Correlation Coefficient   Differential Reflectivity
@@ -73,7 +77,7 @@ without a code change.
   Storm Relative Velocity   1-Hour Precipitation
   Storm Total Precipitation Vertically Integrated Liquid
   Echo Tops                 Composite Reflectivity
-  Spectrum Width
+  Spectrum Width            Hybrid Scan Hydrometeor Class
 
 Tilts 2, 3 and 4 are carried for reflectivity and velocity, and tilt 2 for the
 dual-pol products. Terminal (TDWR) products carry their own short and long
@@ -152,9 +156,30 @@ are grouped seven ways in the menu:
 2.6 CROSS SECTION
 --------------------------------------------------------------------------------
 
-Draw a line on the map and get a vertical slice through the storm, in six
-products: Reflectivity, Velocity, Correlation Coefficient, Differential
-Reflectivity, Specific Differential Phase, Spectrum Width.
+Draw a line on the map and get a vertical slice through the storm, in nine
+products: Reflectivity, Velocity, Storm Relative Velocity, Correlation
+Coefficient, Differential Reflectivity, Specific Differential Phase, Spectrum
+Width, Differential Phase, Hydrometeor Classification.
+
+The slice comes from the full Level 2 volume when the site has one; terminal
+(TDWR) radars and products with no Level 2 moment fall back to stacking the
+per-tilt Level 3 files. With the Time Machine travelled, the slice is cut
+from the archive at that moment. Beam height uses the exact 4/3-earth
+inverse, checked against a NOAA archive case.
+
+--------------------------------------------------------------------------------
+2.7 RADAR 3D
+--------------------------------------------------------------------------------
+
+A real volumetric view of a storm, OpenStorm-style: the whole Level 2 volume
+is decoded into per-tilt byte planes in the radar's own coordinates, and a
+ray-marched voxel renderer draws it as a translucent storm body you can orbit
+and cut. Pick a zone with a rectangle on the map, choose any of the volume
+products (reflectivity, velocity, spectrum width, CC, ZDR, KDP, PHI), and it
+uses the app's own radar colours, including custom palettes. Works live and
+from the AWS Level 2 archive, so a past supercell can be flown around. The
+marching runs in a worker pool so the map never stalls, and the panel has a
+drag handle.
 
 
 ================================================================================
@@ -390,6 +415,16 @@ Sea surface temperature has its own subsystem with four sources (Open-Meteo,
 OISST, Coral Reef Watch, AOML), a 1991-2020 climatology, records back to 1982,
 anomaly and record variants, and land masking.
 
+NWS SOURCES INSIDE THE BUBBLES
+  Each bubble's variables offer their sources: Open-Meteo (live global grid),
+  RTMA (the 2.5 km analysis of right now, rendered by the Pi over CONUS,
+  Alaska, Hawaii and Puerto Rico at once), HRRR analysis (the newest hourly
+  HRRR runs at their starting hour, 3 km, including an HRRR Reflectivity row
+  under Radar), and NDFD (the official human-made forecast). The analyses
+  scrub back through recent runs on the animation bar and playback is an
+  instant opacity swap, no blink between frames; NDFD plays forward through
+  two days.
+
 
 ================================================================================
 9. THE AI ASSISTANT AND FORECAST ENGINE
@@ -484,7 +519,21 @@ A broadcast overlay mode for streaming.
   Forecaster Desk
 
 The colour editors take variable-length gradient stops, invert, presets and a
-live preview, and work identically for radar and model fields.
+live preview, and work identically for radar and model fields. Custom radar
+colours, the filter and model colours sync to the account and follow you to
+any device; an uploaded .pal file always outranks the cloud copy.
+
+THEMES AND THE LOOK
+  The default look is black and gold: black gradient panels, buttons in the
+  animation bar's cyan so the pressable controls read as one family, the
+  overlay button and its pills in gold, the layer bubbles in their signature
+  red, and the account pill black with a red outline. The old red look ships
+  as the Ralph's Red preset, beside 30-plus other whole-look presets and a
+  full per-token, per-surface, per-part theme editor with import/export.
+  Liquid glass runs at a subtle frost by default on every theme: floating
+  surfaces are translucent, tinted by the active theme's own gradients, with
+  a backdrop blur (switched off on touch consoles where blur is the biggest
+  GPU cost).
 
 
 ================================================================================
@@ -558,7 +607,7 @@ ASSISTANT (assistant.html)
 16. ENGINEERING
 ================================================================================
 
-  - 100 test files in tools/, mixed Node and Python
+  - 153 test files in tools/, mixed Node and Python
   - Service worker: network-first app shell with a timeout fallback,
     cache-first for CDN assets and fonts
   - Installable as a PWA
@@ -566,8 +615,12 @@ ASSISTANT (assistant.html)
     during boot, LCP 0.23 s and CLS 0.02 on a warm load
   - Every user-visible layer carries an info button explaining what it is, in
     plain English rather than jargon
-  - A dismissible update bar above the logo says what changed most recently,
-    and reappears when the message changes
+  - A changelog modal keeps the full history of what changed; it opens itself
+    once for a returning visitor when something new has shipped, and is
+    always available from the Updates button in the account panel
+  - Hidden radar animation frames step off the map during a zoom and return
+    in quiet batches after, so zooming with radar on stays smooth
+  - Searching a city flies the map there and opens its forecast
 
 
 ================================================================================
@@ -576,7 +629,7 @@ ASSISTANT (assistant.html)
 
 Worth knowing, and worth being straight about:
 
-  - No 3D radar view or globe projection
+  - No globe projection
   - No side-by-side synchronised radar panes
   - No live storm chaser video streams or weather cams (positions only)
   - No native iOS or Android app, it is a web app installable as a PWA
