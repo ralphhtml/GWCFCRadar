@@ -47278,6 +47278,12 @@ function _fxUiApplyTable(stops, note) {
   _fxEnsure(_fxUiFam);
   _fxColors[_fxUiFam].stops = norm;
   _fxColors[_fxUiFam].on = true;
+  // Provenance: a palette that came from a FILE is the user's own table,
+  // and it outranks everything - presets never overwrite it silently, and
+  // the account sync keeps the newest upload rather than an older cloud
+  // copy (see _applySyncedSettings).
+  _fxColors[_fxUiFam].src = 'pal';
+  _fxColors[_fxUiFam].at = Date.now();
   var onEl = document.getElementById('lqm-fx-colors-on'); if (onEl) onEl.checked = true;
   _fxUiRenderStops();
   _fxTouch();
@@ -47315,6 +47321,11 @@ function _fxUiPreset(key) {
   var preset = GRAD_PRESETS[key];
   if (!preset) return;
   _fxEnsure(_fxUiFam);
+  // Choosing a preset is an explicit act, so it may replace an uploaded
+  // .pal - but the provenance mark comes off, or the sync would keep
+  // resurrecting the file over the preset just picked.
+  delete _fxColors[_fxUiFam].src;
+  delete _fxColors[_fxUiFam].at;
   // Deep copied, for the same reason the model editor does it: slice shares
   // the {v, c} objects, so editing a stop would edit the preset itself.
   _fxColors[_fxUiFam].stops = preset.stops.map(function (st) {
@@ -64036,6 +64047,9 @@ const SETTINGS_SYNC_KEYS = new Set([
   'gwcfc_pr_looplen', 'gwcfc_pr_product', 'gwcfc_pr_site', 'gwcfc_pr_tilt',
   'gwcfc_sc_mode', 'gwcfc_snd_source', 'gwcfc_sst_source', 'gwcfc_sst_variant',
   'gwcfc_tz', 'gwcfc_zoomstep',
+  // The Radar Colors custom palettes and value filters, and the Pi picture
+  // recolours, follow the account: paint a palette once, see it everywhere.
+  'gwcfc_radar_filter', 'gwcfc_radar_colors', 'gwcfc_model_colors',
   'lqm_airopacity', 'lqm_alertopacity', 'lqm_autoplay', 'lqm_citynamesize',
   'lqm_dbltapmenu', 'lqm_loopspeed', 'lqm_modelopacity', 'lqm_pressureopacity',
   'lqm_radaropacity', 'lqm_temperatureopacity', 'lqm_waveptdensity',
@@ -64117,6 +64131,35 @@ function _applySyncedSettings(synced) {
       }
       try { localStorage.setItem(k, v); } catch (e) {}
     });
+    // The radar palettes just written are read at startup into live state;
+    // a snapshot arriving mid-session has to reach that state and the
+    // picture too, or the sync would only show up after a reload.
+    // A palette that came from an UPLOADED .pal file on this device is the
+    // one thing the cloud must not overwrite: the file is the source of
+    // truth, so the newer upload wins and is pushed back up instead.
+    try {
+      const before = _fxColors;
+      const pulledColors = _fxLoad(FX_COLORS_KEY);
+      const pulledFilter = _fxLoad(FX_FILTER_KEY);
+      let keepLocal = false;
+      Object.keys(before || {}).forEach((fam) => {
+        const loc = before[fam], rem = pulledColors[fam];
+        if (loc && loc.src === 'pal'
+            && (!rem || rem.src !== 'pal' || (loc.at || 0) > (rem.at || 0))) {
+          pulledColors[fam] = loc;
+          keepLocal = true;
+        }
+      });
+      _fxColors = pulledColors;
+      _fxFilter = pulledFilter;
+      if (keepLocal) _fxSave();                        // and push the .pal back up
+      else if (typeof _r3dOnPaletteChange === 'function') { try { _r3dOnPaletteChange(); } catch (e) {} }
+      if (typeof _radarFxApply === 'function') _radarFxApply();
+      if (typeof _fxUiSync === 'function'
+          && document.getElementById('lqm-settings-overlay')?.style.display !== 'none') {
+        try { _fxUiSync(); } catch (e) {}
+      }
+    } catch (e) {}
   } finally {
     _applyingSyncedSettings = false;
   }
@@ -64512,6 +64555,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-20-a', date: 'Sep 20, 2026',
+    text: 'Three fixes. The overlay pills are properly black now (a higher-priority rule was still painting their resting state gold). Your custom Radar Colors and value filters follow your account: paint a palette on one device, sign in anywhere, and it is there, along with the Pi picture recolours. And a palette loaded from a .pal file is treated as the boss: presets and the account sync never overwrite it silently - the newest uploaded file always wins and is what syncs to your other devices.' },
   { id: '2026-09-19-b', date: 'Sep 19, 2026',
     text: 'Searching a city takes you all the way there now: the map flies to it AND its forecast card opens, the same one a tap on a city dot gives. Works from the search button, the suggestion rows under the search bar, and your starred places.' },
   { id: '2026-09-19-a', date: 'Sep 19, 2026',
@@ -71930,6 +71975,57 @@ function closeCredits() {
   color: #000;
   border-color: rgba(255,90,80,0.85);
 }
+
+/* Placed AFTER every shared-gradient group above, so these per-family
+   choices always win the tie: the cascade resolves equal specificity by
+   file order, and an override that sits earlier is no override at all. */
+/* The overlay button, the search bar and the account pill stand on black
+   gradients while the rest of the pressable controls wear the gold: three
+   fixed way-posts that frame the map rather than compete with it. */
+#overlay-toggle-btn,
+#overlay-toggle-btn:hover {
+  background-image: var(--grad-panel);
+  border-color: rgba(232,184,0,0.40);
+  color: #ffe9a8;
+}
+#overlay-toggle-btn:hover { background-image: var(--grad-surface); }
+#top-search-bar {
+  background: #0e0e13;
+  background-image: var(--grad-panel);
+  border-color: rgba(232,184,0,0.30);
+}
+#lqm-profile-btn {
+  background: #0e0e13;
+  background-image: var(--grad-panel);
+  border-color: rgba(232,184,0,0.40);
+}
+/* The LAYER bubbles keep the red they have always worn: they are the app's
+   signature control, and the black-and-gold rework was asked to leave them
+   alone. Spelled out here because the shared raise gradient they used to
+   inherit is the toolbar's gold now. */
+.layer-row,
+.sub-bubble,
+.sat-region-bubble {
+  background-image: linear-gradient(180deg, #a81818 0%, #6d0404 100%);
+}
+.sub-bubble:hover,
+.layer-row:hover,
+.sat-region-bubble:hover {
+  background-image: linear-gradient(180deg, #c62020 0%, #8a0808 100%);
+}
+.sub-bubble.active,
+.layer-row.active {
+  background-image: linear-gradient(180deg, #2b0000 0%, #4d0404 100%);
+}
+/* The OVERLAY pills go the other way: black gradients, like the overlay
+   button that opens them, so the whole overlay family reads as one thing. */
+.ov-pill,
+.overlay-pill-demo {
+  background-image: var(--grad-panel);
+}
+.ov-pill:hover { background-image: var(--grad-surface); }
+.ov-pill.active,
+.overlay-pill-demo.active { background-image: var(--grad-sunk); }
 .tool-btn.active {
   background-image: var(--grad-sunk);
   border-color: rgba(255,90,80,0.9);
@@ -72118,10 +72214,10 @@ function closeCredits() {
    specificity that actually wins. */
 
 #overlay-pills-row .ov-pill {
-  background-image: var(--grad-raise);
-  box-shadow: var(--edge-3d-soft);
+  background-image: var(--grad-panel);
+  box-shadow: var(--lift-3d-sm), var(--edge-3d);
 }
-#overlay-pills-row .ov-pill:hover { background-image: var(--grad-raise-h); }
+#overlay-pills-row .ov-pill:hover { background-image: var(--grad-surface); }
 #overlay-pills-row .ov-pill.active {
   background-image: var(--grad-sunk);
   box-shadow: var(--edge-3d), inset 0 2px 5px rgba(0,0,0,0.55);
@@ -72175,53 +72271,7 @@ body {
   background-image: linear-gradient(180deg, #1c1c22 0%, #0c0c10 55%, #000000 100%);
   background-attachment: fixed;
 }
-/* The overlay button, the search bar and the account pill stand on black
-   gradients while the rest of the pressable controls wear the gold: three
-   fixed way-posts that frame the map rather than compete with it. */
-#overlay-toggle-btn,
-#overlay-toggle-btn:hover {
-  background-image: var(--grad-panel);
-  border-color: rgba(232,184,0,0.40);
-  color: #ffe9a8;
-}
-#overlay-toggle-btn:hover { background-image: var(--grad-surface); }
-#top-search-bar {
-  background: #0e0e13;
-  background-image: var(--grad-panel);
-  border-color: rgba(232,184,0,0.30);
-}
-#lqm-profile-btn {
-  background: #0e0e13;
-  background-image: var(--grad-panel);
-  border-color: rgba(232,184,0,0.40);
-}
-/* The LAYER bubbles keep the red they have always worn: they are the app's
-   signature control, and the black-and-gold rework was asked to leave them
-   alone. Spelled out here because the shared raise gradient they used to
-   inherit is the toolbar's gold now. */
-.layer-row,
-.sub-bubble,
-.sat-region-bubble {
-  background-image: linear-gradient(180deg, #a81818 0%, #6d0404 100%);
-}
-.sub-bubble:hover,
-.layer-row:hover,
-.sat-region-bubble:hover {
-  background-image: linear-gradient(180deg, #c62020 0%, #8a0808 100%);
-}
-.sub-bubble.active,
-.layer-row.active {
-  background-image: linear-gradient(180deg, #2b0000 0%, #4d0404 100%);
-}
-/* The OVERLAY pills go the other way: black gradients, like the overlay
-   button that opens them, so the whole overlay family reads as one thing. */
-.ov-pill,
-.overlay-pill-demo {
-  background-image: var(--grad-panel);
-}
-.ov-pill:hover { background-image: var(--grad-surface); }
-.ov-pill.active,
-.overlay-pill-demo.active { background-image: var(--grad-sunk); }
+
 #map { background-image: linear-gradient(180deg, #24070a 0%, #0b0204 100%); }
 
 /* ── The city dots, shaded rather than recoloured ─────────────────────── */
