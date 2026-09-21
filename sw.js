@@ -8,6 +8,16 @@ const STATIC_CACHE = 'gwcfc-static-v3'; // app shell + CDN libraries + fonts
 // connection, so the stale copy under v2 was being served over and over and
 // the fresh one never got a turn. Bumping the name deletes those on activate.
 const NOTIF_CACHE  = 'gwcfc-notif-seen-v1'; // tracks alert IDs already notified
+// Every data answer the app has ever seen, kept as the offline fallback.
+// Online, nothing changes: the network answers first and a copy is saved in
+// the background. Offline, the copy answers instead - which is what lets
+// alerts, forecasts, satellite, models and the Pi's products all replay
+// with no connection, rather than each one failing its own way.
+const DATA_CACHE   = 'gwcfc-data-v1';
+const DATA_MAX      = 1600;              // entries before a prune
+const DATA_TRIM     = 1200;              // entries kept after one
+const DATA_BODY_CAP = 8 * 1024 * 1024;   // a Level 2 volume is not a cache line
+let _dataPuts = 0;
 
 // ── Radar tile caches ────────────────────────────────────────
 const IEM_L3_RE = /\/cache\/tile\.py\/1\.0\.0\/nexrad-n0q-\d{12}\//;
@@ -58,6 +68,9 @@ const STATIC_HOSTS = new Set([
   'cdn.jsdelivr.net',
   'fonts.googleapis.com',
   'fonts.gstatic.com',
+  // The Firebase SDK: without it cached, an offline open cannot even parse
+  // the accounts code, and the retry loop burns its attempts on nothing.
+  'www.gstatic.com',
 ]);
 const STATIC_TTL_MS = 30 * 24 * 3600 * 1000;
 
@@ -90,7 +103,8 @@ self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
     .then(keys => Promise.all(
-      keys.filter(k => k !== CACHE && k !== NOTIF_CACHE && k !== STATIC_CACHE)
+      keys.filter(k => k !== CACHE && k !== NOTIF_CACHE && k !== STATIC_CACHE
+                    && k !== DATA_CACHE)
         .map(k => caches.delete(k))
     ))
     .then(() => clients.claim())
@@ -188,7 +202,17 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  if (!CACHE_HOSTS.has(url.hostname)) return;
+  if (!CACHE_HOSTS.has(url.hostname)) {
+    // Everything else the app asks for over the network: NWS alerts and
+    // forecasts, the Pi's manifests and rendered frames, satellite, model
+    // charts, the archive buckets' listings, all of it. Network-first, so
+    // online behaviour is exactly what it was; the copy saved in the
+    // background is what answers when there is no network at all.
+    if (url.protocol === 'https:' || url.protocol === 'http:') {
+      e.respondWith(dataNetworkFirst(e));
+    }
+    return;
+  }
 
   let ttl;
   if (url.hostname === 'mesonet.agron.iastate.edu' && IEM_L3_RE.test(url.pathname)) {
@@ -267,6 +291,59 @@ async function cacheFirst(req, ttl, cacheName) {
   } catch {
     return hit ?? new Response('', { status: 503 });
   }
+}
+
+// The generic data path. Live first, always: the response streams straight
+// through to the page (a clone buffers in the background, so progressive
+// reads like the Level 2 chunk feed are not held up). Only when the network
+// itself fails does the last good copy answer. Range requests pass through
+// uncached: a 206 is a slice of a file, and replaying a slice as the whole
+// answer would corrupt whatever asked for it.
+async function dataNetworkFirst(e) {
+  const req = e.request;
+  if (req.headers.get('range')) {
+    try { return await fetch(req); }
+    catch { return new Response('', { status: 503 }); }
+  }
+  const cache = await caches.open(DATA_CACHE);
+  try {
+    const res = await fetch(req);
+    if (res && res.status === 200 && res.type !== 'opaque') {
+      const len = +(res.headers.get('content-length') || 0);
+      if (!len || len <= DATA_BODY_CAP) {
+        const copy = res.clone();
+        e.waitUntil((async () => {
+          try {
+            const buf = await copy.arrayBuffer();
+            if (buf.byteLength > DATA_BODY_CAP) return;
+            const hdrs = new Headers(copy.headers);
+            hdrs.set('x-sw-ts', String(Date.now()));
+            await cache.put(req, new Response(buf, { status: 200, headers: hdrs }));
+            if (++_dataPuts >= 30) { _dataPuts = 0; await _pruneData(cache); }
+          } catch (err) { /* an uncached answer costs nothing now */ }
+        })());
+      }
+    }
+    return res;
+  } catch {
+    const hit = await cache.match(req, { ignoreVary: true });
+    return hit || new Response('', { status: 503 });
+  }
+}
+
+// Same shape as the tile prune below, against the data cache's own caps.
+async function _pruneData(cache) {
+  try {
+    const keys = await cache.keys();
+    if (keys.length <= DATA_MAX) return;
+    const stamped = await Promise.all(keys.map(async k => {
+      const r = await cache.match(k);
+      return { k, ts: +((r && r.headers.get('x-sw-ts')) || 0) };
+    }));
+    stamped.sort((a, b) => a.ts - b.ts);
+    const drop = stamped.slice(0, stamped.length - DATA_TRIM);
+    await Promise.all(drop.map(d => cache.delete(d.k)));
+  } catch (e) { /* a failed prune costs nothing but disk */ }
 }
 
 // Drop the oldest tiles once the cache passes its cap. Oldest by the same

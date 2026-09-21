@@ -13,7 +13,8 @@
  *   - when the network dies, the app still opens from the cached shell
  *   - when the network is merely slow, the cached shell answers at the
  *     timeout instead of leaving the user staring at white
- *   - a request to a live-data host (api.weather.gov) is not intercepted
+ *   - a live-data host (api.weather.gov) is answered network-first, and
+ *     its last good answer replays when the network is gone
  *   - the tile cache is pruned back under its cap, oldest entries first
  *
  * This is what makes "repeat visits are instant" a checked fact rather than
@@ -87,7 +88,8 @@ function dispatchFetch(request) {
   fetchHandlers.forEach(fn => fn(e));
   return responded; // null means the SW let the browser handle it
 }
-const GET = (url, mode) => ({ url, method: 'GET', mode: mode || 'no-cors' });
+const GET = (url, mode) => ({ url, method: 'GET', mode: mode || 'no-cors',
+  headers: { get: () => null } });
 
 // ── Scenes ─────────────────────────────────────────────────────────────────
 
@@ -203,11 +205,25 @@ console.log('\n3. first-ever open: nothing cached, the network answers and is st
        JSON.stringify(clientMsgs));
   }
 
-  console.log('\n6. live data is never intercepted');
-  const r7 = dispatchFetch(GET('https://api.weather.gov/alerts/active'));
-  ok('api.weather.gov passes straight through to the browser', r7 === null, 'was intercepted');
-  const r8 = dispatchFetch({ url: 'https://mesonet.agron.iastate.edu/x', method: 'POST', mode: 'cors' });
-  ok('a POST is never intercepted', r8 === null, 'was intercepted');
+  console.log('\n6. live data: network-first, with the last good answer as the offline fallback');
+  // It used to pass straight through. Now every data host is answered
+  // network-first and a copy is kept, which is the whole of offline mode:
+  // online behaviour identical, and the copy answers when the network dies.
+  netImpl = async () => new Response('{"features":[]}', { status: 200 });
+  netCalls = 0;
+  const r7 = await dispatchFetch(GET('https://api.weather.gov/alerts/active'));
+  ok('api.weather.gov is answered live, one trip to the network',
+     r7 && r7.status === 200 && netCalls === 1, String(netCalls));
+  await new Promise(res => setTimeout(res, 50));   // the background copy lands
+  netImpl = async () => { throw new Error('offline'); };
+  const r8 = await dispatchFetch(GET('https://api.weather.gov/alerts/active'));
+  ok('with the network dead, the same request replays the saved answer',
+     r8 && r8.status === 200 && (await r8.text()) === '{"features":[]}');
+  const r9 = await dispatchFetch(GET('https://api.weather.gov/never-seen'));
+  ok('a request nothing was ever saved for fails honestly with a 503',
+     r9 && r9.status === 503, String(r9 && r9.status));
+  const rPost = dispatchFetch({ url: 'https://mesonet.agron.iastate.edu/x', method: 'POST', mode: 'cors' });
+  ok('a POST is never intercepted', rPost === null, 'was intercepted');
 
   console.log('\n7. the tile cache is pruned, oldest first');
   const tileCache = cacheStore.get('gwcfc-v19');
