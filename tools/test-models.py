@@ -169,11 +169,14 @@ for model, wanted in FOLDED.items():
         ok(f"{model} still reaches its {region} file ({marker})",
            spec is not None and marker in blob, blob[:90])
 
-ok("the nine folded models are gone from the list",
-   not [n for n in ("namak", "namhi", "nampr", "nam32", "rtmaak", "rtmahi",
+# namak/namhi/nampr came BACK on purpose in the Alaska expansion: NAM's
+# island domains are their own files on their own grids there, so they are
+# standalone models again. The six that stayed folded stay checked.
+ok("the six folded models are gone from the list",
+   not [n for n in ("nam32", "rtmaak", "rtmahi",
                     "rtmapr", "nbmak", "nbmhi") if n in MODELS])
 ok("and nothing anywhere in the pipeline still refers to them by name",
-   not [n for n in ("namak", "namhi", "nampr", "nam32", "rtmaak", "rtmahi",
+   not [n for n in ("nam32", "rtmaak", "rtmahi",
                     "rtmapr", "nbmak", "nbmhi") if n in src])
 ok("their parents are still built by default",
    all(n in DEFAULTS for n in ("nam", "rtma", "nbm")))
