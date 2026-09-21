@@ -8,7 +8,7 @@
 <!-- The artwork's own average purple while the loading screen is up, so a
      phone's status bar and toolbar blend into the art instead of framing it
      in black; _actuallyDismiss hands the app's dark chrome back. -->
-<meta name="theme-color" content="#A06BA0">
+<meta name="theme-color" content="#714871">
 
 <!-- Link preview. Absolute URLs are required: Slack, Discord, iMessage and X
      fetch these server-side, where a relative path has no origin to resolve
@@ -2375,7 +2375,7 @@ body {
   /* The artwork's own average purple, not black: it is what shows for the
      instant before the background image arrives, and what bleeds into any
      edge the image does not reach. */
-  background: #A06BA0;
+  background: #714871;
   display: flex; align-items: center; justify-content: space-between;
   flex-direction: column;
   padding: 7vh 0 6vh;
@@ -65986,6 +65986,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-ah', date: 'Sep 21, 2026',
+    text: 'The loading screen now shows the red-to-blue artwork exactly as supplied, untouched - the earlier brightening pass is gone - and the phone status bar and toolbar blend into its true plum tone while it is up.' },
   { id: '2026-09-21-ag', date: 'Sep 21, 2026',
     text: 'No more black bars around the loading screen on phones. The browser paints its status bar, toolbar and app-splash from the page\'s declared colors, and those were near-black; while the loading screen is up they now carry the artwork\'s own purple, blending the bars into the art, and the app\'s dark chrome comes back the moment the map appears.' },
   { id: '2026-09-21-af', date: 'Sep 21, 2026',
