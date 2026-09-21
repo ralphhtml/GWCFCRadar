@@ -671,11 +671,12 @@ body {
    whichever playback source owns the bar, models included. */
 #anim-stamp {
   position: absolute;
-  /* 100% of the bar's padding box: the chip's bottom lands exactly on the
-     inner edge of the bar's 3px border, covering the border strip and not
-     a pixel more. The earlier deeper overlap left a visible lighter band
-     of chip bleeding into the bar. */
-  bottom: 100%;
+  /* 100% is the bar's padding box, so the chip's bottom lands on the inner
+     edge of the bar's 3px border; the extra 2px also swallows the bar's
+     1px white inset highlight, which otherwise runs beneath the chip as a
+     bright line and cuts the merge. Deeper than this and a lighter band of
+     chip becomes visible inside the bar, which is the other failure mode. */
+  bottom: calc(100% - 2px);
   left: 50%;
   transform: translateX(-50%);
   background: linear-gradient(180deg, #8ce7ff 0%, #5cd8f7 100%);
@@ -690,30 +691,13 @@ body {
   user-select: none;
   -webkit-tap-highlight-color: transparent;
   white-space: nowrap;
-  box-shadow: 0 -6px 14px -6px rgba(0,0,0,0.55);
+  box-shadow: 0 -4px 10px -6px rgba(0,0,0,0.4);
 }
-/* The coves: kept small so they read as a smooth root, not red hooks.
-   Each is a 9px square whose ring's last 3px land exactly on the bar's
-   3px border line, continuing the outline around the curve. */
-#anim-stamp::before,
-#anim-stamp::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  width: 9px;
-  height: 9px;
-  pointer-events: none;
-}
-#anim-stamp::before {
-  left: -12px;
-  background: radial-gradient(circle at 0 0,
-    rgba(0,0,0,0) 6px, #AA0000 6px, #AA0000 9px, #5cd8f7 9px);
-}
-#anim-stamp::after {
-  right: -12px;
-  background: radial-gradient(circle at 100% 0,
-    rgba(0,0,0,0) 6px, #AA0000 6px, #AA0000 9px, #5cd8f7 9px);
-}
+/* No side coves. They were gradient-drawn quarter arcs meant to round the
+   root the way a browser tab's does, and on real screens (other pixel
+   densities, the live bar's exact metrics) they kept landing a few pixels
+   off and reading as floating red hooks. A clean straight-rooted tab
+   cannot misrender: rounded top, shared border, covered border strip. */
 #anim-stamp-main {
   font-size: 15px; font-weight: 700; letter-spacing: 0.5px;
   color: #000;
@@ -64870,6 +64854,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-c', date: 'Sep 21, 2026',
+    text: 'The time stamp\'s joint with the animation bar is clean now. The little curved side hooks kept landing a few pixels off on real screens, so the stamp is a straight-rooted tab instead: rounded top, one shared red outline, seamless base.' },
   { id: '2026-09-21-b', date: 'Sep 21, 2026',
     text: 'The app works without internet now. Everything you have looked at keeps working offline: the radar loop, alerts, forecasts, satellite, the Pi\'s products, all replayed from what was last seen, with a banner saying since when. The moment a connection returns, every live layer refreshes itself. New weather still needs a connection, because that is physics, not code.' },
   { id: '2026-09-21-a', date: 'Sep 21, 2026',
