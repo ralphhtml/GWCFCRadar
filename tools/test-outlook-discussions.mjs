@@ -43,14 +43,24 @@ console.log('\n1. the pieces are in the page');
      PAGE.includes("_fetchOutlookDiscussion(_spcDiscKey(dayNum), _spcDiscUrls(dayNum)), sourceUrl);"));
   ok('WPC\'s polygon click reads the one combined day1-3 discussion',
      PAGE.includes("_fetchOutlookDiscussion('wpc', _wpcDiscUrls())"));
-  ok('NHC reads the modern product API first, the public page second',
-     PAGE.includes('function _nhcTwoText(code)')
-     && PAGE.includes('https://api.weather.gov/products/types/TWO${code}')
+  ok('one product-API reader serves every NOAA text product, NHC included',
+     PAGE.includes('function _nwsProductText(type)')
+     && PAGE.includes('https://api.weather.gov/products/types/${type}')
+     && PAGE.includes("_nwsProductText('TWO' + code)")
      && /return _fetchOutlookDiscussion\(key, \[`https:\/\/www\.nhc\.noaa\.gov\/text\/MIATWO\$\{code\}\.shtml`\]\);/.test(PAGE));
-  ok('the three info descriptions say what tapping an area now does',
+  ok('the fire weather outlook reads its own day\'s discussion (FWDDY1/2)',
+     PAGE.includes("_nwsProductText('FWDDY' + d)")
+     && PAGE.includes('_outlookOpenPopup(ev, mapped, color, _spcFireDiscussion(dayNum),'));
+  ok('a Mesoscale Discussion popup reads that MD\'s own full text',
+     PAGE.includes('function _mcdDiscussion(props)')
+     && PAGE.includes('mesonet.agron.iastate.edu/api/1/nwstext/')
+     && PAGE.includes("_outlookOpenPopup(ev, mapped, '#ff8c00', _mcdDiscussion(p),"));
+  ok('the five info descriptions say what tapping an area now does',
      PAGE.includes("forecaster's own written discussion of that day's outlook")
      && PAGE.includes("forecaster's own written Tropical Weather Outlook discussion")
-     && PAGE.includes("Tap an area for the forecaster's own written discussion."));
+     && PAGE.includes("Tap an area for the forecaster's own written discussion.")
+     && PAGE.includes("forecaster's own written fire weather discussion")
+     && PAGE.includes('Tap one to read the full discussion the forecaster wrote for it.'));
   const EM = String.fromCharCode(0x2014);
   ok('no em dashes here or in the page',
      !PAGE.includes(EM)
@@ -84,6 +94,7 @@ const asked = [];
 let spcGeo = null, spcTxt = null, spcTxtStatus = 200;
 let wpcGeo = null, wpcTxt = null;
 let nhcInvest = null, nhcTwoList = null, nhcTwoBody = null;
+let fwGeo = null, fwTxt = null, mcdGeo = null, mcdTxt = null;
 let discDelayMs = 0;
 
 await p.route('**://**', async route => {
@@ -122,10 +133,23 @@ await p.route('**://**', async route => {
   }
   if (url.includes('api.weather.gov/products/types/TWO'))
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify(nhcTwoList || { '@graph': [] }) });
+  if (url.includes('api.weather.gov/products/types/FWDDY'))
+    return route.fulfill({ contentType: 'application/json',
+      body: JSON.stringify({ '@graph': [{ id: 'https://api.weather.gov/products/fw-latest' }] }) });
+  if (url.includes('api.weather.gov/products/fw-latest'))
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ productText: fwTxt || '' }) });
   if (url.includes('api.weather.gov/products/') && !url.includes('/types/')) {
     if (discDelayMs) await new Promise(r => setTimeout(r, discDelayMs));
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ productText: nhcTwoBody || '' }) });
   }
+  if (url.includes('Predictive_Services_Fire_Weather_Outlook'))
+    return fwGeo ? route.fulfill({ contentType: 'application/json', body: JSON.stringify(fwGeo) })
+                 : route.fulfill({ status: 404, body: 'no' });
+  if (url.includes('SPC_mcd'))
+    return mcdGeo ? route.fulfill({ contentType: 'application/json', body: JSON.stringify(mcdGeo) })
+                  : route.fulfill({ status: 404, body: 'no' });
+  if (url.includes('mesonet.agron.iastate.edu/api/1/nwstext/'))
+    return route.fulfill({ contentType: 'text/plain', body: mcdTxt || '' });
   return route.abort();
 });
 await p.goto('file://' + join(ROOT, 'index.html'), { waitUntil: 'domcontentloaded' });
@@ -235,7 +259,67 @@ console.log('\n5. NHC: the basin decides which Tropical Weather Outlook is read'
      asked.filter(u => u.includes('weather.gov')).join(' | '));
 }
 
-console.log('\n6. a second tap while the first is still loading is not clobbered by the stale answer');
+console.log('\n6. SPC fire weather: the risk name and the fire discussion both come through');
+{
+  fwGeo = { type: 'FeatureCollection', features: [
+    { type: 'Feature', properties: { label: 'Critical' },
+      geometry: { type: 'Polygon', coordinates: [[[-104, 35], [-103, 35], [-103, 36], [-104, 36], [-104, 35]]] } },
+  ] };
+  fwTxt = 'FNUS21 KWNS 121600\nSPC FW 121600\n\n' +
+    'CRITICAL FIRE WEATHER CONDITIONS ARE EXPECTED ACROSS EASTERN NEW MEXICO ' +
+    'WHERE STRONG WINDS AND SINGLE-DIGIT HUMIDITY WILL OVERLAP VERY DRY FUELS.';
+  const r = await p.evaluate(async () => {
+    await loadFireOutlook(1);
+    let layer = null;
+    _fwLayer.eachLayer(l => { layer = l; });
+    layer.fire('click', { latlng: L.latLng(35.5, -103.5), originalEvent: new Event('click') });
+    const immediate = map._popup.getContent();
+    await new Promise(res => setTimeout(res, 300));
+    return { immediate, settled: map._popup.getContent() };
+  });
+  const textOf = (html) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  ok('the tap opens immediately, before the text lands',
+     /Reading the forecast discussion/.test(r.immediate), r.immediate.slice(0, 200));
+  ok('the plain-English risk name is the headline',
+     /Critical Risk/.test(textOf(r.settled)), textOf(r.settled).slice(0, 200));
+  ok('and the forecaster\'s own fire weather words are underneath',
+     /CRITICAL FIRE WEATHER CONDITIONS ARE EXPECTED/.test(textOf(r.settled)),
+     textOf(r.settled).slice(0, 300));
+  ok('day 1 asked the FWDDY1 product type',
+     asked.some(u => u.includes('products/types/FWDDY1')),
+     asked.filter(u => u.includes('FWDDY')).join(' | '));
+}
+
+console.log('\n7. a Mesoscale Discussion opens onto its own full text');
+{
+  mcdGeo = { type: 'FeatureCollection', features: [
+    { type: 'Feature', properties: { num: 2154, product_id: '202609212317-KWNS-ACUS11-SWOMCD',
+        concerning: 'Severe potential... Watch possible' },
+      geometry: { type: 'Polygon', coordinates: [[[-96, 40], [-95, 40], [-95, 41], [-96, 41], [-96, 40]]] } },
+  ] };
+  mcdTxt = 'ACUS11 KWNS 212317\nSWOMCD SPC MCD 212317\n\n' +
+    'Mesoscale Discussion 2154 concerning severe potential. Thunderstorms along the ' +
+    'front are expected to intensify through early evening, and a tornado watch will ' +
+    'likely be needed within the next hour or two.';
+  const r = await p.evaluate(async () => {
+    await loadMesoDisc();
+    let layer = null;
+    _mesoLayer.eachLayer(l => { layer = l; });
+    layer.fire('click', { latlng: L.latLng(40.5, -95.5), originalEvent: new Event('click') });
+    await new Promise(res => setTimeout(res, 300));
+    return map._popup.getContent();
+  });
+  const textOf = (html) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  ok('the MD number, its concerning line, and the full text all appear',
+     /Mesoscale Discussion #2154/i.test(textOf(r))
+     && /Watch possible/.test(textOf(r))
+     && /a tornado watch will likely be needed/.test(textOf(r)), textOf(r).slice(0, 300));
+  ok('the text came from the product id, the exact MD that was tapped',
+     asked.some(u => u.includes('nwstext/202609212317-KWNS-ACUS11-SWOMCD')),
+     asked.filter(u => u.includes('nwstext')).join(' | '));
+}
+
+console.log('\n8. a second tap while the first is still loading is not clobbered by the stale answer');
 {
   discDelayMs = 400;
   spcGeo = { type: 'FeatureCollection', features: [spcFeature('SLGT', '#f6f67f'), spcFeature('MDT', '#e8001f')] };
