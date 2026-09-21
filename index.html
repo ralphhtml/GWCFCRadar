@@ -2172,38 +2172,104 @@ body {
   #right-menu, #sub-bubbles { max-height: calc(100vh - var(--menu-clearance, 82px) - 50px); }
 }
 
-/* ── EXPORT TOOLBAR: built to the same recipe as #draw-toolbar and
-   #poly-toolbar so every tool that opens a bar opens the same kind of
-   bar, in the same place, draggable the same way. ── */
-#export-toolbar {
+/* ── EXPORT: a centred card over a scrim, not a toolbar. Export stopped
+   being a drawing tool the day it started saving files, so it opens the
+   way the other little modals do and reads as two big choices. ── */
+#export-modal {
   display: none;
-  position: absolute;
-  bottom: calc(90px + env(safe-area-inset-bottom, 0px));
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1100;
-  background: rgb(14,18,24);
-  border: 1px solid rgba(0,140,186,0.35);
-  border-radius: 12px;
-  padding: 6px 10px;
+  position: fixed;
+  inset: 0;
+  z-index: 3200;
+  background: rgba(0,0,0,0.45);
   align-items: center;
-  gap: 6px;
-  max-width: calc(100vw - 20px);
-  flex-wrap: wrap;
-  box-shadow: 0 6px 22px rgba(0,0,0,0.5);
+  justify-content: center;
+  padding: 16px;
 }
-#export-toolbar.visible { display: flex; }
-#export-status, #export-progress {
+#export-modal.open { display: flex; }
+#export-card {
+  width: 400px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  background-image: var(--grad-panel);
+  border: 1px solid var(--edge-red);
+  border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.6);
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+#export-card-head {
+  display: flex; align-items: center; justify-content: space-between;
+}
+#export-card-title {
+  display: flex; align-items: center; gap: 8px;
+  font-family: 'Comfortaa', sans-serif;
+  font-size: 15px; font-weight: 700; color: #fff;
+}
+#export-card-title svg {
+  color: #ffd21f;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
+}
+#export-info-btn {
+  width: 26px; height: 26px; border-radius: 8px;
+  background: transparent; border: 1px solid rgba(255,255,255,0.14);
+  color: rgba(255,255,255,0.65); cursor: pointer; font-size: 12px;
+  display: flex; align-items: center; justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+#export-info-btn:hover { border-color: rgba(255,210,31,0.6); color: #ffd21f; }
+#export-status {
   font-family: var(--mono);
-  font-size: 9px;
-  color: rgba(255,255,255,0.55);
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-  max-width: 210px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 9.5px;
+  color: rgba(255,255,255,0.6);
+  letter-spacing: 0.4px;
+  line-height: 1.5;
 }
-#export-progress { color: var(--accent2); }
+#export-actions { display: flex; flex-direction: column; gap: 8px; }
+#export-actions button {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; text-align: left;
+  padding: 11px 14px;
+  background-image: var(--grad-raise);
+  border: 1px solid var(--edge-red);
+  border-radius: 12px;
+  color: #fff; cursor: pointer;
+  box-shadow: var(--edge-3d-soft);
+  transition: filter 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+#export-actions button:hover:not(:disabled) { background-image: var(--grad-raise-h); }
+#export-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+#export-actions button svg {
+  flex-shrink: 0;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
+}
+.exp-btn-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.exp-btn-txt b {
+  font-family: 'Comfortaa', sans-serif; font-size: 12.5px; font-weight: 700;
+}
+.exp-btn-txt i {
+  font-style: normal; font-family: var(--mono);
+  font-size: 9px; letter-spacing: 0.3px;
+  color: rgba(255,255,255,0.78);
+}
+#export-progress-wrap {
+  display: flex; align-items: center; gap: 10px;
+}
+#export-progress-track {
+  flex: 1; height: 6px; border-radius: 3px;
+  background: rgba(255,255,255,0.10); overflow: hidden;
+}
+#export-progress-bar {
+  height: 100%; width: 0%; border-radius: 3px;
+  background: linear-gradient(180deg, #ffd21f 0%, #d29b00 100%);
+  transition: width 0.2s;
+}
+#export-progress {
+  font-family: var(--mono); font-size: 9px;
+  color: var(--accent2); white-space: nowrap;
+}
 #export-close {
   width:30px; height:30px; border-radius:8px;
   background:transparent; border:1px solid rgba(255,255,255,0.12);
@@ -2213,7 +2279,6 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 #export-close:hover { background:rgba(255,60,60,0.25); border-color:rgba(255,60,60,0.6); color:#fff; }
-#export-toolbar .dtb-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
 
 
@@ -4334,7 +4399,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
    turning Wx-pert back on is removing a class, not rebuilding a page. */
 #mode-modal, #lite-intro, #changelog-modal {
   display: none; position: fixed; inset: 0; z-index: 5000;
-  background: rgba(20, 2, 2, 0.78);
+  background: linear-gradient(180deg, rgba(20,2,2,0.78), rgba(10,1,1,0.82));
   align-items: center; justify-content: center;
 }
 #mode-modal.open, #lite-intro.open, #changelog-modal.open { display: flex; }
@@ -4371,11 +4436,12 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
 .mode-cards { display: flex; gap: 14px; }
 .mode-card {
   flex: 1; display: flex; flex-direction: column; gap: 6px; align-items: center;
-  background: rgba(120,30,20,0.35); border: 2px solid rgba(232,184,0,0.45);
+  background: linear-gradient(160deg, rgba(140,36,22,0.40), rgba(96,24,16,0.30));
+  border: 2px solid rgba(232,184,0,0.45);
   border-radius: 12px; padding: 16px 12px; cursor: pointer; color: #ffe9a8;
   font-family: var(--display); transition: transform .12s, border-color .12s;
 }
-.mode-card:hover { transform: translateY(-2px); border-color: #e8b800; background: rgba(150,40,25,0.45); }
+.mode-card:hover { transform: translateY(-2px); border-color: #e8b800; background: linear-gradient(160deg, rgba(170,48,28,0.50), rgba(120,32,20,0.40)); }
 .mode-ic { color: #e8b800; }
 .mode-name { font-weight: 700; font-size: 16px; letter-spacing: 1px; }
 .mode-tag { font-size: 11.5px; color: #e8b800; }
@@ -4394,7 +4460,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
 body.lite-mode #right-menu,
 body.lite-mode #overlay-toggle-btn,
 body.lite-mode #draw-toolbar,
-body.lite-mode #export-toolbar { display: none !important; }
+body.lite-mode #export-modal { display: none !important; }
 
 .snd-err {
   padding: 14px 12px; font-family: var(--mono); font-size: 10.5px;
@@ -4437,7 +4503,7 @@ body.lite-mode #export-toolbar { display: none !important; }
 
 
 /* ── CROSS SECTION: toolbar, then the panel the slice is drawn in ─────────
-   The toolbar borrows #export-toolbar's shape on purpose, so the tools all
+   The toolbar borrows #draw-toolbar's shape on purpose, so the tools all
    look like one family rather than like eight separate features. */
 #xsec-toolbar {
   display: none;
@@ -6519,7 +6585,7 @@ body.shot-mode #spaghetti-models-panel,
 body.shot-mode #sev-compare-panel,
 body.shot-mode #nwr-rec-panel,
 body.shot-mode #storm-reports-panel,
-body.shot-mode #export-toolbar {
+body.shot-mode #export-modal {
   display: none !important;
 }
 
@@ -11545,28 +11611,38 @@ body.clean-mode #clean-hint { opacity: 1; }
 
 </div>
 
-<!-- ─── EXPORT TOOLBAR ─── -->
-<!-- Same shape as the Draw and Polygon toolbars: a draggable bar across the
-     bottom of the map rather than a panel pinned beside the tool column. -->
-<div id="export-toolbar">
-  <div class="dtb-drag" id="export-drag" title="Drag to move">⠿</div>
-  <span class="dtb-label">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg>
-    EXPORT
-  </span>
-  <div class="dtb-sep"></div>
-  <button class="dtb-btn" id="export-png-btn" onclick="_expDownloadPng()" title="Download the current view as a PNG">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 16l-5-5L5 20"/></svg>
-  </button>
-  <button class="dtb-btn" id="export-video-btn" onclick="_expDownloadVideo()" title="Download the whole loop">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><rect x="2" y="5" width="14" height="14" rx="2"/><path d="M22 8l-6 4 6 4V8z"/></svg>
-  </button>
-  <div class="dtb-sep"></div>
-  <span id="export-status"></span>
-  <span id="export-progress" style="display:none;"></span>
-  <div class="dtb-sep"></div>
-  <button class="dtb-btn" id="export-info-btn" title="What this does" type="button"></button>
-  <button id="export-close" onclick="_expToggle()" title="Close export tool"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-close></use></svg></button>
+<!-- ─── EXPORT ─── -->
+<!-- EXPORT: a card now, not a toolbar. It saves what you SEE: the whole
+     map view with every visible layer composited, as a picture or as the
+     playing loop stitched into a video. -->
+<div id="export-modal" onclick="if(event.target===this)_expToggle()">
+  <div id="export-card">
+    <div id="export-card-head">
+      <span id="export-card-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg>
+        Export
+      </span>
+      <span style="display:flex;align-items:center;gap:6px;">
+        <button id="export-info-btn" title="What this does" type="button"></button>
+        <button id="export-close" onclick="_expToggle()" title="Close">&times;</button>
+      </span>
+    </div>
+    <div id="export-status"></div>
+    <div id="export-actions">
+      <button id="export-png-btn" onclick="_expDownloadPng()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 16l-5-5L5 20"/></svg>
+        <span class="exp-btn-txt"><b>Save Picture</b><i>The map exactly as you see it, as a PNG</i></span>
+      </button>
+      <button id="export-video-btn" onclick="_expDownloadVideo()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><rect x="2" y="5" width="14" height="14" rx="2"/><path d="M22 8l-6 4 6 4V8z"/></svg>
+        <span class="exp-btn-txt"><b>Save Loop</b><i>Every frame of the playing loop, as a video</i></span>
+      </button>
+    </div>
+    <div id="export-progress-wrap" style="display:none;">
+      <div id="export-progress-track"><div id="export-progress-bar"></div></div>
+      <span id="export-progress"></span>
+    </div>
+  </div>
 </div>
 
 
@@ -53649,7 +53725,7 @@ function selectProduct(p) {
     </div>
     <div class="lqm-settings-row">
       <span class="lqm-settings-lbl">Export Picture or Loop</span>
-      <button class="lqm-settings-btn" onclick="lqmCloseSettings();_expToggle();">Open export tool</button>
+      <button class="lqm-settings-btn" onclick="lqmCloseSettings();_expToggle();">Open export</button>
     </div>
     <!-- The "Always Show Logo Menu" switch is gone by request: the menu is
          simply pinned, and a switch nobody should need was one more row. -->
@@ -60705,7 +60781,7 @@ function _lqmToast(msg) {
   if (!t) {
     t = document.createElement('div');
     t.id = '_lqm-toast';
-    t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(18,0,0,0.92);border:1px solid rgba(0,140,186,0.4);color:var(--accent2);font-family:var(--mono);font-size:12px;letter-spacing:1px;padding:8px 18px;border-radius:20px;z-index:9999;pointer-events:none;transition:opacity 0.3s;opacity:0;';
+    t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:linear-gradient(180deg,rgba(26,2,2,0.94),rgba(12,0,0,0.92));border:1px solid rgba(0,140,186,0.4);color:var(--accent2);font-family:var(--mono);font-size:12px;letter-spacing:1px;padding:8px 18px;border-radius:20px;z-index:9999;pointer-events:none;transition:opacity 0.3s;opacity:0;';
     document.body.appendChild(t);
   }
   // Same reason as _fireNotification: this writes textContent, so an inline
@@ -65124,6 +65200,10 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-m', date: 'Sep 21, 2026',
+    text: 'The search dropdown is truly heavy frost now. The blur was there before but the bar behind the suggestions was still nearly solid, so it read as black; the whole open search is now one heavy glass sheet and the map really pours through it.' },
+  { id: '2026-09-21-l', date: 'Sep 21, 2026',
+    text: 'Export is rebuilt. It opens as a proper card with two big choices, Save Picture and Save Loop, instead of a strip of tool buttons. And it works now: it saves the map exactly as you see it, every visible layer together, and Save Loop captures every frame of whatever the animation bar is playing, models included, as a video.' },
   { id: '2026-09-21-k', date: 'Sep 21, 2026',
     text: 'The good setup is the default now: black map borders drawn heavy (state, county, province and coastline), city names on at 14px, and double click opening the map menu, all out of the box. Your own saved settings still win, and the borders reset button returns to this look. The Always Show Logo Menu switch is gone; the menu is simply always there.' },
   { id: '2026-09-21-j', date: 'Sep 21, 2026',
@@ -66772,7 +66852,6 @@ document.addEventListener('DOMContentLoaded', () => {
   _makeDraggable(document.getElementById('lqm-ai-overlay'),       document.getElementById('lqm-ai-drag'));
   _makeDraggable(document.getElementById('lqm-settings-overlay'), document.getElementById('lqm-settings-drag'));
   _makeDraggable(document.getElementById('tutorial-modal-inner'), document.getElementById('tut-dialog-drag'));
-  _makeDraggable(document.getElementById('export-toolbar'),       document.getElementById('export-drag'));
   _makeDraggable(document.getElementById('xsec-toolbar'),         document.getElementById('xsec-drag'));
   // Restore NWR recordings from archive on page load
   _nwrLoadArchive();
@@ -71408,7 +71487,7 @@ const TOOL_DESCRIPTIONS = {
   'tool-radius':    'Click to place a center point, then set a radius to draw a circle around it.',
   'tool-stormcone': 'Click and drag to draw a cone-shaped threat area with hurricane-category icons and speed per point, lists the cities inside it with ETA, and can animate the storm moving along its path.',
   'tool-inspector': 'Shows the radar value at the exact center of the map, and updates live as you pan.',
-  'tool-export':    'Downloads what is on screen: the current picture as a PNG, or the whole loop as a video.',
+  'tool-export':    'Saves the map exactly as you see it: a picture of the whole view, or every frame of the playing loop as a video.',
   'tool-xsec':      'Cuts a vertical slice through a storm. A radar picture is one thin cone and says nothing about how tall the weather is, but a volume scan sweeps the same circle at rising angles, so sampling every one of them along a line on the ground stacks them into a side-on view. Drag the two ends of the line, press the arrow, and it shows where the core sits, whether it leans, and whether there is an overhang. Uses the volume already downloaded for the radar picture, so it costs no extra download.',
   'tool-r3d':       'A storm’s real shape in three dimensions, rendered as a solid volume rather than a flat picture. Double-click or long-press the map, choose Draw a 3D zone, and drag out any box you like, the way a screenshot is taken; or press the 3D button on the Radius or Polygon toolbar to use that shape\'s area. The panel ray-marches everything inside the box from the nearest radar, tilt by tilt, resampled into a 3D grid so it reads as one continuous cloud with a solid core and a hazy edge. The Show above slider hides weak returns, the Up to slider caps the height, and it draws coarse while you drag then sharpens the moment you stop. A site with no Level 2 archive, like a terminal TDWR at an airport, builds from its separate Level 3 tilt files instead, as a single frame with no time slider.',
 };
@@ -72735,7 +72814,7 @@ function closeCredits() {
    was the loudest of them, a solid cyan strip across the bottom of a red
    application. */
 #animbar,
-#export-toolbar, #xsec-toolbar, #radius-toolbar, #dist-toolbar,
+#xsec-toolbar, #radius-toolbar, #dist-toolbar,
 #poly-toolbar, #draw-toolbar, #text-toolbar, #stormcone-toolbar,
 #tt-toolbar, #cs-toolbar,
 #top-search-bar,
@@ -72796,7 +72875,7 @@ function closeCredits() {
   color: #ffe9e6;
 }
 /* A disabled control should look like it is not there to be pressed. */
-#export-toolbar .dtb-btn:disabled, .dtb-btn:disabled, .ad-btn:disabled {
+.dtb-btn:disabled, .ad-btn:disabled {
   background-image: var(--grad-sunk);
   box-shadow: none;
   opacity: 0.45;
@@ -73438,7 +73517,7 @@ body {
 :root[data-glass] #credits-modal-panel,
 :root[data-glass] #feedback-modal,
 :root[data-glass] .mode-card-wrap,
-:root[data-glass] #export-toolbar {
+:root[data-glass] #export-card {
   background-color: transparent !important;
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) !important;
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) !important;
@@ -73451,7 +73530,7 @@ body {
 :root[data-glass] #tb-flyout,
 :root[data-glass] #lqm-search-dropdown,
 :root[data-glass] #lqm-profile-overlay,
-:root[data-glass] #export-toolbar {
+:root[data-glass] #export-card {
   background-image: var(--grad-panel);
 }
 :root[data-glass] #gwcfc-auth-panel {
@@ -73468,15 +73547,28 @@ body {
   background-image: linear-gradient(160deg,
     rgba(60,14,8,var(--glass-a-panel)) 0%, rgba(24,5,5,var(--glass-a-panel)) 100%);
 }
-/* The search dropdown alone wears HEAVY frost, by request: the full-glass
-   blur and a far thinner fill than the app's subtle default, so the map
-   pours through behind the suggestions. Stated after the shared rules
-   above so it wins the tie. */
-:root[data-glass] #lqm-search-dropdown {
+/* The search dropdown wears HEAVY frost, by request. The catch: the
+   dropdown lives INSIDE the search bar, so the bar's own frosted fill
+   paints behind it, and a parent that has a backdrop-filter stops a
+   child's blur from ever reaching the map (the parent becomes the blur's
+   whole world). Frosting the dropdown alone therefore stacked two fills
+   into what looked like solid black. The fix: while the dropdown is
+   open, the BAR becomes the heavy glass sheet - full blur, a far thinner
+   fill - and the dropdown itself goes nearly clear so the blurred map
+   pours through behind the suggestions. */
+:root[data-glass] #top-search-bar:has(#lqm-search-dropdown.open) {
+  background-color: transparent !important;
   background-image: linear-gradient(180deg,
-    rgba(38,38,46,0.42) 0%, rgba(19,19,24,0.40) 55%, rgba(5,5,8,0.46) 100%);
+    rgba(38,38,46,0.30) 0%, rgba(19,19,24,0.26) 55%, rgba(5,5,8,0.34) 100%) !important;
   backdrop-filter: blur(24px) saturate(1.5) !important;
   -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+}
+:root[data-glass] #lqm-search-dropdown {
+  background-color: transparent !important;
+  background-image: linear-gradient(180deg,
+    rgba(255,255,255,0.04) 0%, rgba(0,0,0,0.12) 100%);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 /* The settings rail and content pane are literal hex too. */
@@ -78518,51 +78610,57 @@ async function _sgUiRefreshList() {
 // the single visible frame as a PNG, or every frame of its loop stitched
 // into a video (or, on a browser that can't record one, the same frames as
 // a numbered sequence of separate PNGs instead).
-const EXPORT_INFO_TEXT = "Downloads whatever radar, satellite, or model "
-  + "picture is currently on screen - either the single frame you're "
-  + "looking at, or every frame in its loop, stitched into one video "
-  + "where the browser supports recording one.";
+const EXPORT_INFO_TEXT = "Saves the map exactly as you see it: basemap, "
+  + "radar, alerts, drawings, every visible layer composited into one "
+  + "picture. Save Loop steps through every frame of whatever is playing "
+  + "on the animation bar and stitches the same full view into a video "
+  + "(or an image sequence on browsers that cannot record one).";
 
+// ── EXPORT ────────────────────────────────────────────────────────────────
+// A card, not a toolbar: this stopped being a drawing tool the day it
+// started downloading files. And it saves the VIEW now. The old exporter
+// fetched only the raw data image (a transparent radar frame with no map
+// under it), which downloaded something that looked like nothing and is
+// why it read as broken.
 function _expToggle() {
-  const bar = document.getElementById('export-toolbar');
-  if (!bar) return;
-  const opening = !bar.classList.contains('visible');
-  bar.classList.toggle('visible', opening);
-  const btn = document.getElementById('tool-export');
-  if (btn) btn.classList.toggle('active', opening);
+  const modal = document.getElementById('export-modal');
+  if (!modal) return;
+  const opening = !modal.classList.contains('open');
+  modal.classList.toggle('open', opening);
   if (opening) _expRefreshStatus();
 }
 
-// Which of the three "picture, not raw numbers" pathways is actually on
-// screen right now - the Pi's own single-site loop, the national mosaic,
-// or satellite - each fetched a different way below.
-function _expActiveSource() {
-  if (typeof _prLoopActive === 'function' && _prLoopActive()) {
-    return { kind: 'pi', count: _prLoop.frames.length,
-             label: (PR_PRODUCTS[_prProduct] || {}).label || 'Radar' };
+// What the loop button would export: the same answer the animation bar
+// gives, because whatever the bar can play, the exporter can capture.
+function _expLoopInfo() {
+  try {
+    if (typeof _animSource !== 'function') return { count: 0, idx: 0 };
+    const src = _animSource();
+    if (!src || !src.id) return { count: 0, idx: 0 };
+    const first = src.first || 0;
+    return { count: Math.max(0, src.times.length - first),
+             idx: src.idx, first };
+  } catch (e) { return { count: 0, idx: 0 }; }
+}
+
+function _expRefreshStatus() {
+  const status = document.getElementById('export-status');
+  const videoBtn = document.getElementById('export-video-btn');
+  const pngBtn = document.getElementById('export-png-btn');
+  const loop = _expLoopInfo();
+  if (pngBtn) pngBtn.disabled = false;   // there is always a view to save
+  if (status) {
+    status.textContent = loop.count > 1
+      ? `The whole view saves, every visible layer \u00b7 ${loop.count} frames in the playing loop`
+      : 'The whole view saves, every visible layer \u00b7 nothing is looping right now';
   }
-  if (typeof activeLayers !== 'undefined' && activeLayers.satellite
-      && typeof goesFrames !== 'undefined' && goesFrames.length) {
-    return { kind: 'satellite', count: goesFrames.length, label: 'Satellite' };
+  if (videoBtn) {
+    videoBtn.disabled = loop.count < 2;
+    videoBtn.title = loop.count < 2
+      ? 'Needs a playing loop with more than one frame'
+      : (_expCanRecordVideo() ? 'Every frame of the loop, as a video'
+                              : 'Every frame of the loop, as an image sequence');
   }
-  if (typeof activeLayers !== 'undefined' && activeLayers.nexrad
-      && typeof radarFrames !== 'undefined' && radarFrames.length) {
-    return { kind: 'nexrad', count: radarFrames.length, label: 'Radar' };
-  }
-  // Model charts. This is the gap that made the tool look broken: with a
-  // model on screen and nothing else, all three tests above failed and the
-  // panel said "Nothing on screen to export yet" over a full map. The chart
-  // is a plain image overlay, so it is the easiest of the lot to export.
-  if (typeof _hdOn !== 'undefined' && _hdOn && typeof _hdLayer !== 'undefined'
-      && _hdLayer && _hdLayer.getElement && _hdLayer.getElement()) {
-    const hrs = (typeof _hdHoursFor === 'function')
-      ? (_hdHoursFor(_hdField) || []).length : 1;
-    const spec = (typeof HD_FIELDS !== 'undefined'
-      && HD_FIELDS.find(f => f.id === _hdField)) || {};
-    return { kind: 'model', count: Math.max(1, hrs),
-             label: spec.label || 'Model chart' };
-  }
-  return null;
 }
 
 function _expCanRecordVideo() {
@@ -78570,30 +78668,6 @@ function _expCanRecordVideo() {
     return typeof MediaRecorder !== 'undefined'
       && typeof HTMLCanvasElement.prototype.captureStream === 'function';
   } catch (e) { return false; }
-}
-
-function _expRefreshStatus() {
-  const status = document.getElementById('export-status');
-  const videoBtn = document.getElementById('export-video-btn');
-  const pngBtn = document.getElementById('export-png-btn');
-  const src = _expActiveSource();
-  if (!src) {
-    if (status) status.textContent = 'Nothing on screen to export yet';
-    if (pngBtn) pngBtn.disabled = true;
-    if (videoBtn) videoBtn.disabled = true;
-    return;
-  }
-  if (status) status.textContent = `${src.label} · ${src.count} frame${src.count === 1 ? '' : 's'}`;
-  if (pngBtn) pngBtn.disabled = false;
-  if (videoBtn) {
-    videoBtn.disabled = src.count < 2;
-    // Icon-only buttons now, so what the loop button will actually produce
-    // lives in its tooltip instead of its face.
-    videoBtn.title = src.count < 2
-      ? 'Needs more than one frame to make a loop'
-      : (_expCanRecordVideo() ? 'Download the whole loop as a video'
-                              : 'Download the whole loop as an image sequence');
-  }
 }
 
 function _expLoadImage(url) {
@@ -78606,64 +78680,65 @@ function _expLoadImage(url) {
   });
 }
 
-// One WMS GetMap request covering exactly the current map view, instead of
-// compositing the dozens of individually-positioned tile <img> elements the
-// live satellite/radar layers use - the WMS servers already support asking
-// for one image sized to a bounding box, so that's what's asked for here.
-function _expWmsFrameUrl(baseUrl, layer, timeStr) {
-  const size = map.getSize();
-  const bounds = map.getBounds();
-  const crs = L.CRS.EPSG3857;
-  const sw = crs.project(bounds.getSouthWest());
-  const ne = crs.project(bounds.getNorthEast());
-  const params = new URLSearchParams({
-    SERVICE: 'WMS', VERSION: '1.1.1', REQUEST: 'GetMap',
-    LAYERS: layer, STYLES: '', FORMAT: 'image/png', TRANSPARENT: 'true',
-    SRS: 'EPSG:3857', BBOX: [sw.x, sw.y, ne.x, ne.y].join(','),
-    WIDTH: String(Math.max(1, Math.round(size.x))),
-    HEIGHT: String(Math.max(1, Math.round(size.y))),
-  });
-  if (timeStr) params.set('TIME', timeStr);
-  const sep = baseUrl.includes('?') ? '&' : '?';
-  return baseUrl + sep + params.toString();
-}
-
-// One frame, however that source pathway actually gets one: the Pi loop
-// already knows how to fetch and (if custom colors are on) recolor its own
-// frames correctly, so that path is driven through the real _prLoopShow
-// rather than re-deriving its manifest/recolor logic here - the frame is
-// then reloaded independently with crossOrigin set, since the live overlay
-// itself may not have that set and canvas capture needs it either way.
-async function _expFrameImage(src, idx) {
-  if (src.kind === 'pi') {
-    await _prLoopShow(idx);
-    const el = _prOverlay && _prOverlay.getElement && _prOverlay.getElement();
-    if (!el || !el.src) return null;
-    return _expLoadImage(el.src);
-  }
-  if (src.kind === 'satellite') {
-    const cfg = _detectGoesConfig();
-    return _expLoadImage(_expWmsFrameUrl(cfg.url, cfg.layer, goesFrames[idx].timeStr));
-  }
-  if (src.kind === 'nexrad') {
-    const frame = radarFrames[idx];
-    const timeStr = frame.iso || frame.timeStr;
-    return _expLoadImage(_expWmsFrameUrl(IEM_NEXRAD_WMS, IEM_NEXRAD_LAYER, timeStr));
-  }
-  if (src.kind === 'model') {
-    // Whatever the overlay is showing right now. Stepping the forecast hour
-    // first, when there is one to step, so a loop export is the loop and not
-    // the same hour repeated.
-    const hours = (typeof _hdHoursFor === 'function')
-      ? (_hdHoursFor(_hdField) || []) : [];
-    if (hours.length > idx && typeof _hdShow === 'function') {
-      _hdHourIdx = idx;
-      try { await _hdShow(); } catch (e) {}
+// The whole view, composited: every visible img, canvas and svg in the
+// map panes, drawn in pane stacking order at its on-screen position and
+// opacity. Images are re-fetched with crossOrigin so the canvas stays
+// readable; one that refuses is skipped rather than sinking the capture.
+async function _expComposeView(imgCache) {
+  const cont = map.getContainer();
+  const rect = cont.getBoundingClientRect();
+  const scale = Math.min(2, window.devicePixelRatio || 1);
+  const out = document.createElement('canvas');
+  out.width = Math.max(1, Math.round(rect.width * scale));
+  out.height = Math.max(1, Math.round(rect.height * scale));
+  const ctx = out.getContext('2d');
+  ctx.scale(scale, scale);
+  ctx.fillStyle = getComputedStyle(document.body).backgroundColor || '#0d0d11';
+  ctx.fillRect(0, 0, rect.width, rect.height);
+  const panes = Array.from(cont.querySelectorAll('.leaflet-pane'))
+    .filter(p => p.querySelector('img, canvas, svg'))
+    .sort((a, b) => ((+getComputedStyle(a).zIndex) || 0)
+                  - ((+getComputedStyle(b).zIndex) || 0));
+  for (const pane of panes) {
+    for (const el of pane.querySelectorAll('img, canvas, svg')) {
+      const cs = getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+      const op = parseFloat(cs.opacity);
+      if (!(op > 0)) continue;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) continue;
+      if (r.right < rect.left || r.left > rect.right
+          || r.bottom < rect.top || r.top > rect.bottom) continue;
+      ctx.globalAlpha = isFinite(op) ? op : 1;
+      const x = r.left - rect.left, y = r.top - rect.top;
+      try {
+        const tag = el.tagName.toLowerCase();
+        if (tag === 'canvas') {
+          ctx.drawImage(el, x, y, r.width, r.height);
+        } else if (tag === 'svg') {
+          // Vectors (alert polygons, tracks) rasterise through a data URI.
+          const xml = new XMLSerializer().serializeToString(el);
+          const key = 'svg:' + xml.length + ':' + xml.slice(0, 80);
+          let img = imgCache.get(key);
+          if (img === undefined) {
+            img = await _expLoadImage('data:image/svg+xml;charset=utf-8,'
+              + encodeURIComponent(xml)).catch(() => null);
+            imgCache.set(key, img);
+          }
+          if (img) ctx.drawImage(img, x, y, r.width, r.height);
+        } else if (el.src) {
+          let img = imgCache.get(el.src);
+          if (img === undefined) {
+            img = await _expLoadImage(el.src).catch(() => null);
+            imgCache.set(el.src, img);
+          }
+          if (img) ctx.drawImage(img, x, y, r.width, r.height);
+        }
+      } catch (e) { /* one bad element must not sink the capture */ }
     }
-    const el = _hdLayer && _hdLayer.getElement && _hdLayer.getElement();
-    return (el && el.src) ? _expLoadImage(el.src) : null;
   }
-  return null;
+  ctx.globalAlpha = 1;
+  return out;
 }
 
 function _expDownloadBlob(blob, filename) {
@@ -78674,61 +78749,67 @@ function _expDownloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
+function _expProgress(on, frac, text) {
+  const wrap = document.getElementById('export-progress-wrap');
+  const bar = document.getElementById('export-progress-bar');
+  const lbl = document.getElementById('export-progress');
+  if (wrap) wrap.style.display = on ? '' : 'none';
+  if (bar) bar.style.width = Math.round((frac || 0) * 100) + '%';
+  if (lbl) lbl.textContent = text || '';
+}
+
 async function _expDownloadPng() {
-  const src = _expActiveSource();
   const status = document.getElementById('export-status');
-  if (!src) return;
   try {
-    const idx = src.kind === 'pi' ? _prLoop.idx
-      : src.kind === 'satellite' ? goesCurrentFrame : currentFrame;
-    const img = await _expFrameImage(src, Math.max(0, idx));
-    if (!img) { if (status) status.textContent = 'Could not load that frame.'; return; }
-    const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
-    canvas.getContext('2d').drawImage(img, 0, 0);
-    canvas.toBlob(blob => {
-      if (blob) _expDownloadBlob(blob, `gwcfc-${src.kind}-${Date.now()}.png`);
-      else if (status) status.textContent = 'Could not build that image.';
-    }, 'image/png');
+    _expProgress(true, 0.4, 'Composing the view\u2026');
+    const canvas = await _expComposeView(new Map());
+    await new Promise((resolve, reject) => canvas.toBlob(blob => {
+      if (!blob) return reject(new Error('could not build the image'));
+      _expDownloadBlob(blob, `gwcfc-view-${Date.now()}.png`);
+      resolve();
+    }, 'image/png'));
+    if (status) status.textContent = 'Picture saved.';
   } catch (e) {
-    if (status) status.textContent = 'Export failed: ' + e.message;
-  }
+    if (status) {
+      status.textContent = /security|taint/i.test(String(e))
+        ? 'A layer on screen does not allow capture, so the picture could not be built.'
+        : 'Export failed: ' + e.message;
+    }
+  } finally { _expProgress(false); }
 }
 
 async function _expDownloadVideo() {
-  const src = _expActiveSource();
-  if (!src || src.count < 2) return;
+  const loop = _expLoopInfo();
+  if (loop.count < 2) return;
   const btn = document.getElementById('export-video-btn');
   const status = document.getElementById('export-status');
-  const progress = document.getElementById('export-progress');
   if (btn) btn.disabled = true;
-  if (progress) progress.style.display = '';
+  const cache = new Map();
+  const startIdx = loop.idx;
+  const first = loop.first || 0;
   try {
     if (!_expCanRecordVideo()) {
-      // No MediaRecorder / canvas.captureStream on this browser (notably
-      // Safari's support for either is inconsistent) - fall back to a
-      // numbered sequence of plain PNGs, still every frame of the loop,
-      // just not stitched into one file.
-      for (let i = 0; i < src.count; i++) {
-        if (progress) progress.textContent = `Frame ${i + 1} / ${src.count}…`;
-        const img = await _expFrameImage(src, i);
-        if (!img) continue;
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
-        canvas.getContext('2d').drawImage(img, 0, 0);
+      // No MediaRecorder / captureStream (Safari is the usual reason):
+      // fall back to a numbered image sequence of the same full views.
+      for (let i = 0; i < loop.count; i++) {
+        _expProgress(true, (i + 1) / loop.count, `Frame ${i + 1} / ${loop.count}\u2026`);
+        seekFrame(first + i);
+        await new Promise(r2 => setTimeout(r2, 320));
+        const canvas = await _expComposeView(cache);
         await new Promise(resolve => canvas.toBlob(blob => {
-          if (blob) _expDownloadBlob(blob, `gwcfc-${src.kind}-frame-${String(i + 1).padStart(3, '0')}.png`);
+          if (blob) _expDownloadBlob(blob,
+            `gwcfc-loop-frame-${String(i + 1).padStart(3, '0')}.png`);
           resolve();
         }, 'image/png'));
       }
-      if (status) status.textContent = `Downloaded ${src.count} frames.`;
+      if (status) status.textContent = `Saved ${loop.count} frames.`;
       return;
     }
-
-    const size = map.getSize();
+    const cont = map.getContainer().getBoundingClientRect();
+    const scale = Math.min(2, window.devicePixelRatio || 1);
     const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(size.x));
-    canvas.height = Math.max(1, Math.round(size.y));
+    canvas.width = Math.max(1, Math.round(cont.width * scale));
+    canvas.height = Math.max(1, Math.round(cont.height * scale));
     const ctx = canvas.getContext('2d');
     const stream = canvas.captureStream(0);
     const track = stream.getVideoTracks()[0];
@@ -78739,25 +78820,27 @@ async function _expDownloadVideo() {
     rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
     const stopped = new Promise(resolve => { rec.onstop = resolve; });
     rec.start();
-    for (let i = 0; i < src.count; i++) {
-      if (progress) progress.textContent = `Frame ${i + 1} / ${src.count}…`;
-      const img = await _expFrameImage(src, i);
-      if (img) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      }
+    for (let i = 0; i < loop.count; i++) {
+      _expProgress(true, (i + 1) / loop.count, `Frame ${i + 1} / ${loop.count}\u2026`);
+      seekFrame(first + i);
+      await new Promise(r2 => setTimeout(r2, 320));
+      const frame = await _expComposeView(cache);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
       if (track && typeof track.requestFrame === 'function') track.requestFrame();
-      await new Promise(resolve => setTimeout(resolve, 220));
+      await new Promise(r2 => setTimeout(r2, 120));
     }
     rec.stop();
     await stopped;
-    _expDownloadBlob(new Blob(chunks, { type: mimeType }), `gwcfc-${src.kind}-loop-${Date.now()}.webm`);
-    if (status) status.textContent = 'Video downloaded.';
+    _expDownloadBlob(new Blob(chunks, { type: mimeType }),
+      `gwcfc-loop-${Date.now()}.webm`);
+    if (status) status.textContent = 'Video saved.';
   } catch (e) {
     if (status) status.textContent = 'Loop export failed: ' + e.message;
   } finally {
+    try { seekFrame(startIdx); } catch (e2) {}
     if (btn) btn.disabled = false;
-    if (progress) progress.style.display = 'none';
+    _expProgress(false);
   }
 }
 
