@@ -123,8 +123,10 @@ console.log('\n3. the intensity scale');
   });
   ok('the scale is None, Low, Moderate, High, Extreme',
      r.levels.join(',') === 'None,Low,Moderate,High,Extreme', r.levels.join(','));
-  ok('rain, wind, hail, flooding, surge and waves are all on it',
-     ['rain', 'wind', 'hail', 'flooding', 'surge', 'waves'].every(k => r.keys.includes(k)),
+  // Hail left this list when HAILSTORM became a product family of its own,
+  // with its own nine data rows; snow and lightning joined since.
+  ok('rain, wind, flooding, surge and waves are all on it',
+     ['rain', 'wind', 'flooding', 'surge', 'waves'].every(k => r.keys.includes(k)),
      r.keys.join(' '));
   ok('every hazard has wording for all five stops and none for None',
      r.bad.length === 0, r.bad.join('; '));
@@ -139,7 +141,7 @@ console.log('\n4. what a written product says');
     _adDraft.areaMode = 'draw';
     _adDraft.areaName = 'Brevard County';
     _adSetLevel('tornado', 3);
-    _adSetLevel('hail', 2);
+    _adSetLevel('wind', 2);
     _adDraft.source = 'Trained weather spotters';
     _adIssue();
     const a = _adState.items[0];
@@ -152,7 +154,7 @@ console.log('\n4. what a written product says');
   ok('an IMPACTS bullet', /\* IMPACTS\.\.\./.test(t));
   ok('and a SOURCE bullet', /\* SOURCE\.\.\.Trained weather spotters\./.test(t));
   ok('the hazards set to something appear, the ones left at None do not',
-     /tornado/i.test(t) && /hail/i.test(t) && !/gust/i.test(t), t);
+     /tornado/i.test(t) && /gust/i.test(t) && !/rainfall/i.test(t), t);
   ok('a spotter report is tagged as observed, not radar indicated',
      /TORNADO\.\.\.OBSERVED/.test(t), t);
   ok('the product says it is simulated, at the top and the bottom',
@@ -167,9 +169,9 @@ console.log('\n5. the optional amount beside the severity');
     _adDraft = _adNewDraft('SVR');
     _adDraft.poly = __box(29.7, -95.4, 0.4); _adDraft.areaMode = 'draw';
     _adDraft.areaName = 'Harris County';
-    _adSetLevel('hail', 2);
+    _adSetLevel('rain', 2);
     _adSetLevel('wind', 3);
-    _adSetAmount('hail', '2.75');
+    _adSetAmount('wind', '85');
     _adIssue();
     const withAmt = _adText(_adState.items[0]);
 
@@ -177,7 +179,7 @@ console.log('\n5. the optional amount beside the severity');
     _adDraft = _adNewDraft('SVR');
     _adDraft.poly = __box(29.7, -95.4, 0.4); _adDraft.areaMode = 'draw';
     _adDraft.areaName = 'Harris County';
-    _adSetLevel('hail', 2);
+    _adSetLevel('rain', 2);
     _adSetLevel('wind', 3);
     _adIssue();
     const noAmt = _adText(_adState.items[0]);
@@ -190,13 +192,14 @@ console.log('\n5. the optional amount beside the severity');
 
     return { withAmt, noAmt, promoted };
   });
-  ok('a typed amount is what the product says', /2\.75 in/.test(r.withAmt), r.withAmt);
+  ok('a typed amount is what the product says', /85 mph/.test(r.withAmt), r.withAmt);
   ok('and it reaches the tag block the rest of the app reads',
-     /HAIL\.\.\.2\.75IN/.test(r.withAmt), r.withAmt);
-  ok('the wind left blank still falls back to its level wording',
-     /gusts to 80 mph/.test(r.withAmt) && /WIND\.\.\.80MPH/.test(r.withAmt), r.withAmt);
+     /WIND\.\.\.85MPH/.test(r.withAmt), r.withAmt);
+  ok('the rain left blank still falls back to its level wording',
+     /locally heavy rainfall/.test(r.withAmt), r.withAmt);
   ok('leaving every amount blank still issues a complete product',
-     /\* WHAT\.\.\./.test(r.noAmt) && /quarter size hail/.test(r.noAmt), r.noAmt);
+     /\* WHAT\.\.\./.test(r.noAmt) && /gusts to 80 mph/.test(r.noAmt)
+     && /WIND\.\.\.80MPH/.test(r.noAmt), r.noAmt);
   ok('an amount typed against a None hazard switches that hazard on',
      r.promoted > 0, r.promoted);
 }
@@ -478,9 +481,11 @@ console.log('\n12. the desk panel itself');
     const allowed = !document.getElementById('ad-issue').disabled;
 
     // Switching product should keep the hazards you already dialled in.
-    _adSetLevel('hail', 3);
+    // (Wind, not hail: the separate hail hazard left the desk when
+    // HAILSTORM became a product family of its own.)
+    _adSetLevel('wind', 3);
     _adSetProduct('SVR');
-    const kept = _adDraft.haz.hail.lvl;
+    const kept = _adDraft.haz.wind.lvl;
     const polyKept = _adDraft.poly.length;
 
     const shown = modal.style.display;
@@ -495,7 +500,8 @@ console.log('\n12. the desk panel itself');
   });
   ok('the desk opens', r.shown === 'flex');
   ok('and closes', r.closed === 'none');
-  ok('every hazard gets a five-stop severity picker', r.segs >= 3, r.segs);
+  // Two on a TOR draft since hail moved out: tornado and wind.
+  ok('every hazard gets a five-stop severity picker', r.segs >= 2, r.segs);
   ok('and an amount box beside it', r.amts === r.segs, r.amts + ' vs ' + r.segs);
   ok('the live preview says the product is simulated', r.previewMarked);
   ok('the header says so too, before anything is written', r.headNote);
@@ -513,7 +519,7 @@ console.log('\n13. re-issuing something from the history');
     _adDraft = _adNewDraft('TOR');
     _adDraft.poly = __box(28.5, -80.7, 0.35); _adDraft.areaMode = 'draw';
     _adDraft.areaName = 'Brevard County';
-    _adSetLevel('tornado', 3); _adSetAmount('hail', '1.50');
+    _adSetLevel('tornado', 3); _adSetAmount('rain', '1.50');
     _adIssue();
     const uid = _adState.items[0].uid;
     _adCancelProduct(uid);
@@ -525,7 +531,7 @@ console.log('\n13. re-issuing something from the history');
     _adIssue();
     _adClose();
     return {
-      code: d.code, lvl: d.haz.tornado.lvl, amt: d.haz.hail.amt,
+      code: d.code, lvl: d.haz.tornado.lvl, amt: d.haz.rain.amt,
       area: d.areaName, ready,
       live: _adState.items.filter(a => a.status === 'active').length,
       total: _adState.items.length,

@@ -1898,32 +1898,35 @@ body {
   color: var(--muted);
   white-space: nowrap;
 }
+/* The family accents follow the official NWS hazard colours (each family
+   wears its headline product's hex): SVR orange, Flash Flood dark red,
+   Blizzard orange-red, Winter Storm pink, Red Flag deep pink. */
 .alert-card.tor    { border-left-color: #ff0000; }
-.alert-card.tstm   { border-left-color: #ffd700; }
-.alert-card.flood  { border-left-color: #006400; }
-.alert-card.wind   { border-left-color: #9370db; }
-.alert-card.winter { border-left-color: #6495ed; }
-.alert-card.bliz   { border-left-color: #0000cd; }
-.alert-card.ice    { border-left-color: #4169e1; }
+.alert-card.tstm   { border-left-color: #ffa500; }
+.alert-card.flood  { border-left-color: #8b0000; }
+.alert-card.wind   { border-left-color: #daa520; }
+.alert-card.winter { border-left-color: #7b68ee; }
+.alert-card.bliz   { border-left-color: #ff4500; }
+.alert-card.ice    { border-left-color: #8b008b; }
 .alert-card.fog    { border-left-color: #708090; }
-.alert-card.heat   { border-left-color: #8b0000; }
-.alert-card.cold   { border-left-color: #b0c4de; }
-.alert-card.fire   { border-left-color: #ff4500; }
-.alert-card.marine { border-left-color: #ff00ff; }
-.alert-card.special{ border-left-color: #ffe066; }
+.alert-card.heat   { border-left-color: #c71585; }
+.alert-card.cold   { border-left-color: #0000ff; }
+.alert-card.fire   { border-left-color: #ff1493; }
+.alert-card.marine { border-left-color: #dc143c; }
+.alert-card.special{ border-left-color: #ffe4b5; }
 .alert-card.tor    .alert-event { color: #ff0000; }
-.alert-card.tstm   .alert-event { color: #ffd700; }
-.alert-card.flood  .alert-event { color: #006400; }
-.alert-card.wind   .alert-event { color: #9370db; }
-.alert-card.winter .alert-event { color: #6495ed; }
-.alert-card.bliz   .alert-event { color: #0000cd; }
-.alert-card.ice    .alert-event { color: #4169e1; }
+.alert-card.tstm   .alert-event { color: #ffa500; }
+.alert-card.flood  .alert-event { color: #ff6b6b; }
+.alert-card.wind   .alert-event { color: #daa520; }
+.alert-card.winter .alert-event { color: #7b68ee; }
+.alert-card.bliz   .alert-event { color: #ff4500; }
+.alert-card.ice    .alert-event { color: #c96bc9; }
 .alert-card.fog    .alert-event { color: #708090; }
-.alert-card.heat   .alert-event { color: #8b0000; }
-.alert-card.cold   .alert-event { color: #b0c4de; }
-.alert-card.fire   .alert-event { color: #ff4500; }
-.alert-card.marine .alert-event { color: #ff00ff; }
-.alert-card.special .alert-event{ color: #ffe066; }
+.alert-card.heat   .alert-event { color: #c71585; }
+.alert-card.cold   .alert-event { color: #6b9fff; }
+.alert-card.fire   .alert-event { color: #ff1493; }
+.alert-card.marine .alert-event { color: #dc143c; }
+.alert-card.special .alert-event{ color: #ffe4b5; }
 .past-alerts-toggle {
   display: flex; align-items: center; justify-content: space-between;
   padding: 5px 10px; margin-top: 4px;
@@ -13919,10 +13922,10 @@ function renderEASAlerts(alerts, isRecent) {
     const shortTrans = translation.length > 120 ? translation.slice(0, 120) + '…' : translation;
     let borderColor = '#ff8c00';
     if      (typeCode === 'TOR') borderColor = '#ff0000';
-    else if (typeCode === 'SVR') borderColor = '#ffd700';
-    else if (typeCode === 'EWW') borderColor = '#ff6600';
-    else if (typeCode === 'FFW') borderColor = '#00cc66';
-    else if (typeCode === 'SMW') borderColor = '#ff00ff';
+    else if (typeCode === 'SVR') borderColor = '#ffa500';
+    else if (typeCode === 'EWW') borderColor = '#ff8c00';
+    else if (typeCode === 'FFW') borderColor = '#8b0000';
+    else if (typeCode === 'SMW') borderColor = '#ffa500';
     card.style.borderLeftColor = borderColor;
     const audioBtn = hasAudio ? `<span class="eas-audio-btn" title="Play audio"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg></span>` : '';
     card.innerHTML = `
@@ -13984,78 +13987,114 @@ function renderEASAlerts(alerts, isRecent) {
 }
 
 // ── NWS ALERTS ──
+// The National Weather Service's OWN hazard colours, hex for hex from the
+// WWA colour table behind the weather.gov map, so a polygon here is the
+// same colour it is on the NWS's map: Tornado Warning red beside Tornado
+// Watch yellow, Severe Thunderstorm orange, Flash Flood dark red, Winter
+// Storm pink. The old table was a house palette that put Severe
+// Thunderstorm in gold and Flash Flood in green, and anyone comparing
+// against weather.gov had to translate.
+//
+// Two rules the reader of this table must keep:
+// - _alertColorFor matches by first-substring-found, so a name that is
+//   contained in a longer name must come AFTER it ('Hard Freeze Warning'
+//   before 'Freeze Warning', every specific storm before 'Storm Warning').
+// - cls is the panel's filter family, unrelated to colour: keep it when
+//   recolouring.
+// The two Emergencies are enhanced wording, not separate NWS products, so
+// they wear their base warning's official colour; the double-speed pulse
+// is what still tells them apart on this map.
 const ALERT_COLORS = {
-  'Tornado Emergency':                  { color: '#8b0000', cls: 'tor' },
+  'Tornado Emergency':                  { color: '#ff0000', cls: 'tor' },
   'Tornado Warning':                    { color: '#ff0000', cls: 'tor' },
-  'Tornado Watch':                      { color: '#ff6666', cls: 'tor' },
-  'Severe Thunderstorm Warning':        { color: '#ffd700', cls: 'tstm' },
-  'Severe Thunderstorm Watch':          { color: '#ffff00', cls: 'tstm' },
-  'Flash Flood Emergency':              { color: '#003300', cls: 'flood' },
-  'Flash Flood Warning':                { color: '#006400', cls: 'flood' },
-  'Flash Flood Watch':                  { color: '#008000', cls: 'flood' },
-  'Flood Warning':                      { color: '#006400', cls: 'flood' },
-  'Flood Watch':                        { color: '#008000', cls: 'flood' },
-  'Flood Advisory':                     { color: '#3cb371', cls: 'flood' },
-  'Coastal Flood Warning':              { color: '#2e8b57', cls: 'flood' },
+  'Tornado Watch':                      { color: '#ffff00', cls: 'tor' },
+  'Severe Thunderstorm Warning':        { color: '#ffa500', cls: 'tstm' },
+  'Severe Thunderstorm Watch':          { color: '#db7093', cls: 'tstm' },
+  'Flash Flood Emergency':              { color: '#8b0000', cls: 'flood' },
+  'Flash Flood Warning':                { color: '#8b0000', cls: 'flood' },
+  'Flash Flood Watch':                  { color: '#2e8b57', cls: 'flood' },
+  'Flood Warning':                      { color: '#00ff00', cls: 'flood' },
+  'Flood Watch':                        { color: '#2e8b57', cls: 'flood' },
+  'Flood Advisory':                     { color: '#00ff7f', cls: 'flood' },
+  'Coastal Flood Warning':              { color: '#228b22', cls: 'flood' },
   'Coastal Flood Watch':                { color: '#66cdaa', cls: 'flood' },
-  'Coastal Flood Advisory':             { color: '#90ee90', cls: 'flood' },
-  'Blizzard Warning':                   { color: '#00008b', cls: 'bliz' },
-  'Winter Storm Warning':               { color: '#0000cd', cls: 'bliz' },
-  'Heavy Snow Warning':                 { color: '#1565c0', cls: 'bliz' },
-  'Snow Squall Warning':                { color: '#1976d2', cls: 'bliz' },
-  'Ice Storm Warning':                  { color: '#4169e1', cls: 'ice'  },
-  'Blizzard Watch':                     { color: '#5c85d6', cls: 'bliz' },
-  'Winter Storm Watch':                 { color: '#6495ed', cls: 'winter' },
-  'Winter Storm Advisory':              { color: '#7aadff', cls: 'winter' },
-  'Winter Weather Advisory':            { color: '#87ceeb', cls: 'winter' },
-  'Lake Effect Snow Warning':           { color: '#4fc3f7', cls: 'winter' },
-  'Lake Effect Snow Watch':             { color: '#b3e5fc', cls: 'winter' },
-  'Freezing Rain Advisory':             { color: '#80d8ff', cls: 'ice'  },
-  'Sleet Warning':                      { color: '#4dd0e1', cls: 'ice'  },
-  'Extreme Wind Warning':               { color: '#da70d6', cls: 'wind' },
-  'High Wind Warning':                  { color: '#4b0082', cls: 'wind' },
-  'High Wind Watch':                    { color: '#6a0dad', cls: 'wind' },
-  'Wind Advisory':                      { color: '#9370db', cls: 'wind' },
-  'Excessive Heat Warning':             { color: '#8b0000', cls: 'heat' },
-  'Excessive Heat Watch':               { color: '#ff8c00', cls: 'heat' },
-  'Heat Advisory':                      { color: '#c71585', cls: 'heat' },
-  'Wind Chill Warning':                 { color: '#b0c4de', cls: 'cold' },
+  'Coastal Flood Advisory':             { color: '#7cfc00', cls: 'flood' },
+  'Blizzard Warning':                   { color: '#ff4500', cls: 'bliz' },
+  'Winter Storm Warning':               { color: '#ff69b4', cls: 'bliz' },
+  // Retired product names still in old feeds, kept on their family colour.
+  'Heavy Snow Warning':                 { color: '#ff69b4', cls: 'bliz' },
+  'Snow Squall Warning':                { color: '#c71585', cls: 'bliz' },
+  'Ice Storm Warning':                  { color: '#8b008b', cls: 'ice'  },
+  'Blizzard Watch':                     { color: '#adff2f', cls: 'bliz' },
+  'Winter Storm Watch':                 { color: '#4682b4', cls: 'winter' },
+  'Winter Storm Advisory':              { color: '#7b68ee', cls: 'winter' },
+  'Winter Weather Advisory':            { color: '#7b68ee', cls: 'winter' },
+  'Lake Effect Snow Warning':           { color: '#008b8b', cls: 'winter' },
+  'Lake Effect Snow Watch':             { color: '#87cefa', cls: 'winter' },
+  'Freezing Rain Advisory':             { color: '#da70d6', cls: 'ice'  },
+  'Freezing Fog Advisory':              { color: '#008080', cls: 'fog'  },
+  'Sleet Warning':                      { color: '#8b008b', cls: 'ice'  },
+  'Extreme Wind Warning':               { color: '#ff8c00', cls: 'wind' },
+  'High Wind Warning':                  { color: '#daa520', cls: 'wind' },
+  'High Wind Watch':                    { color: '#b8860b', cls: 'wind' },
+  'Wind Advisory':                      { color: '#d2b48c', cls: 'wind' },
+  // The 2025 renames and the names they replaced, both live in archives.
+  'Extreme Heat Warning':               { color: '#c71585', cls: 'heat' },
+  'Extreme Heat Watch':                 { color: '#800000', cls: 'heat' },
+  'Excessive Heat Warning':             { color: '#c71585', cls: 'heat' },
+  'Excessive Heat Watch':               { color: '#800000', cls: 'heat' },
+  'Heat Advisory':                      { color: '#ff7f50', cls: 'heat' },
+  'Extreme Cold Warning':               { color: '#0000ff', cls: 'cold' },
+  'Extreme Cold Watch':                 { color: '#5f9ea0', cls: 'cold' },
+  'Cold Weather Advisory':              { color: '#afeeee', cls: 'cold' },
+  'Wind Chill Warning':                 { color: '#0000ff', cls: 'cold' },
   'Wind Chill Watch':                   { color: '#5f9ea0', cls: 'cold' },
   'Wind Chill Advisory':                { color: '#afeeee', cls: 'cold' },
-  'Freeze Warning':                     { color: '#6495ed', cls: 'cold' },
-  'Freeze Watch':                       { color: '#00ced1', cls: 'cold' },
-  'Frost Advisory':                     { color: '#6495ed', cls: 'cold' },
   'Hard Freeze Warning':                { color: '#9400d3', cls: 'cold' },
   'Hard Freeze Watch':                  { color: '#4169e1', cls: 'cold' },
-  'Red Flag Warning':                   { color: '#ff4500', cls: 'fire' },
+  'Freeze Warning':                     { color: '#483d8b', cls: 'cold' },
+  'Freeze Watch':                       { color: '#00ffff', cls: 'cold' },
+  'Frost Advisory':                     { color: '#6495ed', cls: 'cold' },
+  'Red Flag Warning':                   { color: '#ff1493', cls: 'fire' },
   'Fire Weather Watch':                 { color: '#ffdead', cls: 'fire' },
+  'Fire Warning':                       { color: '#a0522d', cls: 'fire' },
   'Dense Fog Advisory':                 { color: '#708090', cls: 'fog'  },
-  'Dense Smoke Advisory':               { color: '#f4a460', cls: 'fog'  },
+  'Dense Smoke Advisory':               { color: '#f0e68c', cls: 'fog'  },
   'Dust Storm Warning':                 { color: '#ffe4c4', cls: 'fog'  },
   'Dust Advisory':                      { color: '#bdb76b', cls: 'fog'  },
   'Blowing Dust Warning':               { color: '#ffe4c4', cls: 'fog'  },
-  'Hurricane Warning':                  { color: '#ff00ff', cls: 'marine' },
-  'Hurricane Watch':                    { color: '#ff69b4', cls: 'marine' },
-  'Tropical Storm Warning':             { color: '#dc143c', cls: 'marine' },
+  'Blowing Dust Advisory':              { color: '#bdb76b', cls: 'fog'  },
+  'Ashfall Warning':                    { color: '#a9a9a9', cls: 'fog'  },
+  'Ashfall Advisory':                   { color: '#696969', cls: 'fog'  },
+  'Hurricane Force Wind Warning':       { color: '#cd5c5c', cls: 'marine' },
+  'Hurricane Force Wind Watch':         { color: '#9932cc', cls: 'marine' },
+  'Hurricane Warning':                  { color: '#dc143c', cls: 'marine' },
+  'Hurricane Watch':                    { color: '#ff00ff', cls: 'marine' },
+  'Tropical Storm Warning':             { color: '#b22222', cls: 'marine' },
   'Tropical Storm Watch':               { color: '#f08080', cls: 'marine' },
+  'Special Marine Warning':             { color: '#ffa500', cls: 'marine' },
   'Storm Warning':                      { color: '#9400d3', cls: 'marine' },
-  'Gale Warning':                       { color: '#00008b', cls: 'marine' },
-  'Small Craft Advisory':               { color: '#4169e1', cls: 'marine' },
-  'Small Craft':                        { color: '#4169e1', cls: 'marine' },
-  'Marine Weather Statement':           { color: '#ffdead', cls: 'marine' },
-  'Hazardous Seas Warning':             { color: '#1e90ff', cls: 'marine' },
+  'Storm Watch':                        { color: '#ffe4b5', cls: 'marine' },
+  'Gale Warning':                       { color: '#dda0dd', cls: 'marine' },
+  'Gale Watch':                         { color: '#ffc0cb', cls: 'marine' },
+  'Small Craft Advisory':               { color: '#d8bfd8', cls: 'marine' },
+  'Small Craft':                        { color: '#d8bfd8', cls: 'marine' },
+  'Marine Weather Statement':           { color: '#ffdab9', cls: 'marine' },
+  'Hazardous Seas Warning':             { color: '#d8bfd8', cls: 'marine' },
+  'High Surf Warning':                  { color: '#228b22', cls: 'marine' },
+  'High Surf Advisory':                 { color: '#ba55d3', cls: 'marine' },
   'Rip Current Statement':              { color: '#40e0d0', cls: 'marine' },
   'Beach Hazards Statement':            { color: '#40e0d0', cls: 'marine' },
-  'Special Weather Statement':          { color: '#ffe066', cls: 'special' },
+  'Special Weather Statement':          { color: '#ffe4b5', cls: 'special' },
   'Severe Weather Statement':           { color: '#00ffff', cls: 'special' },
   'Avalanche Warning':                  { color: '#1e90ff', cls: 'winter' },
   'Avalanche Watch':                    { color: '#f4a460', cls: 'winter' },
+  'Avalanche Advisory':                 { color: '#cd853f', cls: 'winter' },
   'Tsunami Warning':                    { color: '#fd6347', cls: 'marine' },
   'Tsunami Watch':                      { color: '#ff00ff', cls: 'marine' },
+  'Tsunami Advisory':                   { color: '#d2691e', cls: 'marine' },
   'Earthquake Warning':                 { color: '#8b4513', cls: 'special' },
   'Air Quality Alert':                  { color: '#808080', cls: 'fog'  },
-  // Storm surge is its own product, not a flood or a marine warning, and had
-  // no entry here at all - anything carrying it painted the fallback grey.
   'Storm Surge Warning':                { color: '#b524f7', cls: 'marine' },
   'Storm Surge Watch':                  { color: '#db7ff7', cls: 'marine' },
 };
@@ -38961,14 +39000,14 @@ const GWA_EVENTS = {
   SPS: 'Special Weather Statement',
 };
 const GWA_COLORS = {
-  'Tornado Warning': '#ff0000', 'Severe Thunderstorm Warning': '#ffd700',
-  'Flash Flood Warning': '#006400', 'Extreme Wind Warning': '#da70d6',
-  'Snow Squall Warning': '#1976d2', 'Hurricane Warning': '#ff00ff',
-  'Tropical Storm Warning': '#dc143c', 'Storm Surge Warning': '#b524f7',
-  'Tornado Watch': '#ff6666', 'Severe Thunderstorm Watch': '#ffff00',
-  'Flash Flood Watch': '#008000', 'Hurricane Watch': '#ff69b4',
+  'Tornado Warning': '#ff0000', 'Severe Thunderstorm Warning': '#ffa500',
+  'Flash Flood Warning': '#8b0000', 'Extreme Wind Warning': '#ff8c00',
+  'Snow Squall Warning': '#c71585', 'Hurricane Warning': '#dc143c',
+  'Tropical Storm Warning': '#b22222', 'Storm Surge Warning': '#b524f7',
+  'Tornado Watch': '#ffff00', 'Severe Thunderstorm Watch': '#db7093',
+  'Flash Flood Watch': '#2e8b57', 'Hurricane Watch': '#ff00ff',
   'Tropical Storm Watch': '#f08080', 'Storm Surge Watch': '#db7ff7',
-  'Special Weather Statement': '#ffe066',
+  'Special Weather Statement': '#ffe4b5',
 };
 
 function _gwaClear() {
@@ -65724,6 +65763,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-s', date: 'Sep 21, 2026',
+    text: 'Alert polygons wear the National Weather Service\'s own colors now, hex for hex from the weather.gov map: Tornado Warning red beside Tornado Watch yellow, Severe Thunderstorm orange, Flash Flood dark red, Winter Storm pink. The alerts panel families and the Alert Desk\'s practice products follow the same table, and the newest product names (Extreme Heat, Extreme Cold, Cold Weather Advisory) are recognized instead of painting fallback grey.' },
   { id: '2026-09-21-r', date: 'Sep 21, 2026',
     text: 'Tapping an alert polygon opens its popup again. The city temperature dots draw on one shared sheet for speed, that sheet sits above the alerts, and it was quietly keeping every tap that missed a dot, so alert taps died on it. A tap that hits nothing on a sheet now falls through to whatever is underneath.' },
   { id: '2026-09-21-q', date: 'Sep 21, 2026',
@@ -75862,7 +75903,14 @@ function _adText(a) {
   ['hail', 'wind'].forEach(k => {
     const h = hz[k];
     if (!h || !h.lvl) return;
-    const amt = String(h.amt || '').trim() || AD_HAZARDS[k].amt[h.lvl];
+    // Hail left AD_HAZARDS when HAILSTORM became its own product family,
+    // so its slider table may not exist any more: a draft that carries its
+    // own amount still tags it, one that does not is skipped rather than
+    // crashing the whole product build.
+    const spec = AD_HAZARDS[k];
+    const amt = String(h.amt || '').trim()
+      || (spec && spec.amt && spec.amt[h.lvl]) || '';
+    if (!amt) return;
     tags.push(k.toUpperCase() + '...' + amt + (k === 'hail' ? 'IN' : 'MPH'));
   });
   if (hz.tornado && hz.tornado.lvl) {
