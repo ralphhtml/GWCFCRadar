@@ -42641,7 +42641,7 @@ function _applyLoadSpot() {
     // tap: the menu is worth more there than a zoom step that pinch already
     // does better.
     const wantsMouseMenu = () => {
-      try { return localStorage.getItem('lqm_dbltapmenu') === 'true'; } catch (e) { return false; }
+      try { return localStorage.getItem('lqm_dbltapmenu') !== 'false'; } catch (e) { return true; }
     };
 
     const openAt = (clientX, clientY) => {
@@ -53651,20 +53651,8 @@ function selectProduct(p) {
       <span class="lqm-settings-lbl">Export Picture or Loop</span>
       <button class="lqm-settings-btn" onclick="lqmCloseSettings();_expToggle();">Open export tool</button>
     </div>
-    <div class="lqm-settings-row">
-      <span class="lqm-settings-lbl">Always Show Logo Menu</span>
-      <label class="lqm-toggle">
-        <input type="checkbox" id="lqm-set-menupin" checked onchange="lqmSetMenuPin(this.checked)">
-        <div class="lqm-toggle-track"></div>
-        <div class="lqm-toggle-knob"></div>
-      </label>
-    </div>
-    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:2px 0 6px;line-height:1.5;">
-      The row under the logo (Settings, Navigation, Tutorial, Credits, Feedback) stays on screen. Turn
-      this off and it hides again, appearing only when you hover or tap the logo, which is how it used
-      to behave.
-    </div>
-
+    <!-- The "Always Show Logo Menu" switch is gone by request: the menu is
+         simply pinned, and a switch nobody should need was one more row. -->
   </div>
 
   <div class="lqm-settings-group" data-merge="map" data-cat="map">
@@ -53842,9 +53830,9 @@ function selectProduct(p) {
     <div class="lqm-settings-row">
       <span class="lqm-settings-lbl">City Name Size</span>
       <div style="display:flex;align-items:center;gap:6px;">
-        <input type="range" id="lqm-set-citynamesize" min="8" max="18" value="12" step="1"
+        <input type="range" id="lqm-set-citynamesize" min="8" max="18" value="14" step="1"
           class="lqm-slider" oninput="lqmSetCityNameSize(this.value)">
-        <span id="lqm-citynamesize-val" style="font-family:var(--mono);font-size:9px;color:var(--accent2);min-width:28px;">12px</span>
+        <span id="lqm-citynamesize-val" style="font-family:var(--mono);font-size:9px;color:var(--accent2);min-width:28px;">14px</span>
       </div>
     </div>
     <div class="lqm-settings-row">
@@ -56105,7 +56093,9 @@ document.addEventListener('webkitfullscreenchange', _fsSync);
   // string '0' is off, so a stored value from any other source cannot
   // accidentally read as a preference to hide it.
   let _menuPinned = true;
-  try { _menuPinned = localStorage.getItem(LQM_PIN_KEY) !== '0'; } catch (e) {}
+  // Always pinned now: the switch for this is gone, and a stored '0' from
+  // when it existed must not strand anyone with a hidden menu.
+  _menuPinned = true;
 
   function _openMenu() {
     _menuOpen = true;
@@ -65134,6 +65124,10 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-k', date: 'Sep 21, 2026',
+    text: 'The good setup is the default now: black map borders drawn heavy (state, county, province and coastline), city names on at 14px, and double click opening the map menu, all out of the box. Your own saved settings still win, and the borders reset button returns to this look. The Always Show Logo Menu switch is gone; the menu is simply always there.' },
+  { id: '2026-09-21-j', date: 'Sep 21, 2026',
+    text: 'The search dropdown wears heavy frost: a much stronger blur and a thinner fill than the rest of the glass, so the map pours through behind the suggestions.' },
   { id: '2026-09-21-i', date: 'Sep 21, 2026',
     text: 'The time stamp stopped forcing Zulu on everyone. Its top line now follows your timezone and clock choices: UTC in 24-hour mode keeps the terse z, UTC in 12-hour says "1:00 PM UTC", and a chosen zone shows its own clock and abbreviation, like "Sun 09/21/26 7:00 PM CDT".' },
   { id: '2026-09-21-h', date: 'Sep 21, 2026',
@@ -66418,9 +66412,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Coastlines ship off, so only an explicit yes turns them on. The 50m
     // file is 1.6 MB and nobody should pay for it without asking.
     const cstVal = localStorage.getItem('lqm_coastborders'); if(cstVal==='true') { const el=document.getElementById('lqm-set-coastborders'); if(el){el.checked=true;lqmToggleSetting('coastborders',true);} }
-    const cnsVal = localStorage.getItem('lqm_citynamesize'); if(cnsVal) { const el=document.getElementById('lqm-set-citynamesize'); if(el){el.value=cnsVal;lqmSetCityNameSize(cnsVal);} }
-    const dtmVal = localStorage.getItem('lqm_dbltapmenu'); if(dtmVal==='true') { const el=document.getElementById('lqm-set-dbltapmenu'); if(el){el.checked=true;lqmToggleSetting('dbltapmenu',true);} }
-    const clVal = localStorage.getItem('lqm_citylabels'); if(clVal==='true') { const el=document.getElementById('lqm-set-citylabels'); if(el){el.checked=true;lqmToggleSetting('citylabels',true);} }
+    const cnsVal = localStorage.getItem('lqm_citynamesize') || '14'; { const el=document.getElementById('lqm-set-citynamesize'); if(el){el.value=cnsVal;lqmSetCityNameSize(cnsVal);} }
+    // These two are ON out of the box now; only an explicit 'false' (the
+    // person turned them off) keeps them off.
+    const dtmVal = localStorage.getItem('lqm_dbltapmenu'); if(dtmVal!=='false') { const el=document.getElementById('lqm-set-dbltapmenu'); if(el){el.checked=true;lqmToggleSetting('dbltapmenu',true);} }
+    const clVal = localStorage.getItem('lqm_citylabels'); if(clVal!=='false') { const el=document.getElementById('lqm-set-citylabels'); if(el){el.checked=true;lqmToggleSetting('citylabels',true);} }
     // Units & Time - _units itself is already loaded from lqm_unit_* at script
     // parse time (see _loadUnitPrefs); this just syncs the dropdowns to match.
     const windEl = document.getElementById('lqm-set-windunit');     if (windEl) windEl.value = _units.wind;
@@ -73472,6 +73468,17 @@ body {
   background-image: linear-gradient(160deg,
     rgba(60,14,8,var(--glass-a-panel)) 0%, rgba(24,5,5,var(--glass-a-panel)) 100%);
 }
+/* The search dropdown alone wears HEAVY frost, by request: the full-glass
+   blur and a far thinner fill than the app's subtle default, so the map
+   pours through behind the suggestions. Stated after the shared rules
+   above so it wins the tie. */
+:root[data-glass] #lqm-search-dropdown {
+  background-image: linear-gradient(180deg,
+    rgba(38,38,46,0.42) 0%, rgba(19,19,24,0.40) 55%, rgba(5,5,8,0.46) 100%);
+  backdrop-filter: blur(24px) saturate(1.5) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+}
+
 /* The settings rail and content pane are literal hex too. */
 :root[data-glass] #lqm-set-rail {
   background-image: linear-gradient(180deg,
@@ -77203,13 +77210,12 @@ const MB_WEIGHT_MIN = 0.2, MB_WEIGHT_MAX = 6;
 // Storing the resolved colour instead would freeze today's answer into every
 // saved setting and silently stop following the basemap.
 const _mbCfg = {
-  state:    { color: 'auto', weight: MB_BASE.state.weight },
-  province: { color: 'auto', weight: MB_BASE.province.weight },
-  county:   { color: 'auto', weight: MB_BASE.county.weight },
-  // Coast defaults to its own blue rather than auto: it is the one line here
-  // that separates two different things (land and water) rather than dividing
-  // land from land, and a blue reads as water on every basemap.
-  coast:    { color: MB_BASE.coast.color, weight: MB_BASE.coast.weight },
+  // These are the shipped look now, by request: black lines, drawn heavy,
+  // on every basemap. A saved setting still overrides each one.
+  state:    { color: '#111111', weight: 6 },
+  province: { color: '#111111', weight: 6 },
+  county:   { color: '#111111', weight: 3.8 },
+  coast:    { color: '#111111', weight: 6 },
 };
 
 function _mbClampWeight(v) {
@@ -77292,12 +77298,12 @@ function mbSetBorderWeight(kind, value) {
 }
 
 function mbResetBorderStyle() {
+  // Back to what each line SHIPS with now: black, drawn heavy, the same
+  // defaults a first visit gets.
+  const shipped = { state: 6, province: 6, county: 3.8, coast: 6 };
   MB_KINDS.forEach(k => {
-    // Back to what each line SHIPPED with, which is auto for the three that
-    // divide land from land and the water blue for the coast. Resetting coast
-    // to auto would be resetting it to something it never was.
-    _mbCfg[k].color = k === 'coast' ? MB_BASE.coast.color : 'auto';
-    _mbCfg[k].weight = MB_BASE[k].weight;
+    _mbCfg[k].color = '#111111';
+    _mbCfg[k].weight = shipped[k] != null ? shipped[k] : MB_BASE[k].weight;
   });
   _mbStyleSave();
   _mbRestyle();
