@@ -255,8 +255,9 @@ console.log('\n3. NDFD draws, loops, and owns the quiet animation bar');
   ok('the animation bar adopts it', r.loopActive && r.animSource === 'nws'
      && r.ready, r.animSource);
   ok('step and seek both move it', r.stepped && r.sought);
+  // The clock preference decides 12h or 24h, so both spellings are valid.
   ok('the readout names NDFD and the valid time, in gold',
-     /^NDFD · valid \d\d:\d\d UTC$/.test(r.label) && r.gold === 'rgb(232, 184, 0)',
+     /^NDFD · valid \d{1,2}:\d\d( AM| PM)? UTC$/.test(r.label) && r.gold === 'rgb(232, 184, 0)',
      r.label);
 }
 

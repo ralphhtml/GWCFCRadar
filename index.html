@@ -905,6 +905,24 @@ body {
   padding: 9px 12px; outline: none;
 }
 .tz-search::placeholder { color: var(--muted); font-weight: 400; }
+.tz-clock-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 2px 2px 8px;
+}
+.tz-clock-lbl {
+  font-family: var(--display); font-weight: 700; font-size: 10px;
+  letter-spacing: 1px; text-transform: uppercase;
+  color: var(--muted); margin-right: 2px;
+}
+.tz-clock-btn {
+  flex: 1; border: 1px solid var(--border2); border-radius: 7px;
+  background: rgba(255,255,255,0.05); color: var(--text);
+  font-family: var(--display); font-weight: 700; font-size: 11px;
+  padding: 5px 0; cursor: pointer;
+}
+.tz-clock-btn.active {
+  background: #1799c4; border-color: #9adcf2; color: #04222e;
+}
 .tz-option-off { color: var(--muted); font-family: var(--mono); font-size: 9px; margin-left: 6px; }
 .tz-option {
   padding: 10px 12px; border-bottom: 1px solid var(--border);
@@ -12726,27 +12744,50 @@ function _preloadFrame(idx) {}
 
 // Timezone preference , affects all displayed timestamps
 let _appTZ = (() => { try { return localStorage.getItem('gwcfc_tz') || 'utc'; } catch(e) { return 'utc'; } })();
+// Clock preference: '12' or '24'. Changeable in Settings > Units and in the
+// quick time changer (hold the time stamp); every displayed time follows it.
+let _appClock = (() => {
+  try { return localStorage.getItem('gwcfc_clock') === '24' ? '24' : '12'; }
+  catch (e) { return '12'; }
+})();
+// One pair of numbers -> one clock string, honouring the preference.
+function _clockHM(h24, m) {
+  const mm = String(m).padStart(2, '0');
+  if (_appClock === '24') return String(h24).padStart(2, '0') + ':' + mm;
+  return (h24 % 12 || 12) + ':' + mm + ' ' + (h24 < 12 ? 'AM' : 'PM');
+}
 
 function _fmtHHMM(d) {
-  const pad = n => String(n).padStart(2,'0');
-  if (_appTZ === 'utc') return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
+  if (_appTZ === 'utc') return `${_clockHM(d.getUTCHours(), d.getUTCMinutes())} UTC`;
   const tz = _appTZ === 'local' ? _localTZ() : _appTZ;
   try {
     const pts = _dtf(tz, 'hm24').formatToParts(d);
-    const h = pts.find(p=>p.type==='hour')?.value||'00';
-    const m = pts.find(p=>p.type==='minute')?.value||'00';
+    const h = +(pts.find(p=>p.type==='hour')?.value||'0');
+    const m = +(pts.find(p=>p.type==='minute')?.value||'0');
     const abbr = _dtf(tz, 'abbr').formatToParts(d).find(p=>p.type==='timeZoneName')?.value||'';
-    return `${h}:${m} ${abbr}`;
-  } catch(e) { return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`; }
+    return `${_clockHM(h % 24, m)} ${abbr}`;
+  } catch(e) { return `${_clockHM(d.getUTCHours(), d.getUTCMinutes())} UTC`; }
 }
 function _fmtHHMMshort(d) {
-  const pad = n => String(n).padStart(2,'0');
-  if (_appTZ === 'utc') return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  if (_appTZ === 'utc') return _clockHM(d.getUTCHours(), d.getUTCMinutes());
   const tz = _appTZ === 'local' ? _localTZ() : _appTZ;
   try {
     const pts = _dtf(tz, 'hm24').formatToParts(d);
-    return `${pts.find(p=>p.type==='hour')?.value||'00'}:${pts.find(p=>p.type==='minute')?.value||'00'}`;
-  } catch(e) { return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`; }
+    return _clockHM(+(pts.find(p=>p.type==='hour')?.value||'0') % 24,
+                    +(pts.find(p=>p.type==='minute')?.value||'0'));
+  } catch(e) { return _clockHM(d.getUTCHours(), d.getUTCMinutes()); }
+}
+// The setter both entrances share. Saves, then repaints every clock a
+// person can currently see.
+function lqmSetClock(v) {
+  _appClock = v === '24' ? '24' : '12';
+  try { localStorage.setItem('gwcfc_clock', _appClock); } catch (e) {}
+  const sel = document.getElementById('lqm-set-clock');
+  if (sel) sel.value = _appClock;
+  try { if (typeof _stampRefresh === 'function') _stampRefresh(); } catch (e) {}
+  try { if (typeof _syncAnimbarTrack === 'function') _syncAnimbarTrack(); } catch (e) {}
+  try { if (typeof updateFrameLabel === 'function' && typeof currentFrame === 'number') updateFrameLabel(currentFrame); } catch (e) {}
+  try { if (typeof _fcChartRender === 'function') _fcChartRender(); } catch (e) {}
 }
 
 // Cached hot-path DOM references , set once after DOMContentLoaded
@@ -36352,10 +36393,10 @@ function _nwsLoopShow(idx) {
     const hh = String(d.getUTCHours()).padStart(2, '0');
     const mm = String(d.getUTCMinutes()).padStart(2, '0');
     if (_nwsOn.src === 'ndfd') {
-      at.textContent = `NDFD · valid ${hh}:${mm} UTC`;
+      at.textContent = `NDFD · valid ${_clockHM(d.getUTCHours(), d.getUTCMinutes())} UTC`;
       at.style.color = '#e8b800';  // a forecast, and the bar says so
     } else {
-      at.textContent = `${_nwsOn.src.toUpperCase()} · ${hh}:${mm} UTC analysis`;
+      at.textContent = `${_nwsOn.src.toUpperCase()} · ${_clockHM(d.getUTCHours(), d.getUTCMinutes())} UTC analysis`;
       at.style.color = '';
     }
   }
@@ -52897,7 +52938,7 @@ async function openForecastModal(city) {
 
     // Unit helpers
     const fToC   = f  => ((f - 32) * 5/9).toFixed(1);
-    const to12h  = t => { const [h,m] = t.split(':').map(Number); const ampm = h < 12 ? 'AM' : 'PM'; const h12 = h % 12 || 12; return h12 + ':' + String(m).padStart(2,'0') + ' ' + ampm; };
+    const to12h  = t => { const [h,m] = t.split(':').map(Number); return _clockHM(h, m); };
     const mphToKmh = m => (m * 1.60934).toFixed(0);
     const mphToKt  = m => (m * 0.868976).toFixed(0);
     const hpaToInhg = h => (h / 33.8639).toFixed(2);
@@ -53123,6 +53164,9 @@ function _fcTicks(lo, hi) {
 
 function _fcHourLabel(iso) {
   const h = +iso.slice(11, 13);
+  if (typeof _appClock !== 'undefined' && _appClock === '24') {
+    return String(h).padStart(2, '0') + ':00';
+  }
   return (h % 12 || 12) + ' ' + (h < 12 ? 'AM' : 'PM');
 }
 
@@ -54355,6 +54399,13 @@ function selectProduct(p) {
         <option value="Europe/Berlin">Central Europe</option>
         <option value="Asia/Tokyo">Japan (JST)</option>
         <option value="Australia/Sydney">Australia East</option>
+      </select>
+    </div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Clock</span>
+      <select id="lqm-set-clock" class="lqm-settings-select" onchange="lqmSetClock(this.value)">
+        <option value="12">12-hour (1:35 PM)</option>
+        <option value="24">24-hour (13:35)</option>
       </select>
     </div>
   </div>
@@ -60806,6 +60857,8 @@ function lqmOpenSettings() {
   try { want = localStorage.getItem(LQM_SET_CAT_KEY) || want; } catch (e) {}
   lqmSettingsCat(want);   // a null or unknown id falls back to the first card
   // Sync toggles with current app state
+  const _clkSel = document.getElementById('lqm-set-clock');
+  if (_clkSel) _clkSel.value = _appClock;
   if (typeof _satcSyncUi === 'function') { try { _satcSyncUi(); } catch (e) {} }
   // The shortcut rows are rebuilt on every open, not once at boot. A key
   // rebound from the offer dialog, or a preset picked on another tab, has to
@@ -65079,6 +65132,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-h', date: 'Sep 21, 2026',
+    text: 'You can change how time is measured now: 12-hour or 24-hour, from Settings > Units or right in the quick time changer (hold the time stamp). Every clock in the app follows it - the animation bar, the time stamp, the timezone list, the forecast hours and charts, even the offline banner.' },
   { id: '2026-09-21-g', date: 'Sep 21, 2026',
     text: 'Navigation finished its move: its button left the account panel too, so the overlay launcher\'s pill is its one home now (Settings > GPS still reaches it as well). The tutorial\'s directions were updated to match.' },
   { id: '2026-09-21-f', date: 'Sep 21, 2026',
@@ -67579,10 +67634,11 @@ function _formatTimeInTZ(dateObj, tzId) {
   try {
     const useUTC = (tzId === 'utc');
     const tz = tzId === 'local' ? _localTZ() : (useUTC ? 'UTC' : tzId);
-    const pts = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', timeZone: tz, hour12: false }).formatToParts(dateObj);
+    const pts = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz, hour12: (typeof _appClock === 'undefined' || _appClock !== '24') }).formatToParts(dateObj);
     const h = pts.find(p => p.type === 'hour')?.value || '00';
     const m = pts.find(p => p.type === 'minute')?.value || '00';
-    return `${h}:${m}`;
+    const ap = pts.find(p => p.type === 'dayPeriod')?.value || '';
+    return `${h}:${m}${ap ? ' ' + ap : ''}`;
   } catch (e) { return '--:--'; }
 }
 
@@ -67612,7 +67668,12 @@ function _openTZPopover() {
       + `<span class="tz-option-time">${timeStr}</span></div>`;
   };
 
-  let html = '<input class="tz-search" type="text" placeholder="Search timezone…" oninput="_filterTZ(this.value)" autocomplete="off" spellcheck="false">';
+  // The clock toggle rides at the top of the quick changer, so the format
+  // of time is changeable in the same place its zone is.
+  let html = '<div class="tz-clock-row"><span class="tz-clock-lbl">Clock</span>'
+    + `<button class="tz-clock-btn${_appClock === '12' ? ' active' : ''}" onclick="_selectClock('12')">12-hour</button>`
+    + `<button class="tz-clock-btn${_appClock === '24' ? ' active' : ''}" onclick="_selectClock('24')">24-hour</button></div>`;
+  html += '<input class="tz-search" type="text" placeholder="Search timezone…" oninput="_filterTZ(this.value)" autocomplete="off" spellcheck="false">';
   html += '<div class="tz-list">';
   html += TZ_PINNED.map(row).join('');
   html += TZ_ALL_ZONES_LIST().map(row).join('');
@@ -67663,6 +67724,13 @@ function _selectTimezone(tz) {
 function _selectTZandClose(tz) {
   _selectTimezone(tz);
   _closeTZPopover();
+}
+
+// The quick changer's clock toggle: set it, then rebuild the popover so
+// every zone's sample time shows in the new format at once.
+function _selectClock(v) {
+  lqmSetClock(v);
+  _openTZPopover();
 }
 
 // Hold-down detection on the time display
@@ -67743,8 +67811,7 @@ function _stampRefresh() {
     const sig = st.src + '|' + st.n + '|' + st.newest;
     if (sig !== _stampUpdSig) { _stampUpdSig = sig; _stampUpdMs = Date.now(); }
     const u = new Date(_stampUpdMs);
-    let h = u.getHours(); const am = h < 12 ? 'AM' : 'PM'; h = h % 12 || 12;
-    sub.textContent = `Updated: ${h}:${String(u.getMinutes()).padStart(2, '0')} ${am}`;
+    sub.textContent = `Updated: ${_clockHM(u.getHours(), u.getMinutes())}`;
     sub.style.display = '';
     box.style.display = '';
   } else {
@@ -67812,8 +67879,7 @@ function _offlineRecover() {
     const el = document.getElementById('offline-bar');
     if (!el) return;
     const d = new Date();
-    let h = d.getHours(); const am = h < 12 ? 'AM' : 'PM'; h = h % 12 || 12;
-    el.textContent = `Offline since ${h}:${String(d.getMinutes()).padStart(2, '0')} ${am} - showing saved data`;
+    el.textContent = `Offline since ${_clockHM(d.getHours(), d.getMinutes())} - showing saved data`;
     el.style.display = 'block';
   }
   function hide() {
