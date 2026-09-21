@@ -416,7 +416,9 @@ console.log('\n8. the bars that are always on screen');
   // These are not panels people open, they are the furniture. The animation
   // bar was the loudest thing left: a solid cyan strip across the bottom of a
   // red application.
-  const BARS = ['#export-toolbar', '#draw-toolbar', '#text-toolbar',
+  // (#export-toolbar left this list when Export grew into a modal card:
+  // it is a panel now, #export-card, covered by the modal sweep instead.)
+  const BARS = ['#draw-toolbar', '#text-toolbar',
                 '#poly-toolbar', '#dist-toolbar', '#radius-toolbar',
                 '#stormcone-toolbar', '#xsec-toolbar', '#top-search-bar'];
   const r = await page.evaluate((sels) =>

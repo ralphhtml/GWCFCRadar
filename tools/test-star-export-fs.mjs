@@ -5,10 +5,12 @@
  *
  *     node tools/test-star-export-fs.mjs
  *
- * THE EXPORT TOOL WAS NOT BROKEN, IT WAS BLIND. _expActiveSource knew about
- * exactly three layers, and model charts were not one of them, so with a
- * model on screen and nothing else it reported "Nothing on screen to export
- * yet" over a full map. That reads as broken and is the thing worth testing.
+ * EXPORT HAS SINCE BEEN REBUILT AGAIN: it is a modal card now and it
+ * composites the whole view, so there is no per-layer source list left to
+ * be blind. What this file still holds is that it stays off the tool rail,
+ * stays reachable from Settings, and that its loop follows _animSource,
+ * the same cascade the animation bar plays, models included. The deeper
+ * capture checks live in tools/test-export-tool.mjs.
  *
  * A STAR HOLDS ENOUGH TO REDO THE THING, not a reference to it. A location
  * keeps its coordinates and a feature keeps its name, because a saved action
@@ -57,29 +59,27 @@ console.log('\n1. the star button and what it saves');
      && (PAGE.match(/_starRenderInto\(dd\)/g) || []).length === 3);
 }
 
-console.log('\n2. export: moved, and no longer blind to model charts');
+console.log('\n2. export: moved to Settings, and it captures the view');
 {
   ok('it is gone from the tool rail', !/id="tool-export"/.test(PAGE));
   ok('and reachable from Settings',
      /Export Picture or Loop[\s\S]{0,200}_expToggle\(\)/.test(PAGE));
-  // The gap that made it look broken.
-  ok('model charts are an export source now',
-     /return \{ kind: 'model', count: Math\.max\(1, hrs\)/.test(PAGE));
-  ok('and there is a frame fetcher for them',
-     /if \(src\.kind === 'model'\) \{/.test(PAGE));
-  ok('the forecast hour is stepped so a loop is a loop, not one hour repeated',
-     /_hdHourIdx = idx;\s*\n\s*try \{ await _hdShow\(\); \}/.test(PAGE));
-  ok('the frame count comes from the real hour list',
-     /_hdHoursFor\(_hdField\) \|\| \[\]\)\.length/.test(PAGE));
-  // One line's worth: the sentence wraps across comment lines.
-  ok('why it looked broken is written down',
-     /panel said "Nothing on screen to export yet" over a full map/.test(PAGE));
+  // The redesign that ended the blindness for good: no source list to be
+  // blind, the compose captures every visible layer and the loop follows
+  // the animation bar's own cascade.
+  ok('it opens as a card, not a toolbar', /id="export-card"/.test(PAGE));
+  ok('the loop follows _animSource, models included',
+     /_expLoopInfo/.test(PAGE) && /const src = _animSource\(\);/.test(PAGE));
+  ok('why the old one read as broken is written down',
+     /fetched only the raw data image/.test(PAGE));
 }
 
 console.log('\n3. full screen');
 {
+  // The speed box moved in between the timestamp pill and this button, by
+  // request, so the window is wider than it was but the order still holds.
   ok('the button is between the timestamp and forward-one-frame',
-     /id="anim-time-display"[\s\S]{0,400}id="fullscreen-btn"[\s\S]{0,400}id="step-fwd-btn"/.test(PAGE));
+     /id="anim-time-display"[\s\S]{0,900}id="fullscreen-btn"[\s\S]{0,400}id="step-fwd-btn"/.test(PAGE));
   // Safari only has the webkit spelling, and this runs on iPads.
   ok('both spellings of the API are handled',
      /document\.webkitFullscreenElement/.test(PAGE)
@@ -138,8 +138,8 @@ else {
     out.fsFn = typeof _fsToggle === 'function';
     out.railExport = !!document.getElementById('tool-export');
     out.expFn = typeof _expToggle === 'function';
-    // With nothing on screen it should say so rather than throw.
-    out.srcNone = _expActiveSource();
+    // The loop reader must answer rather than throw, whatever is on screen.
+    out.loopInfo = _expLoopInfo();
     return out;
   });
   await b.close();
@@ -155,8 +155,8 @@ else {
   ok('and its toggle exists', r.fsFn);
   ok('export is off the tool rail', r.railExport === false);
   ok('but still callable from Settings', r.expFn);
-  ok('with nothing up, the source is null rather than a crash',
-     r.srcNone === null, JSON.stringify(r.srcNone));
+  ok('the loop reader answers with a count rather than a crash',
+     r.loopInfo && typeof r.loopInfo.count === 'number', JSON.stringify(r.loopInfo));
   ok('no uncaught page errors', errs.length === 0, errs.join(' | '));
 }
 

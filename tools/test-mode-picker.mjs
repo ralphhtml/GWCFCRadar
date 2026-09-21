@@ -318,9 +318,11 @@ console.log("\n4. on a phone: the row is retired, the menu lives in the account 
   });
   await p.close();
   ok('the row under the logo is gone', m.rowGone);
+  // Navigation left this strip by request: it lives with the overlays now,
+  // as the op-navigation pill, so the panel lists everything BUT it.
   ok('its buttons live in the account panel instead, Updates and Messages included',
      m.menuShown && JSON.stringify(m.menuLabels)
-       === JSON.stringify(['Settings', 'Navigation', 'Tutorial', 'Credits',
+       === JSON.stringify(['Settings', 'Tutorial', 'Credits',
                            'Feedback', 'Updates', 'Messages']),
      JSON.stringify(m.menuLabels));
   ok('the collapsed search bar is just its two buttons, hugging the corner',
