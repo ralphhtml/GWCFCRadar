@@ -121,13 +121,17 @@ console.log('\n2. desktop: still preloads every frame at normal zoom (unchanged)
   const desktopCtx = await browser.newContext();
   const { page, errors } = await bootPage(desktopCtx);
 
-  const r = await page.evaluate((frames) => {
+  const r = await page.evaluate(async (frames) => {
     radarFrames = frames;
     currentFrame = 0;
     activeLayers.nexrad = true;
     map.setZoom(7);
     _buildRadarPool();
     _activateWindow(0);
+    // The window fills in timed batches now (the burst of simultaneous
+    // tile requests was most of the post-zoom stutter), so the count is
+    // read after the schedule has run, not the same tick it was asked.
+    await new Promise(res => setTimeout(res, 2500));
     return { isIOS: _isIOS, poolLen: _radarLayerPool.length,
              count: _radarLayerPool.filter(Boolean).length };
   }, seedFrames(20));
@@ -139,6 +143,58 @@ console.log('\n2. desktop: still preloads every frame at normal zoom (unchanged)
 
   await page.close();
   await desktopCtx.close();
+}
+
+console.log('\n4. the machine\'s memory sizes the window, and a hidden tab sheds');
+{
+  const smallCtx = await browser.newContext();
+  await smallCtx.addInitScript(() => {
+    Object.defineProperty(navigator, 'deviceMemory', { get: () => 4 });
+  });
+  const { page, errors } = await bootPage(smallCtx);
+  const r = await page.evaluate((frames) => {
+    radarFrames = frames;
+    const w = _poolWindow(50);
+    return { win: w.e - w.s + 1, goesMax: GOES_POOL_MAX };
+  }, seedFrames(100));
+  ok('a 4 GB machine gets a 12-frame radar window, not 24',
+     r.win === 12, JSON.stringify(r));
+  ok('and a 6-frame satellite pool, not 12', r.goesMax === 6, String(r.goesMax));
+  ok('nothing threw', errors.length === 0, errors.join(' | '));
+  await page.close();
+  await smallCtx.close();
+
+  const bigCtx = await browser.newContext();
+  const big = await bootPage(bigCtx);
+  const s = await big.page.evaluate(async (frames) => {
+    radarFrames = frames;
+    currentFrame = 3;
+    activeLayers.nexrad = true;
+    map.setZoom(7);
+    _buildRadarPool();
+    _activateWindow(3);
+    await new Promise(res => setTimeout(res, 2500));
+    const before = _radarLayerPool.filter(Boolean).length;
+    // The 60-second hidden timer's job, run directly.
+    _memShedHeavy();
+    const after = _radarLayerPool.filter(Boolean).length;
+    const keptCurrent = !!_radarLayerPool[3];
+    // Coming back rebuilds from the shown frame, as the listener does.
+    _activateWindow(currentFrame);
+    await new Promise(res => setTimeout(res, 2500));
+    const rebuilt = _radarLayerPool.filter(Boolean).length;
+    return { before, after, keptCurrent, rebuilt,
+             timerWired: typeof _memShedTimer !== 'undefined' };
+  }, seedFrames(20));
+  ok('a background shed drops every pooled frame but the one on screen',
+     s.before >= 20 && s.after === 1 && s.keptCurrent, JSON.stringify(s));
+  ok('and the pool rebuilds in full when the tab comes back',
+     s.rebuilt === s.before, JSON.stringify(s));
+  ok('the hidden-tab timer is wired for every platform, not just iOS',
+     s.timerWired === true);
+  ok('nothing threw', big.errors.length === 0, big.errors.join(' | '));
+  await big.page.close();
+  await bigCtx.close();
 }
 
 console.log('\n3. desktop: low zoom still caps the window (unchanged behavior)');

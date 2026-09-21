@@ -47,8 +47,10 @@ console.log('\n1. every guard is in the page');
   ok('the keyless stand-in does the same and skips @2x tiles on iOS',
      PAGE.includes("_isIOS ? url.replace('{r}', '') : url")
      && /keepBuffer: _isIOS \? 2 : 8, updateWhenZooming: !_isIOS,\s*updateWhenIdle: _isIOS \}, opts/.test(PAGE));
-  ok('satellite tiles are not fetched at four times the pixels on iOS',
-     PAGE.includes('detectRetina: !_isIOS,'));
+  // Grew a second condition when small-memory desktops joined the rule:
+  // retina tiles are for machines that can afford the decode.
+  ok('satellite tiles are not fetched at four times the pixels on iOS or small machines',
+     (PAGE.match(/detectRetina: !_isIOS\s*\n?\s*&& \(\(\(typeof navigator !== 'undefined' && navigator\.deviceMemory\) \|\| 8\) > 4\)/g) || []).length >= 2);
   ok('the three canvas renderers pad far less on iOS',
      PAGE.includes("L.canvas({ pane: 'alertsPane', padding: _isIOS ? 0.1 : 0.3 })")
      && PAGE.includes('L.canvas({ padding: _isIOS ? 0.15 : 0.5 })')
@@ -59,7 +61,8 @@ console.log('\n1. every guard is in the page');
      && !/url: canvas\.toDataURL\('image\/png'\),\s*canvas: canvas,/.test(PAGE));
   ok('the caches and pools are shallowest on a phone, shallow on a tablet',
      PAGE.includes('const L3_PIC_MAX = _isIOS ? 1 : 6;')
-     && PAGE.includes('const GOES_POOL_MAX = _isIOS ? (_iosPhone ? 2 : 3) : 12;')
+     && PAGE.includes('const GOES_POOL_MAX = _isIOS ? (_iosPhone ? 2 : 3)')
+     && /GOES_POOL_MAX[\s\S]{0,220}?gb <= 2 \? 4 : gb <= 4 \? 6 : 12/.test(PAGE)
      && PAGE.includes('const MRMS_WINDOW = _isIOS ? (_iosPhone ? 2 : 3) : 14;')
      && PAGE.includes('const sz = _iosPhone ? 4 : 6, half = _iosPhone ? 2 : 3;'));
   ok('radar loops are shorter and gentler on iOS, budgeted by decoded size',
@@ -76,9 +79,17 @@ console.log('\n1. every guard is in the page');
      && PAGE.includes('mask.width = mask.height = 0'));
   ok('the 100 MB city parse is skipped on iOS, where deviceMemory is never reported',
      PAGE.includes("conn.saveData || _isIOS) { _cityWebTiles = 'failed'"));
-  ok('a hidden tab sheds its rebuildable caches on iOS',
+  // The shed grew up: iOS still gets the light clear the moment it hides,
+  // and EVERY platform now runs the heavy shed (radar window + satellite
+  // pool down to the frame on screen) after a minute in the background,
+  // rebuilding on return. That pile of invisible decoded frames is what
+  // was taking whole browsers down on long-lived tabs.
+  ok('a hidden tab sheds its rebuildable caches, on every platform',
      /function _memShed\(\)[\s\S]*?_l3Pic\.clear\(\)[\s\S]*?_inspPxClear\(\)/.test(PAGE)
-     && /if \(document\.hidden\) _memShed\(\);/.test(PAGE));
+     && /if \(_isIOS\) _memShed\(\);/.test(PAGE)
+     && /function _memShedHeavy\(\)/.test(PAGE)
+     && /_memShedTimer = setTimeout\(_memShedHeavy, 60000\);/.test(PAGE)
+     && /_activateWindow\(currentFrame\); \} catch \(e\) \{\}/.test(PAGE));
   const EM = String.fromCharCode(0x2014);
   ok('no em dashes here or in the page',
      !PAGE.includes(EM)

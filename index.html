@@ -12612,7 +12612,15 @@ function _poolWindow(idx) {
   // still preloaded, and it slides for the long ones. 24 covers a whole
   // two-hour loop; wider than that bought smoothness nobody could see while
   // costing a tile fetch per layer on every pan and zoom.
-  const sz = 24, half = 12;
+  //
+  // Sized to the machine: deviceMemory is in gigabytes and absent on
+  // Safari. A 4 GB laptop holding 24 decoded tile layers beside the
+  // basemap, the satellite and whatever else the session opened is the
+  // "crashed my entire browser" report, so small machines get a smaller
+  // window - the loop still plays, frames just re-fetch a little sooner.
+  const _gb = (typeof navigator !== 'undefined' && navigator.deviceMemory) || 8;
+  const sz = _gb <= 2 ? 8 : _gb <= 4 ? 12 : 24;
+  const half = sz >> 1;
   if (n <= sz) return { s: 0, e: n - 1 };
   let s = Math.max(0, idx - half);
   let e = Math.min(n - 1, s + sz - 1);
@@ -30030,8 +30038,12 @@ let _goesPool       = [];
 let _goesPoolLoaded = [];
 // A Pi composite frame is a picture up to 3200 pixels on its long side, some
 // 25 MB once decoded, and every pooled frame is decoded because it is an
-// attached overlay. Three is the most a phone can hold beside the basemap.
-const GOES_POOL_MAX = _isIOS ? (_iosPhone ? 2 : 3) : 12;
+// attached overlay. Three is the most a phone can hold beside the basemap,
+// and a small-memory desktop gets a middle answer for the same reason the
+// radar window does (deviceMemory is gigabytes, absent on Safari).
+const GOES_POOL_MAX = _isIOS ? (_iosPhone ? 2 : 3)
+  : (() => { const gb = (typeof navigator !== 'undefined' && navigator.deviceMemory) || 8;
+             return gb <= 2 ? 4 : gb <= 4 ? 6 : 12; })();
 
 function _goesPoolWindow(idx) {
   const n = goesFrames.length;
@@ -30179,8 +30191,10 @@ function _makeGoesLayer(timeStr, opacity) {
     //
     // Except on iOS, where four times the pixels per tile, times a pool of
     // frames, is the decoded-image memory that gets the tab killed. A phone
-    // takes the softer picture over the reload page.
-    detectRetina: !_isIOS,
+    // takes the softer picture over the reload page - and so does a
+    // small-memory desktop, for exactly the same arithmetic.
+    detectRetina: !_isIOS
+      && (((typeof navigator !== 'undefined' && navigator.deviceMemory) || 8) > 4),
   };
   const layer = L.tileLayer.wms(`${cfg.url}?_cb=${Date.now()}`, opts);
   // Satellite is imagery, not banded data, so it must NOT inherit the crisp
@@ -45103,11 +45117,57 @@ function _memShed() {
   try { if (typeof _mrmsWarmed !== 'undefined') _mrmsWarmed.clear(); } catch (e) {}
   try { if (typeof _inspPxClear === 'function') _inspPxClear(); } catch (e) {}
 }
-if (_isIOS) {
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) _memShed();
-  });
+
+// The heavier shed, for a tab that has been in the background a while: a
+// hidden tab still holds every decoded frame in the radar window and the
+// satellite pool, and that pile of invisible pictures is what gets a
+// long-lived tab killed by the OS - or takes the whole browser down with
+// it on a small machine. Everything dropped here rebuilds from the frame
+// on screen the moment the tab comes back, so the person sees the same
+// picture, minus the memory bill they were paying while not looking.
+function _memShedHeavy() {
+  _memShed();
+  try {
+    for (let i = 0; i < _radarLayerPool.length; i++) {
+      if (i === currentFrame) continue;
+      if (_radarLayerPool[i]) {
+        try { map.removeLayer(_radarLayerPool[i]); } catch (e) {}
+        _radarLayerPool[i] = null;
+        _radarLayerLoaded[i] = false;
+      }
+      if (_canadaLayerPool[i]) {
+        try { map.removeLayer(_canadaLayerPool[i]); } catch (e) {}
+        _canadaLayerPool[i] = null;
+        _canadaLayerLoaded[i] = false;
+      }
+    }
+    // So the next _activateWindow call sees a moved window and rebuilds.
+    _lastWindowS = -1; _lastWindowE = -1;
+  } catch (e) {}
+  try {
+    _goesPool.forEach((l, i) => {
+      if (!l || i === goesCurrentFrame) return;
+      try { map.removeLayer(l); } catch (e2) {}
+      _goesPool[i] = null;
+      _goesPoolLoaded[i] = false;
+    });
+  } catch (e) {}
 }
+let _memShedTimer = null;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    // iOS pays for decoded pictures the moment it is backgrounded, so its
+    // light shed stays immediate; everyone waits a minute for the heavy
+    // one, so flicking to another tab and straight back costs nothing.
+    if (_isIOS) _memShed();
+    clearTimeout(_memShedTimer);
+    _memShedTimer = setTimeout(_memShedHeavy, 60000);
+  } else {
+    clearTimeout(_memShedTimer);
+    try { if (typeof _radarPoolBuilt !== 'undefined' && _radarPoolBuilt) _activateWindow(currentFrame); } catch (e) {}
+    try { if (activeLayers.satellite && goesFrames.length) showGoesFrame(goesCurrentFrame); } catch (e) {}
+  }
+});
 
 // Find a cached picture, allowing for the fact that a tilt can be asked for in
 // two different ways that mean the same thing.
@@ -49193,7 +49253,9 @@ function _scRenderSlot(slot) {
     layers: cfg.layer, styles: '', format: 'image/png', transparent: true,
     version: '1.1.1', opacity: 0.85, pane: paneName, crossOrigin: 'anonymous',
     noWrap: true, TIME: slot.frameIso, keepBuffer: _isIOS ? 1 : 2,
-    updateWhenIdle: _isIOS, updateWhenZooming: false, detectRetina: !_isIOS,
+    updateWhenIdle: _isIOS, updateWhenZooming: false,
+    detectRetina: !_isIOS
+      && (((typeof navigator !== 'undefined' && navigator.deviceMemory) || 8) > 4),
     attribution: '© Iowa Mesonet · GOES',
   }).addTo(map);
   _scSyncSlotTime(slot, _scMainTimeMs(), true);
@@ -65662,6 +65724,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-p', date: 'Sep 21, 2026',
+    text: 'Crash protection for long sessions and smaller computers. The app now sizes its frame pools to the machine\'s own memory (a 4 GB laptop holds fewer preloaded radar and satellite frames, and skips the extra-sharp retina tiles), and a tab left in the background for a minute quietly lets go of every preloaded frame except the one on screen, rebuilding them the moment you come back. Same picture, much smaller memory bill.' },
   { id: '2026-09-21-o', date: 'Sep 21, 2026',
     text: 'Satellite compare, like the radar one: a Compare bubble in the satellite menu cuts the map into strips with draggable dividers. While it is on, tapping a product adds that picture beside the main one, and tapping a sector pill adds the current product from that sector, so infrared can sit beside visible, or GOES-East beside GOES-West. Every strip follows the playbar.' },
   { id: '2026-09-21-n', date: 'Sep 21, 2026',
