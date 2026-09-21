@@ -165,8 +165,12 @@ const walk = await p.evaluate(async () => {
   // A row that neither opened a level, nor lit, nor opened a modal, must be
   // one that needs the Pi: RTMA (id sub-nws-*, or the RTMA choice on a
   // two-source screen) or a Pi-built sea temperature field (sub-sstvar-*).
+  // HRRR analysis rows joined RTMA's exemption when the HRRR analysis
+  // layer shipped: both are built by the Pi, so in this sandbox neither
+  // can light.
   const needsPi = r => /^sub-nws-/.test(r.id) || /^sub-sstvar-/.test(r.id)
-    || /> RTMA$/.test(r.name) || /^radar > Level 3 >/.test(r.name);
+    || /> RTMA$/.test(r.name) || /> HRRR$/.test(r.name)
+    || /^radar > Level 3 >/.test(r.name);
   const dead = subs.filter(r => !r.navigated && !r.lit && !r.modal && !needsPi(r));
   ok('every other row opened a level, lit up, or opened its modal',
      dead.length === 0, JSON.stringify(dead.map(r => r.name).slice(0, 8)));
@@ -184,11 +188,19 @@ console.log('\n3. the radar source row and the NWS rows inside it');
 {
   const r = await p.evaluate(() => {
     toggleRadarSub();
-    const subs = [...document.querySelectorAll('#sub-bubbles .sub-bubble')]
+    const read = () => [...document.querySelectorAll('#sub-bubbles .sub-bubble')]
       .filter(el => !el.classList.contains('sb-back'));
-    return {
+    const topSubs = read();
+    const topLabels = topSubs.map(el => (el.querySelector('.sb-label') || el).textContent.trim());
+    // The NDFD rows moved behind the Observations sub-bubble by request,
+    // so the walk descends into it for them.
+    toggleNwsObsSub('radar');
+    const subs = read();
+    const out = {
+      topLabels,
       labels: subs.map(el => (el.querySelector('.sb-label') || el).textContent.trim()),
-      infos: subs.filter(el => el.querySelector('.ov-info-btn')).length,
+      infos: topSubs.filter(el => el.querySelector('.ov-info-btn')).length
+        + '/' + topSubs.length,
       nwsWords: subs.filter(el => /^sub-nws-/.test(el.id)).map(el => {
         const btn = el.querySelector('.ov-info-btn');
         if (!btn) return '';
@@ -199,16 +211,24 @@ console.log('\n3. the radar source row and the NWS rows inside it');
         return txt;
       }),
     };
+    toggleRadarSub();
+    return out;
   });
-  ok('the sources, the Time Machine and the four NDFD rows are all there',
-     ['Normal', 'Level 2', 'Level 3', 'Composite', 'Time Machine', 'Precip Chance',
-      'Precip Amount', 'Snow Amount', 'Weather Type']
+  ok('the sources, the Time Machine and the Observations door are all there',
+     ['Normal', 'Level 2', 'Level 3', 'Composite', 'Time Machine', 'Observations']
+       .every(l => r.topLabels.some(x => x.startsWith(l))), JSON.stringify(r.topLabels));
+  ok('and the four NDFD rows live behind Observations',
+     ['Precip Chance', 'Precip Amount', 'Snow Amount', 'Weather Type']
        .every(l => r.labels.some(x => x.startsWith(l))), JSON.stringify(r.labels));
   ok('every row carries its info button the moment the menu is built',
-     r.infos === r.labels.length, `${r.infos} of ${r.labels.length}`);
+     /^(\d+)\/\1$/.test(r.infos), r.infos);
+  // Five rows behind Observations now: the four NDFD forecasts plus HRRR
+  // Reflectivity, which is an analysis rather than a forecast and says so.
   ok('and the NWS rows explain themselves in real words, not the fallback',
-     r.nwsWords.length === 4 && r.nwsWords.every(t => /NWS forecast/.test(t)
-       && !/No description has been written/.test(t)),
+     r.nwsWords.length === 5
+       && r.nwsWords.every(t => !/No description has been written/.test(t))
+       && r.nwsWords.filter(t => /NWS forecast/.test(t)).length === 4
+       && r.nwsWords.some(t => /HRRR analys/.test(t)),
      JSON.stringify(r.nwsWords.map(t => t.slice(0, 40))));
 }
 

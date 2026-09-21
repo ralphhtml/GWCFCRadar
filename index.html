@@ -6176,6 +6176,12 @@ body.lite-mode #export-modal { display: none !important; }
   border-color: #00e5ff;
   box-shadow: 0 0 10px rgba(0,229,255,0.9);
 }
+/* A satellite product bubble that is one of the strips in a running
+   satellite comparison, same signal as the radar pills above. */
+.sub-bubble.in-compare {
+  border-color: #00e5ff;
+  box-shadow: 0 0 10px rgba(0,229,255,0.9);
+}
 
 /* ── THE SITE POPUP ── two choices, floated above a tapped radar pill */
 #site-pop {
@@ -10860,6 +10866,11 @@ body.clean-mode #clean-hint { opacity: 1; }
     <!-- Radar site comparison: the same strips, a second set of them -->
     <div id="rc-dividers"></div>
     <div id="rc-labels"></div>
+
+    <!-- Satellite comparison: the same strips a third time, satellite
+         picture against satellite picture -->
+    <div id="sc-dividers"></div>
+    <div id="sc-labels"></div>
 
     <!-- Cam Panel injected at body level via position:fixed --!>
     <div id="model-info">
@@ -29742,17 +29753,20 @@ function _goesIsPi() {
 }
 
 // Auto resolves to whichever satellite the map is nearer, which for a
-// composite is the only sensible reading of "Auto".
-function _goesPiTarget() {
+// composite is the only sensible reading of "Auto". Parameterised so the
+// satellite comparison can resolve a strip's own product and region with
+// the same rules; the no-argument wrapper below keeps every existing
+// caller reading the main picture's choices.
+function _goesPiTargetFor(product, regionId) {
   // The global mosaic is served as a satellite named "global" whose sectors
   // are the region ids themselves. Any region that is not one of its own
   // (Auto included) means the whole world, which is the only honest default
   // for a worldwide image.
-  if (_goesProduct().gsat === 'global') {
-    const r = GOES_REGIONS.find(x => x.id === _goesRegionId);
+  if (product.gsat === 'global') {
+    const r = GOES_REGIONS.find(x => x.id === regionId);
     return { sat: 'global', sector: (r && r.g) ? r.id : 'global' };
   }
-  if (_goesRegionId !== 'auto') return GOES_PI_SECTOR[_goesRegionId] || null;
+  if (regionId !== 'auto') return GOES_PI_SECTOR[regionId] || null;
   let west = false;
   try {
     if (map) {
@@ -29762,6 +29776,7 @@ function _goesPiTarget() {
   } catch (e) {}
   return { sat: west ? 'west' : 'east', sector: 'conus' };
 }
+function _goesPiTarget() { return _goesPiTargetFor(_goesProduct(), _goesRegionId); }
 
 // One sector's manifest, briefly cached. Held per sector because switching
 // between two composites in the same sector must not refetch, and switching
@@ -29846,9 +29861,10 @@ function _goesPiWhy() {
 // timeline wants. Each frame carries its own rectangle, because the two
 // mesoscale boxes move between scans and sharing one would put every frame
 // but the newest in the wrong place.
-async function _goesPiFrames() {
-  const target = _goesPiTarget();
-  const recipe = _goesProduct().recipe;
+async function _goesPiFrames() { return _goesPiFramesFor(_goesProduct(), _goesRegionId); }
+async function _goesPiFramesFor(product, regionId) {
+  const target = _goesPiTargetFor(product, regionId);
+  const recipe = product.recipe;
   if (!target || !recipe) return [];
   const man = await _goesPiManifest(target.sat, target.sector);
   const p = man && man.products && man.products[recipe];
@@ -29959,9 +29975,13 @@ let _goesRegionId  = 'auto';  // 'auto' or a GOES_REGIONS id
 let _goesRepaintRegions = () => {};
 let _goesProductId = 'ch13'; // a GOES_PRODUCTS id (default: Clean IR)
 
-// Build { url, layer } for the current product + region combination.
+// Build { url, layer } for a product + region combination. Parameterised
+// for the satellite comparison's strips; the no-argument wrapper below is
+// what the main picture keeps calling.
 function _detectGoesConfig() {
-  const product = GOES_PRODUCTS.find(p => p.id === _goesProductId) || GOES_PRODUCTS[0];
+  return _goesConfigFor(_goesProduct(), _goesRegionId);
+}
+function _goesConfigFor(product, regionId) {
   const ch = product.ch;
 
   // Work out which satellite and which Iowa Mesonet sector this view wants,
@@ -29970,7 +29990,7 @@ function _detectGoesConfig() {
 
   // The g-flagged mosaic sectors have no WMS behind them, so they can never
   // be the override here even if one is somehow still selected.
-  const override = GOES_REGIONS.find(r => r.id === _goesRegionId && r.id !== 'auto' && !r.g);
+  const override = GOES_REGIONS.find(r => r.id === regionId && r.id !== 'auto' && !r.g);
   if (override) {
     base = override.url; prefix = override.prefix;
   } else if (map) {
@@ -30530,11 +30550,22 @@ function _goesProductBubble(p) {
   // light its whole path (kind, category, product) the moment the Satellite
   // menu opened, which read as "the satellite turned itself on".
   el.className = 'sub-bubble'
-    + (activeLayers.satellite && _goesProductId === p.id ? ' active' : '');
+    + (activeLayers.satellite && _goesProductId === p.id ? ' active' : '')
+    + (typeof _scOn !== 'undefined' && _scOn
+       && _scSlots.some(s => s.productId === p.id) ? ' in-compare' : '');
   el.dataset.productId = p.id;
   el.innerHTML = `<span class="sb-icon">${_eicon(p.icon)}</span>`
     + `<span class="sb-label">${_ccEsc ? _ccEsc(p.label) : p.label}</span>`;
   el.onclick = () => {
+    // While a satellite comparison is running, a product tap adds that
+    // product as the next strip rather than replacing the main picture,
+    // the same bargain the radar pills keep while radars are compared.
+    // Tapping a product that already has a strip takes that strip out.
+    if (typeof _scOn !== 'undefined' && _scOn && activeLayers.satellite) {
+      _scAddSlot(p.id);
+      el.classList.toggle('in-compare', _scSlots.some(s => s.productId === p.id));
+      return;
+    }
     // Tapping the product that is already showing turns the layer off, the
     // same bargain every radar product pill keeps. With the parent bubble no
     // longer force-enabling the layer, this is also the honest off switch
@@ -30581,6 +30612,7 @@ function toggleSatelliteSub() {
   });
 
   _satTimeMachineBubble(wrap);
+  _scCompareBubble(wrap);
   _satRegionRow(wrap);
   wrap.style.display = 'flex';
 }
@@ -30630,6 +30662,7 @@ function _satKindSub(k) {
   });
 
   _satTimeMachineBubble(wrap);
+  _scCompareBubble(wrap);
   _satRegionRow(wrap);
   wrap.style.display = 'flex';
 }
@@ -30643,8 +30676,26 @@ function _satCatSub(k, c, items) {
   _radarBackBubble(wrap, () => _satKindSub(k), c.label);
   items.forEach(p => wrap.appendChild(_goesProductBubble(p)));
   _satTimeMachineBubble(wrap);
+  _scCompareBubble(wrap);
   _satRegionRow(wrap);
   wrap.style.display = 'flex';
+}
+
+// The satellite comparison's switch, drawn at every level of the menu the
+// way the Time Machine is, so it can be flipped from wherever the person
+// happens to be browsing products.
+function _scCompareBubble(wrap) {
+  const el = document.createElement('div');
+  el.className = 'sub-bubble' + (typeof _scOn !== 'undefined' && _scOn ? ' active' : '');
+  el.id = 'sub-sat-compare';
+  el.title = 'Cut the map into strips and put satellite pictures side by side';
+  el.innerHTML = '<span class="sb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></span>'
+               + '<span class="sb-label">Compare</span>';
+  el.onclick = () => { if (typeof _scToggle === 'function') _scToggle(); };
+  if (LAYER_DESCRIPTIONS['sat-compare']) {
+    el.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS['sat-compare']));
+  }
+  wrap.appendChild(el);
 }
 
 function _satRegionRow(wrap) {
@@ -30665,6 +30716,13 @@ function _satRegionRow(wrap) {
       btn.dataset.regionId = r.id;
       btn.textContent = r.label;
       btn.onclick = () => {
+        // While a comparison is running a sector tap adds a strip of the
+        // main product in THAT sector (East beside West, CONUS beside a
+        // mesoscale box) instead of moving the main picture there.
+        if (typeof _scOn !== 'undefined' && _scOn && activeLayers.satellite) {
+          _scAddSlot(_goesProductId, r.id);
+          return;
+        }
         rRow.querySelectorAll('.sat-region-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         _setGoesRegion(r.id);
@@ -30715,6 +30773,7 @@ const LAYER_DESCRIPTIONS = {
   'nws-wind-gust':        'Wind gusts right now from the RTMA analysis: the peak over the sustained speed, which is what takes down branches and power lines.',
   'nws-wind-wdir':        'The NWS forecast wind direction, from the NDFD grids. Where the wind is blowing FROM, in degrees, so 270 is a west wind.',
   'nws-pressure-pres':    'Surface pressure right now from the RTMA analysis, in hPa. Station level rather than reduced to sea level, so mountains read lower whatever the weather.',
+  'nws-radar-refc':       'Composite reflectivity from the newest hourly HRRR analyses, built on the Pi: the model\'s own radar picture at each run\'s starting hour, 3 km. Useful where real radar coverage is thin, and for seeing what the model believes is happening.',
   'nws-radar-pop12':      'The NWS forecast chance of rain or snow over each 12 hour period, from the NDFD grids. The number a forecaster actually signed off on, not a model guess.',
   'nws-radar-qpf':        'The NWS forecast precipitation amount, from the NDFD grids: how much liquid is expected to fall in each 6 hour window.',
   'nws-radar-snow':       'The NWS forecast snowfall, from the NDFD grids: how much snow is expected in each 6 hour window.',
@@ -30829,6 +30888,7 @@ const LAYER_DESCRIPTIONS = {
   'radar-l3':     'Level 3 is a single radar\'s lighter, pre-processed feed: slightly coarser than Level 2 but faster, with extra derived products like storm totals, VIL, and echo tops.',
   'radar-mrms':   'MRMS is a national mosaic NOAA builds by merging every radar together, then computing things no single radar can: rotation tracks, hail swaths, rainfall totals, lightning probability and more. Your Pi builds the pictures; the whole catalogue lives in here.',
   'timemachine': 'Travel the radar back to any moment. Pick a date and time, or jump by a day, a month or a year. A single site redraws as it looked then (Level 3 product files back to March 2022, the Level 2 tape archive before that, to 2008), with its own scrubbable loop around that moment. The mosaic travels too: with no single site on screen, the national NEXRAD composite Iowa Mesonet has kept every five minutes since November 2010 is what moves, since the MRMS 1 km mosaic only keeps its last few hours. A radar that was down that day has nothing to show and will say so.',
+  'sat-compare': 'Cuts the map into vertical strips and puts satellite pictures side by side, with draggable dividers. While it is on, tapping a product adds that product as the next strip, and tapping a sector pill adds the current product from that sector - so infrared can sit beside visible, GOES-East beside GOES-West, or a mesoscale box beside the CONUS view. Every strip follows the playbar at its own frame nearest the main picture\'s moment. Tap a strip\'s product again, or the × on its label, to take it out.',
   // The Models row's two doors.
   'run-models':      'Forecast model charts - GFS, ECMWF, HRRR, NAM and more - browsable by product and forecast hour, with an Ensemble Spread view that shows where the models disagree.',
   'spaghetti-models': 'Tropical guidance from the NHC a-deck: official tracks and cones, plus storm-track spaghetti from every published model, each line wearing its model\'s name tag on a stem. Includes the track animation.',
@@ -48946,6 +49006,336 @@ function _rcOff() {
   try { _refreshNexradSiteStyles(); } catch (e) {}
 }
 
+// ── COMPARING SATELLITE PICTURES SIDE BY SIDE ─────────────────────────────
+// The radar comparison's idea, applied to the satellite. Strip A is the
+// satellite picture already on screen, drawn by the ordinary GOES code and
+// never touched here. Every strip after it is another satellite picture -
+// a different channel or composite, a different sector, or the same shot
+// from the other satellite - clipped to its own band in its own pane just
+// above the main picture. Each strip snapshots the product AND the sector
+// chosen at the moment it was added, which is what lets one comparison mix
+// all three axes: while the Compare bubble is lit, tapping a product adds
+// that product in the current sector, and tapping a sector pill adds the
+// current product in that sector. The strips follow the playbar: each one
+// shows its own frame nearest the moment strip A is on.
+let _scOn = false;
+let _scSlots = [];     // [{id, productId, regionId, kind, layer, frames, frameIso, dividerEl, labelEl, token}]
+let _scSplits = [];    // ascending %, one per slot: the slot's left edge
+let _scSeq = 0;
+let _scDragIdx = -1;
+let _scTimer = null;
+let _scKey = '';
+let _scTimeMs = 0;
+const SC_MAX_STRIPS = 5;   // six pictures across one map, matching the radars
+
+function _scProductOf(id) { return GOES_PRODUCTS.find(p => p.id === id) || null; }
+function _scRegionLabel(id) {
+  const r = GOES_REGIONS.find(x => x.id === id);
+  return r && r.id !== 'auto' ? r.label : '';
+}
+
+// Everything that, when it changes, means the comparison must react: the
+// layer going off ends it, the main pick moving onto a strip removes that
+// strip, and a sector or clock change redraws them all.
+function _scModeKey() {
+  return [activeLayers.satellite ? 1 : 0, _goesProductId, _goesRegionId,
+          (typeof _tmSatAt === 'number' && _tmSatAt) || 0].join('|');
+}
+
+function _scSyncBubble() {
+  const el = document.getElementById('sub-sat-compare');
+  if (el) el.classList.toggle('active', _scOn);
+}
+
+function _scToggle() {
+  if (_scOn) {
+    _scOff();
+    if (typeof showToast === 'function') showToast('Satellite compare ended.', 2500);
+    return;
+  }
+  // Choosing Compare IS asking for satellite pictures, so with the layer
+  // off it turns on first, showing the remembered product as strip A -
+  // the same bargain choosing a product keeps.
+  if (!activeLayers.satellite) _setGoesProduct(_goesProductId);
+  if (!activeLayers.satellite) {
+    if (typeof showToast === 'function') showToast('Pick a satellite product first, then compare.', 4000);
+    return;
+  }
+  _scOn = true;
+  _scKey = _scModeKey();
+  _scTimeMs = 0;
+  map.on('move zoom resize', _scUpdateClips);
+  if (!_scTimer) _scTimer = setInterval(_scTickFn, 500);
+  _scSyncBubble();
+  if (typeof showToast === 'function') {
+    const p = _scProductOf(_goesProductId);
+    showToast(`${(p && p.label) || 'The current picture'} is strip A. Tap another satellite product, or a sector pill, to add it beside it; tap it again, or the × on its label, to take it out.`, 6000);
+  }
+}
+
+function _scAddSlot(productId, regionId) {
+  if (!_scOn) return;
+  const rid = regionId !== undefined ? regionId : _goesRegionId;
+  if (productId === _goesProductId && rid === _goesRegionId) {
+    if (typeof showToast === 'function') showToast('That is already strip A.', 2500);
+    return;
+  }
+  const have = _scSlots.find(s => s.productId === productId && s.regionId === rid);
+  if (have) { _scRemoveSlot(have.id); return; }   // its own tap, again, takes it out
+  if (_scSlots.length >= SC_MAX_STRIPS) {
+    if (typeof showToast === 'function') showToast(`${SC_MAX_STRIPS + 1} pictures across one map is the most it can hold. Remove one first.`, 3500);
+    return;
+  }
+  const slot = { id: 's' + (++_scSeq), productId, regionId: rid, kind: null, layer: null,
+                 frames: null, frameIso: '', dividerEl: null, labelEl: null, token: 0 };
+  _scSlots.push(slot);
+  _scRecalcSplits();
+  _scRefreshDOM();
+  _scRenderSlot(slot);
+  _scUpdateClips();
+}
+
+function _scRemoveSlot(id) {
+  const slot = _scSlots.find(s => s.id === id);
+  if (!slot) return;
+  _scClearSlot(slot);
+  _scSlots = _scSlots.filter(s => s.id !== id);
+  // The last strip gone is the comparison over, matching the radars.
+  if (!_scSlots.length) {
+    _scOff();
+    if (typeof showToast === 'function') showToast('Satellite compare ended.', 2500);
+    return;
+  }
+  _scRecalcSplits();
+  _scRefreshDOM();
+  _scUpdateClips();
+}
+
+function _scRecalcSplits() {
+  const n = _scSlots.length;
+  _scSplits = _scSlots.map((_, i) => Math.round(10000 * (i + 1) / (n + 1)) / 100);
+}
+
+function _scClearSlot(slot) {
+  slot.token++;
+  if (slot.layer) { try { map.removeLayer(slot.layer); } catch (e) {} slot.layer = null; }
+  slot.frames = null; slot.frameIso = ''; slot.kind = null;
+}
+
+function _scPaneName(slot) { return 'sc-' + slot.id; }
+
+// Just above the satellite's own pane, and inside the satellite's band of
+// the stack, so the strips stay under the radar, the borders and the
+// warnings exactly like the picture they sit beside.
+function _scSlotZ(i) {
+  let base = 399;
+  try {
+    const p = map.getPane('satPhotoPane');
+    const z = p && (parseInt(p.style.zIndex, 10) || parseInt(getComputedStyle(p).zIndex, 10));
+    if (z) base = z;
+  } catch (e) {}
+  return base + 1 + Math.min(i, 7);
+}
+function _scSyncPaneZ() {
+  _scSlots.forEach((slot, i) => {
+    const p = map.getPane(_scPaneName(slot));
+    if (p) p.style.zIndex = String(_scSlotZ(i));
+  });
+}
+
+function _scRenderAll() {
+  _scSlots.forEach(_scRenderSlot);
+  _scRefreshDOM();
+  _scUpdateClips();
+}
+
+function _scRenderSlot(slot) {
+  _scClearSlot(slot);
+  if (!_scOn) return;
+  const paneName = _scPaneName(slot);
+  if (!map.getPane(paneName)) {
+    const p = map.createPane(paneName);
+    p.style.pointerEvents = 'none';
+    // Satellite is imagery: it keeps the smooth scaling the main satellite
+    // pane has, not the crisp rendering the radar panes force.
+    p.classList.add('wx-photo');
+  }
+  _scSyncPaneZ();
+  const product = _scProductOf(slot.productId);
+  if (!product) return;
+  const token = ++slot.token;
+  const alive = () => _scOn && token === slot.token && _scSlots.includes(slot);
+  if (product.src === 'pi') {
+    // A Pi-built composite: its own real frame list, an image per scan.
+    slot.kind = 'pi';
+    _goesPiFramesFor(product, slot.regionId).then(frames => {
+      if (!alive()) return;
+      if (!frames || !frames.length) {
+        if (typeof showToast === 'function') {
+          showToast(`${product.label} has no frames to compare (it is built by the Pi).`, 4000);
+        }
+        _scRemoveSlot(slot.id);
+        return;
+      }
+      slot.frames = frames;
+      _scSyncSlotTime(slot, _scMainTimeMs(), true);
+    }).catch(() => {});
+    return;
+  }
+  // A WMS band: one layer whose TIME follows the playbar, over the same
+  // ten-minute grid the main WMS picture uses.
+  slot.kind = 'wms';
+  const cfg = _goesConfigFor(product, slot.regionId);
+  slot.frames = _buildGoesFrames();
+  const newest = slot.frames[slot.frames.length - 1];
+  slot.frameIso = newest ? newest.timeStr : '';
+  slot.layer = L.tileLayer.wms(`${cfg.url}?_cb=${Date.now()}`, {
+    layers: cfg.layer, styles: '', format: 'image/png', transparent: true,
+    version: '1.1.1', opacity: 0.85, pane: paneName, crossOrigin: 'anonymous',
+    noWrap: true, TIME: slot.frameIso, keepBuffer: _isIOS ? 1 : 2,
+    updateWhenIdle: _isIOS, updateWhenZooming: false, detectRetina: !_isIOS,
+    attribution: '© Iowa Mesonet · GOES',
+  }).addTo(map);
+  _scSyncSlotTime(slot, _scMainTimeMs(), true);
+  _scRefreshLabels();
+}
+
+// ── following the playbar ──
+// The moment strip A is showing, straight off the satellite's own loop.
+function _scMainTimeMs() {
+  try {
+    const f = goesFrames[goesCurrentFrame];
+    if (f && f.time) return f.time.getTime();
+  } catch (e) {}
+  return Date.now();
+}
+function _scSyncSlotTime(slot, ms, force) {
+  if (!slot.frames || !slot.frames.length) return;
+  const f = _rcNearest(slot.frames, x => x.time.getTime(), ms);
+  if (!f || (!force && f.timeStr === slot.frameIso)) return;
+  slot.frameIso = f.timeStr;
+  slot.frameMs = f.time.getTime();
+  if (slot.kind === 'pi') {
+    if (!slot.layer) {
+      slot.layer = L.imageOverlay(f.url, f.bounds,
+        { opacity: 0.85, interactive: false, pane: _scPaneName(slot),
+          crossOrigin: 'anonymous' }).addTo(map);
+    } else {
+      slot.layer.setUrl(f.url);
+      slot.layer.setBounds(f.bounds);
+    }
+  } else if (slot.layer) {
+    try { slot.layer.setParams({ TIME: f.timeStr }); } catch (e) {}
+  }
+  _scRefreshLabels();
+}
+// Twice a second while comparing: the layer going off ends it, the main
+// pick landing on a strip removes that strip, a sector or clock change
+// redraws them all, and a playbar move re-times them.
+function _scTickFn() {
+  if (!_scOn) return;
+  const key = _scModeKey();
+  if (key !== _scKey) {
+    _scKey = key;
+    if (!activeLayers.satellite) {
+      _scOff();
+      if (typeof showToast === 'function') showToast('Satellite compare ended: the satellite layer is off.', 3500);
+      return;
+    }
+    const dup = _scSlots.find(s => s.productId === _goesProductId && s.regionId === _goesRegionId);
+    if (dup) _scRemoveSlot(dup.id);
+    _scRenderAll();
+    _scTimeMs = 0;
+    return;
+  }
+  const t = _scMainTimeMs();
+  if (Math.abs(t - _scTimeMs) < 1000) return;
+  _scTimeMs = t;
+  _scSlots.forEach(s => _scSyncSlotTime(s, t));
+}
+
+// ── the dividers and labels, borrowed whole from the radar comparison ──
+function _scSlotLabel(slot) {
+  const p = _scProductOf(slot.productId);
+  const region = _scRegionLabel(slot.regionId);
+  let when = '';
+  try { if (isFinite(slot.frameMs)) when = _fmtHHMM(new Date(slot.frameMs)); } catch (e) {}
+  return ((p && p.label) || slot.productId)
+    + (region ? ' · ' + region : '') + (when ? ' · ' + when : '');
+}
+function _scRefreshLabels() {
+  _scSlots.forEach((slot, i) => {
+    const t = slot.labelEl && slot.labelEl.querySelector('.rc-label-text');
+    if (t) t.textContent = _rcLetter(i) + '  ' + _scSlotLabel(slot);
+  });
+}
+function _scRefreshDOM() {
+  const dc = document.getElementById('sc-dividers');
+  const lc = document.getElementById('sc-labels');
+  if (!dc || !lc) return;
+  dc.innerHTML = ''; lc.innerHTML = '';
+  _scSlots.forEach((slot, i) => {
+    const d = document.createElement('div');
+    d.className = 'sev-cmp-divider active rc-divider';
+    d.innerHTML = '<div class="sev-cmp-handle"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></div>';
+    d.addEventListener('pointerdown', e => { e.preventDefault(); _scDragIdx = i; });
+    dc.appendChild(d);
+    slot.dividerEl = d;
+    const l = document.createElement('div');
+    l.className = 'sev-cmp-label rc-label';
+    const t = document.createElement('span');
+    t.className = 'rc-label-text';
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'rc-x';
+    x.title = 'Remove this strip';
+    x.textContent = '×';
+    x.addEventListener('pointerdown', e => e.stopPropagation());
+    x.addEventListener('click', e => { e.stopPropagation(); _scRemoveSlot(slot.id); });
+    l.appendChild(t);
+    l.appendChild(x);
+    lc.appendChild(l);
+    slot.labelEl = l;
+  });
+  _scRefreshLabels();
+}
+function _scUpdateClips() {
+  if (!_scOn) return;
+  _scSlots.forEach((slot, i) => {
+    const leftPct = _scSplits[i];
+    const rightPct = (i + 1 < _scSplits.length) ? _scSplits[i + 1] : 100;
+    const g = _stripGeometry(leftPct, rightPct);
+    const pane = map.getPane(_scPaneName(slot));
+    if (pane) pane.style.clipPath = g.polygon;
+    if (slot.dividerEl) slot.dividerEl.style.left = g.leftView + 'px';
+    if (slot.labelEl) slot.labelEl.style.left = (g.leftView + 8) + 'px';
+  });
+}
+function _scSetSplit(idx, clientX) {
+  const pct = _stripPctFromClientX(clientX, _scSplits, idx);
+  if (pct == null) return;
+  _scSplits[idx] = pct;
+  _scUpdateClips();
+}
+window.addEventListener('pointermove', e => { if (_scDragIdx >= 0) _scSetSplit(_scDragIdx, e.clientX); });
+window.addEventListener('pointerup', () => { _scDragIdx = -1; });
+window.addEventListener('pointercancel', () => { _scDragIdx = -1; });
+
+// Everything down. Strip A is left exactly as it was, because it was never
+// this code's to begin with.
+function _scOff() {
+  if (!_scOn && !_scSlots.length) return;
+  _scOn = false;
+  if (_scTimer) { clearInterval(_scTimer); _scTimer = null; }
+  try { map.off('move zoom resize', _scUpdateClips); } catch (e) {}
+  _scSlots.forEach(_scClearSlot);
+  _scSlots = []; _scSplits = []; _scDragIdx = -1;
+  ['sc-dividers', 'sc-labels'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+  _scSyncBubble();
+  document.querySelectorAll('#sub-bubbles .in-compare')
+    .forEach(el => el.classList.remove('in-compare'));
+}
+
 // ── NEXRAD STATION STATUS (api.weather.gov) ──
 // Polls the NWS radar stations endpoint and marks any station whose
 // rda.properties.operabilityStatus is not "RDA - On-line" as offline (red pill).
@@ -65272,6 +65662,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-o', date: 'Sep 21, 2026',
+    text: 'Satellite compare, like the radar one: a Compare bubble in the satellite menu cuts the map into strips with draggable dividers. While it is on, tapping a product adds that picture beside the main one, and tapping a sector pill adds the current product from that sector, so infrared can sit beside visible, or GOES-East beside GOES-West. Every strip follows the playbar.' },
   { id: '2026-09-21-n', date: 'Sep 21, 2026',
     text: 'Every SPC and NHC outlook popup now carries what the forecaster actually wrote. The convective, rainfall and tropical outlooks already did; now the fire weather outlook opens onto its own written discussion too, and tapping a Mesoscale Discussion shows that exact MD\'s full text instead of just its number.' },
   { id: '2026-09-21-m', date: 'Sep 21, 2026',
