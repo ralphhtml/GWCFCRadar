@@ -164,8 +164,11 @@ console.log('\n2. a Level 2 or Level 3 loop writes its OWN times on the bar');
   ok('the slider is sized to the loop', r.max === 5 && r.value === 5, JSON.stringify(r));
   ok('the labels changed when the source changed', r.before !== r.after,
      `before=${r.before} after=${r.after}`);
+  // The clock preference decides how 18:00 UTC is spelled, so both the
+  // 24-hour and the 12-hour spellings count as the loop's evening times.
   ok('and they are the LOOP times, not the mosaic times left behind',
-     r.after.includes('18') && !r.after.includes('06'),
+     (r.after.includes('18') || r.after.includes('PM'))
+     && !r.after.includes('06:') && !r.after.includes('AM'),
      `after=${r.after} (mosaic was ${r.before})`);
 }
 
