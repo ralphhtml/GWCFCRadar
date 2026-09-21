@@ -309,14 +309,18 @@ console.log('\n5. map popups');
     const tip = __surface('.ap-popup-container .leaflet-popup-tip');
     map.closePopup(pop);
 
-    // The NWR station popup belongs to the weather-radio family, so it is
-    // orange while the alert popup beside it is black.
+    // The NWR station popup: an orange hat on a black coat. The header
+    // keeps the weather-radio orange while the body goes the same ink as
+    // the alert popup, so only the title bar carries the family colour.
     const np = L.popup({ className: 'nwr-popup' }).setLatLng([28.5, -80.7])
-      .setContent('<div class="nwr-inner">station</div>').openOn(map);
+      .setContent('<div class="nwr-inner"><div class="nwr-header">KHB32</div>'
+        + '<div class="nwr-body">station</div></div>').openOn(map);
     await new Promise(r3 => setTimeout(r3, 200));
     const nwrWrap = __surface('.nwr-popup .leaflet-popup-content-wrapper');
+    const nwrHead = __surface('.nwr-popup .nwr-header');
     map.closePopup(np);
-    return { wrap, tip, nwrWrap, nwrOrange: __isOrange(nwrWrap.stops) };
+    return { wrap, tip, nwrWrap, nwrHead,
+             nwrInk: __isInk(nwrWrap.stops), nwrHeadOrange: __isOrange(nwrHead.stops) };
   });
   ok('an alert popup is a gradient', r.wrap.gradient, r.wrap.image);
   // Black, not red: this one sits ON the weather, so it stays out of the way
@@ -330,8 +334,10 @@ console.log('\n5. map popups');
      r.tip.gradient, r.tip.image);
   ok('and the arrow matches the popup it points at',
      await page.evaluate(s => __isInk(s), r.tip.stops), JSON.stringify(r.tip.stops));
-  ok('the NWR station popup beside it is orange, not black or red',
-     r.nwrWrap.gradient && r.nwrOrange, r.nwrWrap.image);
+  ok('the NWR station popup body is black like the alert popup',
+     r.nwrWrap.gradient && r.nwrInk, r.nwrWrap.image);
+  ok('but its header keeps the weather-radio orange',
+     r.nwrHead.gradient && r.nwrHeadOrange, r.nwrHead.image);
 }
 
 console.log('\n6. the right-click menu and the map controls');
