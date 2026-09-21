@@ -43,8 +43,8 @@ console.log('\n1. the shape of it, in the source');
      /const MB_STYLE_KEY = 'gwcfc_mb_style';/.test(PAGE));
   ok('all three line types are covered',
      /_mbCfg = \{[\s\S]{0,400}state:[\s\S]{0,200}province:[\s\S]{0,200}county:/.test(PAGE));
-  ok('and all three default to auto',
-     (PAGE.match(/color: 'auto', weight: MB_BASE\./g) || []).length === 3);
+  ok('and all four ship in the fixed black-and-heavy look',
+     (PAGE.match(/color: '#111111', weight: /g) || []).length >= 4);
   ok('the layers ask for the live style rather than a frozen table',
      /style: \(\) => _mbStyleFor\(kind\)/.test(PAGE)
      && /style: \(\) => _mbStyleFor\('county'\)/.test(PAGE));
@@ -244,6 +244,12 @@ if (!chromium) {
     _mbLayers.coast = mk();
 
     mbResetBorderStyle();
+    // The shipped look is fixed black now, so the auto-follows-the-basemap
+    // claims are tested by choosing auto, the way a person would.
+    MB_KINDS.forEach(k => mbSetBorderColor(k, 'auto'));
+    // With everything on auto, the stored value has to be the WORD. Storing
+    // the colour auto happened to resolve to would freeze today's answer.
+    out.savedAuto = JSON.parse(localStorage.getItem('gwcfc_mb_style'));
     out.startColorDark = _mbStyleFor('state').color;
     out.startWeights = {
       state: _mbStyleFor('state').weight,
@@ -282,7 +288,7 @@ if (!chromium) {
     // Thickness reaches the layer, per kind and independently.
     mbSetBorderWeight('state', 4.2);
     out.stateWeight = _mbLayers.state.last.weight;
-    out.countyWeightUnchanged = _mbStyleFor('county').weight;
+    out.countyWeightUnchanged = _mbStyleFor('county').weight;   // still the shipped 3.8
     mbSetBorderWeight('county', 0);
     out.countyWeightFloor = _mbLayers.county.last.weight;
 
@@ -325,10 +331,6 @@ if (!chromium) {
       province: _mbStyleFor('province').weight,
     };
     out.afterResetOnLayer = _mbLayers.state.last.weight;
-    // With everything back on auto, the stored value has to be the WORD.
-    // Storing the colour auto happened to resolve to would freeze today's
-    // answer and quietly stop following the basemap from the next load on.
-    out.savedAuto = JSON.parse(localStorage.getItem('gwcfc_mb_style'));
     // Coast is a full citizen of the style system: its own colour, its own
     // thickness, and reset returns it to the water blue it shipped with
     // rather than to auto, which it never was.
@@ -360,7 +362,7 @@ if (!chromium) {
   ok('thickness reaches the layer', r.stateWeight === 4.2,
      String(r.stateWeight));
   ok('and is per line type, not one setting for all three',
-     r.countyWeightUnchanged === 0.7, String(r.countyWeightUnchanged));
+     r.countyWeightUnchanged === 3.8, String(r.countyWeightUnchanged));
   ok('a zero-width line is floored to something you can see',
      r.countyWeightFloor === 0.2, String(r.countyWeightFloor));
   ok('the tuned opacities are untouched by any of this',
@@ -384,24 +386,24 @@ if (!chromium) {
   ok('the panel shows the thickness actually in force',
      r.uiStateWeight === '4.2' && r.uiStateWeightLabel === '4.2px',
      r.uiStateWeight + ' / ' + r.uiStateWeightLabel);
-  ok('reset returns the colour to auto', r.afterResetColor === '#ffffff'
+  ok('reset returns the colour to the shipped black', r.afterResetColor === '#111111'
      && r.uiStateSelect !== undefined, r.afterResetColor);
   ok('and every thickness to the shipped one',
-     r.afterResetWeights.state === 1.5 && r.afterResetWeights.county === 0.7
-     && r.afterResetWeights.province === 1.2,
+     r.afterResetWeights.state === 6 && r.afterResetWeights.county === 3.8
+     && r.afterResetWeights.province === 6,
      JSON.stringify(r.afterResetWeights));
   ok('with the map told about it, not just the config',
-     r.afterResetOnLayer === 1.5, String(r.afterResetOnLayer));
+     r.afterResetOnLayer === 6, String(r.afterResetOnLayer));
   ok('coast is one of the styled line types, not a special case',
      r.coastKinds.join(',') === 'state,province,county,coast',
      r.coastKinds.join(','));
-  ok('reset returns coast to the water blue it shipped with, not to auto',
-     r.coastReset === '#7fd4ff', r.coastReset);
+  ok('reset returns coast to the shipped black, a full citizen of the look',
+     r.coastReset === '#111111', r.coastReset);
   ok('its colour and thickness reach the layer like any other',
      r.coastOnLayer.color === '#ff9500' && r.coastOnLayer.weight === 3,
      JSON.stringify(r.coastOnLayer));
   ok('and changing it leaves the other lines alone',
-     r.coastIndependent === '#ffffff', r.coastIndependent);
+     r.coastIndependent === '#111111', r.coastIndependent);
 }
 
 /*

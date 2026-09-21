@@ -549,7 +549,10 @@ console.log("\n7. the right-click menu opens on a double tap as well");
     const afterTouch = isOpen();
     close();
 
-    // A mouse. The menu must NOT open, and the zoom must come back.
+    // A mouse, with Double Click Opens Menu switched OFF (it ships on
+    // now): the menu must NOT open, and the zoom must come back.
+    try { localStorage.setItem('lqm_dbltapmenu', 'false'); } catch (e) {}
+    if (typeof _cmSyncDblZoom === 'function') _cmSyncDblZoom();
     press('mouse');
     const zoomOnForMouse = map.doubleClickZoom.enabled();
     map.fire('dblclick', { latlng: L.latLng(35.2, -97.4),
@@ -559,6 +562,17 @@ console.log("\n7. the right-click menu opens on a double tap as well");
     const afterMouse = isOpen();
     close();
 
+    // And with the shipped default (on), the same double click opens it.
+    try { localStorage.removeItem('lqm_dbltapmenu'); } catch (e) {}
+    if (typeof _cmSyncDblZoom === 'function') _cmSyncDblZoom();
+    press('mouse');
+    map.fire('dblclick', { latlng: L.latLng(35.2, -97.4),
+                           originalEvent: new MouseEvent('dblclick'),
+                           containerPoint: L.point(100, 100) });
+    await new Promise(r2 => setTimeout(r2, 60));
+    const afterMouseDefault = isOpen();
+    close();
+
     // Right click still works, whatever touched the screen last.
     _cmOpen({ latlng: L.latLng(35.2, -97.4) });
     const afterRightClick = isOpen();
@@ -566,15 +580,17 @@ console.log("\n7. the right-click menu opens on a double tap as well");
     close();
 
     return { zoomOffForTouch, afterTouch, zoomOnForMouse, afterMouse,
-             afterRightClick, body: body.slice(0, 400) };
+             afterMouseDefault, afterRightClick, body: body.slice(0, 400) };
   });
   ok('a double tap opens the menu', r.afterTouch);
   // The zoom has to be off BEFORE the double click arrives: by the time one
   // fires, Leaflet has already decided to zoom.
   ok('and the tap that started it turned double-tap-zoom off first',
      r.zoomOffForTouch);
-  ok('a mouse double click still zooms instead', !r.afterMouse);
+  ok('a mouse double click still zooms when the setting is off', !r.afterMouse);
   ok('with its zoom handed straight back', r.zoomOnForMouse);
+  ok('and opens the menu out of the box, the setting shipping on',
+     r.afterMouseDefault);
   ok('and the right button still opens it, as it always did',
      r.afterRightClick);
   ok('the menu really is the one with the sounding in it',
