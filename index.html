@@ -14788,12 +14788,13 @@ async function _fetchOutlookDiscussion(key, urls) {
   return null;
 }
 
-// NHC's own text products read cleanest through the modern NWS product
-// API: a list of recent issuances, then the newest one's own body - both
-// plain JSON, both already CORS-enabled, so this is tried before falling
-// back to scraping the public .shtml page through a proxy.
-async function _nhcTwoText(code) {
-  const listUrl = `https://api.weather.gov/products/types/TWO${code}`;
+// A NOAA centre's text products read cleanest through the modern NWS
+// product API: a list of recent issuances, then the newest one's own body
+// - both plain JSON, both already CORS-enabled, so this is tried before
+// falling back to scraping a public page through a proxy. One reader for
+// every product type, since the API shape is the same for all of them.
+async function _nwsProductText(type) {
+  const listUrl = `https://api.weather.gov/products/types/${type}`;
   const r = await fetchWithTimeout(listUrl, 8000);
   if (!r.ok) return null;
   const j = await r.json();
@@ -14804,6 +14805,7 @@ async function _nhcTwoText(code) {
   const j2 = await r2.json();
   return (j2 && j2.productText) || null;
 }
+function _nhcTwoText(code) { return _nwsProductText('TWO' + code); }
 async function _nhcDiscussionFor(basin) {
   const b = String(basin || '').toUpperCase();
   const code = b.includes('EP') || b.includes('EAST') ? 'EP'
@@ -14820,6 +14822,43 @@ async function _nhcDiscussionFor(basin) {
     }
   } catch (e) {}
   return _fetchOutlookDiscussion(key, [`https://www.nhc.noaa.gov/text/MIATWO${code}.shtml`]);
+}
+
+// SPC narrates its fire weather outlook the same way it narrates the
+// convective one: one written discussion per day, published as product
+// FWDDY1 / FWDDY2, so the same product-API-then-page chain reads it.
+async function _spcFireDiscussion(dayNum) {
+  const d = dayNum >= 2 ? 2 : 1;
+  const key = 'spc-fire-' + d;
+  const hit = _outlookDiscCache.get(key);
+  if (hit && Date.now() - hit.at < OUTLOOK_DISC_TTL_MS) return hit.text;
+  try {
+    const txt = await _nwsProductText('FWDDY' + d);
+    const clean = _outlookCleanText(txt || '');
+    if (clean.length > 40) {
+      _outlookDiscCache.set(key, { at: Date.now(), text: clean });
+      return clean;
+    }
+  } catch (e) {}
+  return _fetchOutlookDiscussion(key, [`https://www.spc.noaa.gov/products/fire_wx/fwdy${d}.html`]);
+}
+
+// A Mesoscale Discussion IS its own written product, one per numbered
+// area rather than one shared narrative, so its popup reads that exact
+// text: IEM's plain-text product API when the feed carries the product
+// id, the SPC page for that MD number otherwise.
+async function _mcdDiscussion(props) {
+  const p = props || {};
+  const num = String(p.num ?? p.NUM ?? p.md ?? '').replace(/\D/g, '');
+  const pid = String(p.product_id || p.PRODUCT_ID || '');
+  const key = 'mcd-' + (pid || num);
+  if (!pid && !num) return null;
+  const hit = _outlookDiscCache.get(key);
+  if (hit && Date.now() - hit.at < OUTLOOK_DISC_TTL_MS) return hit.text;
+  const urls = [];
+  if (pid) urls.push(`https://mesonet.agron.iastate.edu/api/1/nwstext/${pid}`);
+  if (num) urls.push(`https://www.spc.noaa.gov/products/md/md${num.padStart(4, '0')}.html`);
+  return _fetchOutlookDiscussion(key, urls);
 }
 
 // Opens the popup now, with the short summary a click into an outlook area
@@ -15073,7 +15112,18 @@ async function loadWPCOutlook(dayNum) {
 
 // ── SPC FIRE WEATHER OUTLOOK ──
 const FW_COLORS = { 'ELEV': '#e0b000', 'CRIT': '#ff5500', 'EXTR': '#ff00ff' };
+const FW_NAMES = { 'ELEV': 'Elevated Risk', 'CRIT': 'Critical Risk', 'EXTR': 'Extreme Risk' };
 let _fwActive = false, _fwLayer = null, _fwDay = 1;
+
+// The three sources spell the category three ways (a word, SPC's code, a
+// number), so one normaliser serves both the fill colour and the popup.
+function _fwNorm(p) {
+  const rawVal = p.dn ?? p.DN ?? p.label ?? p.LABEL ?? p.fill ?? p.category ?? p.CATEGORY ?? '';
+  const raw = String(rawVal).trim().toUpperCase();
+  const labelMap = { 'ELEVATED':'ELEV','CRITICAL':'CRIT','EXTREME':'EXTR','ELEV':'ELEV','CRIT':'CRIT','EXTR':'EXTR' };
+  const numMap   = { '3':'ELEV','5':'CRIT','7':'EXTR','1':'ELEV','2':'CRIT','4':'EXTR' };
+  return labelMap[raw] || numMap[raw] || null;
+}
 
 function _fwPickDay(d) {
   if (d === _fwDay && _fwActive) { toggleOverlayPill('fire-outlook'); return; }
@@ -15137,18 +15187,28 @@ async function loadFireOutlook(dayNum) {
     style: f => {
       const p = f.properties || {};
       if (!window._fwDebugLogged) { window._fwDebugLogged = true; console.log('[FireWx] feature props:', JSON.stringify(p)); }
-      const rawVal = p.dn ?? p.DN ?? p.label ?? p.LABEL ?? p.fill ?? p.category ?? p.CATEGORY ?? '';
-      const raw = String(rawVal).trim().toUpperCase();
-      const labelMap = { 'ELEVATED':'ELEV','CRITICAL':'CRIT','EXTREME':'EXTR','ELEV':'ELEV','CRIT':'CRIT','EXTR':'EXTR' };
-      const numMap   = { '3':'ELEV','5':'CRIT','7':'EXTR','1':'ELEV','2':'CRIT','4':'EXTR' };
-      const norm = labelMap[raw] || numMap[raw];
+      const norm = _fwNorm(p);
       const fill = (norm && FW_COLORS[norm]) || p.fill || '#e0b000';
       return { color: fill, weight: 2, fillColor: fill, fillOpacity: 0.45 };
     },
     onEachFeature: (f, layer) => {
       const p = f.properties || {};
-      const lbl = String(p.label ?? p.LABEL ?? p.dn ?? p.DN ?? 'Area');
-      layer.bindPopup(`<div class="alert-popup"><b><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-fire></use></svg> SPC Fire Weather Day ${dayNum}</b><br>${lbl} Risk</div>`);
+      const norm = _fwNorm(p);
+      const named = FW_NAMES[norm] || (String(p.label ?? p.LABEL ?? p.dn ?? p.DN ?? 'Risk') + ' Risk');
+      const color = (norm && FW_COLORS[norm]) || p.fill || '#e0b000';
+      const mapped = {
+        event: `SPC Day ${dayNum} Fire Weather Outlook`,
+        areaDesc: 'Continental United States',
+        senderName: 'Storm Prediction Center',
+        severity: named,
+        urgency: `Day ${dayNum}`,
+        headline: `${named} of Fire Weather Conditions`,
+      };
+      layer.on('click', ev => {
+        L.DomEvent.stop(ev);
+        _outlookOpenPopup(ev, mapped, color, _spcFireDiscussion(dayNum),
+          `https://www.spc.noaa.gov/products/fire_wx/fwdy${dayNum >= 2 ? 2 : 1}.html`);
+      });
     }
   }).addTo(map);
   updateLoadStatus('');
@@ -15231,9 +15291,21 @@ async function loadMesoDisc() {
     onEachFeature: (f, layer) => {
       const p = f.properties || {};
       if (!window._mesoDebugLogged) { window._mesoDebugLogged = true; console.log('[Meso] feature props:', JSON.stringify(p)); }
-      const id = p.product_id || p.PRODUCT_ID || p.num || p.NUM || p.md || '?';
+      const num = String(p.num ?? p.NUM ?? p.md ?? '').replace(/\D/g, '');
       const about = p.concerning || p.CONCERNING || p.about || p.discussion || '';
-      layer.bindPopup(`<div class="alert-popup"><b><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-cyclone></use></svg> MCD #${id}</b>${about ? '<br>' + about : ''}</div>`);
+      const mapped = {
+        event: `SPC Mesoscale Discussion${num ? ' #' + num : ''}`,
+        areaDesc: 'See the discussion for the exact area',
+        senderName: 'Storm Prediction Center',
+        severity: about || 'Short-term forecast',
+        urgency: 'Next few hours',
+        headline: about || 'What the forecaster is watching in this area right now',
+      };
+      layer.on('click', ev => {
+        L.DomEvent.stop(ev);
+        _outlookOpenPopup(ev, mapped, '#ff8c00', _mcdDiscussion(p),
+          'https://www.spc.noaa.gov/products/md/');
+      });
     }
   }).addTo(map);
   updateLoadStatus('');
@@ -65200,6 +65272,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-n', date: 'Sep 21, 2026',
+    text: 'Every SPC and NHC outlook popup now carries what the forecaster actually wrote. The convective, rainfall and tropical outlooks already did; now the fire weather outlook opens onto its own written discussion too, and tapping a Mesoscale Discussion shows that exact MD\'s full text instead of just its number.' },
   { id: '2026-09-21-m', date: 'Sep 21, 2026',
     text: 'The search dropdown is truly heavy frost now. The blur was there before but the bar behind the suggestions was still nearly solid, so it read as black; the whole open search is now one heavy glass sheet and the map really pours through it.' },
   { id: '2026-09-21-l', date: 'Sep 21, 2026',
@@ -68742,8 +68816,8 @@ const OV_DESCRIPTIONS = {
   'spotters':         'Live positions of trained storm spotters.',
   'spotter-reports':  'Reports from storm spotters currently in the field.',
   'chasers':          'Live positions of storm chasers as they track storms.',
-  'fire-outlook':     'Wildfire risk for today and tomorrow, rated Elevated, Critical, or Extreme.',
-  'meso-disc':        'Short-term alerts from forecasters flagging that severe weather may develop soon in a specific area.',
+  'fire-outlook':     "Wildfire risk for today and tomorrow, rated Elevated, Critical, or Extreme. Tap an area for the forecaster's own written fire weather discussion.",
+  'meso-disc':        'Short-term alerts from forecasters flagging that severe weather may develop soon in a specific area. Tap one to read the full discussion the forecaster wrote for it.',
   'cpc-outlook':      'Whether an area is likely to run warmer, colder, wetter, or drier than normal over the next couple of weeks.',
   'canada-alerts':    'Active weather alerts for Canada, from ECCC (Environment and Climate Change Canada), coloured by their own Minor/Moderate/High/Extreme risk scale.',
   'ec-outlook':       'ECCC\'s thunderstorm outlooks: the areas its storm prediction centres expect thunderstorms in, coloured by how serious they could be. Yellow is thunderstorms possible, orange is severe thunderstorms possible, red is severe thunderstorms likely. The Canadian counterpart of the SPC Outlook, read live from ECCC\'s GeoMet API, with its own floating legend panel to match. Tap a shaded area for the region, the outlook period and the forecasters\' notes.',
