@@ -579,9 +579,10 @@ body {
   font-family: var(--mono);
   font-size: 13px;
   font-weight: 500;
-  width: 58px;
+  /* Narrowed by request: "1.5" plus a breath is all it ever holds. */
+  width: 32px;
   text-align: center;
-  padding: 0 4px;
+  padding: 0 2px;
   height: 28px;
   -moz-appearance: textfield;
 }
@@ -592,7 +593,7 @@ body {
   color: #000;
   font-family: var(--mono);
   font-size: 11px;
-  padding: 0 8px 0 0;
+  padding: 0 5px 0 0;
   line-height: 28px;
   pointer-events: none;
   user-select: none;
@@ -670,7 +671,11 @@ body {
    whichever playback source owns the bar, models included. */
 #anim-stamp {
   position: absolute;
-  bottom: calc(100% - 3px);
+  /* 100% of the bar's padding box: the chip's bottom lands exactly on the
+     inner edge of the bar's 3px border, covering the border strip and not
+     a pixel more. The earlier deeper overlap left a visible lighter band
+     of chip bleeding into the bar. */
+  bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
   background: linear-gradient(180deg, #8ce7ff 0%, #5cd8f7 100%);
@@ -687,24 +692,27 @@ body {
   white-space: nowrap;
   box-shadow: 0 -6px 14px -6px rgba(0,0,0,0.55);
 }
+/* The coves: kept small so they read as a smooth root, not red hooks.
+   Each is a 9px square whose ring's last 3px land exactly on the bar's
+   3px border line, continuing the outline around the curve. */
 #anim-stamp::before,
 #anim-stamp::after {
   content: '';
   position: absolute;
   bottom: 0;
-  width: 14px;
-  height: 14px;
+  width: 9px;
+  height: 9px;
   pointer-events: none;
 }
 #anim-stamp::before {
-  left: -14px;
+  left: -12px;
   background: radial-gradient(circle at 0 0,
-    rgba(0,0,0,0) 11px, #AA0000 11px, #AA0000 14px, #5cd8f7 14px);
+    rgba(0,0,0,0) 6px, #AA0000 6px, #AA0000 9px, #5cd8f7 9px);
 }
 #anim-stamp::after {
-  right: -14px;
+  right: -12px;
   background: radial-gradient(circle at 100% 0,
-    rgba(0,0,0,0) 11px, #AA0000 11px, #AA0000 14px, #5cd8f7 14px);
+    rgba(0,0,0,0) 6px, #AA0000 6px, #AA0000 9px, #5cd8f7 9px);
 }
 #anim-stamp-main {
   font-size: 15px; font-weight: 700; letter-spacing: 0.5px;
@@ -64842,6 +64850,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-a', date: 'Sep 21, 2026',
+    text: 'Polish pass: the time stamp sits cleanly welded into the bar now (no more stray band or big red hooks at the joint), the speed box slimmed down, and the subtle frost reached every last menu and popup, from the timezone picker to the changelog itself.' },
   { id: '2026-09-20-j', date: 'Sep 20, 2026',
     text: 'The radar menu got shorter: HRRR Reflectivity, Precip Chance, Precip Amount, Snow Amount and Weather Type now live behind one Observations bubble, one tap deeper, instead of five rows stacked in the menu.' },
   { id: '2026-09-20-i', date: 'Sep 20, 2026',
@@ -73084,6 +73094,49 @@ body {
 :root[data-glass] #overlay-pills-row .ov-pill.active {
   background-image: linear-gradient(180deg,
     rgba(77,58,5,var(--glass-a-btn)) 0%, rgba(122,92,8,var(--glass-a-btn)) 100%);
+}
+/* Every remaining menu and popup joins the frost: the small popovers, the
+   search dropdown, the account and auth panels, the modals and the export
+   bar. Each opaque fill is restated at the level's alpha so the blur has
+   something to show through. */
+:root[data-glass] #tz-popover,
+:root[data-glass] #zoom-step-popover,
+:root[data-glass] #tb-flyout,
+:root[data-glass] #lqm-search-dropdown,
+:root[data-glass] #lqm-profile-overlay,
+:root[data-glass] #gwcfc-auth-panel,
+:root[data-glass] #credits-modal-panel,
+:root[data-glass] #feedback-modal,
+:root[data-glass] .mode-card-wrap,
+:root[data-glass] #export-toolbar {
+  background-color: transparent !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) !important;
+}
+:root[data-glass] #tz-popover,
+:root[data-glass] #zoom-step-popover {
+  background-image: linear-gradient(180deg,
+    rgba(8,12,16,var(--glass-a-panel)) 0%, rgba(8,12,16,var(--glass-a-panel)) 100%);
+}
+:root[data-glass] #tb-flyout,
+:root[data-glass] #lqm-search-dropdown,
+:root[data-glass] #lqm-profile-overlay,
+:root[data-glass] #export-toolbar {
+  background-image: var(--grad-panel);
+}
+:root[data-glass] #gwcfc-auth-panel {
+  background-image: linear-gradient(160deg,
+    rgba(26,0,0,var(--glass-a-panel)) 0%, rgba(46,0,0,var(--glass-a-panel)) 60%,
+    rgba(24,0,32,var(--glass-a-panel)) 100%);
+}
+:root[data-glass] #credits-modal-panel,
+:root[data-glass] #feedback-modal {
+  background-image: linear-gradient(180deg,
+    rgba(11,15,22,var(--glass-a-panel)) 0%, rgba(5,7,9,var(--glass-a-panel)) 100%);
+}
+:root[data-glass] .mode-card-wrap {
+  background-image: linear-gradient(160deg,
+    rgba(60,14,8,var(--glass-a-panel)) 0%, rgba(24,5,5,var(--glass-a-panel)) 100%);
 }
 /* The settings rail and content pane are literal hex too. */
 :root[data-glass] #lqm-set-rail {
