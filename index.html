@@ -6389,6 +6389,43 @@ body.lite-mode #export-toolbar { display: none !important; }
 .fc-stat-val { font-size: 13px; font-weight: 600; color: #d4e8ff; }
 .fc-stat-sub { font-size: 10px; color: #5c9aaa; margin-top: 1px; }
 .fc-days { display: flex; flex-direction: column; gap: 6px; }
+
+/* ── The forecast chart card ──────────────────────────────────────────── */
+.fc-chart-card {
+  background: #10151a;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 12px;
+  padding: 10px 12px 8px;
+  margin: 10px 0 12px;
+}
+.fc-chart-title {
+  font-weight: 700; font-size: 14px; color: #fff;
+  padding: 2px 2px 8px; font-family: var(--sans);
+}
+.fc-chart-wrap { position: relative; }
+.fc-chart-wrap svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
+.fc-chart-empty { color: rgba(255,255,255,0.6); font-size: 12px; padding: 18px 6px; }
+.fc-chart-tip {
+  position: absolute; display: none; pointer-events: none;
+  transform: translate(-50%, -135%);
+  background: rgba(8,12,16,0.95);
+  border: 1px solid rgba(23,153,196,0.6);
+  color: #fff; border-radius: 7px; padding: 4px 9px;
+  font-size: 11px; white-space: nowrap; font-family: var(--sans);
+}
+.fc-chart-pills {
+  display: flex; gap: 7px; overflow-x: auto;
+  padding: 8px 2px 2px; scrollbar-width: thin;
+}
+.fc-chart-pill {
+  flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.25);
+  background: rgba(0,0,0,0.5); color: #fff;
+  border-radius: 16px; padding: 5px 13px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  font-family: var(--sans);
+}
+.fc-chart-pill.on { background: #1799c4; border-color: #9adcf2; color: #04222e; }
 .fc-day {
   display: grid;
   grid-template-columns: 90px 36px 80px 1fr 1fr 28px;
@@ -52922,7 +52959,44 @@ async function openForecastModal(city) {
         </div>
       </div>
       ${statsHtml ? `<div class="fc-stats-grid">${statsHtml}</div>` : ''}
-    </div><div class="fc-days">`;
+    </div>`;
+
+    // ── The chart card: the next 24 hours of one condition, drawn ────────
+    // The hours are kept aside for the renderer, which redraws on a pill
+    // tap without refetching anything. Times stay in the CITY's own clock,
+    // because that is the clock the forecast below is written in.
+    const nowKey = (cw.time || '').slice(0, 13);
+    let chStart = 0;
+    if (hh && hh.time) {
+      chStart = hh.time.findIndex(t => t.slice(0, 13) >= nowKey);
+      if (chStart < 0) chStart = 0;
+    }
+    _fcChartData = { hours: [] };
+    if (hh && hh.time) {
+      for (let i = chStart; i < Math.min(chStart + 25, hh.time.length); i++) {
+        _fcChartData.hours.push({
+          t: hh.time[i],
+          temp: hh.temperature_2m?.[i], feels: hh.apparent_temperature?.[i],
+          dewpt: hh.dew_point_2m?.[i], rh: hh.relative_humidity_2m?.[i],
+          precip: hh.precipitation_probability?.[i],
+          wind: (hh.windspeed_10m?.[i] ?? hh.wind_speed_10m?.[i]),
+          gusts: hh.wind_gusts_10m?.[i], pres: hh.surface_pressure?.[i],
+          clouds: hh.cloud_cover?.[i],
+          vis: hh.visibility?.[i] != null ? hh.visibility[i] / 1609.34 : null,
+        });
+      }
+    }
+    if (_fcChartData.hours.length > 1) {
+      html += `<div class="fc-chart-card">
+        <div class="fc-chart-title" id="fc-chart-title"></div>
+        <div class="fc-chart-wrap" id="fc-chart-wrap"></div>
+        <div class="fc-chart-pills">${FC_CHART_VARS.map(v =>
+          `<button class="fc-chart-pill${v.id === _fcChartVar ? ' on' : ''}" id="fc-pill-${v.id}"
+             onclick="_fcChartPick('${v.id}')">${v.label}</button>`).join('')}</div>
+      </div>`;
+    }
+
+    html += `<div class="fc-days">`;
 
     for (let i = 0; i < dd.time.length; i++) {
       const dateKey  = dd.time[i];
@@ -52987,12 +53061,133 @@ async function openForecastModal(city) {
     }
     html += '</div>';
     body.innerHTML = html;
+    _fcChartRender();
   } catch(e) {
     console.warn('forecast modal:', e);
     const why = (e && e.message) ? String(e.message) : 'the weather service could not be reached';
     body.innerHTML = '<div class="forecast-loading">Could not load this forecast: '
       + _escapeHtml(why) + '</div>';
   }
+}
+
+// ── THE FORECAST CHART ──────────────────────────────────────────────────
+// One condition at a time, over the next 24 hours, as a line: the shape of
+// a day is the thing a table of hourly rows cannot show. One series per
+// chart, so the title names it and no legend is needed; the pills below
+// pick the condition. The line colour is #1799c4, checked against the dark
+// card for lightness, chroma and contrast rather than eyeballed.
+const FC_CHART_VARS = [
+  { id: 'temp',   label: 'Temp',       name: 'Temperature',   unit: '°F', d: 0 },
+  { id: 'feels',  label: 'Feels Like', name: 'Feels Like',    unit: '°F', d: 0 },
+  { id: 'dewpt',  label: 'Dewpoint',   name: 'Dew Point',     unit: '°F', d: 0 },
+  { id: 'rh',     label: 'Humidity',   name: 'Humidity',      unit: '%', d: 0, lo: 0, hi: 100 },
+  { id: 'precip', label: 'Precip %',   name: 'Precip Chance', unit: '%', d: 0, lo: 0, hi: 100 },
+  { id: 'wind',   label: 'Wind',       name: 'Wind Speed',    unit: ' mph', d: 0, lo: 0 },
+  { id: 'gusts',  label: 'Gusts',      name: 'Wind Gusts',    unit: ' mph', d: 0, lo: 0 },
+  { id: 'pres',   label: 'Pressure',   name: 'Surface Pressure', unit: ' hPa', d: 0 },
+  { id: 'clouds', label: 'Clouds',     name: 'Cloud Cover',   unit: '%', d: 0, lo: 0, hi: 100 },
+  { id: 'vis',    label: 'Visibility', name: 'Visibility',    unit: ' mi', d: 1, lo: 0 },
+];
+let _fcChartVar = 'temp';
+let _fcChartData = null;
+
+function _fcChartPick(id) {
+  _fcChartVar = id;
+  document.querySelectorAll('.fc-chart-pill').forEach(p =>
+    p.classList.toggle('on', p.id === 'fc-pill-' + id));
+  _fcChartRender();
+}
+
+// Round tick steps, so the axis reads 70, 74, 78 rather than 71.3, 75.6.
+function _fcTicks(lo, hi) {
+  if (!(hi - lo > 1e-9)) hi = lo + 1;
+  const mag = Math.pow(10, Math.floor(Math.log10((hi - lo) / 4)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag)
+    .find(s => (hi - lo) / s <= 5) || 10 * mag;
+  const out = [];
+  for (let v = Math.floor(lo / step) * step; v <= hi + step * 0.999; v += step) {
+    out.push(+v.toFixed(6));
+  }
+  return out;
+}
+
+function _fcHourLabel(iso) {
+  const h = +iso.slice(11, 13);
+  return (h % 12 || 12) + ' ' + (h < 12 ? 'AM' : 'PM');
+}
+
+function _fcChartRender() {
+  const wrap = document.getElementById('fc-chart-wrap');
+  const title = document.getElementById('fc-chart-title');
+  if (!wrap || !_fcChartData) return;
+  const spec = FC_CHART_VARS.find(v => v.id === _fcChartVar) || FC_CHART_VARS[0];
+  if (title) title.textContent = spec.name;
+  const hours = _fcChartData.hours;
+  const pts = hours.map((h, i) => ({ i, t: h.t, v: h[spec.id] }))
+    .filter(p => p.v != null && isFinite(p.v));
+  if (pts.length < 2) {
+    wrap.innerHTML = '<div class="fc-chart-empty">No hourly data for this one here.</div>';
+    return;
+  }
+  // The scale breathes a little past the data unless the variable owns a
+  // hard floor or ceiling (a percentage does).
+  let lo = Math.min(...pts.map(p => p.v));
+  let hi = Math.max(...pts.map(p => p.v));
+  const pad = (hi - lo || 1) * 0.15;
+  lo = spec.lo != null ? Math.min(spec.lo, lo) : lo - pad;
+  hi = spec.hi != null ? Math.max(spec.hi, hi) : hi + pad;
+  const ticks = _fcTicks(lo, hi);
+  lo = ticks[0]; hi = ticks[ticks.length - 1];
+
+  const W = 560, H = 240, L = 46, R = 12, T = 12, B = 30;
+  const x = i => L + (W - L - R) * (i / (hours.length - 1));
+  const y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+  const fmt = v => v.toFixed(spec.d);
+
+  let g = '';
+  ticks.forEach(tv => {
+    g += `<line x1="${L}" y1="${y(tv)}" x2="${W - R}" y2="${y(tv)}" stroke="rgba(255,255,255,0.09)" stroke-width="1"/>`
+      + `<text x="${L - 7}" y="${y(tv) + 3.5}" text-anchor="end" font-size="11" fill="rgba(255,255,255,0.62)">${fmt(tv)}${spec.unit.trim() === '%' ? '%' : ''}</text>`;
+  });
+  for (let i = 0; i < hours.length; i += 6) {
+    g += `<line x1="${x(i)}" y1="${T}" x2="${x(i)}" y2="${H - B}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>`
+      + `<text x="${x(i)}" y="${H - 10}" text-anchor="middle" font-size="11" fill="rgba(255,255,255,0.62)">${_fcHourLabel(hours[i].t)}</text>`;
+  }
+  const path = pts.map((p, k) => (k ? 'L' : 'M') + x(p.i).toFixed(1) + ' ' + y(p.v).toFixed(1)).join('');
+  // 2px line, small round markers each ringed in the card colour so
+  // neighbouring dots never fuse, per the house chart rules.
+  let dots = '';
+  pts.forEach(p => {
+    dots += `<circle cx="${x(p.i).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="3.5" fill="#1799c4" stroke="#10151a" stroke-width="2"/>`;
+  });
+  wrap.innerHTML = `<svg id="fc-chart-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${spec.name}, next 24 hours">
+      ${g}
+      <line id="fc-chart-hair" x1="0" y1="${T}" x2="0" y2="${H - B}" stroke="rgba(255,255,255,0.35)" stroke-width="1" style="display:none"/>
+      <path d="${path}" fill="none" stroke="#1799c4" stroke-width="2" stroke-linejoin="round"/>
+      ${dots}
+    </svg><div class="fc-chart-tip" id="fc-chart-tip"></div>`;
+
+  // The hover layer: a crosshair snapped to the nearest hour, and a tip
+  // saying the hour and the value. Touch drags work the same way.
+  const svg = document.getElementById('fc-chart-svg');
+  const tip = document.getElementById('fc-chart-tip');
+  const hair = document.getElementById('fc-chart-hair');
+  const show = ev => {
+    const r = svg.getBoundingClientRect();
+    const fx = (ev.clientX - r.left) / r.width * W;
+    let best = pts[0], bd = Infinity;
+    pts.forEach(p => { const d = Math.abs(x(p.i) - fx); if (d < bd) { bd = d; best = p; } });
+    hair.style.display = '';
+    hair.setAttribute('x1', x(best.i)); hair.setAttribute('x2', x(best.i));
+    tip.style.display = 'block';
+    tip.style.left = (x(best.i) / W * 100) + '%';
+    tip.style.top = (y(best.v) / H * 100) + '%';
+    tip.textContent = `${_fcHourLabel(best.t)} · ${fmt(best.v)}${spec.unit}`;
+  };
+  const hide = () => { tip.style.display = 'none'; hair.style.display = 'none'; };
+  svg.addEventListener('pointermove', show);
+  svg.addEventListener('pointerdown', show);
+  svg.addEventListener('pointerleave', hide);
 }
 
 
@@ -64874,6 +65069,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-e', date: 'Sep 21, 2026',
+    text: 'The forecast card learned to draw: a chart of the next 24 hours now sits in the weather popup, with pills to pick the condition - temperature, feels like, dew point, humidity, precip chance, wind, gusts, pressure, cloud cover or visibility. Touch or hover the line for the exact hour and value.' },
   { id: '2026-09-21-d', date: 'Sep 21, 2026',
     text: 'The time stamp\'s curved roots are back, drawn crisply this time, and it now reads the exact same source list the bar itself plays, so every layer, models included, stamps itself. The speed box moved to the right end of the bar, and the zoom buttons are full-size and side by side.' },
   { id: '2026-09-21-c', date: 'Sep 21, 2026',
