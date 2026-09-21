@@ -6179,6 +6179,29 @@ body.lite-mode #export-modal { display: none !important; }
   border-color: #00e5ff;
   box-shadow: 0 0 10px rgba(0,229,255,0.9);
 }
+
+/* ── BROADCAST SWEEP: the TV radar beam. A rotating wedge over the active
+   single-site radar, sized to the real 230 km reflectivity range. One
+   element with a pure CSS rotation, so it costs a compositor layer and
+   nothing else; the map only repositions and resizes it. ── */
+.radar-sweep { pointer-events: none; }
+.sweep-disc {
+  position: absolute; left: 0; top: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg,
+    rgba(140,255,190,0.55) 0deg, rgba(140,255,190,0.26) 16deg,
+    rgba(140,255,190,0.08) 42deg, rgba(140,255,190,0) 70deg);
+  -webkit-mask-image: radial-gradient(circle, #000 0%, #000 70%, transparent 99%);
+  mask-image: radial-gradient(circle, #000 0%, #000 70%, transparent 99%);
+  mix-blend-mode: screen;
+  animation: sweep-spin 3.2s linear infinite;
+  will-change: transform;
+}
+@keyframes sweep-spin { to { transform: rotate(360deg); } }
+/* A vestibular-safe screen keeps the range disc but not the spin. */
+@media (prefers-reduced-motion: reduce) {
+  .sweep-disc { animation: none; opacity: 0.3; }
+}
 /* A satellite product bubble that is one of the strips in a running
    satellite comparison, same signal as the radar pills above. */
 .sub-bubble.in-compare {
@@ -49422,6 +49445,79 @@ window.addEventListener('pointermove', e => { if (_scDragIdx >= 0) _scSetSplit(_
 window.addEventListener('pointerup', () => { _scDragIdx = -1; });
 window.addEventListener('pointercancel', () => { _scDragIdx = -1; });
 
+// ── BROADCAST SWEEP ────────────────────────────────────────────────────────
+// The TV radar beam: a wedge rotating over whichever single-site radar owns
+// the screen, sized to the real 230 km reflectivity range. The spin itself
+// is pure CSS (see .sweep-disc); this code only decides WHERE the disc sits
+// and how many pixels 230 km is at the current zoom. Which site to circle is
+// the same answer the radar comparison reads (_rcMainSite), so the beam
+// follows the picture through every source and product, and disappears with
+// it. Toggled in Settings > Radar, on by default.
+let _sweepMarker = null, _sweepFor = '';
+function _sweepWanted() {
+  try { return localStorage.getItem('gwcfc_sweep') !== '0'; } catch (e) { return true; }
+}
+function _sweepStationLL(site) {
+  try {
+    const s = NEXRAD_STATIONS.find(x => x.id === String(site).toLowerCase());
+    return s ? L.latLng(s.lat, s.lon) : null;
+  } catch (e) { return null; }
+}
+function _sweepRadiusPx(ll) {
+  // 230 km of longitude at this latitude, measured in on-screen pixels, so
+  // the disc hugs the real edge of the radar's picture at every zoom.
+  const east = 230000 / (111320 * Math.cos(ll.lat * Math.PI / 180));
+  const p1 = map.latLngToLayerPoint(ll);
+  const p2 = map.latLngToLayerPoint(L.latLng(ll.lat, ll.lng + east));
+  return Math.max(24, Math.abs(p2.x - p1.x));
+}
+function _sweepClear() {
+  if (_sweepMarker) { try { map.removeLayer(_sweepMarker); } catch (e) {} _sweepMarker = null; }
+  _sweepFor = '';
+}
+function _sweepResize() {
+  if (!_sweepMarker) return;
+  const el = _sweepMarker.getElement && _sweepMarker.getElement();
+  if (!el) return;
+  const r = _sweepRadiusPx(_sweepMarker.getLatLng());
+  const d = el.querySelector('.sweep-disc');
+  if (d) {
+    d.style.width = d.style.height = (r * 2) + 'px';
+    d.style.left = d.style.top = (-r) + 'px';
+  }
+}
+function _sweepSync() {
+  if (typeof map === 'undefined' || !map) return;
+  const site = (_sweepWanted() && typeof _rcMainSite === 'function') ? _rcMainSite() : null;
+  const ll = site ? _sweepStationLL(site) : null;
+  if (!ll) { _sweepClear(); return; }
+  if (_sweepFor === site && _sweepMarker) return;
+  _sweepClear();
+  if (!map.getPane('sweepPane')) {
+    // Over the radar picture, under the alerts (403) and their popups.
+    const pn = map.createPane('sweepPane');
+    pn.style.zIndex = '402';
+    pn.style.pointerEvents = 'none';
+  }
+  _sweepMarker = L.marker(ll, {
+    pane: 'sweepPane', interactive: false, keyboard: false,
+    icon: L.divIcon({ className: 'radar-sweep',
+                      html: '<div class="sweep-disc"></div>', iconSize: [0, 0] }),
+  }).addTo(map);
+  _sweepFor = site;
+  _sweepResize();
+}
+(function _sweepBoot() {
+  const arm = () => {
+    if (typeof map === 'undefined' || !map) { setTimeout(arm, 1500); return; }
+    map.on('zoomend viewreset', _sweepResize);
+    setInterval(_sweepSync, 1000);
+    const box = document.getElementById('lqm-set-sweep');
+    if (box) box.checked = _sweepWanted();
+  };
+  arm();
+})();
+
 // Everything down. Strip A is left exactly as it was, because it was never
 // this code's to begin with.
 function _scOff() {
@@ -54503,6 +54599,14 @@ function selectProduct(p) {
       <span class="lqm-settings-lbl">Auto-Play on Load</span>
       <label class="lqm-toggle">
         <input type="checkbox" id="lqm-set-autoplay" onchange="lqmToggleSetting('autoplay',this.checked)">
+        <div class="lqm-toggle-track"></div>
+        <div class="lqm-toggle-knob"></div>
+      </label>
+    </div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Broadcast Sweep</span>
+      <label class="lqm-toggle">
+        <input type="checkbox" id="lqm-set-sweep" checked onchange="lqmToggleSetting('sweep',this.checked)">
         <div class="lqm-toggle-track"></div>
         <div class="lqm-toggle-knob"></div>
       </label>
@@ -61551,6 +61655,9 @@ function lqmToggleSetting(key, val) {
   if (key === 'smooth') {
     // Toggle smooth interpolation if function exists
     if (typeof toggleSmooth === 'function') toggleSmooth();
+  } else if (key === 'sweep') {
+    try { localStorage.setItem('gwcfc_sweep', val ? '1' : '0'); } catch (e) {}
+    if (typeof _sweepSync === 'function') _sweepSync();
   } else if (key === 'autoplay') {
     // Store preference
     try { localStorage.setItem('lqm_autoplay', val ? '1' : '0'); } catch(e){}
@@ -65763,6 +65870,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-w', date: 'Sep 21, 2026',
+    text: 'A broadcast sweep, like TV radar: a beam rotates over whichever single-site radar is on screen, sized to the radar\'s real 230 km range at every zoom. It follows the picture through every source and product, and there is a Broadcast Sweep switch in Settings > Radar if you would rather it stayed still.' },
   { id: '2026-09-21-v', date: 'Sep 21, 2026',
     text: 'The weather alerts panel, the EAS panel and the weather forecast panel wear the heavy glass now too. EAS keeps its orange, just see-through: its color never went translucent with the rest of the app, which is why it had stayed a solid slab at every glass level until now.' },
   { id: '2026-09-21-u', date: 'Sep 21, 2026',
