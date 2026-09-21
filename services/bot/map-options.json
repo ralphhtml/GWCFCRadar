@@ -137,11 +137,11 @@
     },
     {
       "value": "canada-alerts",
-      "name": "Environment Canada Weather Alerts"
+      "name": "ECCC Weather Alerts"
     },
     {
       "value": "ec-outlook",
-      "name": "Environment Canada Thunderstorm Outlooks"
+      "name": "ECCC Thunderstorm Outlooks"
     },
     {
       "value": "tornado-tracks",
@@ -170,6 +170,10 @@
     {
       "value": "tstorm-tracker",
       "name": "T-Storm Tracker"
+    },
+    {
+      "value": "navigation",
+      "name": "Navigation"
     }
   ],
   "basemaps": [
