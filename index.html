@@ -65724,6 +65724,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-r', date: 'Sep 21, 2026',
+    text: 'Tapping an alert polygon opens its popup again. The city temperature dots draw on one shared sheet for speed, that sheet sits above the alerts, and it was quietly keeping every tap that missed a dot, so alert taps died on it. A tap that hits nothing on a sheet now falls through to whatever is underneath.' },
   { id: '2026-09-21-q', date: 'Sep 21, 2026',
     text: 'The model run archive fills in properly now. The Pi\'s build queue was ordering models by the raw age of their newest run, which quietly starved the hourly ones: a freshly built HRRR always looked newest, sank to the back, and only rebuilt every six-plus hours, so the run picker showed a run or two a day out of the twenty-four HRRR publishes. The queue now orders by how many of its OWN runs each model is behind, so hourly models rebuild hourly and every published run lands in the picker.' },
   { id: '2026-09-21-p', date: 'Sep 21, 2026',
@@ -72130,6 +72132,61 @@ function _ovMarkerPane(id){
   }
   return name;
 }
+
+// ── CANVAS CLICK FALL-THROUGH ──────────────────────────────────────────────
+// A Leaflet canvas renderer is one element covering the whole view, and it
+// takes EVERY click on it, not just clicks on the shapes it drew: a click
+// that hits none of its own layers simply dies there, and a canvas in a
+// lower pane never hears about it. The comment in _ovApplyMapOrder pins the
+// alerts canvas LOW because of exactly this; the day the city temperature
+// dots moved onto their own canvas (in an overlay pane ABOVE the alerts,
+// where the reorder list puts it) the same trap sprang in reverse, and
+// tapping an alert polygon anywhere under the city-dot canvas opened
+// nothing at all.
+//
+// So every canvas renderer now forwards a click it has no interactive layer
+// under: it steps out of the way for a moment, asks what is underneath,
+// and re-dispatches the click there if that is another map layer (a canvas
+// or an SVG shape in some lower pane). If whoever caught it stopped the
+// event - which is what opening a popup does - the original is stopped
+// too, so the map's own click-closes-popups behaviour cannot immediately
+// undo the popup that just opened. Patched before any renderer exists,
+// because Leaflet hands the bound method to addEventListener at
+// construction time.
+(function _canvasClickFallthrough() {
+  if (typeof L === 'undefined' || !L.Canvas) return;
+  const origClick = L.Canvas.prototype._onClick;
+  L.Canvas.prototype._onClick = function (e) {
+    origClick.call(this, e);
+    if (e.type !== 'click') return;
+    let hit = null;
+    try {
+      const point = this._map.mouseEventToLayerPoint(e);
+      for (let order = this._drawFirst; order; order = order.next) {
+        const layer = order.layer;
+        if (layer.options.interactive && layer._containsPoint(point)) { hit = layer; break; }
+      }
+    } catch (err) { return; }
+    if (hit) return;
+    const cv = this._container;
+    if (!cv || !e.clientX) return;
+    // This canvas steps aside BEFORE looking down and only back once the
+    // forwarded click has fully run its course, so a chain of stacked
+    // canvases hands the click strictly downward and can never loop.
+    const prev = cv.style.pointerEvents;
+    cv.style.pointerEvents = 'none';
+    try {
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      if (under && under !== cv && under.closest('.leaflet-pane')
+          && (under.tagName === 'CANVAS' || under instanceof SVGElement)) {
+        const clone = new MouseEvent('click', e);
+        under.dispatchEvent(clone);
+        if (clone.defaultPrevented) L.DomEvent.stop(e);
+      }
+    } catch (err) {}
+    cv.style.pointerEvents = prev;
+  };
+})();
 function _ovApplyMapOrder(){
   if (typeof map==='undefined'||!map) return;
   const ids=_ovRows().map(r=>r.dataset.ovid), n=ids.length;
