@@ -61005,6 +61005,8 @@ function lqmSetTZ(tz) {
   }
   // Refresh the new AM/PM + timezone display too
   if (typeof _updateTimeDisplay === 'function') _updateTimeDisplay();
+  // And the time stamp above the bar, whose top line follows the zone now.
+  if (typeof _stampRefresh === 'function') { try { _stampRefresh(); } catch (e) {} }
 }
 </script>
 
@@ -65132,6 +65134,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-i', date: 'Sep 21, 2026',
+    text: 'The time stamp stopped forcing Zulu on everyone. Its top line now follows your timezone and clock choices: UTC in 24-hour mode keeps the terse z, UTC in 12-hour says "1:00 PM UTC", and a chosen zone shows its own clock and abbreviation, like "Sun 09/21/26 7:00 PM CDT".' },
   { id: '2026-09-21-h', date: 'Sep 21, 2026',
     text: 'You can change how time is measured now: 12-hour or 24-hour, from Settings > Units or right in the quick time changer (hold the time stamp). Every clock in the app follows it - the animation bar, the time stamp, the timezone list, the forecast hours and charts, even the offline banner.' },
   { id: '2026-09-21-g', date: 'Sep 21, 2026',
@@ -67568,6 +67572,8 @@ const _DTF_OPTS = {
   abbr:  { timeZoneName: 'short' },
   dow:   { weekday: 'short' },
   hm24:  { hour: '2-digit', minute: '2-digit', hour12: false },
+  stampd: { weekday: 'short', year: '2-digit', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', hour12: false },
 };
 const _dtfCache = new Map();
 function _dtf(tz, kind) {
@@ -67793,6 +67799,29 @@ function _stampState() {
   } catch (e) {}
   return null;
 }
+// The stamp's top line follows the SAME timezone and clock preferences as
+// everything else, because not everyone wants Zulu. UTC in 24-hour mode
+// keeps the terse z notation, which is what z means; UTC in 12-hour mode
+// spells it out; any other zone shows its own clock, date and abbreviation.
+function _stampMainLabel(d) {
+  const wds = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const p = n => String(n).padStart(2, '0');
+  const utcLine = () => {
+    const date = `${wds[d.getUTCDay()]} ${p(d.getUTCMonth() + 1)}/${p(d.getUTCDate())}/${String(d.getUTCFullYear()).slice(2)}`;
+    if (_appClock === '24') return `${date} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}z`;
+    return `${date} ${_clockHM(d.getUTCHours(), d.getUTCMinutes())} UTC`;
+  };
+  if (_appTZ === 'utc') return utcLine();
+  try {
+    const tz = _appTZ === 'local' ? _localTZ() : _appTZ;
+    const pts = _dtf(tz, 'stampd').formatToParts(d);
+    const g = t => pts.find(x => x.type === t)?.value || '';
+    const abbr = _dtf(tz, 'abbr').formatToParts(d)
+      .find(x => x.type === 'timeZoneName')?.value || '';
+    return `${g('weekday')} ${g('month')}/${g('day')}/${g('year')} `
+      + `${_clockHM(+g('hour') % 24, +g('minute'))}${abbr ? ' ' + abbr : ''}`;
+  } catch (e) { return utcLine(); }
+}
 let _stampUpdSig = '', _stampUpdMs = 0;
 function _stampRefresh() {
   const box = document.getElementById('anim-stamp');
@@ -67801,11 +67830,7 @@ function _stampRefresh() {
   if (!box || !main || !sub) return;
   const st = _stampState();
   if (st && st.ms != null && isFinite(st.ms)) {
-    const d = new Date(st.ms);
-    const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()];
-    const p = n => String(n).padStart(2, '0');
-    main.textContent = `${wd} ${p(d.getUTCMonth() + 1)}/${p(d.getUTCDate())}/`
-      + `${String(d.getUTCFullYear()).slice(2)} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}z`;
+    main.textContent = _stampMainLabel(new Date(st.ms));
     // "Updated" is when this loop's data last changed under us: the moment
     // the source, its length or its newest frame moved, that is a refresh.
     const sig = st.src + '|' + st.n + '|' + st.newest;

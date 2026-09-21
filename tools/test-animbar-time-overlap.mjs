@@ -155,11 +155,24 @@ console.log('\n3. the chip carries the stamp, and scrubbing moves it');
     seekFrame(1);
     await new Promise(res => setTimeout(res, 400));
     const after = main.textContent;
-    return { before, after, sub: sub.textContent,
-             zform: /^\w{3} \d{2}\/\d{2}\/\d{2} \d{2}:\d{2}z$/.test(after) };
+    // The top line follows the timezone and clock preferences: z is what
+    // UTC in 24-hour mode is CALLED, 12-hour UTC spells it out, and a
+    // chosen zone shows its own clock and abbreviation.
+    lqmSetClock('24'); lqmSetTZ('utc'); _stampRefresh();
+    const z24 = main.textContent;
+    lqmSetClock('12'); _stampRefresh();
+    const utc12 = main.textContent;
+    lqmSetTZ('America/Chicago'); _stampRefresh();
+    const zone = main.textContent;
+    lqmSetTZ('utc'); lqmSetClock('12'); _stampRefresh();
+    return { before, after, sub: sub.textContent, z24, utc12, zone };
   });
-  ok('the top line is the valid moment, stamped in z time',
-     r.zform, r.after);
+  ok('UTC in 24-hour mode stamps in z',
+     /^\w{3} \d{2}\/\d{2}\/\d{2} \d{2}:\d{2}z$/.test(r.z24), r.z24);
+  ok('UTC in 12-hour mode spells it out instead of forcing Zulu',
+     /^\w{3} \d{2}\/\d{2}\/\d{2} \d{1,2}:\d{2} (AM|PM) UTC$/.test(r.utc12), r.utc12);
+  ok('a chosen timezone shows its own clock and abbreviation',
+     /^\w{3} \d{2}\/\d{2}\/\d{2} \d{1,2}:\d{2} (AM|PM) C[DS]T$/.test(r.zone), r.zone);
   ok('the bottom line says when the data arrived',
      /^Updated: \d{1,2}:\d{2} (AM|PM)$/.test(r.sub), r.sub);
   ok('scrubbing moves the stamp', r.before !== r.after,
