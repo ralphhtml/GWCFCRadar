@@ -14256,7 +14256,7 @@ function _buildAlertPopupHTML(p, color) {
   const hasMore  = fullDesc.length > 10 && fullDesc !== headline;
   const safeDesc = fullDesc.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   return `
-    <div class="ap-header" style="background:${colorBg};border-bottom:1px solid ${colorBdr}">
+    <div class="ap-header" style="background:linear-gradient(${colorBg},${colorBg}), rgb(10,13,17);border-bottom:1px solid ${colorBdr}">
       <div class="ap-event-icon">${icon}</div>
       <div class="ap-event-name">${ev.toUpperCase()}</div>
     </div>
@@ -37623,7 +37623,7 @@ function _nhcPopup(d) {
   // Same structure the NWS alert popups use, so a storm and a warning read the
   // same way rather than each inventing its own layout.
   return `
-    <div class="ap-header" style="background:${colorBg};border-bottom:1px solid ${colorBdr}">
+    <div class="ap-header" style="background:linear-gradient(${colorBg},${colorBg}), rgb(10,13,17);border-bottom:1px solid ${colorBdr}">
       <div class="ap-event-icon">${icon}</div>
       <div class="ap-event-name">${String(title).toUpperCase()}</div>
     </div>
@@ -65763,6 +65763,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-u', date: 'Sep 21, 2026',
+    text: 'Heavier glass where it looks best: the floating outlook legends (SPC, WPC Rainfall, Fire Weather, CPC, ECCC and their stack-mates) wear the full heavy frost now, and the alert and storm popups split in two - the colored title bar stays solid so it reads at a glance, while the details underneath go heavy glass with the map pouring through.' },
   { id: '2026-09-21-t', date: 'Sep 21, 2026',
     text: 'The last opaque panels joined the frost: the floating outlook controls in the top-left (SPC, WPC Rainfall, Fire Weather, CPC, ECCC, Mesoscale, Storm Reports, Tornado Tracks) and the alert-style popups, storm cards included, now wear the same subtle glass as every other menu, with the map blurring through behind them.' },
   { id: '2026-09-21-s', date: 'Sep 21, 2026',
@@ -74103,29 +74105,35 @@ body {
 /* Except the alert-shaped ones, whose ink lives OUTSIDE the thinned
    tokens: --grad-ink is not on _glassSync's list and the wrapper carries
    an opaque background-color besides, so the blur above had nothing to
-   show through and a storm or warning popup stayed a solid slab. Their
-   translucent twin is spelled here at the level's alpha, stated after
-   the ink rule so the !important tie resolves this way. */
+   show through and a storm or warning popup stayed a solid slab. And
+   these wear HEAVY frost, by request: the full-glass blur and a far
+   thinner fill than the app's subtle default, so the map pours through
+   behind the details. The coloured header stays SOLID - its inline
+   background layers the event tint over an opaque dark base, so the
+   title bar reads at a glance while the body underneath goes glassy. */
 :root[data-glass] .ap-popup-container .leaflet-popup-content-wrapper,
 :root[data-glass] .alert-popup .leaflet-popup-content-wrapper {
   background-color: transparent !important;
   background-image: linear-gradient(180deg,
-    rgba(14,17,22,var(--glass-a-panel)) 0%,
-    rgba(4,6,9,var(--glass-a-panel)) 100%) !important;
+    rgba(22,26,32,0.38) 0%, rgba(6,8,12,0.46) 100%) !important;
+  backdrop-filter: blur(24px) saturate(1.5) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
 }
 /* The floating overlay controls in the top-left stack (SPC, WPC Rainfall,
    Fire Weather, CPC, ECCC Outlooks, Meso, Storm Reports, Tornado Tracks)
    paint one literal near-black fill, so they never joined the frost the
-   day every other menu did. Same recipe as the popovers above. */
+   day every other menu did. HEAVY frost here too, by request - the five
+   outlook legends were named and their three stack-mates match, because
+   two weights of glass in one column would read as a mistake. */
 :root[data-glass] #spc-controls, :root[data-glass] #wpc-controls,
 :root[data-glass] #fw-controls, :root[data-glass] #cpc-controls,
 :root[data-glass] #ec-controls, :root[data-glass] #meso-panel,
 :root[data-glass] #storm-reports-panel, :root[data-glass] #tornado-tracks-panel {
   background-color: transparent !important;
   background-image: linear-gradient(180deg,
-    rgba(8,12,16,var(--glass-a-panel)) 0%, rgba(8,12,16,var(--glass-a-panel)) 100%);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) !important;
+    rgba(24,28,34,0.36) 0%, rgba(6,9,13,0.44) 100%);
+  backdrop-filter: blur(24px) saturate(1.5) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
 }
 /* The layer bubbles wear their red as literal hex, not a token, so their
    translucent twin is spelled here with the level's own alpha. */

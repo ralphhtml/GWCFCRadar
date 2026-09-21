@@ -242,6 +242,13 @@ console.log('\n7. no panel is left out of the frost');
   ok('the alert-shaped popups got their translucent ink',
      /whose ink lives OUTSIDE the thinned\s*\n?\s*tokens/.test(PAGE)
      && /:root\[data-glass\] \.ap-popup-container \.leaflet-popup-content-wrapper,\s*\n:root\[data-glass\] \.alert-popup \.leaflet-popup-content-wrapper \{\s*\n\s*background-color: transparent !important;/.test(PAGE));
+  // Heavy, by request: the outlook legends and the popup bodies wear the
+  // full-glass blur, while the popup's coloured title bar stays solid -
+  // its inline background layers the event tint over an opaque base.
+  ok('the outlook legends and popup bodies wear the heavy blur',
+     (PAGE.match(/backdrop-filter: blur\(24px\) saturate\(1\.5\) !important;/g) || []).length >= 6);
+  ok('the popup title bar stays solid under its event tint',
+     (PAGE.match(/class="ap-header" style="background:linear-gradient\(\$\{colorBg\},\$\{colorBg\}\), rgb\(10,13,17\);/g) || []).length === 2);
 }
 
 console.log(fail ? `\n${fail} FAILED, ${pass} passed` : `\nall ${pass} passed`);
