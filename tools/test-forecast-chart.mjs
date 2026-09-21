@@ -31,8 +31,8 @@ console.log('\n1. the pieces are in the page');
      /_fcChartRender/.test(PAGE) && /fc-chart-hair/.test(PAGE)
      && /svg\.addEventListener\('pointermove', show\);/.test(PAGE));
   ok('the line wears the app blue, dots ringed in the card colour',
-     /stroke="#3A74BD" stroke-width="2"/.test(PAGE)
-     && /fill="#3A74BD" stroke="#10151a" stroke-width="2"/.test(PAGE));
+     /stroke="#4EA2DA" stroke-width="2"/.test(PAGE)
+     && /fill="#4EA2DA" stroke="#10151a" stroke-width="2"/.test(PAGE));
   ok('a percentage owns its floor and ceiling',
      /id: 'precip',[^}]*lo: 0, hi: 100/.test(PAGE));
   const EM = String.fromCharCode(0x2014);
