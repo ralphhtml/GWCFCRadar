@@ -65952,6 +65952,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-ab', date: 'Sep 21, 2026',
+    text: 'The NOAA Weather Radio station popup got the alert-popup treatment: the title bar keeps its solid weather-radio orange, and the body below is now black glass - a dark gradient with the heavy frost, so the map reads through the station details instead of through an orange wash.' },
   { id: '2026-09-21-aa', date: 'Sep 21, 2026',
     text: 'One blue, everywhere. Every blue accent in the interface - buttons, panels, pills, the chat and navigation trims, the site popup borders - is now the same deep sky blue, with lighter and darker shades of that exact hue where a gradient or faint tint is needed. Radar palettes, alert colors and other data colors are untouched: those are readings, not decoration. The loading screen also wears a new red-to-blue geometric background.' },
   { id: '2026-09-21-z', date: 'Sep 21, 2026',
@@ -73974,14 +73976,22 @@ function closeCredits() {
 }
 #nwr-rec-close:hover { background-image: linear-gradient(180deg, #e08414 0%, #97460a 100%); }
 #nwr-rec-body::-webkit-scrollbar-thumb { background: rgba(255,140,0,0.45); }
+/* The station popup: orange hat, black coat. The header keeps the
+   weather-radio orange, SOLID like the alert popups' coloured headers,
+   while the body below goes the same ink as the alert popup so the map
+   reads through the details instead of through an orange wash. */
 .nwr-popup .leaflet-popup-content-wrapper {
-  background-image: var(--grad-eas) !important;
-  box-shadow: var(--lift-3d), var(--edge-3d-orange) !important;
+  background-image: var(--grad-ink) !important;
+  box-shadow: var(--lift-3d), var(--edge-3d-ink) !important;
 }
 .nwr-popup .leaflet-popup-tip {
-  background-image: linear-gradient(180deg, #2a1000 0%, #552500 100%) !important;
+  background-image: var(--grad-ink-tip) !important;
 }
-.nwr-header, .nwr-audio-wrap, .nwr-tab.active {
+.nwr-header {
+  background-image: linear-gradient(180deg, #8a4400 0%, #4a2000 100%);
+  box-shadow: var(--edge-3d-orange);
+}
+.nwr-audio-wrap, .nwr-tab.active {
   background-image: var(--grad-eas-card);
   box-shadow: var(--edge-3d-orange);
 }
@@ -74313,7 +74323,8 @@ body {
    background layers the event tint over an opaque dark base, so the
    title bar reads at a glance while the body underneath goes glassy. */
 :root[data-glass] .ap-popup-container .leaflet-popup-content-wrapper,
-:root[data-glass] .alert-popup .leaflet-popup-content-wrapper {
+:root[data-glass] .alert-popup .leaflet-popup-content-wrapper,
+:root[data-glass] .nwr-popup .leaflet-popup-content-wrapper {
   background-color: transparent !important;
   background-image: linear-gradient(180deg,
     rgba(22,26,32,0.38) 0%, rgba(6,8,12,0.46) 100%) !important;

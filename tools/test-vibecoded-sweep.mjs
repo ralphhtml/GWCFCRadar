@@ -241,7 +241,7 @@ console.log('\n7. no panel is left out of the frost');
       ':root[data-glass] #tornado-tracks-panel'].every(s => PAGE.includes(s)));
   ok('the alert-shaped popups got their translucent ink',
      /whose ink lives OUTSIDE the thinned\s*\n?\s*tokens/.test(PAGE)
-     && /:root\[data-glass\] \.ap-popup-container \.leaflet-popup-content-wrapper,\s*\n:root\[data-glass\] \.alert-popup \.leaflet-popup-content-wrapper \{\s*\n\s*background-color: transparent !important;/.test(PAGE));
+     && /:root\[data-glass\] \.ap-popup-container \.leaflet-popup-content-wrapper,\s*\n:root\[data-glass\] \.alert-popup \.leaflet-popup-content-wrapper,\s*\n:root\[data-glass\] \.nwr-popup \.leaflet-popup-content-wrapper \{\s*\n\s*background-color: transparent !important;/.test(PAGE));
   // Heavy, by request: the outlook legends and the popup bodies wear the
   // full-glass blur, while the popup's coloured title bar stays solid -
   // its inline background layers the event tint over an opaque base.
