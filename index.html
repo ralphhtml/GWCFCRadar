@@ -2400,11 +2400,17 @@ body {
 .load-fact-wrap {
   width: min(640px, calc(100vw - 36px));
   padding: 24px 30px 28px;
-  background: rgba(0,0,0,0.5);
-  border: 1px solid rgba(58,116,189,0.3);
-  border-radius: 14px;
+  /* Heavy gloss: a strong blur pulls the polygon art through a thin dark
+     fill, and the bright inset top edge is the sheen that sells the glass. */
+  background: linear-gradient(180deg, rgba(22,26,32,0.38) 0%, rgba(6,8,12,0.48) 100%);
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 16px;
   text-align: center;
-  box-shadow: 0 0 50px rgba(58,116,189,0.06) inset, 0 10px 50px rgba(0,0,0,0.6);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.22),
+              inset 0 22px 34px -26px rgba(255,255,255,0.25),
+              0 10px 50px rgba(0,0,0,0.45);
 }
 .load-fact-label {
   font-family: var(--display);
@@ -36081,7 +36087,18 @@ const LOAD_FACTS = [
   "Alert popup cards let you tap <b>View Full Message</b> to expand the complete NWS hazard text right inside the popup without leaving the map.",
   "Switch the base map between <b>Dark, Light, Satellite, and Topographic</b> tiles any time using the map-type buttons.",
   "The <b>Satellite layer</b> pulls in GOES and global IR composite imagery , switch regions and products from the layer sub-menu.",
-  "All drawing tool windows are <b>draggable</b> , grab the handle at the top of any tool panel and reposition it anywhere on screen."
+  "All drawing tool windows are <b>draggable</b> , grab the handle at the top of any tool panel and reposition it anywhere on screen.",
+  "Turn on the <b>Broadcast Sweep</b> in Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Radar and a TV-style beam rotates over the active radar site, sized to its real 230 km range at every zoom.",
+  "Make your mouse a storm: Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> General offers a <b>tornado, hurricane or supercell pointer</b> , text boxes keep the normal cursor so typing still feels like typing.",
+  "The <b>Compare</b> switch in the radar and satellite menus splits the view into side-by-side strips , different products, bands, regions or times at once.",
+  "The <b>Export panel</b> in Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Display saves the current view as a PNG or records the whole animation loop as a video, stepping the frames itself.",
+  "The <b>Updates button</b> in the account panel lists everything that changed, newest first , the app opens it for you once whenever something new lands.",
+  "<b>Cloud Capture</b> posts your sky photo to a shared feed every visitor sees , an AI check verifies it against live conditions at your spot first.",
+  "Every <b>NWR station marker</b> streams its live broadcast , tap Play in the popup to listen, or Rec to save a clip to your archive.",
+  "The <b>Cross Section tool</b> cuts a line through the active layer and charts exactly what lies along it.",
+  "<b>Radar 3D</b> renders a storm's full volume , pick a zone on the map and orbit its reflectivity in three dimensions.",
+  "Lose your connection and the app quietly <b>replays the last good data</b> with a banner showing its age, then recovers on its own when you are back.",
+  "Asturio's <b>/map command</b> on Discord posts a live picture of this very map, with exactly the layers, products and outlooks you ask for."
 ];
 let _factQueue = [], _factQueueIdx = 0, _factTimer = null;
 function _shuffleFacts() {
@@ -62041,7 +62058,7 @@ function lqmSetTZ(tz) {
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-satellite></use></svg></div>
       <div class="fc-title">SATELLITE</div>
-      <p class="fc-body">Three kinds, then a product inside each: <strong>RGB Composites</strong> (multi-band recipes built on the Pi, like day cloud phase and dust), <strong>ABI Bands</strong> (GOES's raw channels, visible through water vapor to infrared) and <strong>Global Mosaic</strong> (whole-earth imagery, not just the Americas). A <strong>Region</strong> row and a <strong>Time Machine</strong> row sit alongside at every level. Radar and Satellite are mutually exclusive, turning one on turns the other off.</p>
+      <p class="fc-body">Three kinds, then a product inside each: <strong>RGB Composites</strong> (multi-band recipes built on the Pi, like day cloud phase and dust), <strong>ABI Bands</strong> (GOES's raw channels, visible through water vapor to infrared) and <strong>Global Mosaic</strong> (whole-earth imagery, not just the Americas). A <strong>Region</strong> row, a <strong>Time Machine</strong> row and a <strong>Compare</strong> switch sit alongside at every level: Compare splits the view into side-by-side strips, each its own product, region or moment. Radar and Satellite are mutually exclusive, turning one on turns the other off.</p>
     </div>
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-wave></use></svg></div>
@@ -62241,7 +62258,7 @@ function lqmSetTZ(tz) {
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-camera></use></svg></div>
       <div class="fc-title">CLOUD CAPTURE</div>
-      <p class="fc-body">Submit your own weather photos or videos to the map, and see what other people nearby have submitted. A video's first frame becomes its thumbnail and goes through the same AI check a photo would; the clip itself stays on the device that submitted it (up to 60 MB), so its marker plays back there and shows the thumbnail with a note everywhere else.</p>
+      <p class="fc-body">Submit your own weather photos or videos to the map, and see what other people nearby have submitted. Everything lives in one <strong>shared feed</strong>: an approved capture appears for every visitor, and nothing is kept privately on your device. A video's first frame becomes its thumbnail and goes through the same AI check a photo would; the poster frame is what everyone sees.</p>
     </div>
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-eye></use></svg></div>
@@ -62646,7 +62663,7 @@ function lqmSetTZ(tz) {
 
   <div class="callout">
     <div class="callout-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-save></use></svg></div>
-    <div class="callout-body"><strong>Exporting a loop:</strong> the export tool lives in Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Display. It opens a bar across the bottom of the map with two buttons: download the current view as a <strong>PNG</strong>, or download <strong>the whole loop</strong> as a video. It works for radar, satellite and model charts alike, stepping the frames itself as it records.</div>
+    <div class="callout-body"><strong>Exporting:</strong> the Export panel lives in Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Display. It composes the current view and offers two downloads: the frame you are looking at as a <strong>PNG</strong>, or <strong>the whole animation loop</strong> as a video, stepping the frames itself as it records. It works for radar, satellite and model charts alike.</div>
   </div>
 </section>
 
@@ -62671,7 +62688,7 @@ function lqmSetTZ(tz) {
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-antenna></use></svg></div>
       <div class="fc-title">RADAR &amp; RADAR COLORS</div>
-      <p class="fc-body">Radar behaviour, plus a full colour-table editor: per-level control, value-anchored stops, presets, invert and a live preview, so you can build a scale that matches whatever you are used to reading.</p>
+      <p class="fc-body">Radar behaviour, including the <strong>Broadcast Sweep</strong>: a TV-style beam that rotates over the active single-site radar, sized to its real 230 km range. Plus a full colour-table editor: per-level control, value-anchored stops, presets, invert and a live preview, so you can build a scale that matches whatever you are used to reading.</p>
     </div>
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-palette></use></svg></div>
@@ -62712,6 +62729,11 @@ function lqmSetTZ(tz) {
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-storm></use></svg></div>
       <div class="fc-title">STORMSTREAM</div>
       <p class="fc-body">Broadcast mode: a clean overlay HUD, automatic cycling through active alerts, and a coverage-area engine that follows the weather. <strong>Per-Warning Setup</strong> nested inside it decides which layers and overlays come on for each warning type, and <strong>Custom Graphics</strong> holds your own uploaded images to place on the map.</p>
+    </div>
+    <div class="feature-card">
+      <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg></div>
+      <div class="fc-title">GENERAL</div>
+      <p class="fc-body">The little personal touches: an on-screen <strong>clock</strong>, and the <strong>Mouse Pointer</strong> choice, Default, <strong>Tornado, Hurricane or Supercell</strong>. The storm rides everywhere except text boxes, which keep the normal cursor so typing still feels like typing.</p>
     </div>
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-palette></use></svg></div>
@@ -65952,6 +65974,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-ad', date: 'Sep 21, 2026',
+    text: 'The loading screen\'s Did You Know card is now heavy gloss - the polygon art pours through a strong blur behind the facts - and twelve new facts joined the rotation, covering the broadcast sweep, the storm pointers, comparisons, the export panel, Cloud Capture, NWR streams, Radar 3D and more. The tutorial caught up too: a General settings card, the broadcast sweep, the shared Cloud Capture feed, the Compare strips and the redesigned Export panel.' },
   { id: '2026-09-21-ac', date: 'Sep 21, 2026',
     text: 'Cloud Capture is fully shared now. Captures no longer keep a copy on your device: a submitted photo either reaches the shared feed, where everyone using the radar sees it, or the submit tells you it could not post. Video submissions share their poster frame, and the review tools work on the shared feed directly.' },
   { id: '2026-09-21-ab', date: 'Sep 21, 2026',
