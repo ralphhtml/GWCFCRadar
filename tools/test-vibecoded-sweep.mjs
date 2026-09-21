@@ -226,5 +226,23 @@ if (!chromium) {
   await b.close();
 }
 
+console.log('\n7. no panel is left out of the frost');
+{
+  // "Every menu and popup wears the subtle frost" is a promise that decays
+  // one forgotten panel at a time: the floating overlay controls and the
+  // alert-shaped popups both paint literal fills outside the thinned
+  // tokens, and both sat opaque for weeks before anyone said so. These
+  // pins hold the two rules that brought them in.
+  ok('the floating overlay controls are in the glass sheet',
+     [':root[data-glass] #spc-controls', ':root[data-glass] #wpc-controls',
+      ':root[data-glass] #fw-controls', ':root[data-glass] #cpc-controls',
+      ':root[data-glass] #ec-controls', ':root[data-glass] #meso-panel',
+      ':root[data-glass] #storm-reports-panel',
+      ':root[data-glass] #tornado-tracks-panel'].every(s => PAGE.includes(s)));
+  ok('the alert-shaped popups got their translucent ink',
+     /whose ink lives OUTSIDE the thinned\s*\n?\s*tokens/.test(PAGE)
+     && /:root\[data-glass\] \.ap-popup-container \.leaflet-popup-content-wrapper,\s*\n:root\[data-glass\] \.alert-popup \.leaflet-popup-content-wrapper \{\s*\n\s*background-color: transparent !important;/.test(PAGE));
+}
+
 console.log(fail ? `\n${fail} FAILED, ${pass} passed` : `\nall ${pass} passed`);
 process.exit(fail ? 1 : 0);

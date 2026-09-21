@@ -65763,6 +65763,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-t', date: 'Sep 21, 2026',
+    text: 'The last opaque panels joined the frost: the floating outlook controls in the top-left (SPC, WPC Rainfall, Fire Weather, CPC, ECCC, Mesoscale, Storm Reports, Tornado Tracks) and the alert-style popups, storm cards included, now wear the same subtle glass as every other menu, with the map blurring through behind them.' },
   { id: '2026-09-21-s', date: 'Sep 21, 2026',
     text: 'Alert polygons wear the National Weather Service\'s own colors now, hex for hex from the weather.gov map: Tornado Warning red beside Tornado Watch yellow, Severe Thunderstorm orange, Flash Flood dark red, Winter Storm pink. The alerts panel families and the Alert Desk\'s practice products follow the same table, and the newest product names (Extreme Heat, Extreme Cold, Cold Weather Advisory) are recognized instead of painting fallback grey.' },
   { id: '2026-09-21-r', date: 'Sep 21, 2026',
@@ -74095,6 +74097,33 @@ body {
 :root[data-glass] .hh-popup .leaflet-popup-content-wrapper,
 :root[data-glass] .alert-popup .leaflet-popup-content-wrapper,
 :root[data-glass] .cc-popup .leaflet-popup-content-wrapper {
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) !important;
+}
+/* Except the alert-shaped ones, whose ink lives OUTSIDE the thinned
+   tokens: --grad-ink is not on _glassSync's list and the wrapper carries
+   an opaque background-color besides, so the blur above had nothing to
+   show through and a storm or warning popup stayed a solid slab. Their
+   translucent twin is spelled here at the level's alpha, stated after
+   the ink rule so the !important tie resolves this way. */
+:root[data-glass] .ap-popup-container .leaflet-popup-content-wrapper,
+:root[data-glass] .alert-popup .leaflet-popup-content-wrapper {
+  background-color: transparent !important;
+  background-image: linear-gradient(180deg,
+    rgba(14,17,22,var(--glass-a-panel)) 0%,
+    rgba(4,6,9,var(--glass-a-panel)) 100%) !important;
+}
+/* The floating overlay controls in the top-left stack (SPC, WPC Rainfall,
+   Fire Weather, CPC, ECCC Outlooks, Meso, Storm Reports, Tornado Tracks)
+   paint one literal near-black fill, so they never joined the frost the
+   day every other menu did. Same recipe as the popovers above. */
+:root[data-glass] #spc-controls, :root[data-glass] #wpc-controls,
+:root[data-glass] #fw-controls, :root[data-glass] #cpc-controls,
+:root[data-glass] #ec-controls, :root[data-glass] #meso-panel,
+:root[data-glass] #storm-reports-panel, :root[data-glass] #tornado-tracks-panel {
+  background-color: transparent !important;
+  background-image: linear-gradient(180deg,
+    rgba(8,12,16,var(--glass-a-panel)) 0%, rgba(8,12,16,var(--glass-a-panel)) 100%);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) !important;
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) !important;
 }
