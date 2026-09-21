@@ -61072,7 +61072,7 @@ function lqmSetTZ(tz) {
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg></div>
       <div class="fc-title">ACCOUNT MENU</div>
-      <p class="fc-body">Tap the <strong>account pill</strong>, top left (or the <strong>GWCFC logo</strong>, top center) to open the account panel. A strip of five buttons sits at its top: <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg> Settings</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-compass></use></svg> Navigation</strong>, <strong>Tutorial</strong> (this page), <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-star></use></svg> Credits</strong> and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-mail></use></svg> Feedback</strong> and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-sparkle></use></svg> Updates</strong> (the changelog), there whether or not you are signed in. The app also comes in two modes, <strong>Wx-pert</strong> (everything) and <strong>Lite-ning</strong> (just radar, warnings and forecasts); switch with the two mode buttons right under that strip, or in Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Display.</p>
+      <p class="fc-body">Tap the <strong>account pill</strong>, top left (or the <strong>GWCFC logo</strong>, top center) to open the account panel. A strip of five buttons sits at its top: <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg> Settings</strong>, <strong>Tutorial</strong> (this page), <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-star></use></svg> Credits</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-mail></use></svg> Feedback</strong> and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-sparkle></use></svg> Updates</strong> (the changelog), there whether or not you are signed in. The app also comes in two modes, <strong>Wx-pert</strong> (everything) and <strong>Lite-ning</strong> (just radar, warnings and forecasts); switch with the two mode buttons right under that strip, or in Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Display.</p>
     </div>
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-search></use></svg></div>
@@ -61934,7 +61934,7 @@ function lqmSetTZ(tz) {
     </div>
   </div>
 
-  <p>Tap <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-compass></use></svg> Navigation</strong> in the quick menu under the logo. It is also reachable from Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> GPS, which is where it used to live alone.</p>
+  <p>Tap the <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-compass></use></svg> Navigation</strong> pill in the overlay launcher (bottom right), where the map's other switchable things live. It is also reachable from Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> GPS, which is where it used to live alone.</p>
 
   <div class="card-grid">
     <div class="feature-card">
@@ -65079,6 +65079,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-g', date: 'Sep 21, 2026',
+    text: 'Navigation finished its move: its button left the account panel too, so the overlay launcher\'s pill is its one home now (Settings > GPS still reaches it as well). The tutorial\'s directions were updated to match.' },
   { id: '2026-09-21-f', date: 'Sep 21, 2026',
     text: 'Navigation moved into the overlay launcher with the map\'s other switchable things: its pill toggles the panel, drags to reorder like the rest, and carries an info button, as does the panel itself. And every overlay row now has an info button - ATCF Updates and the two Time Machines had been missing theirs.' },
   { id: '2026-09-21-e', date: 'Sep 21, 2026',
@@ -66947,7 +66949,7 @@ document.addEventListener('DOMContentLoaded', () => {
   <div id="lqm-panel-menu">
     <div class="lqm-pm-row">
       <button class="lqm-pm-btn" onclick="lqmCloseProfile();lqmToggleSettingsPanel()"><svg class=svgi width=18 height=18><use href=#ic-gear></use></svg><span>Settings</span></button>
-      <button class="lqm-pm-btn" onclick="lqmCloseProfile();_navOpen()"><svg class=svgi width=18 height=18><use href=#ic-compass></use></svg><span>Navigation</span></button>
+      <!-- Navigation lives in the overlay launcher now, not here. -->
       <button class="lqm-pm-btn" onclick="lqmCloseProfile();lqmOpenTutorial()"><svg class=svgi width=18 height=18><use href=#ic-book></use></svg><span>Tutorial</span></button>
       <button class="lqm-pm-btn" onclick="lqmCloseProfile();openCredits()"><svg class=svgi width=18 height=18><use href=#ic-star></use></svg><span>Credits</span></button>
       <button class="lqm-pm-btn" onclick="lqmCloseProfile();openFeedback()"><svg class=svgi width=18 height=18><use href=#ic-mail></use></svg><span>Feedback</span></button>
