@@ -45,6 +45,30 @@ console.log('\n1. the fall-through is in the page');
      && !readFileSync(join(ROOT, 'tools/test-alert-click.mjs'), 'utf8').includes(EM));
 }
 
+console.log('\n1b. the polygons wear the NWS\'s own colours');
+{
+  // Hex for hex from the WWA colour table behind the weather.gov map, so
+  // this map and the NWS's agree at a glance. The five most-looked-at:
+  const want = {
+    "'Tornado Warning':": '#ff0000',
+    "'Tornado Watch':": '#ffff00',
+    "'Severe Thunderstorm Warning':": '#ffa500',
+    "'Flash Flood Warning':": '#8b0000',
+    "'Winter Storm Warning':": '#ff69b4',
+  };
+  const bad = Object.entries(want).filter(([k, hex]) =>
+    !new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      + "\\s*\\{ color: '" + hex + "'").test(PAGE)).map(([k]) => k);
+  ok('tornado red, tornado watch yellow, SVR orange, flash flood dark red, winter storm pink',
+     bad.length === 0, bad.join(' '));
+  ok('the specific name always outranks the one it contains',
+     PAGE.indexOf("'Hard Freeze Warning':") < PAGE.indexOf("'Freeze Warning':")
+     && PAGE.indexOf("'Tropical Storm Warning':") < PAGE.indexOf("'Storm Warning':"));
+  ok('the renamed products of 2025 are in the table beside the old names',
+     /'Extreme Heat Warning':/.test(PAGE) && /'Cold Weather Advisory':/.test(PAGE)
+     && /'Extreme Cold Warning':/.test(PAGE));
+}
+
 let chromium;
 try { ({ chromium } = await import('playwright')); } catch { /* below */ }
 if (!chromium) {
