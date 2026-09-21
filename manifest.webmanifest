@@ -8,8 +8,8 @@
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "browser"],
   "orientation": "any",
-  "background_color": "#0a0304",
-  "theme_color": "#140404",
+  "background_color": "#A06BA0",
+  "theme_color": "#A06BA0",
   "categories": ["weather", "utilities", "navigation"],
   "icons": [
     {

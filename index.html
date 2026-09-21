@@ -5,7 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>GWCFC Radar</title>
 <meta name="description" content="Live NEXRAD radar, NWS warnings, satellite, models and storm tools on one map.">
-<meta name="theme-color" content="#0b0b0e">
+<!-- The artwork's own average purple while the loading screen is up, so a
+     phone's status bar and toolbar blend into the art instead of framing it
+     in black; _actuallyDismiss hands the app's dark chrome back. -->
+<meta name="theme-color" content="#A06BA0">
 
 <!-- Link preview. Absolute URLs are required: Slack, Discord, iMessage and X
      fetch these server-side, where a relative path has no origin to resolve
@@ -2369,7 +2372,10 @@ body {
 /* Loading overlay */
 #loading {
   position: fixed; inset: 0;
-  background: #060002;
+  /* The artwork's own average purple, not black: it is what shows for the
+     instant before the background image arrives, and what bleeds into any
+     edge the image does not reach. */
+  background: #A06BA0;
   display: flex; align-items: center; justify-content: space-between;
   flex-direction: column;
   padding: 7vh 0 6vh;
@@ -36237,6 +36243,12 @@ document.addEventListener('DOMContentLoaded', () => setTimeout(_syncFabClearance
 
 function _actuallyDismiss() {
   stopLoadFacts();
+  // The loading screen carried the artwork's purple in the browser chrome;
+  // the app underneath is dark, so its chrome goes dark with it.
+  try {
+    const tc = document.querySelector('meta[name="theme-color"]');
+    if (tc) tc.setAttribute('content', '#0b0b0e');
+  } catch(e){}
   const audio = document.getElementById('load-audio');
   if (audio) { audio.pause(); audio.src = ''; }
   const el = document.getElementById('loading');
@@ -65974,6 +65986,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-ag', date: 'Sep 21, 2026',
+    text: 'No more black bars around the loading screen on phones. The browser paints its status bar, toolbar and app-splash from the page\'s declared colors, and those were near-black; while the loading screen is up they now carry the artwork\'s own purple, blending the bars into the art, and the app\'s dark chrome comes back the moment the map appears.' },
   { id: '2026-09-21-af', date: 'Sep 21, 2026',
     text: 'The loading screen artwork is brighter: the dark polygons in the middle of the red-to-blue background have been lifted, so the whole screen is colored with no near-black patches, whatever part of the image your screen crops to.' },
   { id: '2026-09-21-ae', date: 'Sep 21, 2026',
