@@ -65952,6 +65952,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-ac', date: 'Sep 21, 2026',
+    text: 'Cloud Capture is fully shared now. Captures no longer keep a copy on your device: a submitted photo either reaches the shared feed, where everyone using the radar sees it, or the submit tells you it could not post. Video submissions share their poster frame, and the review tools work on the shared feed directly.' },
   { id: '2026-09-21-ab', date: 'Sep 21, 2026',
     text: 'The NOAA Weather Radio station popup got the alert-popup treatment: the title bar keeps its solid weather-radio orange, and the body below is now black glass - a dark gradient with the heavy frost, so the map reads through the station details instead of through an orange wash.' },
   { id: '2026-09-21-aa', date: 'Sep 21, 2026',
@@ -69007,15 +69009,15 @@ function _tlTickHTML(times, fmt) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // CLOUD CAPTURE - submit weather photos, auto-moderate, show approved ones on map
 // ───────────────────────────────────────────────────────────────────────────────
-// Storage: IndexedDB (device-local). Structured behind _ccAll/_ccPut/_ccDelete so a
-// shared backend (e.g. Supabase) can replace the store without touching the UI.
+// Storage: the shared Firestore collection ONLY, behind _ccAll/_ccPut/_ccDelete.
+// A capture either reaches the shared collection, where anyone using the radar
+// sees it, or the submit fails loudly. There is no device-local copy.
 // Moderation: an on-device colour/scene heuristic stands in for a real vision model
 // (which needs a server-side API key). Verdict → approved / pending / denied, with a
 // manual Review tab to override. Swap _ccClassify for a backend AI call when ready.
 const CC_CATS = ['Clouds','Flooding','Hail','Wind','Tornado','Other'];
 let _ccState = { dataUrl: null, category: null, loc: null, mediaType: null, videoBlob: null };
 let _ccLayer = null;
-let _ccDB = null;
 
 function _ccEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 // For untrusted text embedded inside a single-quoted JS string literal that
@@ -69024,55 +69026,37 @@ function _ccEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp
 // & and " so the result also can't break out of the surrounding HTML attribute.
 function _jsAttrEsc(s){ return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
 
-// ── IndexedDB store ──
-function _ccOpenDB(){
-  if (_ccDB) return Promise.resolve(_ccDB);
-  return new Promise((res,rej)=>{
-    const rq = indexedDB.open('gwcfc-cloudcam',1);
-    rq.onupgradeneeded = e => { const db=e.target.result; if(!db.objectStoreNames.contains('photos')) db.createObjectStore('photos',{keyPath:'id'}); };
-    rq.onsuccess = e => { _ccDB=e.target.result; res(_ccDB); };
-    rq.onerror   = e => rej(e.target.error);
-  });
-}
-// Shared backend = the app's existing Firebase/Firestore, when configured.
+// ── Shared store, and nothing else ──
+// The shared Firestore collection is the ONLY place a capture lives. There
+// used to be a device-local IndexedDB cache merged under this, which meant a
+// photo could exist on one phone and nowhere else: a private gallery hiding
+// inside a public feature. Removed by request. A capture either reaches the
+// shared collection, where every visitor sees it, or the submit fails and
+// says so, instead of quietly keeping a copy nobody else can see.
 function _ccRemote(){ try { return (typeof FIREBASE_READY !== 'undefined' && FIREBASE_READY && typeof _fbDb !== 'undefined' && _fbDb) ? _fbDb.collection('cloudcam') : null; } catch(e){ return null; } }
 
-async function _ccLocalAll(){ try { const db=await _ccOpenDB(); return await new Promise(res=>{ const r=db.transaction('photos').objectStore('photos').getAll(); r.onsuccess=()=>res(r.result||[]); r.onerror=()=>res([]); }); } catch(e){ return []; } }
-function  _ccLocalPut(rec){ return _ccOpenDB().then(db=>new Promise((res,rej)=>{ const tx=db.transaction('photos','readwrite'); tx.objectStore('photos').put(rec); tx.oncomplete=res; tx.onerror=e=>rej(e.target.error); })); }
-function  _ccLocalDelete(id){ return _ccOpenDB().then(db=>new Promise(res=>{ const tx=db.transaction('photos','readwrite'); tx.objectStore('photos').delete(id); tx.oncomplete=res; tx.onerror=res; })); }
-
-// Public data layer - prefers the shared Firestore collection, falls back to
-// device-local IndexedDB if Firebase isn't configured or a call fails.
-// Read MERGES local + remote (dedup by id) so a photo always shows on the device that
-// saved it, even if the shared write was blocked (e.g. signed out) - and shows everyone's
-// once the shared write succeeds.
 async function _ccAll(){
-  const local = await _ccLocalAll();
   const col = _ccRemote();
-  let remote = [];
-  if (col){ try { const snap = await col.orderBy('ts','desc').limit(500).get(); remote = snap.docs.map(d=>d.data()); } catch(e){ console.warn('[cloudcam] remote read failed:', e.message); } }
-  const byId = new Map();
-  for (const r of local) if (r && r.id) byId.set(r.id, r);
-  for (const r of remote) if (r && r.id) byId.set(r.id, r);   // shared state wins
-  return [...byId.values()].sort((a,b)=>(b.ts||0)-(a.ts||0));
+  if (!col) return [];
+  try {
+    const snap = await col.orderBy('ts','desc').limit(500).get();
+    return snap.docs.map(d=>d.data()).sort((a,b)=>(b.ts||0)-(a.ts||0));
+  } catch(e){ console.warn('[cloudcam] read failed:', e.message); return []; }
 }
-// Always cache locally (so it posts here), then best-effort share to the backend.
+// Shared write or nothing. The error travels UP: with no local fallback, a
+// swallowed failure would just silently eat the photo.
 async function _ccPut(rec){
-  try { await _ccLocalPut(rec); } catch(e){}   // full record, including videoBlob, stored locally
   const col = _ccRemote();
-  if (col){
-    // videoBlob never leaves this device - Firestore can't hold it (and
-    // wouldn't accept a Blob in a doc anyway), so only the poster image +
-    // metadata get shared. Other devices see the marker/thumbnail; only the
-    // device that actually has the clip can play it back.
-    const { videoBlob, ...remoteRec } = rec;
-    try { await col.doc(rec.id).set(remoteRec); } catch(e){ console.warn('[cloudcam] remote write failed (kept local):', e.message); }
-  }
+  if (!col) throw new Error('the shared photo service is not reachable right now');
+  // Firestore cannot hold the clip itself, and there is no device store any
+  // more, so the poster frame + metadata are what everyone sees.
+  const { videoBlob, ...remoteRec } = rec;
+  await col.doc(rec.id).set(remoteRec);
 }
 async function _ccDelete(id){
-  try { await _ccLocalDelete(id); } catch(e){}
   const col = _ccRemote();
-  if (col){ try { await col.doc(id).delete(); } catch(e){ console.warn('[cloudcam] remote delete failed:', e.message); } }
+  if (!col) throw new Error('the shared photo service is not reachable right now');
+  await col.doc(id).delete();
 }
 
 // Live updates: when the shared collection changes, refresh the map + review list.
@@ -69225,16 +69209,12 @@ async function _ccRenderLayer(){
     const badge = isVideo ? `<div class="cc-vid-badge"><svg class=svgi width=1.4em height=1.4em style=vertical-align:-.15em><use href=#ic-play></use></svg></div>` : '';
     const icon = L.divIcon({ className:'', html:`<div class="cc-photo-marker" style="background-image:url('${rec.img}')">${badge}</div>`, iconSize:[40,40], iconAnchor:[20,40] });
     const m = L.marker([rec.lat, rec.lng], { icon, pane: (typeof _ovPane==='function' ? _ovMarkerPane('cloudcam') : undefined) });
-    // rec.videoBlob only exists on the device that actually submitted the
-    // clip (see _ccPut) - only that device can offer real playback here.
-    let objUrl = null;
-    const media = (isVideo && rec.videoBlob)
-      ? (objUrl = URL.createObjectURL(rec.videoBlob), `<video src="${objUrl}" controls playsinline></video>`)
-      : isVideo
-        ? `<img src="${rec.img}"><div class="cc-pop-note">Video only available on the device that submitted it.</div>`
-        : `<img src="${rec.img}">`;
+    // The clip itself is never stored anywhere (see _ccPut), so a video
+    // submission shows as its poster frame for everyone, submitter included.
+    const media = isVideo
+      ? `<img src="${rec.img}"><div class="cc-pop-note">Video submission - poster frame shown.</div>`
+      : `<img src="${rec.img}">`;
     m.bindPopup(`<div class="cc-popup">${media}<div class="cc-pop-cat">${_ccEsc(rec.category)}</div>${rec.caption?`<div class="cc-pop-cap">${_ccEsc(rec.caption)}</div>`:''}<div style="font-size:9px;color:#888;margin-top:3px">${new Date(rec.ts).toLocaleString()}</div></div>`);
-    if (objUrl) m.on('popupclose', () => URL.revokeObjectURL(objUrl));
     _ccLayer.addLayer(m);
   }
 }
@@ -69280,13 +69260,12 @@ function _ccFileImage(f){
   reader.readAsDataURL(f);
 }
 
-// Videos are too big for a data-URL/Firestore doc, so the clip itself only
-// ever lives in this device's IndexedDB (see _ccPut, which strips videoBlob
-// before any remote write) - grabbing a frame as a JPEG poster is what
-// actually gets shared: it's what other devices' map markers/popups show,
-// and it's what the same AI moderation photos go through runs against too,
-// since it's a real frame straight out of the clip.
-const CC_MAX_VIDEO_BYTES = 60 * 1024 * 1024; // 60 MB - generous for a short clip, still IndexedDB-friendly
+// Videos are too big for a data-URL/Firestore doc, and there is no device
+// store any more, so the clip itself is never kept: grabbing a frame as a
+// JPEG poster is what actually gets shared. It's what every map marker and
+// popup shows, and it's what the same AI moderation photos go through runs
+// against too, since it's a real frame straight out of the clip.
+const CC_MAX_VIDEO_BYTES = 60 * 1024 * 1024; // 60 MB - generous for a short clip
 function _ccFileVideo(f){
   if (f.size > CC_MAX_VIDEO_BYTES) { alert('Video is too large (max 60 MB) - trim it or pick a shorter clip.'); return; }
   const url = URL.createObjectURL(f);
@@ -69365,7 +69344,6 @@ async function _ccSubmit(){
     id:'cc_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
     img:_ccState.dataUrl, category: cls.category || _ccState.category,
     type: isVideo ? 'video' : 'photo', hasVideo: isVideo,
-    videoBlob: isVideo ? _ccState.videoBlob : undefined,
     lat:_ccState.loc.lat, lng:_ccState.loc.lng,
     caption:(document.getElementById('cc-caption').value||'').trim().slice(0,200),
     ts:Date.now(), status, aiReason:cls.reason,
@@ -69373,7 +69351,18 @@ async function _ccSubmit(){
     conditions: (ctx && ctx.text) ? ctx.text : '',
     by: (typeof _currentUser!=='undefined' && _currentUser) ? _currentUser.uid : 'guest',
   };
-  await _ccPut(rec);
+  try {
+    await _ccPut(rec);
+  } catch(e){
+    // No local fallback exists any more, so a failed share means the photo
+    // was NOT posted anywhere - say so instead of showing a verdict.
+    if (box){
+      box.className='cc-verdict denied';
+      box.innerHTML='<b><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-blocked></use></svg> Not posted</b><br>'
+        + _ccEsc('The capture could not reach the shared photo service ('+e.message+'). Check your connection and try again.');
+    }
+    return;
+  }
   if (box){
     box.className='cc-verdict '+(status==='approved'?'approved':status==='denied'?'denied':'review');
     let head = status==='approved' ? '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-check></use></svg> Approved &amp; posted to the map'
@@ -69441,9 +69430,7 @@ async function _ccRenderReview(){
   list.innerHTML=lockBar;
   all.forEach(rec=>{
     const item=document.createElement('div'); item.className='cc-review-item';
-    const thumb = (rec.type==='video' && rec.videoBlob)
-      ? `<video src="${URL.createObjectURL(rec.videoBlob)}" muted></video>`
-      : `<img src="${rec.img}" alt="">`;
+    const thumb = `<img src="${rec.img}" alt="">`;
     item.innerHTML=thumb+
       `<div class="cc-ri-meta"><span class="cc-badge ${rec.status}">${rec.status}</span> <b>${_ccEsc(rec.category)}</b>`+
       (rec.type==='video'?` <span class="cc-badge pending">VIDEO</span>`:'')+
@@ -69460,8 +69447,8 @@ async function _ccRenderReview(){
     list.appendChild(item);
   });
 }
-async function _ccSetStatus(id,status){ const all=await _ccAll(); const r=all.find(x=>x.id===id); if(!r) return; r.status=status; await _ccPut(r); _ccRenderReview(); _ccRenderLayer(); }
-async function _ccDeleteRec(id){ await _ccDelete(id); _ccRenderReview(); _ccRenderLayer(); }
+async function _ccSetStatus(id,status){ const all=await _ccAll(); const r=all.find(x=>x.id===id); if(!r) return; r.status=status; try { await _ccPut(r); } catch(e){ alert('Could not update: '+e.message); } _ccRenderReview(); _ccRenderLayer(); }
+async function _ccDeleteRec(id){ try { await _ccDelete(id); } catch(e){ alert('Could not delete: '+e.message); } _ccRenderReview(); _ccRenderLayer(); }
 
 // ── Modal open/close/tabs ──
 function _ccTab(t){
