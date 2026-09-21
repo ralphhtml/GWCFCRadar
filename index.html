@@ -64669,6 +64669,11 @@ function _applyUrlView(p) {
   // business deciding what someone already had open should be torn down.
   const list = (k) => (p.get(k) || '').split(',').map(s => s.trim()).filter(Boolean);
 
+  // EXCEPT in shot mode, where the defaults are stripped first: see
+  // _shotIsolate below. Run before the ON-switching so a request can
+  // re-enable anything the strip took.
+  if (p.get('shot') === '1') _shotIsolate(p);
+
   if (typeof toggleLayer === 'function') {
     for (const id of list('layers')) {
       if (!(id in activeLayers)) { console.warn('url: unknown layer', id); continue; }
@@ -64750,6 +64755,43 @@ function _applyUrlView(p) {
   } catch(e) { console.warn('url families unavailable:', e); }
 }
 
+// A ?shot link is a question, and the picture must contain nothing the
+// question did not ask: the app's friendly first-run defaults (alert
+// polygons, city temperatures, the surface fronts) belong to a person
+// opening the site, not to a screenshot of one layer - "sea temperature"
+// with a hundred city readings stamped over it answers a question nobody
+// asked. So everything on by default is switched off, sparing only what
+// the link itself requests. Called twice: once before the URL's picks are
+// switched on, and again after the tiles settle, because some defaults
+// (the city temperatures) initialise themselves later in the boot and
+// would otherwise creep back into the picture.
+function _shotIsolate(p) {
+  const list = (k) => (p.get(k) || '').split(',').map(s => s.trim()).filter(Boolean);
+  const askedLayers = new Set(list('layers'));
+  const askedOv = new Set(list('overlays'));
+  // The alert polygon categories (tornado/tstm/flood) are what the
+  // 'alerts' overlay draws, so asking for it keeps all three.
+  if (askedOv.has('alerts')) ['tornado', 'tstm', 'flood'].forEach(k => askedLayers.add(k));
+  try {
+    for (const id of Object.keys(activeLayers)) {
+      if (!activeLayers[id] || askedLayers.has(id)) continue;
+      // Some ids (forecasts, radio, cloudcam) are a layer AND an overlay
+      // pill, and each pill's branch of toggleOverlayPill flips the same
+      // flag through its own machinery. Toggling those here too meant two
+      // flips - which is no flip at all, and was exactly how the city
+      // temperatures kept walking back into screenshots. Whatever has a
+      // pill belongs to the pill loop below alone.
+      if (document.querySelector(`.ov-pill[data-ovid="${id}"]`)) continue;
+      try { toggleLayer(id); } catch (e) { activeLayers[id] = false; }
+    }
+  } catch (e) { console.warn('shot isolate layers:', e); }
+  document.querySelectorAll('.ov-pill.active').forEach(pill => {
+    const id = pill.dataset.ovid;
+    if (askedOv.has(id) || askedLayers.has(id)) return;
+    try { toggleOverlayPill(id); } catch (e) { console.warn('shot isolate overlay', id, e); }
+  });
+}
+
 // Every parameter _applyUrlView understands. Kept beside it so adding one there
 // cannot be forgotten here, which would leave the parameter silently ignored
 // whenever it is the only one in the link.
@@ -64786,6 +64828,9 @@ document.addEventListener('DOMContentLoaded', () => {
   _whenMapReady(async () => {
     _applyUrlView(p);
     await _whenTilesSettled();
+    // The second strip, for the defaults that initialise themselves later
+    // in the boot (the city temperatures) and crept back over the first.
+    if (p.get('shot') === '1') _shotIsolate(p);
     // The flag the screenshot tool waits for, rather than it guessing a delay.
     document.body.dataset.shotReady = '1';
   });
@@ -65927,6 +65972,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-y', date: 'Sep 21, 2026',
+    text: 'Screenshot links show only what they ask for. A ?shot=1 link (the ones the Discord bot posts) used to carry the app\'s friendly defaults - city temperatures, alert polygons, the surface fronts - on top of whatever layer was requested. A shot now strips everything the link did not name; ordinary shared links still open with the usual defaults.' },
   { id: '2026-09-21-x', date: 'Sep 21, 2026',
     text: 'Pick your pointer: Settings > General now has a Mouse Pointer choice - Default, Tornado, Hurricane or Supercell. The storm rides everywhere except text boxes, which keep the normal cursor so typing still feels like typing.' },
   { id: '2026-09-21-w', date: 'Sep 21, 2026',

@@ -102,6 +102,73 @@ console.log('\n2. a ?shot=1 load actually hides the interface');
 }
 
 await p.close();
+
+console.log('\n3. a shot shows ONLY what its link asks for');
+{
+  // The Discord bot's screenshots carried the app's friendly first-run
+  // defaults on top of the requested layer: city temperatures, alert
+  // polygons and the surface fronts, whatever the question was. Each boot
+  // here is a fresh page on a real ?shot URL, checked after the readiness
+  // flag the screenshot tool itself waits on.
+  const boot = async (qs) => {
+    const pg = await b.newPage({ viewport: { width: 1000, height: 640 } });
+    pg.on('pageerror', e => errs.push(String(e).slice(0, 180)));
+    await pg.addInitScript(() => {
+      try { localStorage.setItem('gwcfc_tutorial_seen', '1'); } catch (e) {}
+    });
+    await pg.route('**://**', route => {
+      const url = route.request().url();
+      if (url.startsWith('file://')) return route.continue();
+      if (url.includes('leaflet') && url.endsWith('.js'))
+        return route.fulfill({ contentType: 'application/javascript',
+          body: readFileSync(join(LEAFLET, 'leaflet.js'), 'utf8') });
+      if (url.includes('leaflet') && url.endsWith('.css'))
+        return route.fulfill({ contentType: 'text/css',
+          body: readFileSync(join(LEAFLET, 'leaflet.css'), 'utf8') });
+      return route.abort();
+    });
+    await pg.goto('file://' + join(ROOT, 'index.html') + qs, { waitUntil: 'domcontentloaded' });
+    await pg.waitForFunction(() => document.body.dataset.shotReady === '1',
+      { timeout: 30000 }).catch(() => {});
+    await pg.waitForTimeout(1200);
+    const r = await pg.evaluate(() => ({
+      forecasts: activeLayers.forecasts,
+      tornado: activeLayers.tornado,
+      fronts: !!document.querySelector('.ov-pill[data-ovid="fronts"].active'),
+      cityMarkers: (typeof cityMarkersLayer !== 'undefined' && cityMarkersLayer)
+        ? cityMarkersLayer.getLayers().length : -1,
+      alertsPane: (() => { const pn = map.getPane('alertsPane');
+        return pn ? pn.style.display !== 'none' : null; })(),
+      ready: document.body.dataset.shotReady === '1',
+    }));
+    await pg.close();
+    return r;
+  };
+
+  const sst = await boot('?shot=1&lat=25&lon=-60&z=4&waves=sst');
+  ok('a sea-temperature shot carries no city temps, no alerts, no fronts',
+     sst.ready && sst.forecasts === false && sst.cityMarkers === 0
+     && sst.tornado === false && sst.fronts === false && sst.alertsPane === false,
+     JSON.stringify(sst));
+
+  const al = await boot('?shot=1&lat=35&lon=-97&z=5&overlays=alerts');
+  ok('asking for alerts keeps the polygons and their categories, nothing else',
+     al.tornado === true && al.alertsPane === true
+     && al.forecasts === false && al.cityMarkers === 0 && al.fronts === false,
+     JSON.stringify(al));
+
+  const fc = await boot('?shot=1&lat=35&lon=-97&z=5&layers=forecasts');
+  ok('asking for the city temperatures keeps them',
+     fc.forecasts === true && fc.cityMarkers > 0, JSON.stringify(fc));
+
+  const deep = await boot('?lat=35&lon=-97&z=5');
+  ok('a plain deep link (no shot) leaves the friendly defaults alone',
+     deep.forecasts === true && deep.tornado === true && deep.fronts === true
+     && deep.cityMarkers > 0, JSON.stringify(deep));
+
+  ok('nothing threw across the boots', errs.length === 0, errs.slice(0, 3).join(' | '));
+}
+
 await b.close();
 console.log(fail ? `\n${fail} FAILED, ${pass} passed` : `\nall ${pass} passed`);
 process.exit(fail ? 1 : 0);
