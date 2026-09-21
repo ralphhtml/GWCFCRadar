@@ -246,6 +246,162 @@
     {
       "value": "ch16",
       "name": "CO₂ (ch16)"
+    },
+    {
+      "value": "rgb-airmass",
+      "name": "Air Mass"
+    },
+    {
+      "value": "rgb-truecolor",
+      "name": "True Colour"
+    },
+    {
+      "value": "rgb-cloudphase",
+      "name": "Day Cloud Phase"
+    },
+    {
+      "value": "rgb-nightmicro",
+      "name": "Night Microphysics"
+    },
+    {
+      "value": "rgb-dust",
+      "name": "Dust"
+    },
+    {
+      "value": "rgb-ash",
+      "name": "Volcanic Ash"
+    },
+    {
+      "value": "rgb-daylandcloud",
+      "name": "Day Land Cloud"
+    },
+    {
+      "value": "rgb-daysnowfog",
+      "name": "Day Snow and Fog"
+    },
+    {
+      "value": "rgb-dayconvection",
+      "name": "Day Convection"
+    },
+    {
+      "value": "rgb-simplewv",
+      "name": "Simple Water Vapor"
+    },
+    {
+      "value": "rgb-diffwv",
+      "name": "Differential Water Vapor"
+    },
+    {
+      "value": "rgb-daylandcloudfire",
+      "name": "Day Land Cloud Fire"
+    },
+    {
+      "value": "rgb-so2",
+      "name": "Sulphur Dioxide"
+    },
+    {
+      "value": "rgb-firetemp",
+      "name": "Fire Temperature"
+    },
+    {
+      "value": "glb-ir",
+      "name": "Infrared"
+    },
+    {
+      "value": "glb-vis",
+      "name": "Visible"
+    },
+    {
+      "value": "glb-wv",
+      "name": "Water Vapor"
+    },
+    {
+      "value": "glb-swir",
+      "name": "Shortwave IR"
+    }
+  ],
+  "satregions": [
+    {
+      "value": "auto",
+      "name": "Auto"
+    },
+    {
+      "value": "east",
+      "name": "East CONUS"
+    },
+    {
+      "value": "west",
+      "name": "West CONUS"
+    },
+    {
+      "value": "alaska",
+      "name": "Alaska"
+    },
+    {
+      "value": "hawaii",
+      "name": "Hawaii"
+    },
+    {
+      "value": "caribbean",
+      "name": "Caribbean"
+    },
+    {
+      "value": "efulldisk",
+      "name": "E. Full Disk"
+    },
+    {
+      "value": "wfulldisk",
+      "name": "W. Full Disk"
+    },
+    {
+      "value": "emeso1",
+      "name": "E. Meso 1"
+    },
+    {
+      "value": "emeso2",
+      "name": "E. Meso 2"
+    },
+    {
+      "value": "wmeso1",
+      "name": "W. Meso 1"
+    },
+    {
+      "value": "wmeso2",
+      "name": "W. Meso 2"
+    },
+    {
+      "value": "global",
+      "name": "Whole World"
+    },
+    {
+      "value": "pacific",
+      "name": "Himawari W Pacific"
+    },
+    {
+      "value": "meteosat",
+      "name": "Meteosat Africa"
+    },
+    {
+      "value": "indian",
+      "name": "Indian Ocean"
+    }
+  ],
+  "cpctypes": [
+    {
+      "value": "6_10_temp",
+      "name": "6-10 Day Temperature"
+    },
+    {
+      "value": "6_10_prcp",
+      "name": "6-10 Day Precipitation"
+    },
+    {
+      "value": "8_14_temp",
+      "name": "8-14 Day Temperature"
+    },
+    {
+      "value": "8_14_prcp",
+      "name": "8-14 Day Precipitation"
     }
   ],
   "families": {

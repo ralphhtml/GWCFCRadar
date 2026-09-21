@@ -54,7 +54,25 @@ ok('every product family reached an option',
 ok('dual polarity products are not offered',
    !M.families.radar.some(p => ['cc','zdr','kdp','sw'].includes(p.value)),
    M.families.radar.map(p => p.value).join(','));
-ok('all 16 satellite bands offered, not 8', M.satellite.length === 16, M.satellite.length);
+ok('the whole satellite catalog is offered: bands, composites, global mosaic',
+   M.satellite.length > 16
+   && M.satellite.some(p => p.value === 'ch13')
+   && M.satellite.some(p => p.value.startsWith('rgb-'))
+   && M.satellite.some(p => p.value.startsWith('glb-')),
+   M.satellite.length);
+ok('the satellite regions are offered, meso boxes and world sectors included',
+   Array.isArray(M.satregions)
+   && ['auto','west','emeso1','wfulldisk','global'].every(
+        r => M.satregions.some(x => x.value === r)),
+   (M.satregions || []).map(r => r.value).join(','));
+ok('the outlook dials are on the command',
+   ['spcday','spchaz','wpcday','fwday','cpctype']
+     .every(n => cmd.options.some(o => o.name === n)),
+   cmd.options.map(o => o.name).join(','));
+ok('cpctype offers all four extended outlooks with readable names',
+   (M.cpctypes || []).length === 4
+   && M.cpctypes.every(c => /Day (Temperature|Precipitation)$/.test(c.name)),
+   JSON.stringify(M.cpctypes));
 
 console.log('\nautocomplete');
 const r1 = mod.completeList('overlays', 'sp');
@@ -73,9 +91,14 @@ ok('refuses one that does not exist',
    mod.validateMapOptions({ layers:'nexrad,unicorn' }).join() === 'layer: unicorn',
    mod.validateMapOptions({ layers:'nexrad,unicorn' }).join());
 ok('refuses a dual polarity product nobody can see',
-   mod.validateMapOptions({ product:'zdr' }).length === 1,
-   mod.validateMapOptions({ product:'zdr' }).join());
+   mod.validateMapOptions({ radar:'zdr' }).length === 1,
+   mod.validateMapOptions({ radar:'zdr' }).join());
 ok('accepts a real satellite band', mod.validateMapOptions({ satellite:'ch13' }).length === 0);
+ok('accepts a composite and a region',
+   mod.validateMapOptions({ satellite:'rgb-airmass', satregion:'wmeso2' }).length === 0);
+ok('refuses a made up region', mod.validateMapOptions({ satregion:'moon' }).length === 1);
+ok('accepts a real CPC outlook', mod.validateMapOptions({ cpctype:'6_10_temp' }).length === 0);
+ok('refuses a made up hazard', mod.validateMapOptions({ spchaz:'lava' }).length === 1);
 ok('refuses a made up place', mod.validateMapOptions({ place:'narnia' }).length === 1);
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');

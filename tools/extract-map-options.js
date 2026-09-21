@@ -92,15 +92,54 @@ if (!families.radar.some(p => p.value === 'mrms')) {
   families.radar.push({ value: 'mrms', name: 'MRMS Composite' });
 }
 
-// ── Satellite bands ────────────────────────────────────────────────────────
+// ── Satellite products, all of them ────────────────────────────────────────
+// Used to keep only the 16 ABI bands (id 'chNN'); the page has since grown
+// the Pi-built RGB composites and the global mosaic, all reachable through
+// the same satproduct URL id, so every entry goes to the bot now. Bands keep
+// their channel number in the name; the composites' labels stand alone.
 const satellite = [];
 {
   const m = html.match(/GOES_PRODUCTS\s*=\s*\[([\s\S]*?)\n\s*\];/);
   const text = m ? live(m[1]) : '';
   for (const line of text.split('\n')) {
-    const id = line.match(/\bid\s*:\s*'(ch\d+)'/);
+    const id = line.match(/\bid\s*:\s*'([^']+)'/);
     const label = line.match(/\blabel\s*:\s*'([^']+)'/);
-    if (id) satellite.push({ value: id[1], name: `${label ? label[1] : id[1]} (${id[1]})` });
+    if (!id) continue;
+    const band = /^ch\d+$/.test(id[1]);
+    const name = label ? label[1] : id[1];
+    satellite.push({ value: id[1], name: band ? `${name} (${id[1]})` : name });
+  }
+}
+
+// ── Satellite regions ──────────────────────────────────────────────────────
+// The view the satellite is drawn over: CONUS east/west, Alaska, the meso
+// boxes, full disk, and the global mosaic's own sectors. Same shape as the
+// row on the page; the satregion URL parameter takes the id.
+const satregions = [];
+{
+  const m = html.match(/GOES_REGIONS\s*=\s*\[([\s\S]*?)\n\s*\];/);
+  const text = m ? live(m[1]) : '';
+  for (const line of text.split('\n')) {
+    const id = line.match(/\bid\s*:\s*'([^']+)'/);
+    const label = line.match(/\blabel\s*:\s*'([^']+)'/);
+    if (id) satregions.push({ value: id[1], name: label ? label[1] : id[1] });
+  }
+}
+
+// ── CPC outlook types ──────────────────────────────────────────────────────
+// The four extended-range outlooks the CPC overlay can show. Their ids are
+// terse ('6_10_temp'), so the names spell them out for the Discord picker.
+const cpctypes = [];
+{
+  const m = html.match(/CPC_TYPES\s*=\s*\[([^\]]*)\]/);
+  const pretty = (id) => {
+    const [a, b, kind] = id.split('_');
+    const what = kind === 'temp' ? 'Temperature' : 'Precipitation';
+    return `${a}-${b} Day ${what}`;
+  };
+  if (m) for (const t of m[1].match(/'([^']+)'/g) || []) {
+    const id = t.slice(1, -1);
+    cpctypes.push({ value: id, name: pretty(id) });
   }
 }
 
@@ -118,7 +157,7 @@ const basemaps = basemapSelect
 
 const out = {
   generated: 'by tools/extract-map-options.js from index.html, do not edit',
-  layers, overlays, basemaps, satellite, families,
+  layers, overlays, basemaps, satellite, satregions, cpctypes, families,
 };
 
 const dest = path.join(root, 'services', 'bot', 'map-options.json');
@@ -128,6 +167,8 @@ console.log(`layers      ${layers.length}`);
 console.log(`overlays    ${overlays.length}`);
 console.log(`basemaps    ${basemaps.length}   ${basemaps.join(', ')}`);
 console.log(`satellite   ${satellite.length}`);
+console.log(`satregions  ${satregions.length}   ${satregions.map(r => r.value).join(', ')}`);
+console.log(`cpctypes    ${cpctypes.length}   ${cpctypes.map(c => c.value).join(', ')}`);
 for (const [k, v] of Object.entries(families)) {
   console.log(`${k.padEnd(11)} ${v.length}   ${v.map(p => p.value).join(', ')}`);
 }
