@@ -10245,6 +10245,26 @@ body.gwcfc-crosshair #map::after {
 /* Smooth crossfade between radar animation frames */
 .leaflet-radar-pane img { transition: opacity 80ms ease-in-out; }
 
+/* The offline banner: says when the connection went, so the age of what is
+   on screen is never a mystery. Vanishes the moment the network returns. */
+#offline-bar {
+  position: fixed;
+  top: calc(64px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6000;
+  padding: 6px 16px;
+  border-radius: 10px;
+  background-image: var(--grad-panel, linear-gradient(180deg, #26262e, #000));
+  border: 2px solid rgba(200,20,20,0.85);
+  color: #ffe9e6;
+  font-family: var(--sans, 'Comfortaa', sans-serif);
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 </style>
 <script>
 // ── APP COLOURS: applied before the first paint ──────────────────────────
@@ -64850,6 +64870,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-b', date: 'Sep 21, 2026',
+    text: 'The app works without internet now. Everything you have looked at keeps working offline: the radar loop, alerts, forecasts, satellite, the Pi\'s products, all replayed from what was last seen, with a banner saying since when. The moment a connection returns, every live layer refreshes itself. New weather still needs a connection, because that is physics, not code.' },
   { id: '2026-09-21-a', date: 'Sep 21, 2026',
     text: 'Polish pass: the time stamp sits cleanly welded into the bar now (no more stray band or big red hooks at the joint), the speed box slimmed down, and the subtle frost reached every last menu and popup, from the timezone picker to the changelog itself.' },
   { id: '2026-09-20-j', date: 'Sep 20, 2026',
@@ -67131,6 +67153,7 @@ document.addEventListener('DOMContentLoaded', () => {
 </div>
 <div id="ov-info-tooltip"></div>
 <div id="tb-flyout"></div>
+<div id="offline-bar" style="display:none;">Offline - showing saved data</div>
 
 <!-- Clean mode restore hint -->
 <div id="clean-hint">tap ×5 to restore</div>
@@ -67588,6 +67611,52 @@ function _stampRefresh() {
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go);
   else go();
+})();
+
+// ── OFFLINE: the banner and the catch-up ─────────────────────────────────
+// With no internet there is no new weather - nothing can change that - so
+// offline the app replays the last answer it saw for everything (the
+// service worker keeps one for every request). What the page owes on top:
+// say plainly that this is happening and since when, and the moment any
+// connection returns, refresh every live layer without being asked.
+function _offlineRecover() {
+  const go = (name, ...a) => {
+    try { if (typeof window[name] === 'function') window[name](...a); } catch (e) {}
+  };
+  go('loadNEXRAD');                 // the mosaic loop, back to the live edge
+  go('loadAlerts', true);           // warning polygons
+  go('_refreshVisibleCityTemps');   // the city dots
+  go('_arcWarmVisible');            // archive listings for on-screen radars
+  try {
+    if (typeof _nwsOn !== 'undefined' && _nwsOn) {
+      _nwsEnable(_nwsOn.bubble, _nwsOn.v, _nwsOn.src);
+    }
+  } catch (e) {}
+  try {
+    if (typeof activeLayers !== 'undefined' && activeLayers.satellite
+        && typeof loadGoesLayer === 'function') loadGoesLayer();
+  } catch (e) {}
+}
+(function _offlineWire() {
+  function show() {
+    const el = document.getElementById('offline-bar');
+    if (!el) return;
+    const d = new Date();
+    let h = d.getHours(); const am = h < 12 ? 'AM' : 'PM'; h = h % 12 || 12;
+    el.textContent = `Offline since ${h}:${String(d.getMinutes()).padStart(2, '0')} ${am} - showing saved data`;
+    el.style.display = 'block';
+  }
+  function hide() {
+    const el = document.getElementById('offline-bar');
+    if (el) el.style.display = 'none';
+    _offlineRecover();
+  }
+  window.addEventListener('offline', show);
+  window.addEventListener('online', hide);
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', show);
+    else show();
+  }
 })();
 
 // Times printed under the slider, taken from whatever _animSource says is
