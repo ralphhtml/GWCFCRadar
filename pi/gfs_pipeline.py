@@ -1930,6 +1930,22 @@ MB_PER_HOUR = {
     # from.
     "gfs0p50": 0.2, "gfs1p00": 0.05,
     "hrefpmmn": 10.4, "hrefsprd": 10.4, "gefsc00": 0.07, "gefsp01": 0.07,
+    # The Alaska/Hawaii/Puerto Rico standalones and the same-directory
+    # variants, estimated from the model they are a domain or file of and
+    # corrected the first time check_models.py runs against them, the same
+    # bargain as every other estimate in this table.
+    "hrrrak": 5.4, "hrrrakprs": 5.4, "hrrrsubak": 5.4, "hrrrprs": 5.4,
+    "hrrrnat": 5.4, "rapak": 0.7, "rapnat": 0.7, "rap130": 0.7,
+    "rapp252": 0.7, "rapp236": 0.7,
+    "namak": 1.8, "namhi": 1.8, "nampr": 1.8, "namawak": 1.8,
+    "namafwaca": 1.8, "namafwahi": 1.8, "namawip32": 1.8,
+    "urmaak": 17.3,
+    "gfswaveatl": 1.6, "gfswavepac": 1.6, "gfswavewc": 1.6,
+    "gfswavegulf": 1.6, "gfswavearc": 1.6,
+    "gfssat": 0.6, "gfsb": 0.6, "gfs0p50b": 0.2, "gfsflux": 0.6,
+    "gdasflux": 0.6,
+    "gefsspr25": 0.05, "gefsp08": 0.07, "gefsp09": 0.07, "gefsp10": 0.07,
+    "gefsp11": 0.07, "gefsp12": 0.07,
 }
 
 # What one region costs relative to its model's CONUS figure above. The nests
@@ -4190,6 +4206,35 @@ def cycle_for(m, now=None):
     return t.strftime("%Y%m%d"), f"{cyc:02d}"
 
 
+def cycles_behind(m, run, target):
+    """How many of this model's OWN cycles separate its newest built run from
+    the one due right now.
+
+    This is the fairness unit the build queue orders by. Ordering by the raw
+    run stamp treated an hour the same for everyone, and an hourly model
+    freshly built always wore the newest stamp, so it dropped to the back of
+    the queue and stayed there until its run was as OLD as the six- and
+    twelve-hourly fleet's - it only rebuilt every six hours or worse, and the
+    archive showed a couple of HRRR runs a day out of the twenty-four that
+    published. In cycle units an hourly model three hours stale is three runs
+    behind and outranks a six-hourly model one run behind, while a
+    twelve-hourly model five days stale is ten runs behind and still goes
+    first: the starvation fix that stamp ordering was for survives, in the
+    unit that is actually fair.
+    """
+    try:
+        bd = datetime.strptime(str(run), "%Y%m%d_%H").replace(
+            tzinfo=timezone.utc)
+        td = datetime.strptime(str(target), "%Y%m%d_%H").replace(
+            tzinfo=timezone.utc)
+        return max(0.0, (td - bd).total_seconds() / 3600.0
+                   / max(1, m.get("cycle_h", 6)))
+    except (ValueError, TypeError):
+        # An unreadable stamp reads as very behind rather than current, so a
+        # directory with a mangled name gets rebuilt rather than ignored.
+        return 1e9
+
+
 def run_is_complete(m, date_str, cyc):
     """
     True when the last forecast hour of this run has published.
@@ -5565,26 +5610,29 @@ def main(models=None):
             cost = (len(fhours_for(sp)) * MB_PER_HOUR.get(name, 5.0)
                     * (storm_region_cost(region) if m.get("per_storm")
                        else REGION_COST.get(region, 1.0)))
-            # Among things that already exist, the OLDEST run goes first.
-            # Cost alone is a fixed order, so once a model has been built even
-            # once it sits at the same place in the list for ever: the budget
-            # runs out at the same point every pass and everything past that
-            # point is never rebuilt again. That is not theoretical -- it left
-            # ecmwf, href, hiresw*, iconeu and aigfs stuck on a five day old
-            # run while rtma and hrrr refreshed every hour. Sorting by run
-            # makes the queue self-levelling: whatever is stalest is next, and
-            # a model drops to the back the moment it is rebuilt.
+            # Among things that already exist, whoever is MOST CYCLES BEHIND
+            # its own cadence goes first (see cycles_behind). Cost alone was
+            # a fixed order that starved the tail for ever; the raw run stamp
+            # that replaced it starved the hourly models instead, because a
+            # freshly built HRRR always wore the newest stamp and sank to the
+            # back until it was as old as the twelve-hourly fleet - one or
+            # two archived runs a day out of twenty-four published. Cycles
+            # behind is self-levelling in every model's own time: a model
+            # drops to the back the moment it is rebuilt, and climbs at the
+            # rate IT publishes rather than at the twelve-hourly fleet's.
             run = "" if never else str(man.get("run", ""))
-            jobs.append((0 if never else 1, run, cost, name, region, m, target))
+            behind = 1e12 if never else cycles_behind(sp, run, target)
+            jobs.append((0 if never else 1, -behind, cost, name, region, m,
+                         target))
     # Never built first, and among those the cheap ones first. A cold start
     # otherwise spends twenty minutes on the single most expensive model
     # before anything at all reaches the site, which looks like nothing is
     # happening. Cheapest first puts most of the list on the map in the first
     # few minutes and lets the big ones fill in behind.
-    # never-built first (all run=="", so still cheapest-first for a cold
-    # start), then already-built oldest-run-first, cheapest breaking ties.
+    # never-built first (their -behind ties, so still cheapest-first for a
+    # cold start), then most-cycles-behind first, cheapest breaking ties.
     jobs.sort(key=lambda j: (j[0], j[1], j[2]))
-    jobs = [(p, n, r, m, t) for p, _run, _c, n, r, m, t in jobs]
+    jobs = [(p, n, r, m, t) for p, _behind, _c, n, r, m, t in jobs]
     fresh = sum(1 for j in jobs if j[0] == 0)
     if fresh:
         log(f"{fresh} of {len(jobs)} have never been built, doing those first")

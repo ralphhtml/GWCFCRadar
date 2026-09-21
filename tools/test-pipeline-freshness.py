@@ -143,7 +143,39 @@ ok("a standard pass stops at 25 minutes", gp.TIME_BUDGET_S == 25 * 60,
    str(gp.TIME_BUDGET_S))
 ok("a first-install catch-up still gets three hours",
    gp.CATCHUP_BUDGET_S == 3 * 3600, str(gp.CATCHUP_BUDGET_S))
-ok("the archive keeps five days", gp.KEEP_DAYS == 5, str(gp.KEEP_DAYS))
+# The five-day window became "the disk is the retention policy": the age
+# window is effectively forever and prune() retires the oldest runs one at a
+# time only when the card tightens, with KEEP_RUNS as the floor.
+ok("the archive window is effectively forever, the disk is the policy",
+   gp.KEEP_DAYS >= 3650, str(gp.KEEP_DAYS))
+ok("with a floor pruning never digs below", gp.KEEP_RUNS >= 4, str(gp.KEEP_RUNS))
+
+print("\n5b. the queue is ordered in every model's own time")
+# The raw-stamp order starved hourly models: a freshly built HRRR wore the
+# newest stamp, sank behind the whole 6/12-hourly fleet, and only rebuilt
+# every six-plus hours - one or two archived runs a day out of twenty-four
+# published. cycles_behind is the fairness unit that fixed it.
+hourly = {"cycle_h": 1}
+sixly = {"cycle_h": 6}
+twelvely = {"cycle_h": 12}
+ok("an hourly model three hours stale is three cycles behind",
+   gp.cycles_behind(hourly, "20260921_09", "20260921_12") == 3.0,
+   str(gp.cycles_behind(hourly, "20260921_09", "20260921_12")))
+ok("and outranks a six-hourly model one cycle behind",
+   gp.cycles_behind(hourly, "20260921_09", "20260921_12")
+   > gp.cycles_behind(sixly, "20260921_06", "20260921_12"))
+ok("a twelve-hourly model five days stale still goes first of all",
+   gp.cycles_behind(twelvely, "20260916_12", "20260921_12") == 10.0
+   and gp.cycles_behind(twelvely, "20260916_12", "20260921_12")
+   > gp.cycles_behind(hourly, "20260921_09", "20260921_12"))
+ok("a model already at its target is zero behind, and sorts last",
+   gp.cycles_behind(hourly, "20260921_12", "20260921_12") == 0.0)
+ok("a mangled run stamp reads as very behind, so it gets rebuilt",
+   gp.cycles_behind(hourly, "garbage", "20260921_12") >= 1e9)
+_src = open(os.path.join(ROOT, "pi", "gfs_pipeline.py")).read()
+ok("the queue really sorts by cycles behind, not the raw stamp",
+   "behind = 1e12 if never else cycles_behind(sp, run, target)" in _src
+   and "jobs.append((0 if never else 1, -behind, cost" in _src)
 INSTALL = open(os.path.join(ROOT, "pi", "install.sh")).read()
 mtimer = re.search(r'gwcfc-models\.timer.*?^EOF', INSTALL, re.S | re.M)
 tblock = mtimer.group(0) if mtimer else ""

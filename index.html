@@ -22978,7 +22978,7 @@ async function _hdSetRun(run) {
   const man = await _hdLoadRunManifest(run);
   if (!man) {
     if (typeof showToast === 'function') {
-      showToast('That run is no longer on the Pi. It keeps five days.', 3500);
+      showToast('That run is no longer on the Pi\'s archive.', 3500);
     }
     _hdPopulateRun();
     return;
@@ -65724,6 +65724,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-q', date: 'Sep 21, 2026',
+    text: 'The model run archive fills in properly now. The Pi\'s build queue was ordering models by the raw age of their newest run, which quietly starved the hourly ones: a freshly built HRRR always looked newest, sank to the back, and only rebuilt every six-plus hours, so the run picker showed a run or two a day out of the twenty-four HRRR publishes. The queue now orders by how many of its OWN runs each model is behind, so hourly models rebuild hourly and every published run lands in the picker.' },
   { id: '2026-09-21-p', date: 'Sep 21, 2026',
     text: 'Crash protection for long sessions and smaller computers. The app now sizes its frame pools to the machine\'s own memory (a 4 GB laptop holds fewer preloaded radar and satellite frames, and skips the extra-sharp retina tiles), and a tab left in the background for a minute quietly lets go of every preloaded frame except the one on screen, rebuilding them the moment you come back. Same picture, much smaller memory bill.' },
   { id: '2026-09-21-o', date: 'Sep 21, 2026',
