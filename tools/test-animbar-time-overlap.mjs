@@ -42,10 +42,15 @@ console.log('\n1. the replacement is in the page');
   ok('the stamp chip exists and is welded to the bar top like a browser tab',
      /id="anim-stamp"/.test(PAGE)
      && /#anim-stamp \{[\s\S]{0,900}?bottom: calc\(100% - 2px\);/.test(PAGE)
-     && /border-radius: 12px 12px 0 0;/.test(PAGE)
-     // The gradient-drawn side coves are deliberately GONE: they kept
-     // landing a few pixels off on real screens and read as red hooks.
-     && !/#anim-stamp::before/.test(PAGE));
+     && /border-radius: 12px 12px 0 0;/.test(PAGE));
+  ok('the coves are real SVG arcs with a stroked red outline, not gradient bands',
+     /#anim-stamp::before,/.test(PAGE)
+     && /data:image\/svg\+xml/.test(PAGE)
+     && /stroke='%23AA0000' stroke-width='3'/.test(PAGE)
+     && !/#anim-stamp::before \{[\s\S]{0,200}?radial-gradient/.test(PAGE));
+  ok('the chip reads _animSource, the same list the bar itself plays',
+     /_stampState/.test(PAGE)
+     && /const src = _animSource\(\);/.test(PAGE));
   ok('and it is set in Comfortaa',
      /#anim-stamp \{[\s\S]{0,700}?font-family: 'Comfortaa', sans-serif;/.test(PAGE));
   ok('the chip reads every playback source through one cascade',
