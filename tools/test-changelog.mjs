@@ -27,7 +27,7 @@ const ok = (name, cond, extra) => {
 
 console.log('\n1. the source keeps the shape of the feature');
 {
-  const ids = [...PAGE.matchAll(/\{ id: '(\d{4}-\d{2}-\d{2}-[a-z])', date: '/g)]
+  const ids = [...PAGE.matchAll(/\{ id: '(\d{4}-\d{2}-\d{2}-[a-z]{1,2})', date: '/g)]
     .map(m => m[1]);
   ok('the changelog has entries with dated ids', ids.length >= 5,
      String(ids.length));
