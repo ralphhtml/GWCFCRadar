@@ -6180,6 +6180,27 @@ body.lite-mode #export-modal { display: none !important; }
   box-shadow: 0 0 10px rgba(0,229,255,0.9);
 }
 
+/* ── THE POINTER, YOURS TO PICK: tornado, hurricane or supercell. The
+   cursor images are small inline SVGs (a cursor URL cannot reach the
+   icon sprite), drawn with a white under-stroke so they read over dark
+   radar and bright basemap alike. The rule covers everything, with a
+   follow-up that hands text fields their I-beam back: aiming a tornado
+   at a search box helps nobody. `auto` stays as the fallback for any
+   browser that refuses SVG cursors. ── */
+:root[data-pointer="tornado"], :root[data-pointer="tornado"] * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Cg stroke-linecap='round' fill='none'%3E%3Cpath d='M3 4h22M6 9h15M9 14h9M12 19h5M14 24h2' stroke='%23ffffff' stroke-width='6.5'/%3E%3Cpath d='M3 4h22' stroke='%2316abd8' stroke-width='4'/%3E%3Cpath d='M6 9h15' stroke='%2329b3dd' stroke-width='4'/%3E%3Cpath d='M9 14h9' stroke='%233dbce2' stroke-width='4'/%3E%3Cpath d='M12 19h5' stroke='%235cc9e9' stroke-width='4'/%3E%3Cpath d='M14 24h2' stroke='%237fd8f0' stroke-width='4'/%3E%3C/g%3E%3C/svg%3E") 14 14, auto !important;
+}
+:root[data-pointer="hurricane"], :root[data-pointer="hurricane"] * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Cg fill='none' stroke-linecap='round'%3E%3Cpath d='M20 3.5A11.5 11.5 0 0 0 3.5 14M8 24.5A11.5 11.5 0 0 0 24.5 14' stroke='%23ffffff' stroke-width='7'/%3E%3Cpath d='M20 3.5A11.5 11.5 0 0 0 3.5 14' stroke='%23ff4436' stroke-width='4.5'/%3E%3Cpath d='M8 24.5A11.5 11.5 0 0 0 24.5 14' stroke='%23ff4436' stroke-width='4.5'/%3E%3Ccircle cx='14' cy='14' r='6' fill='%23ff4436' stroke='%23ffffff' stroke-width='2'/%3E%3Ccircle cx='14' cy='14' r='2.2' fill='%23ffffff'/%3E%3C/g%3E%3C/svg%3E") 14 14, auto !important;
+}
+:root[data-pointer="supercell"], :root[data-pointer="supercell"] * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Cellipse cx='14' cy='8' rx='12' ry='5.5' fill='%232e3d4a' stroke='%23ffffff' stroke-width='1.6'/%3E%3Cellipse cx='14' cy='13' rx='8.5' ry='3.8' fill='%23256058' stroke='%23ffffff' stroke-width='1.2'/%3E%3Cpath d='M14.5 15.5h5l-4 5h2.5L11 27l1.8-5H10.5Z' fill='%23ffd21f' stroke='%23ffffff' stroke-width='1'/%3E%3C/svg%3E") 6 6, auto !important;
+}
+:root[data-pointer] input[type="text"], :root[data-pointer] input[type="search"],
+:root[data-pointer] input[type="number"], :root[data-pointer] textarea {
+  cursor: text !important;
+}
+
 /* ── BROADCAST SWEEP: the TV radar beam. A rotating wedge over the active
    single-site radar, sized to the real 230 km reflectivity range. One
    element with a pure CSS rotation, so it costs a compositor layer and
@@ -12900,6 +12921,33 @@ function _fmtHHMMshort(d) {
 }
 // The setter both entrances share. Saves, then repaints every clock a
 // person can currently see.
+// ── The pointer preference ──────────────────────────────────────────────
+// A storm for a cursor, because this is a weather map and it can. The
+// cursor images themselves live in the stylesheet under [data-pointer];
+// this only decides which value the attribute holds and remembers it.
+let _appPointer = (() => {
+  try {
+    const v = localStorage.getItem('gwcfc_pointer');
+    return ['tornado', 'hurricane', 'supercell'].includes(v) ? v : 'default';
+  } catch (e) { return 'default'; }
+})();
+function _pointerApply() {
+  const r = document.documentElement;
+  if (_appPointer === 'default') r.removeAttribute('data-pointer');
+  else r.setAttribute('data-pointer', _appPointer);
+  const sel = document.getElementById('lqm-set-pointer');
+  if (sel) sel.value = _appPointer;
+}
+function lqmSetPointer(v) {
+  _appPointer = ['tornado', 'hurricane', 'supercell'].includes(v) ? v : 'default';
+  try { localStorage.setItem('gwcfc_pointer', _appPointer); } catch (e) {}
+  _pointerApply();
+}
+// Applied at parse so a stored storm is the pointer from the first frame;
+// the select syncs again once the settings panel exists.
+_pointerApply();
+document.addEventListener('DOMContentLoaded', _pointerApply);
+
 function lqmSetClock(v) {
   _appClock = v === '24' ? '24' : '12';
   try { localStorage.setItem('gwcfc_clock', _appClock); } catch (e) {}
@@ -54386,6 +54434,15 @@ function selectProduct(p) {
       <span class="lqm-settings-lbl">Export Picture or Loop</span>
       <button class="lqm-settings-btn" onclick="lqmCloseSettings();_expToggle();">Open export</button>
     </div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Mouse Pointer</span>
+      <select id="lqm-set-pointer" class="lqm-settings-select" onchange="lqmSetPointer(this.value)">
+        <option value="default">Default</option>
+        <option value="tornado">Tornado</option>
+        <option value="hurricane">Hurricane</option>
+        <option value="supercell">Supercell</option>
+      </select>
+    </div>
     <!-- The "Always Show Logo Menu" switch is gone by request: the menu is
          simply pinned, and a switch nobody should need was one more row. -->
   </div>
@@ -65870,6 +65927,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-x', date: 'Sep 21, 2026',
+    text: 'Pick your pointer: Settings > General now has a Mouse Pointer choice - Default, Tornado, Hurricane or Supercell. The storm rides everywhere except text boxes, which keep the normal cursor so typing still feels like typing.' },
   { id: '2026-09-21-w', date: 'Sep 21, 2026',
     text: 'A broadcast sweep, like TV radar: a beam rotates over whichever single-site radar is on screen, sized to the radar\'s real 230 km range at every zoom. It follows the picture through every source and product, and there is a Broadcast Sweep switch in Settings > Radar if you would rather it stayed still.' },
   { id: '2026-09-21-v', date: 'Sep 21, 2026',
