@@ -249,6 +249,10 @@ console.log('\n7. no panel is left out of the frost');
      (PAGE.match(/backdrop-filter: blur\(24px\) saturate\(1\.5\) !important;/g) || []).length >= 6);
   ok('the popup title bar stays solid under its event tint',
      (PAGE.match(/class="ap-header" style="background:linear-gradient\(\$\{colorBg\},\$\{colorBg\}\), rgb\(10,13,17\);/g) || []).length === 2);
+  ok('the alerts, EAS and forecast panels wear the heavy glass too',
+     /:root\[data-glass\] #alerts-panel \{\s*\n\s*background-image: linear-gradient/.test(PAGE)
+     && /:root\[data-glass\] #eas-panel \{\s*\n\s*background-image: linear-gradient\(180deg,\s*\n\s*rgba\(138,68,0/.test(PAGE)
+     && /:root\[data-glass\] #forecast-panel \{\s*\n\s*background-image: linear-gradient/.test(PAGE));
 }
 
 console.log(fail ? `\n${fail} FAILED, ${pass} passed` : `\nall ${pass} passed`);

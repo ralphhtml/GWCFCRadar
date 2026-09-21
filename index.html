@@ -65763,6 +65763,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-v', date: 'Sep 21, 2026',
+    text: 'The weather alerts panel, the EAS panel and the weather forecast panel wear the heavy glass now too. EAS keeps its orange, just see-through: its color never went translucent with the rest of the app, which is why it had stayed a solid slab at every glass level until now.' },
   { id: '2026-09-21-u', date: 'Sep 21, 2026',
     text: 'Heavier glass where it looks best: the floating outlook legends (SPC, WPC Rainfall, Fire Weather, CPC, ECCC and their stack-mates) wear the full heavy frost now, and the alert and storm popups split in two - the colored title bar stays solid so it reads at a glance, while the details underneath go heavy glass with the map pouring through.' },
   { id: '2026-09-21-t', date: 'Sep 21, 2026',
@@ -74132,6 +74134,30 @@ body {
   background-color: transparent !important;
   background-image: linear-gradient(180deg,
     rgba(24,28,34,0.36) 0%, rgba(6,9,13,0.44) 100%);
+  backdrop-filter: blur(24px) saturate(1.5) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+}
+/* The weather alerts panel and the EAS panel, heavy as well, by request.
+   EAS's orange lives in --grad-eas, which _glassSync does not thin, so
+   the EAS panel had stayed effectively solid at every level; its
+   translucent orange twin is spelled here. The alerts panel just trades
+   the token fill for the same thin dark the outlook legends wear. */
+:root[data-glass] #alerts-panel {
+  background-image: linear-gradient(180deg,
+    rgba(20,24,30,0.36) 0%, rgba(5,7,10,0.44) 100%);
+  backdrop-filter: blur(24px) saturate(1.5) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+}
+:root[data-glass] #eas-panel {
+  background-image: linear-gradient(180deg,
+    rgba(138,68,0,0.42) 0%, rgba(85,37,0,0.40) 42%, rgba(42,16,0,0.46) 100%);
+  backdrop-filter: blur(24px) saturate(1.5) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+}
+/* The weather forecast panel joins the heavy family, same request. */
+:root[data-glass] #forecast-panel {
+  background-image: linear-gradient(180deg,
+    rgba(20,24,30,0.38) 0%, rgba(5,7,10,0.46) 100%) !important;
   backdrop-filter: blur(24px) saturate(1.5) !important;
   -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
 }
