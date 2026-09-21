@@ -10697,10 +10697,8 @@ body.clean-mode #clean-hint { opacity: 1; }
       <div class="lqm-icon-wrap" style="font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg></div>
       <span class="lqm-label">Settings</span>
     </div>
-    <div class="lqm-btn" id="lqm-nav-btn" onclick="_navOpen()">
-      <div class="lqm-icon-wrap" style="font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-compass></use></svg></div>
-      <span class="lqm-label">Navigation</span>
-    </div>
+    <!-- Navigation moved into the overlay launcher, where the map's other
+         switchable things live; the pill there opens the same panel. -->
     <div class="lqm-btn" id="lqm-tutorial-btn" onclick="lqmOpenTutorial()">
       <div class="lqm-icon-wrap">
         <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -11167,6 +11165,8 @@ body.clean-mode #clean-hint { opacity: 1; }
   <div id="nav-head">
     <span><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-pin></use></svg> Navigation</span>
     <span style="display:flex;align-items:center;gap:2px;">
+      <button id="nav-info" class="nav-headbtn" title="What this is"
+        onclick="_ovShowInfo(OV_DESCRIPTIONS['navigation'], this)"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-info></use></svg></button>
       <button id="nav-pip" class="nav-headbtn" onclick="_pipToggle('nav')" title="Float directions over other apps (picture in picture)">&#x29C9;</button>
       <button id="nav-voice" class="nav-headbtn" onclick="_navVoiceToggle()" title="Voice guidance on/off">&#x1F50A;</button>
       <button id="nav-min" class="nav-headbtn" onclick="_navMin()" title="Hide the panel">&#x2212;</button>
@@ -30790,6 +30790,12 @@ function toggleOverlayPill(id) {
     if (_barbActive) _barbStop(); else _barbStart();
     const pill = document.getElementById('op-wind-barbs');
     if (pill) pill.classList.toggle('active', _barbActive);
+  } else if (id === 'navigation') {
+    // Navigation lives here now: the pill opens and closes the same panel
+    // the quick menu used to, and lights while the panel is up.
+    const panel = document.getElementById('nav-panel');
+    const open = panel && panel.style.display !== 'none';
+    if (open) _navClose(); else _navOpen();
   } else if (id === 'wave-particles') {
     if (_wavePtActive) _wavePtStop(); else _wavePtStart();
     const pill = document.getElementById('op-wave-particles');
@@ -34509,6 +34515,8 @@ function _navOpen() {
   if (typeof lqmCloseSettings === 'function') { try { lqmCloseSettings(); } catch (e) {} }
   const el = document.getElementById('nav-panel');
   if (el) el.style.display = 'block';
+  const _navPill = document.getElementById('op-navigation');
+  if (_navPill) _navPill.classList.add('active');
   // If you are on the map, you are the natural starting point.
   if (!_navStops.length && _locMarker) {
     const ll = _locMarker.getLatLng();
@@ -34536,6 +34544,8 @@ function _navOpen() {
 function _navClose() {
   const el = document.getElementById('nav-panel');
   if (el) el.style.display = 'none';
+  const _navPill = document.getElementById('op-navigation');
+  if (_navPill) _navPill.classList.remove('active');
   const fab = document.getElementById('nav-fab');
   if (fab) fab.style.display = 'none';
   _navGen++;
@@ -65069,6 +65079,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-f', date: 'Sep 21, 2026',
+    text: 'Navigation moved into the overlay launcher with the map\'s other switchable things: its pill toggles the panel, drags to reorder like the rest, and carries an info button, as does the panel itself. And every overlay row now has an info button - ATCF Updates and the two Time Machines had been missing theirs.' },
   { id: '2026-09-21-e', date: 'Sep 21, 2026',
     text: 'The forecast card learned to draw: a chart of the next 24 hours now sits in the weather popup, with pills to pick the condition - temperature, feels like, dew point, humidity, precip chance, wind, gusts, pressure, cloud cover or visibility. Touch or hover the line for the exact hour and value.' },
   { id: '2026-09-21-d', date: 'Sep 21, 2026',
@@ -65452,7 +65464,7 @@ function _srchBuildCatalog() {
     'spotter-reports': 'target', chasers: 'target', 'fire-outlook': 'fire',
     'cpc-outlook': 'temp', 'canada-alerts': 'siren', 'ec-outlook': 'storm', 'tornado-tracks': 'tornado',
     wildfires: 'fire', 'traffic-cameras': 'camera', 'wfo-offices': 'map',
-    'ambient-weather': 'temp',
+    'ambient-weather': 'temp', navigation: 'compass',
   };
   document.querySelectorAll('#overlay-pills-row .ov-pill[data-ovid]').forEach(pill => {
     const id = pill.dataset.ovid;
@@ -67348,6 +67360,9 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="ov-pill" id="op-tstorm-tracker" data-ovid="tstorm-tracker" title="T-Storm Tracker - tracked storm cells and where they are headed, from the radar you are decoding">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('tstorm-tracker')">T-Storm Tracker</span><span class="ov-drag" title="Drag to reorder">⠿</span>
     </div>
+    <div class="ov-pill" id="op-navigation" data-ovid="navigation" title="Navigation - turn-by-turn routes coloured by the weather along them">
+      <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('navigation')">Navigation</span><span class="ov-drag" title="Drag to reorder">⠿</span>
+    </div>
   </div>
   <button id="overlay-toggle-btn" onclick="toggleOverlayLauncher()" title="Toggle overlays" aria-label="Toggle overlays">
     <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -68524,6 +68539,10 @@ function _ccClose(){ _ccHideModal(); _ccAdminUnlocked=false; }
 // so every overlay stays covered even as new ones get added later.
 // ═══════════════════════════════════════════════════════════════════════════════
 const OV_DESCRIPTIONS = {
+  'navigation':       'Turn-by-turn navigation with the weather drawn onto the route: each leg is coloured by the radar and conditions along it, so you can see where the drive gets bad before you are in it. Add stops by searching or tapping the map, get live guidance with voice, and report road weather for others. Drag the panel by its handle to put it anywhere.',
+  'atcf':             'ATCF Updates: every active tropical system in the world, drawn straight from the Automated Tropical Cyclone Forecast feed. Hurricanes are coloured by category, storms and depressions by strength, and invests come dashed. Tap any system for the full advisory: class, winds in knots and mph, pressure, movement, fix time, basin, and the raw ATCF line itself. Re-checks the feed every 10 minutes while on.',
+  'ftm':              'Forecast Time Machine: pick any past date, as far back as 1763 where station records reach, and every reporting station in view shows what the thermometer actually read that day, coloured red or blue by how far it ran above or below normal. Tap a station for the full daily report. Powered by NOAA\'s climate archive.',
+  'ctm':              'Climate Time Machine: the same stations as the Forecast Time Machine, but showing what is NORMAL for that day of the year rather than any one reading. Switch the dots between high, low, rain and snowfall, and use the year-jump chips to hop 1 to 50 years back through the record.',
   'alerts':          'Live warnings and watches from the National Weather Service, like tornado warnings or flood watches. Tap a shape to read the full alert.',
   'wx-alerts':       'Opens a scrollable list of active NWS weather warnings and watches, as plain text instead of shapes on the map.',
   'eas-alerts':      'Opens a live feed of Emergency Alert System (EAS) broadcasts, with audio playback for each one.',
