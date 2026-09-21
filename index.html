@@ -693,11 +693,25 @@ body {
   white-space: nowrap;
   box-shadow: 0 -4px 10px -6px rgba(0,0,0,0.4);
 }
-/* No side coves. They were gradient-drawn quarter arcs meant to round the
-   root the way a browser tab's does, and on real screens (other pixel
-   densities, the live bar's exact metrics) they kept landing a few pixels
-   off and reading as floating red hooks. A clean straight-rooted tab
-   cannot misrender: rounded top, shared border, covered border strip. */
+/* The coves, drawn as inline SVG: a real arc with a real 3px red stroke,
+   crisp at any pixel density. Each cove is 3px wider than the curve so it
+   also overlays the chip's own border strip: the vertical red wall STOPS
+   where the curve begins, because from there down the cove's cyan fill
+   covers the wall and the stroked arc IS the outline, sweeping from the
+   wall's exact band down onto the bar's red border line. bottom: 2px
+   cancels the chip's extra 2px of overlap so the landing is exact. */
+#anim-stamp::before,
+#anim-stamp::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 15px;
+  height: 14px;
+  pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 15 14'%3E%3Cpath d='M15 0A12 12 0 0 1 3 12L3 14L15 14Z' fill='%235cd8f7'/%3E%3Cpath d='M13.5 0A10.5 10.5 0 0 1 3 10.5' fill='none' stroke='%23AA0000' stroke-width='3'/%3E%3C/svg%3E") 0 0 / 15px 14px no-repeat;
+}
+#anim-stamp::before { left: -15px; }
+#anim-stamp::after { right: -15px; transform: scaleX(-1); }
 #anim-stamp-main {
   font-size: 15px; font-weight: 700; letter-spacing: 0.5px;
   color: #000;
@@ -715,7 +729,9 @@ body {
   width: 1px; height: 24px; background: var(--border2); margin: 0 6px; flex-shrink: 0;
 }
 #zoom-controls {
-  display: flex; flex-direction: column; gap: 2px; flex-shrink: 0;
+  /* Horizontal now, by request: two full-size buttons side by side rather
+     than the half-height stacked pair. */
+  display: flex; flex-direction: row; gap: 4px; flex-shrink: 0;
 }
 /* Scoped to #animbar (not just .zoom-btn) so this reliably outranks the
    generic "#animbar button{width:28px;height:28px}" rule below - that rule
@@ -725,8 +741,8 @@ body {
    than every bottom-anchored button above it assumed when it was tuned. */
 #animbar .zoom-btn {
   background: none; border: 3px solid #AA0000; color: #000;
-  font-family: var(--display); font-weight: 700; width: 24px; height: 13px;
-  border-radius: 4px; cursor: pointer; font-size: 11px; line-height: 1;
+  font-family: var(--display); font-weight: 700; width: 28px; height: 28px;
+  border-radius: 6px; cursor: pointer; font-size: 14px; line-height: 1;
   display: flex; align-items: center; justify-content: center;
   transition: background 0.1s;
 }
@@ -1526,6 +1542,9 @@ body {
   #speed-wrap { display: flex; }
   #speed-input { width: 34px; font-size: 10px; padding: 0 2px; }
   #speed-unit { font-size: 8px; padding: 0 3px 0 0; }
+  /* The zoom pair went full-size and horizontal, which a phone this narrow
+     cannot afford beside the track; pinch zoom does the same job here. */
+  #zoom-controls { display: none; }
   #anim-time { min-width: 58px; }
   /* Same reasoning as speed-wrap above, for the same reason: there is not
      room for everything on a phone this narrow, and something has to give.
@@ -11328,13 +11347,6 @@ body.clean-mode #clean-hint { opacity: 1; }
                  onkeydown="if(event.key==='Enter')this.blur()"/>
         </div>
       </div>
-      <div id="speed-wrap" title="Playback speed multiplier">
-        <input type="number" id="speed-input" value="1.5" min="0.01" step="any"
-               placeholder="1"
-               oninput="setAnimSpeed(this.value)"
-               onkeydown="if(event.key==='Enter')this.blur()"/>
-        <span id="speed-unit">×</span>
-      </div>
       <div id="timeline-wrap">
         <div id="timeline-row">
           <input type="range" id="timeline" min="0" value="0" oninput="seekFrame(parseInt(this.value))">
@@ -11346,6 +11358,14 @@ body.clean-mode #clean-hint { opacity: 1; }
       <div id="anim-stamp" title="Hold to change timezone" style="display:none;">
         <div id="anim-stamp-main">--:--z</div>
         <div id="anim-stamp-sub"></div>
+      </div>
+      <!-- The speed box lives on the right end of the bar now, by request. -->
+      <div id="speed-wrap" title="Playback speed multiplier">
+        <input type="number" id="speed-input" value="1.5" min="0.01" step="any"
+               placeholder="1"
+               oninput="setAnimSpeed(this.value)"
+               onkeydown="if(event.key==='Enter')this.blur()"/>
+        <span id="speed-unit">×</span>
       </div>
       <button id="fullscreen-btn" onclick="_fsToggle()" title="Full screen">
         <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-fullscreen></use></svg>
@@ -64854,6 +64874,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-d', date: 'Sep 21, 2026',
+    text: 'The time stamp\'s curved roots are back, drawn crisply this time, and it now reads the exact same source list the bar itself plays, so every layer, models included, stamps itself. The speed box moved to the right end of the bar, and the zoom buttons are full-size and side by side.' },
   { id: '2026-09-21-c', date: 'Sep 21, 2026',
     text: 'The time stamp\'s joint with the animation bar is clean now. The little curved side hooks kept landing a few pixels off on real screens, so the stamp is a straight-rooted tab instead: rounded top, one shared red outline, seamless base.' },
   { id: '2026-09-21-b', date: 'Sep 21, 2026',
@@ -67465,79 +67487,27 @@ function _selectTZandClose(tz) {
 // The bar's little clock grew into a chip above the bar. Top line: the
 // frame's valid moment, always in UTC with a z, the way a met product is
 // stamped. Bottom line: when the data on screen last arrived, in the
-// viewer's own clock. It reads whichever playback source owns the bar right
-// now by walking the same cascade the step buttons use, so a model loop, a
-// satellite loop or an NWS analysis all stamp themselves; anything it does
-// not recognise falls back to mirroring the bar's own text, so nothing that
-// used to be readable goes missing.
-function _stampT(v) {
-  if (v == null) return null;
-  if (v instanceof Date) return +v;
-  const n = +v;
-  if (!isFinite(n) || n <= 0) return null;
-  return n > 1e12 ? n : n * 1000;
-}
+// viewer's own clock.
+//
+// It reads _animSource(), the same function the play, step and label code
+// read, which is the one true list of what can own the bar: the Level 2
+// loop, the site product loops, MRMS, satellite, velocity and dual-pol,
+// the single-site loop, the NWS analyses and forecasts, and the national
+// mosaic with its forecast frames - models included, because whatever the
+// bar can play, that function reports. A source it cannot name falls back
+// to mirroring the bar's own text, so nothing that used to be readable
+// goes missing, and any playback source added later stamps itself with no
+// new wiring here.
 function _stampState() {
   try {
-    const last = f => f[f.length - 1];
-    if (typeof _l2LoopActive === 'function' && _l2LoopActive()) {
-      const f = _l2Loop.frames;
-      return { src: 'l2', ms: _stampT(f[_l2Loop.idx] && f[_l2Loop.idx].time),
-               n: f.length, newest: _stampT(last(f) && last(f).time) };
-    }
-    if (typeof _prLoopActive === 'function' && _prLoopActive()) {
-      const f = _prLoop.frames;
-      return { src: 'pr', ms: _prStampToMs(f[_prLoop.idx]),
-               n: f.length, newest: _prStampToMs(last(f)) };
-    }
-    if (typeof _mrmsLoopActive === 'function' && _mrmsLoopActive()) {
-      const f = _mrmsLoop.frames;
-      const t = x => {
-        if (!x) return null;
-        const a = _stampT(x.time);
-        return a != null ? a : _mrmsStampMs(x.time != null ? x.time : x);
-      };
-      return { src: 'mrms', ms: t(f[_mrmsLoop.idx]), n: f.length, newest: t(last(f)) };
-    }
-    if (typeof activeLayers !== 'undefined' && activeLayers.satellite
-        && typeof goesFrames !== 'undefined' && goesFrames.length) {
-      const f = goesFrames;
-      return { src: 'sat', ms: _stampT(f[goesCurrentFrame] && f[goesCurrentFrame].time),
-               n: f.length, newest: _stampT(last(f) && last(f).time) };
-    }
-    if (typeof currentProduct !== 'undefined' && currentProduct === 'vel'
-        && typeof velFrames !== 'undefined' && velFrames.length) {
-      const f = velFrames;
-      return { src: 'vel', ms: _stampT(f[velCurrentFrame] && f[velCurrentFrame].time),
-               n: f.length, newest: _stampT(last(f) && last(f).time) };
-    }
-    if (typeof _dpFrames !== 'undefined' && _dpFrames.length
-        && ['hc', 'accum', 'boha', 'cc', 'zdr', 'kdp', 'sw'].includes(currentProduct)) {
-      const f = _dpFrames;
-      return { src: 'dp', ms: _stampT(f[_dpCurrentFrame] && f[_dpCurrentFrame].time),
-               n: f.length, newest: _stampT(last(f) && last(f).time) };
-    }
-    if (typeof _refSiteFrames !== 'undefined' && _refSiteFrames.length
-        && currentProduct === 'ref' && typeof _refStation !== 'undefined' && _refStation) {
-      const f = _refSiteFrames;
-      return { src: 'site', ms: _stampT(f[currentFrame] && f[currentFrame].time),
-               n: f.length, newest: _stampT(last(f) && last(f).time) };
-    }
-    if (typeof _nwsLoopActive === 'function' && _nwsLoopActive()) {
-      const f = _nwsLoop.frames;
-      return { src: 'nws-' + (_nwsOn ? _nwsOn.src : ''),
-               ms: _stampT(f[_nwsLoop.idx] && f[_nwsLoop.idx].time),
-               n: f.length, newest: _stampT(last(f) && last(f).time) };
-    }
-    // No layer-flag check here: the mosaic frames are the bar's default
-    // owner (stepFrame falls through to them the same way), and the old
-    // display printed their time whatever the radar toggle said.
-    if (typeof radarFrames !== 'undefined' && radarFrames.length) {
-      const f = radarFrames;
-      const nw = f[typeof lastPastIdx === 'number' ? lastPastIdx : f.length - 1];
-      return { src: 'mosaic', ms: _stampT(f[currentFrame] && f[currentFrame].time),
-               n: f.length, newest: _stampT(nw && nw.time) };
-    }
+    if (typeof _animSource !== 'function') return null;
+    const src = _animSource();
+    if (!src || !src.id || !src.times.length) return null;
+    const t = src.times[src.idx];
+    const last = src.times[src.times.length - 1];
+    if (t == null || !isFinite(+t)) return null;
+    return { src: src.id, ms: +t, n: src.times.length,
+             newest: last != null ? +last : null };
   } catch (e) {}
   return null;
 }
