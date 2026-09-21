@@ -565,16 +565,30 @@ async function screenshotMap(opt) {
   setNum('lat', lat ?? spot.lat);
   setNum('lon', lon ?? spot.lon);
   setNum('z',   z   ?? spot.z);
-  // Everything else is passed through verbatim under the name the page already
-  // uses, so a parameter added to the page needs only a command option here,
-  // not a translation step in between.
-  // The command says "satellite" because that is what a person asking for one
-  // would say; the page's parameter is satproduct. Translated in one place.
-  if (opt.satellite) q.set('satproduct', String(opt.satellite));
-  for (const k of ['basemap','layers','overlays','product','satproduct',
-                   'model','modelvar','waves','air','temperature','pressure','wind']) {
+  // Each family option rides under the page's own name for it, taken from
+  // the same FAMILY_OPTIONS table the command is built from, so the command
+  // and the URL cannot drift apart.
+  for (const [name, , param] of FAMILY_OPTIONS) {
+    if (opt[name]) q.set(param, String(opt[name]));
+  }
+  // Everything else passes through verbatim under the name the page uses.
+  for (const k of ['basemap','layers','overlays','model','modelvar',
+                   'spcday','spchaz','wpcday','fwday','cpctype']) {
     if (opt[k]) q.set(k, String(opt[k]));
   }
+  // Asking for an outlook's dial means asking for the outlook: a day or
+  // hazard on its own would otherwise set state nothing draws. The dial
+  // implies its overlay, exactly as a radar product implies radar.
+  const overlays = new Set(String(q.get('overlays') || '')
+    .split(',').map(x => x.trim()).filter(Boolean));
+  if (opt.spcday || opt.spchaz) overlays.add('spc-outlook');
+  if (opt.wpcday)               overlays.add('wpc-outlook');
+  if (opt.fwday)                overlays.add('fire-outlook');
+  if (opt.cpctype)              overlays.add('cpc-outlook');
+  if (overlays.size) q.set('overlays', [...overlays].join(','));
+  // A region without a product would aim the camera with nothing in front
+  // of it, so it brings the everyday Clean IR band along.
+  if (opt.satregion && !opt.satellite) q.set('satproduct', 'ch13');
 
   const url = `${SITE_URL}?${q}`;
   return queueShot(async () => {
@@ -678,52 +692,101 @@ function choicesFor(list) {
   }));
 }
 
-// One command option per product family, named after the family, exactly as
-// the page's own URL parameters are. A family added to the site appears here
-// on the next run of the generator with no edit to this file.
+// One command option per product family. Each row is
+// [command option, list in map-options.json, URL parameter, description]:
+// the command speaks the word a person would say ('radar', 'satellite') and
+// the URL parameter is whatever the page happens to call it ('product',
+// 'satproduct'), translated in exactly one place. A family added to the site
+// appears here on the next run of the generator with no edit to this file.
 const FAMILY_OPTIONS = [
-  ['product',    'radar',       'Radar product. Switches radar on by itself'],
-  ['satellite',  'satellite',   'GOES band. Switches satellite on by itself'],
-  ['wind',       'wind',        'Wind product'],
-  ['temperature','temperature', 'Temperature product'],
-  ['waves',      'waves',       'Wave product'],
-  ['air',        'air',         'Air quality product'],
-  ['pressure',   'pressure',    'Pressure product'],
+  ['radar',      'radar',       'product',    'Radar product. Switches radar on by itself'],
+  ['satellite',  'satellite',   'satproduct', 'Satellite product: ABI band, RGB composite or global mosaic'],
+  ['satregion',  'satregions',  'satregion',  'Satellite view: CONUS, meso box, full disk, world sector'],
+  ['wind',       'wind',        'wind',       'Wind product'],
+  ['temperature','temperature', 'temperature','Temperature product'],
+  ['waves',      'waves',       'waves',      'Wave product'],
+  ['air',        'air',         'air',        'Air quality product'],
+  ['pressure',   'pressure',    'pressure',   'Pressure product'],
 ];
 
+// Every string option the /map handler reads, family and plain alike, so the
+// handler and the validator never chase a list of names by hand again.
+const MAP_STRING_OPTIONS = [
+  'place', 'basemap', 'layers', 'overlays', 'spchaz', 'cpctype',
+  ...FAMILY_OPTIONS.map(f => f[0]),
+];
+const MAP_INT_OPTIONS = ['zoom', 'spcday', 'wpcday', 'fwday'];
+
+function addFamilyOption(c, name) {
+  const row = FAMILY_OPTIONS.find(f => f[0] === name);
+  const list = MAP_OPTIONS.families[row[1]] || MAP_OPTIONS[row[1]] || [];
+  if (!list.length) return c;
+  return c.addStringOption(o => {
+    o.setName(row[0]).setDescription(row[3]);
+    // Past 25 choices Discord insists it be typed, hence autocomplete.
+    if (list.length <= CHOICE_LIMIT) o.addChoices(...choicesFor(list));
+    else o.setAutocomplete(true);
+    return o;
+  });
+}
+
 function mapCommand() {
-  const c = new SlashCommandBuilder()
+  // Ordered the way someone builds a picture: where, then the main picture
+  // (radar or satellite), then what to draw on top, then the fine print.
+  let c = new SlashCommandBuilder()
     .setName('map')
     .setDescription('Post a picture of the radar map')
     .addStringOption(o => o.setName('place')
       .setDescription('Where to look')
       .addChoices(...choicesFor(
-        Object.keys(PLACES).map(k => ({ value: k, name: k })))))
-    // Several at once, so completed as typed rather than picked from a list.
+        Object.keys(PLACES).map(k => ({ value: k, name: k })))));
+
+  c = addFamilyOption(c, 'radar');
+  c = addFamilyOption(c, 'satellite');
+  c = addFamilyOption(c, 'satregion');
+
+  // Several at once, so completed as typed rather than picked from a list.
+  c = c
     .addStringOption(o => o.setName('layers')
       .setDescription(`Comma separated. ${MAP_OPTIONS.layers.length} available`)
       .setAutocomplete(true))
     .addStringOption(o => o.setName('overlays')
       .setDescription(`Comma separated. ${MAP_OPTIONS.overlays.length} available`)
       .setAutocomplete(true))
-    .addStringOption(o => o.setName('basemap')
-      .setDescription('Basemap style')
-      .addChoices(...choicesFor(
-        MAP_OPTIONS.basemaps.map(b => ({ value: b, name: b })))));
+    // The outlook dials. Naming any of these switches its overlay on by
+    // itself, the same way naming a radar product switches radar on.
+    .addIntegerOption(o => o.setName('spcday')
+      .setDescription('SPC outlook day. Switches the SPC outlook on')
+      .setMinValue(1).setMaxValue(8))
+    .addStringOption(o => o.setName('spchaz')
+      .setDescription('SPC hazard view. Switches the SPC outlook on')
+      .addChoices(
+        { name: 'Categorical',              value: 'cat'  },
+        { name: 'Tornado',                  value: 'torn' },
+        { name: 'Wind',                     value: 'wind' },
+        { name: 'Hail',                     value: 'hail' },
+        { name: 'Probabilistic (day 4-8)',  value: 'prob' },
+      ))
+    .addIntegerOption(o => o.setName('wpcday')
+      .setDescription('WPC excessive rain day. Switches the WPC outlook on')
+      .setMinValue(1).setMaxValue(3))
+    .addIntegerOption(o => o.setName('fwday')
+      .setDescription('SPC fire weather day. Switches the fire outlook on')
+      .setMinValue(1).setMaxValue(2))
+    .addStringOption(o => o.setName('cpctype')
+      .setDescription('CPC extended outlook. Switches the CPC outlook on')
+      .addChoices(...choicesFor(MAP_OPTIONS.cpctypes || [])));
 
-  for (const [opt, family, desc] of FAMILY_OPTIONS) {
-    const list = MAP_OPTIONS.families[family] || MAP_OPTIONS[family] || [];
-    if (!list.length) continue;
-    c.addStringOption(o => {
-      o.setName(opt).setDescription(desc);
-      // Past 25 it has to be typed, which is why this is not a flat rule.
-      if (list.length <= CHOICE_LIMIT) o.addChoices(...choicesFor(list));
-      else o.setAutocomplete(true);
-      return o;
-    });
+  for (const [name] of FAMILY_OPTIONS) {
+    if (['radar', 'satellite', 'satregion'].includes(name)) continue;
+    c = addFamilyOption(c, name);
   }
 
   return c
+    .addStringOption(o => o.setName('basemap')
+      .setDescription('Basemap style')
+      .addChoices(...choicesFor(
+        MAP_OPTIONS.basemaps.map(b => ({ value: b, name: b })))))
     .addNumberOption(o => o.setName('lat')
       .setDescription('Latitude, overrides place'))
     .addNumberOption(o => o.setName('lon')
@@ -780,6 +843,8 @@ function validateMapOptions(opt) {
   check('layer', opt.layers, MAP_OPTIONS.layers);
   check('overlay', opt.overlays, MAP_OPTIONS.overlays.map(o => o.value));
   check('basemap', opt.basemap, MAP_OPTIONS.basemaps);
+  check('spchaz', opt.spchaz, ['cat', 'torn', 'wind', 'hail', 'prob']);
+  check('cpctype', opt.cpctype, (MAP_OPTIONS.cpctypes || []).map(c => c.value));
   if (opt.place && !(String(opt.place).toLowerCase() in PLACES)) {
     bad.push(`place: ${opt.place}`);
   }
@@ -1065,10 +1130,10 @@ client.on(Events.InteractionCreate, async (i) => {
         + 'It sticks through restarts, and only you can see this reply.');
     }
     if (i.commandName === 'map') {
-      const asked = Object.fromEntries(
-        ['place','basemap','layers','overlays','product','satellite',
-         'wind','temperature','waves','air','pressure']
-          .map(k => [k, i.options.getString(k)]));
+      const asked = Object.fromEntries([
+        ...MAP_STRING_OPTIONS.map(k => [k, i.options.getString(k)]),
+        ...MAP_INT_OPTIONS.map(k => [k, i.options.getInteger(k)]),
+      ]);
       // Refused rather than quietly dropped: silently ignoring a name is how
       // someone ends up believing a layer is on when it never was.
       const bad = validateMapOptions(asked);
@@ -1084,20 +1149,10 @@ client.on(Events.InteractionCreate, async (i) => {
       // three second reply window.
       await i.deferReply();
       const { image, url } = await screenshotMap({
-        place:    i.options.getString('place'),
-        lat:      i.options.getNumber('lat'),
-        lon:      i.options.getNumber('lon'),
-        z:        i.options.getInteger('zoom'),
-        basemap:  i.options.getString('basemap'),
-        layers:   i.options.getString('layers'),
-        overlays: i.options.getString('overlays'),
-        product:  i.options.getString('product'),
-        satellite:   i.options.getString('satellite'),
-        wind:        i.options.getString('wind'),
-        temperature: i.options.getString('temperature'),
-        waves:       i.options.getString('waves'),
-        air:         i.options.getString('air'),
-        pressure:    i.options.getString('pressure'),
+        ...asked,
+        z:   asked.zoom,
+        lat: i.options.getNumber('lat'),
+        lon: i.options.getNumber('lon'),
       });
       return i.editReply({
         content: `<${url}>`,

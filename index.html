@@ -64674,6 +64674,22 @@ function _applyUrlView(p) {
   // re-enable anything the strip took.
   if (p.get('shot') === '1') _shotIsolate(p);
 
+  // Which day, hazard or type an outlook overlay opens on. Set BEFORE the
+  // pills are switched on, so the activation itself loads the chosen
+  // product instead of day one and a correction after.
+  const spcday = parseInt(p.get('spcday'), 10);
+  if (spcday >= 1 && spcday <= 8 && typeof _spcDay !== 'undefined') _spcDay = spcday;
+  const spchaz = (p.get('spchaz') || '').trim();
+  if (['cat', 'torn', 'wind', 'hail', 'prob'].includes(spchaz)
+      && typeof _spcHazard !== 'undefined') _spcHazard = spchaz;
+  const wpcday = parseInt(p.get('wpcday'), 10);
+  if (wpcday >= 1 && wpcday <= 3 && typeof _wpcDay !== 'undefined') _wpcDay = wpcday;
+  const fwday = parseInt(p.get('fwday'), 10);
+  if ((fwday === 1 || fwday === 2) && typeof _fwDay !== 'undefined') _fwDay = fwday;
+  const cpctype = (p.get('cpctype') || '').trim();
+  if (cpctype && typeof CPC_TYPES !== 'undefined' && CPC_TYPES.includes(cpctype)
+      && typeof _cpcType !== 'undefined') _cpcType = cpctype;
+
   if (typeof toggleLayer === 'function') {
     for (const id of list('layers')) {
       if (!(id in activeLayers)) { console.warn('url: unknown layer', id); continue; }
@@ -64723,13 +64739,22 @@ function _applyUrlView(p) {
     } catch(e) { console.warn('url product:', e); }
   }
 
-  // Satellite band (ch01 to ch16), same reasoning.
+  // Satellite product (a band ch01-ch16, a Pi composite like
+  // rgb-truecolor, or a global mosaic product), same reasoning.
   const sat = (p.get('satproduct') || '').trim();
   if (sat && typeof _setGoesProduct === 'function') {
     try {
       if (!activeLayers.satellite && typeof toggleLayer === 'function') toggleLayer('satellite');
       _setGoesProduct(sat);
     } catch(e) { console.warn('url satproduct:', e); }
+  }
+  // Which sector the satellite looks at: east, west, efulldisk, global...
+  // After the product, because choosing a product resets an impossible
+  // sector to something it can show, and the link's choice should win.
+  const satr = (p.get('satregion') || '').trim();
+  if (satr && typeof _setGoesRegion === 'function'
+      && typeof GOES_REGIONS !== 'undefined' && GOES_REGIONS.some(r => r.id === satr)) {
+    try { _setGoesRegion(satr); } catch(e) { console.warn('url satregion:', e); }
   }
 
   // Model and its variable. Plain globals rather than a setter, matching how
@@ -64797,8 +64822,9 @@ function _shotIsolate(p) {
 // whenever it is the only one in the link.
 const _URL_VIEW_PARAMS = [
   'lat','lon','z','basemap','layers','overlays','shot',
-  'product','satproduct','model','modelvar',
+  'product','satproduct','satregion','model','modelvar',
   'waves','air','temperature','pressure','wind',
+  'spcday','spchaz','wpcday','fwday','cpctype',
 ];
 
 // Resolves once no tile in the document is still loading, so a screenshot is
@@ -65972,6 +65998,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-21-z', date: 'Sep 21, 2026',
+    text: 'The Discord bot\'s /map command now knows the whole site: all 34 satellite products (every ABI band, the RGB composites and the global mosaic), a satellite view picker (CONUS, meso boxes, full disk, world sectors), and dials for the outlooks - SPC day and hazard, WPC day, fire weather day, and the CPC extended type. Naming a dial switches its outlook on by itself, and the command\'s options are reorganized in the order you would build a picture. Links can carry the same choices too: spcday, spchaz, wpcday, fwday, cpctype and satregion in the URL.' },
   { id: '2026-09-21-y', date: 'Sep 21, 2026',
     text: 'Screenshot links show only what they ask for. A ?shot=1 link (the ones the Discord bot posts) used to carry the app\'s friendly defaults - city temperatures, alert polygons, the surface fronts - on top of whatever layer was requested. A shot now strips everything the link did not name; ordinary shared links still open with the usual defaults.' },
   { id: '2026-09-21-x', date: 'Sep 21, 2026',
