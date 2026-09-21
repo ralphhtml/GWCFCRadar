@@ -41,7 +41,7 @@ console.log('\n1. the replacement is in the page');
      /#anim-time-display \{ display: none !important; \}/.test(PAGE));
   ok('the stamp chip exists and is welded to the bar top like a browser tab',
      /id="anim-stamp"/.test(PAGE)
-     && /#anim-stamp \{[\s\S]{0,500}?bottom: calc\(100% - 3px\);/.test(PAGE)
+     && /#anim-stamp \{[\s\S]{0,700}?bottom: 100%;/.test(PAGE)
      && /#anim-stamp::before,/.test(PAGE)
      && /radial-gradient\(circle at 0 0,/.test(PAGE));
   ok('and it is set in Comfortaa',
