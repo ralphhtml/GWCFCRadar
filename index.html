@@ -56210,6 +56210,28 @@ function selectProduct(p) {
     </div>
   </div>
 
+  <!-- ─── DISCORD RICH PRESENCE ───
+       Off by default. Turning this on makes the page try to POST a short
+       summary of what's on screen to a small bridge program on your own
+       machine every 15 seconds, that bridge (services/presence/) is the
+       only piece that actually talks to Discord. Nobody else's browser
+       does anything different because of this toggle, and if the bridge
+       isn't running the request just fails quietly. -->
+  <div class="lqm-settings-group" data-cat="general">
+    <div class="lqm-settings-category"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-signal></use></svg> Discord Rich Presence</div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Show what I'm viewing on Discord</span>
+      <label class="lqm-toggle">
+        <input type="checkbox" id="lqm-set-discordrp" onchange="lqmToggleSetting('discordrp',this.checked)">
+        <div class="lqm-toggle-track"></div>
+        <div class="lqm-toggle-knob"></div>
+      </label>
+    </div>
+    <div class="lqm-settings-row">
+      <span style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.4);">Needs the presence bridge running on your computer, see services/presence/README.md</span>
+    </div>
+  </div>
+
   <!-- ─── ABOUT ─── -->
 
     </div>
@@ -60001,6 +60023,79 @@ function _aiLiveState() {
   return L.join('\n');
 }
 
+// ── DISCORD RICH PRESENCE ────────────────────────────────────────────────
+// Opt-in, off by default (Settings > Discord Rich Presence). A browser tab
+// cannot talk to the Discord desktop client itself, that needs a local pipe
+// only a native program can open, so this only ever POSTs a short summary
+// of what's on screen to a small bridge program on the SAME machine
+// (services/presence/), which is the one piece that actually holds that
+// pipe. If the bridge isn't running the request just fails and nothing
+// else here changes, on purpose: every visitor who never turns this on, or
+// never runs the bridge, is completely unaffected.
+const _PRESENCE_BRIDGE_URL = 'http://127.0.0.1:32473/update';
+let _presenceTimer = null;
+
+function _presenceSummary() {
+  let details = 'Browsing the map';
+  try {
+    if (activeLayers.nexrad) {
+      const site = typeof _rcMainSite === 'function' ? _rcMainSite() : null;
+      const label = typeof _rcProductLabel === 'function' ? _rcProductLabel() : currentProduct;
+      details = 'Radar: ' + label + (site ? ' (' + site.toUpperCase() + ')' : '');
+    } else if (activeLayers.satellite && typeof _goesProduct === 'function') {
+      const g = _goesProduct();
+      details = 'Satellite: ' + (g && g.label ? g.label : _goesProductId);
+    } else if (typeof _PRODUCT_FAMILIES !== 'undefined') {
+      const NAME = { waves: 'Waves', air: 'Air Quality', temperature: 'Temperature',
+        pressure: 'Pressure', wind: 'Wind' };
+      const fam = _PRODUCT_FAMILIES.find(f => { try { return f.isOn(); } catch (e) { return false; } });
+      if (fam) details = (NAME[fam.id] || fam.id) + ' Map';
+    }
+  } catch (e) {}
+
+  // The same overlay ids _aiLiveState already lists for the AI, just with a
+  // human name attached instead of the raw internal id.
+  const OVERLAY_LABELS = {
+    tornado: 'Tornado Warnings', tstm: 'Severe T-Storm Warnings', flood: 'Flood Warnings',
+    watch: 'Watches', meso: 'Mesoscale Discussions', spc1: 'Day 1 Outlook',
+    spc2: 'Day 2 Outlook', spc3: 'Day 3 Outlook', spcrpts: 'Storm Reports',
+    nhc: 'Hurricane Center', invest: 'Invests', sst: 'Sea Surface Temp',
+    models: 'Model Layer', lightning: 'Lightning', ltg30: 'Lightning (30m)',
+    forecasts: 'City Temps', radio: 'NOAA Radio', cloudcam: 'Cloud Cam',
+  };
+  const overlays = [];
+  try {
+    Object.keys(OVERLAY_LABELS).forEach(k => { if (activeLayers[k]) overlays.push(OVERLAY_LABELS[k]); });
+    if (typeof _metarActive !== 'undefined' && _metarActive) overlays.push('METAR Stations');
+  } catch (e) {}
+
+  return {
+    details: details.slice(0, 128),
+    state: (overlays.length ? '+ ' + overlays.join(', ') : 'No overlays').slice(0, 128),
+  };
+}
+
+async function _presenceTick() {
+  try {
+    await fetch(_PRESENCE_BRIDGE_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(_presenceSummary()),
+    });
+  } catch (e) { /* bridge not running - silent, this is opt-in */ }
+}
+
+function _presenceStart() {
+  if (_presenceTimer) return;
+  _presenceTick();
+  // 15 seconds matches Discord's own recommended minimum gap between
+  // presence updates, no point asking the bridge to push any faster.
+  _presenceTimer = setInterval(_presenceTick, 15000);
+}
+
+function _presenceStop() {
+  if (_presenceTimer) { clearInterval(_presenceTimer); _presenceTimer = null; }
+}
+
 // Detect if the question needs a map visual
 function _aiNeedsSnap(text) {
   const t = text.toLowerCase();
@@ -62304,6 +62399,10 @@ function lqmToggleSetting(key, val) {
   } else if (key === 'sweep') {
     try { localStorage.setItem('gwcfc_sweep', val ? '1' : '0'); } catch (e) {}
     if (typeof _sweepSync === 'function') _sweepSync();
+  } else if (key === 'discordrp') {
+    try { localStorage.setItem('gwcfc_discord_rp', val ? '1' : '0'); } catch (e) {}
+    if (val) { if (typeof _presenceStart === 'function') _presenceStart(); }
+    else { if (typeof _presenceStop === 'function') _presenceStop(); }
   } else if (key === 'autoplay') {
     // Store preference
     try { localStorage.setItem('lqm_autoplay', val ? '1' : '0'); } catch(e){}
@@ -66639,6 +66738,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-p', date: 'Sep 22, 2026',
+    text: 'New Settings toggle: Discord Rich Presence. Turn it on with the presence bridge (services/presence/) running on your computer and your Discord profile shows what radar or satellite product and overlays you are currently viewing here, off by default.' },
   { id: '2026-09-22-o', date: 'Sep 22, 2026',
     text: 'Fixed Weather Forecasts city dots: turning the layer off while a temperature refresh was still loading could leave it thinking some dots were already there, and skip putting them back the next time you turned the layer on. It now always starts clean.' },
   { id: '2026-09-22-n', date: 'Sep 22, 2026',
@@ -67990,6 +68091,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (localStorage.getItem('lqm_crosshair')==='1') { document.getElementById('lqm-set-crosshair').checked=true; document.body.classList.add('gwcfc-crosshair'); }
     if (localStorage.getItem('lqm_contrast')==='1')  { document.getElementById('lqm-set-contrast').checked=true; }
     if (localStorage.getItem('lqm_coords')==='1')    { const el=document.getElementById('lqm-set-coords'); if(el){el.checked=true;lqmToggleSetting('coords',true);} }
+    if (localStorage.getItem('gwcfc_discord_rp')==='1') { const el=document.getElementById('lqm-set-discordrp'); if(el){el.checked=true;lqmToggleSetting('discordrp',true);} }
     // Map Borders & Labels
     const sbVal = localStorage.getItem('lqm_stateborders'); if(sbVal==='false') { const el=document.getElementById('lqm-set-stateborders'); if(el){el.checked=false;lqmToggleSetting('stateborders',false);} }
     const cbVal = localStorage.getItem('lqm_countyborders'); if(cbVal==='true') { const el=document.getElementById('lqm-set-countyborders'); if(el){el.checked=true;lqmToggleSetting('countyborders',true);} }
