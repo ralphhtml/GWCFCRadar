@@ -62,8 +62,16 @@ if ! git merge --ff-only --quiet "origin/$BRANCH" 2>/dev/null; then
   #     on some other remote branch, which means it was fetched rather than
   #     written here. A commit authored on the Pi exists nowhere else, and
   #     that is exactly the case this must refuse.
+  # Untracked files deliberately do not count as "would be lost": git reset
+  # never deletes an untracked file, it only moves tracked ones. Counting
+  # them (the old check did) meant one stray __pycache__ or scratch file
+  # blocked this recovery forever, stranding the Pi on an old commit, which
+  # is exactly the outcome the recovery exists to prevent. A collision
+  # between an untracked file and an incoming tracked one makes the reset
+  # itself refuse, and that failure is already survived below.
   RECOVER=1
-  if ! git diff --quiet HEAD 2>/dev/null || [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+  if ! git diff --quiet HEAD 2>/dev/null \
+     || [ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]; then
     RECOVER=0
   fi
   if [ "$RECOVER" = 1 ]; then
@@ -81,7 +89,7 @@ if ! git merge --ff-only --quiet "origin/$BRANCH" 2>/dev/null; then
   # every extra commit is a merge, this checkout contains nothing that was
   # written here, and resetting can lose nothing because there is nothing
   # here to lose. A single real commit and this does not apply.
-  if [ "$RECOVER" = 0 ] && [ -z "$(git status --porcelain 2>/dev/null)" ] \
+  if [ "$RECOVER" = 0 ] && [ -z "$(git status --porcelain --untracked-files=no 2>/dev/null)" ] \
      && [ -z "$(git log --oneline --no-merges "origin/$BRANCH..HEAD" 2>/dev/null)" ] \
      && [ -n "$(git rev-list "origin/$BRANCH..HEAD" 2>/dev/null)" ]; then
     echo "drifted only by merge commits with no work of their own"

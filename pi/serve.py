@@ -744,6 +744,31 @@ class CORSHandler(SimpleHTTPRequestHandler):
         if not str(args[1] if len(args) > 1 else "").startswith("2"):
             super().log_message(fmt, *args)
 
+    def log_error(self, fmt, *args):
+        # send_error logs "code 404, message Not Found" and nothing else,
+        # which made tens of thousands of daily 404s undiagnosable: not one
+        # of them said what was asked for. Name the request.
+        what = f"{getattr(self, 'command', None) or '?'} " \
+               f"{getattr(self, 'path', None) or '?'}"
+        super().log_error(fmt + " (%s)", *args, what)
+
+
+class QuietDisconnectServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer, minus the traceback per hung-up client.
+
+    A phone that scrolls away mid-download closes its socket, the write
+    fails with BrokenPipeError, and the stock server prints a full
+    traceback for it - tens of thousands a day, burying every line worth
+    reading. A client hanging up is not an error on this side.
+    """
+
+    def handle_error(self, request, client_address):
+        t = sys.exc_info()[0]
+        if t is not None and issubclass(
+                t, (BrokenPipeError, ConnectionResetError, TimeoutError)):
+            return
+        super().handle_error(request, client_address)
+
 
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
@@ -752,7 +777,7 @@ def main():
         print(f"no such directory: {root}")
         return 1
     handler = partial(CORSHandler, directory=root)
-    srv = ThreadingHTTPServer(("127.0.0.1", port), handler)
+    srv = QuietDisconnectServer(("127.0.0.1", port), handler)
     print(f"serving {root} on 127.0.0.1:{port} with CORS enabled")
     print("point the tunnel at this, not at python -m http.server")
     if not load_webhooks():

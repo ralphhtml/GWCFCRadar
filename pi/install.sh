@@ -468,6 +468,10 @@ Description=Build SounderPy/SHARPpy sounding images
 [Service]
 Type=oneshot
 ExecStart=-$VENV/bin/python $REPO/pi/sounding_pipeline.py
+# Belt to sounding_service's braces: nothing in a timed build may install
+# packages at runtime (ecape_parcel tries, on import). Offline pip only.
+Environment=PIP_NO_INDEX=1
+Environment=PIP_DISABLE_PIP_VERSION_CHECK=1
 TimeoutStartSec=900
 Nice=15
 EOF

@@ -3573,6 +3573,107 @@ def fetch_hour_ecmwf(m, date_str, cyc, fhr, path):
     return True
 
 
+def _polar_stereo_latlon(lat1, lon1, lov, lad, dx_m, dy_m, ni, nj,
+                         south=False, radius=6371200.0):
+    """Latitude and longitude of every point of a polar stereographic grid.
+
+    Computed here, from the grid definition alone, because eccodes computes
+    them through its Geoiterator and the polar stereographic iterator
+    refuses any GRIB that declares an oblate earth ("Only supported for
+    spherical earth"). NCEP's polar files declare one, so every message on
+    such a grid was skipped and the products built on them (Alaska NAM, the
+    Arctic waves) built nothing at all. GRIB defines this projection on a
+    sphere, so the spherical formulas ARE the grid, the same maths wgrib2
+    uses.
+
+    lat1/lon1 are the first grid point, lov the orientation longitude, lad
+    the latitude where dx/dy are true (negative on a south polar grid,
+    south=True), dx_m/dy_m the grid steps in metres ALREADY SIGNED for the
+    scan direction. Returns (lats, lons) float32, GRIB point order:
+    i varies fastest.
+    """
+    rad = np.pi / 180.0
+    sign = -1.0 if south else 1.0
+    k0 = (1.0 + sign * np.sin(lad * rad)) / 2.0
+    de = 2.0 * radius * k0
+    # The first point, onto the projection plane.
+    r1 = de * np.tan(np.pi / 4.0 - sign * lat1 * rad / 2.0)
+    x1 = r1 * np.sin((lon1 - lov) * rad)
+    y1 = -sign * r1 * np.cos((lon1 - lov) * rad)
+    xs = x1 + np.arange(ni, dtype=np.float64) * dx_m
+    ys = y1 + np.arange(nj, dtype=np.float64) * dy_m
+    X = np.tile(xs, nj)
+    Y = np.repeat(ys, ni)
+    r = np.hypot(X, Y)
+    with np.errstate(all="ignore"):
+        lon = lov + np.degrees(np.arctan2(X, -sign * Y))
+        lat = sign * (90.0 - 2.0 * np.degrees(np.arctan(r / de)))
+    lat = np.where(r < 1e-9, sign * 90.0, lat)
+    lon = np.where(lon > 180.0, lon - 360.0,
+                   np.where(lon < -180.0, lon + 360.0, lon))
+    return lat.astype(np.float32), lon.astype(np.float32)
+
+
+def _polar_stereo_coords(gid, npts):
+    """The keys off the message, into _polar_stereo_latlon."""
+    import eccodes
+
+    def num(key):
+        return float(eccodes.codes_get(gid, key))
+
+    ni = int(eccodes.codes_get(gid, "Ni"))
+    nj = int(eccodes.codes_get(gid, "Nj"))
+    if ni * nj != npts:
+        raise ValueError(f"{ni}x{nj} grid but {npts} points")
+    lat1 = num("latitudeOfFirstGridPointInDegrees")
+    lon1 = num("longitudeOfFirstGridPointInDegrees")
+    lov = num("orientationOfTheGridInDegrees")
+    try:
+        south = bool(int(eccodes.codes_get(gid, "projectionCentreFlag")) & 128)
+    except Exception:
+        south = lat1 < 0
+    try:
+        lad = num("LaDInDegrees")
+    except Exception:
+        lad = -60.0 if south else 60.0
+    dx = num("DxInMetres")
+    dy = num("DyInMetres")
+    try:
+        if int(eccodes.codes_get(gid, "iScansNegatively")):
+            dx = -dx
+    except Exception:
+        pass
+    try:
+        if not int(eccodes.codes_get(gid, "jScansPositively")):
+            dy = -dy
+    except Exception:
+        pass
+    # The declared radius when it is a sane sphere; the NCEP sphere when the
+    # file declares the oblate earth this whole detour exists to sidestep.
+    try:
+        radius = num("radius")
+    except Exception:
+        radius = 0.0
+    if not (6.2e6 < radius < 6.5e6):
+        radius = 6371200.0
+    return _polar_stereo_latlon(lat1, lon1, lov, lad, dx, dy, ni, nj,
+                                south, radius)
+
+
+def _grid_coords(gid, gtype, npts):
+    """Real point coordinates for any grid, dodging the broken iterator."""
+    import eccodes
+    if gtype == "polar_stereographic":
+        try:
+            return _polar_stereo_coords(gid, npts)
+        except Exception as e:
+            log(f"    polar grid maths failed ({e}); asking eccodes instead")
+    return (np.asarray(eccodes.codes_get_array(gid, "latitudes"),
+                       dtype=np.float32),
+            np.asarray(eccodes.codes_get_array(gid, "longitudes"),
+                       dtype=np.float32))
+
+
 def regrid_to_latlon(vals, plats, plons, box, max_edge=MAX_EDGE_PX, edge=None):
     """
     Put a model's own grid onto a plain latitude and longitude mesh.
@@ -4367,11 +4468,20 @@ def open_fields(grib_path, regrid_box=None):
             try:
                 short = str(eccodes.codes_get(gid, "shortName"))
                 levt = str(eccodes.codes_get(gid, "typeOfLevel"))
-                lev = int(eccodes.codes_get(gid, "level"))
+                # Some pgrb2b messages carry no plain level at all, and
+                # reading it threw "Key/value not found" BEFORE the want
+                # check below could quietly pass them by - which is how a
+                # file of exotic messages became thousands of logged skips
+                # a day. Nothing this pipeline wants lives on such a level.
+                try:
+                    lev = int(eccodes.codes_get(gid, "level"))
+                except Exception:
+                    lev = 0
                 seen.append(f"{short}/{levt}/{lev}")
-                ni = int(eccodes.codes_get(gid, "Ni"))
-                nj = int(eccodes.codes_get(gid, "Nj"))
 
+                # Decide whether this message is wanted BEFORE touching any
+                # grid key: an unwanted message on an unreadable grid should
+                # cost nothing, not an error line.
                 want = short in ("10u", "10v") or any(
                     _matches(s, short, levt, lev) for s in FIELDS.values())
                 if not want:
@@ -4386,16 +4496,24 @@ def open_fields(grib_path, regrid_box=None):
 
                 vals = np.asarray(eccodes.codes_get_values(gid),
                                   dtype=np.float32)
-                if vals.size != ni * nj:
+                # Ni/Nj only exist on grids that have rows; a reduced grid
+                # is a bare list of points and goes down the point path.
+                ni = nj = None
+                try:
+                    ni = int(eccodes.codes_get(gid, "Ni"))
+                    nj = int(eccodes.codes_get(gid, "Nj"))
+                except Exception:
+                    pass
+                if ni and nj and vals.size != ni * nj:
                     log(f"    {short}: {vals.size} values for a {ni}x{nj} grid")
                     continue
-                arr = vals.reshape(nj, ni)
 
                 # Only a grid that really is evenly spaced in latitude and
                 # longitude can be described by its two corners. Everything
                 # else has to be asked where each point is.
                 gtype = str(eccodes.codes_get(gid, "gridType"))
-                if gtype == "regular_ll":
+                if gtype == "regular_ll" and ni and nj:
+                    arr = vals.reshape(nj, ni)
                     lat1 = float(eccodes.codes_get(
                         gid, "latitudeOfFirstGridPointInDegrees"))
                     lat2 = float(eccodes.codes_get(
@@ -4409,15 +4527,20 @@ def open_fields(grib_path, regrid_box=None):
                 elif regrid_box is not None:
                     # Read once per file: every message in it shares a grid,
                     # and pulling several million coordinates per message
-                    # would cost more than the decode.
-                    sig = (gtype, ni, nj)
+                    # would cost more than the decode. A grid that cannot be
+                    # coordinated at all is also remembered, so a whole file
+                    # of it logs one line rather than one per message.
+                    sig = (gtype, int(vals.size))
                     if sig not in coords:
-                        coords[sig] = (
-                            np.asarray(eccodes.codes_get_array(
-                                gid, "latitudes"), dtype=np.float32),
-                            np.asarray(eccodes.codes_get_array(
-                                gid, "longitudes"), dtype=np.float32))
+                        try:
+                            coords[sig] = _grid_coords(gid, gtype, vals.size)
+                        except Exception as e:
+                            log(f"    {gtype} grid has no readable "
+                                f"coordinates ({e}); skipping its messages")
+                            coords[sig] = (None, None)
                     plats, plons = coords[sig]
+                    if plats is None or plats.size != vals.size:
+                        continue
                     got = regrid_to_latlon(vals, plats, plons, regrid_box)
                     if got is None:
                         continue

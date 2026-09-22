@@ -499,6 +499,15 @@ def import_sounderpy():
     global _spy_cached
     if _spy_cached is not None:
         return _spy_cached
+    # Something in the SounderPy import chain (ecape_parcel keeps itself
+    # "fresh") shells out to pip on IMPORT, so every sounding build was a
+    # live pip install: dozens of network installs a day, on a timer, with
+    # whatever pip happened to fetch. No pipeline may install packages at
+    # runtime. PIP_NO_INDEX makes any such attempt fail fast and offline
+    # instead of reaching the internet; installs happen in install.sh, once,
+    # on purpose.
+    os.environ.setdefault("PIP_NO_INDEX", "1")
+    os.environ.setdefault("PIP_DISABLE_PIP_VERSION_CHECK", "1")
     for name in _SPY_DRAWING_ONLY:
         if name not in sys.modules:
             try:
