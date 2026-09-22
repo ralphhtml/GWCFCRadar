@@ -34,8 +34,8 @@ console.log('\n1. the pieces are in the page');
      /id="sc-dividers"/.test(PAGE) && /id="sc-labels"/.test(PAGE));
   ok('the Compare bubble is drawn at every level of the satellite menu',
      (PAGE.match(/_scCompareBubble\(wrap\);/g) || []).length === 3);
-  ok('a product tap adds a strip while a comparison is running',
-     /if \(typeof _scOn !== 'undefined' && _scOn && activeLayers\.satellite\) \{\s*\n\s*_scAddSlot\(p\.id\);/.test(PAGE));
+  ok('a product tap adds a strip while a comparison is running, picking up any pending sector',
+     /if \(typeof _scOn !== 'undefined' && _scOn && activeLayers\.satellite\) \{[\s\S]{0,600}_scAddSlot\(p\.id, region !== null \? region : undefined\);/.test(PAGE));
   ok('a sector tap adds the current product from that sector',
      /_scAddSlot\(_goesProductId, r\.id\);/.test(PAGE));
   ok('the strip planners are the main picture\'s own, parameterised',
@@ -57,7 +57,7 @@ console.log('\n1. the pieces are in the page');
      /if \(!slot\.layer\) \{\s*\n\s*slot\.layer = L\.imageOverlay\(f\.url, f\.bounds,[\s\S]{0,600}_scUpdateClips\(\);\s*\n\s*\} else \{/.test(PAGE));
   ok('the rotate button, the orientation state, and its toggle function all exist, same shape as radar\'s',
      PAGE.includes('id="sc-rotate-btn"') && /let _scOrientation = 'v';/.test(PAGE)
-     && /function _scToggleOrientation\(\) \{\s*\n\s*if \(!_scOn\) return;\s*\n\s*_scOrientation = _scOrientation === 'h' \? 'v' : 'h';\s*\n\s*_scRefreshDOM\(\);\s*\n\s*_scUpdateClips\(\);/.test(PAGE));
+     && /function _scToggleOrientation\(\) \{\s*\n\s*if \(!_scOn \|\| _scGrid\) return;\s*\n\s*_scOrientation = _scOrientation === 'h' \? 'v' : 'h';\s*\n\s*_scRefreshDOM\(\);\s*\n\s*_scUpdateClips\(\);/.test(PAGE));
   ok('a peek button reuses the shared hide-for-ten-seconds function, and satellite off cleans it up',
      PAGE.includes('id="sc-peek-btn"') && PAGE.includes("onclick=\"_cmpPeek('sc')\"")
      && /function _scOff\(\) \{[\s\S]*?_cmpPeekReset\('sc'\)/.test(PAGE));
@@ -111,8 +111,12 @@ await p.waitForTimeout(4500);
 // Marking the tutorial seen (above) makes this a "returning visitor" as
 // far as the What Changed modal is concerned, so it auto-opens over the
 // whole map - invisible to every .click() call in this file since none
-// of them read a real screen coordinate, but section 4/5 below do.
+// of them read a real screen coordinate, but section 4/5/6 below do. The
+// open attempt is on a delayed timer inside _actuallyDismiss, so closing
+// it once here raced that timer rather than beating it outright; marking
+// it seen stops the delayed attempt from ever opening it.
 await p.evaluate(() => {
+  try { if (typeof _clMarkSeen === 'function') _clMarkSeen(); } catch (e) {}
   const m = document.getElementById('changelog-modal');
   if (m) m.classList.remove('open');
 });

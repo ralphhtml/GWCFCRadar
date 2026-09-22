@@ -55,6 +55,15 @@ console.log('\n1. the pieces are in the page');
      PAGE.includes('title="Drag to resize, tap to rotate"')
      && /let _rcHandleDown = null;/.test(PAGE)
      && /Math\.hypot\(e\.clientX - _rcHandleDown\.x, e\.clientY - _rcHandleDown\.y\) < 6\) \{\s*\n\s*_rcToggleOrientation\(\);/.test(PAGE));
+  ok('a real 2x2/2x4 grid exists: shared column/row splits, a rectangle-bounded '
+     + 'geometry helper distinct from the strip-band one, and a button that cycles the shape',
+     /let _rcGrid = null;/.test(PAGE) && /let _rcColSplits = \[\];/.test(PAGE) && /let _rcRowSplits = \[\];/.test(PAGE)
+     && /function _gridGeometry\(leftPct, rightPct, topPct, bottomPct\) \{/.test(PAGE)
+     && /function _rcGridCycle\(\) \{/.test(PAGE) && PAGE.includes('id="rc-grid-btn"'));
+  ok('cycling to a grid too small for the strips already on screen is refused, not silently trimmed',
+     /function _rcSetGrid\(rows, cols\) \{[\s\S]*?if \(_rcSlots\.length > need\) \{[\s\S]{0,200}return false;/.test(PAGE));
+  ok('the rotate button steps aside while a grid is active - there is no single axis left to flip',
+     /if \(btn\) btn\.style\.display = \(_rcSlots\.length && !_rcGrid\) \? 'flex' : 'none';/.test(PAGE));
   ok('the layer stack keeps the strips just above the radar',
      /function _stackApply\(\)\{[\s\S]*?_rcSyncPaneZ/.test(PAGE));
   ok('the playback decoder takes the tilt a strip needs',
@@ -68,8 +77,9 @@ console.log('\n1. the pieces are in the page');
      && /slot\.layer = L\.imageOverlay\(slot\.blob, img\.leafletBounds,[\s\S]{0,600}_rcUpdateClips\(\);\s*\n\s*_rcRefreshLabels\(\);\s*\n\s*\} catch \(e\) \{/.test(PAGE));
   ok('the rotate button exists, hidden until a comparison is running',
      /<button type="button" id="rc-rotate-btn"[\s\S]{0,120}onclick="_rcToggleOrientation\(\)"[\s\S]{0,40}style="display:none;">/.test(PAGE));
-  ok('toggling orientation flips the state and re-renders, without touching whether compare is even on',
-     /function _rcToggleOrientation\(\) \{\s*\n\s*if \(!_rcOn\) return;\s*\n\s*_rcOrientation = _rcOrientation === 'h' \? 'v' : 'h';\s*\n\s*_rcRefreshDOM\(\);\s*\n\s*_rcUpdateClips\(\);/.test(PAGE));
+  ok('toggling orientation flips the state and re-renders, without touching whether compare is even on '
+     + '(and steps aside while a grid is active, which has no axis of its own to flip)',
+     /function _rcToggleOrientation\(\) \{\s*\n\s*if \(!_rcOn \|\| _rcGrid\) return;\s*\n\s*_rcOrientation = _rcOrientation === 'h' \? 'v' : 'h';\s*\n\s*_rcRefreshDOM\(\);\s*\n\s*_rcUpdateClips\(\);/.test(PAGE));
   ok('the horizontal CSS is scoped to radar compare\'s own classes, not the shared .sev-cmp- ones',
      /\.rc-divider\.horizontal \{/.test(PAGE) && /\.rc-divider\.horizontal::before \{/.test(PAGE));
   const EM = String.fromCharCode(0x2014);
@@ -121,8 +131,14 @@ ok('the page boots clean', errs.length === 0, errs[0]);
 // whole map - invisible to every click in this file since they all call
 // .click() on an element directly rather than at a real screen point, but
 // section 10 below does the latter, and a real click there would land on
-// this instead of the divider handle underneath it.
+// this instead of the divider handle underneath it. The open attempt
+// itself is on a DELAYED timer inside _actuallyDismiss (a couple of
+// seconds after the loading screen itself goes), so simply closing it
+// once here raced that timer and lost some of the time: marking it seen
+// stops the delayed attempt from ever opening it at all, rather than
+// trying to out-time it.
 await p.evaluate(() => {
+  try { if (typeof _clMarkSeen === 'function') _clMarkSeen(); } catch (e) {}
   const m = document.getElementById('changelog-modal');
   if (m) m.classList.remove('open');
 });
@@ -475,7 +491,17 @@ console.log('\n10. tapping the handle rotates it, dragging it resizes instead');
     _nexradSiteMarkers['kfws'].label.fire('click');
     document.querySelector('#site-pop .site-pop-compare').click();
   });
-  await p.waitForTimeout(300);
+  // A fixed wait here was occasionally shorter than however long this
+  // sandbox's own CPU scheduling took to actually lay the divider out,
+  // which made a real screen-coordinate click land on nothing and read
+  // as "did not rotate" - not a bug in the rotate logic itself, every
+  // other check of it always passed. Wait for a real, painted handle
+  // instead of a guessed number of milliseconds.
+  await p.waitForFunction(() => {
+    const d = _rcSlots[0] && _rcSlots[0].dividerEl;
+    const h = d && d.querySelector('.sev-cmp-handle');
+    return h && h.getBoundingClientRect().width > 0;
+  }, { timeout: 5000 });
 
   const before = await p.evaluate(() => _rcOrientation);
   const handleBox = async () => p.evaluate(() => {
@@ -484,7 +510,7 @@ console.log('\n10. tapping the handle rotates it, dragging it resizes instead');
   });
   const box1 = await handleBox();
   await p.mouse.click(box1.x, box1.y);
-  await p.waitForTimeout(150);
+  try { await p.waitForFunction((b) => _rcOrientation !== b, before, { timeout: 2000 }); } catch (e) {}
   const afterTap = await p.evaluate(() => _rcOrientation);
   ok('a plain tap on the handle (press and release, no real movement) rotates the comparison',
      afterTap !== before, JSON.stringify({ before, afterTap }));
@@ -497,7 +523,7 @@ console.log('\n10. tapping the handle rotates it, dragging it resizes instead');
   if (afterTap === 'h') await p.mouse.move(box2.x, box2.y + 120, { steps: 6 });
   else await p.mouse.move(box2.x + 120, box2.y, { steps: 6 });
   await p.mouse.up();
-  await p.waitForTimeout(150);
+  try { await p.waitForFunction((s) => _rcSplits[0] !== s, splitBefore, { timeout: 2000 }); } catch (e) {}
   const afterDrag = await p.evaluate(() => ({ orientation: _rcOrientation, split: _rcSplits[0] }));
   ok('dragging it a real distance resizes the split instead, orientation stays put',
      afterDrag.orientation === afterTap && afterDrag.split !== splitBefore,
@@ -507,6 +533,104 @@ console.log('\n10. tapping the handle rotates it, dragging it resizes instead');
   ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
 }
 
-await b.close();
+console.log('\n11. splitting into a real grid: 2x2, then 2x4, a rectangle per cell');
+{
+  const r = await p.evaluate(async () => {
+    const out = {};
+    // Unconditional, not "if no station yet": a leftover station from an
+    // earlier section (section 8 deliberately leaves one behind) would
+    // otherwise make one of the three adds below a same-as-strip-A no-op,
+    // and this section needs exactly three real additions to reason about.
+    _loadSingleSiteRef('ktlx');
+    _rcOn = true;
+    ['kfws', 'kdyx', 'kama'].forEach(id => _rcAddSite(id));
+    await new Promise(res => setTimeout(res, 300));
+    out.slotsBefore = _rcSlots.length;   // 3 strips + strip A = 4, exactly a 2x2
+
+    const btn = document.getElementById('rc-grid-btn');
+    btn.click();   // 1x1 -> 2x2
+    out.gridAfterFirstClick = { ..._rcGrid };
+    out.dividerCount = document.querySelectorAll('#rc-dividers .rc-divider').length;
+    out.btnText = btn.textContent;
+    out.rotateHiddenInGrid = document.getElementById('rc-rotate-btn').style.display;
+    const clips = _rcSlots.map(s => map.getPane('rc-' + s.id).style.clipPath);
+    out.allBounded = clips.every(c => !/-99999|99999/.test(c) && /^polygon\(/.test(c));
+
+    btn.click();   // 2x2 -> 2x4
+    out.gridAfterSecondClick = { ..._rcGrid };
+    out.dividerCountAt2x4 = document.querySelectorAll('#rc-dividers .rc-divider').length;
+
+    btn.click();   // 2x4 -> 1x1
+    out.gridAfterThirdClick = _rcGrid;
+    out.dividerCountBackToLinear = document.querySelectorAll('#rc-dividers .rc-divider').length;
+    out.rotateBackInLinear = document.getElementById('rc-rotate-btn').style.display;
+
+    _rcOff();
+    return out;
+  });
+  ok('four pictures on screen fits a 2x2 grid exactly', r.slotsBefore === 3, String(r.slotsBefore));
+  ok('one click makes it a real 2x2 grid: one column line, one row line, two dividers total',
+     r.gridAfterFirstClick.rows === 2 && r.gridAfterFirstClick.cols === 2 && r.dividerCount === 2,
+     JSON.stringify(r));
+  ok('the button label reflects the shape, and the rotate button steps aside',
+     r.btnText === '2×2' && r.rotateHiddenInGrid === 'none', JSON.stringify(r));
+  ok('every cell is a real rectangle - bounded on both axes, not the old full-length band',
+     r.allBounded === true);
+  ok('a second click grows it to 2x4: three column lines plus one row line, four dividers',
+     r.gridAfterSecondClick.rows === 2 && r.gridAfterSecondClick.cols === 4 && r.dividerCountAt2x4 === 4,
+     JSON.stringify(r));
+  ok('a third click cycles all the way back to the ordinary single-divider row',
+     r.gridAfterThirdClick === null && r.dividerCountBackToLinear === 3 && r.rotateBackInLinear === 'flex',
+     JSON.stringify(r));
+}
+
+console.log('\n12. a grid too small for the strips on screen is refused, and shared lines move every cell they touch');
+{
+  const r = await p.evaluate(async () => {
+    const out = {};
+    _loadSingleSiteRef('ktlx');   // unconditional, same reason as section 11's own
+    _rcOn = true;   // _rcAddSite itself only ever adds, real UI entry is exercised elsewhere
+    // Four strips, plus strip A, is five pictures - one more than a 2x2's
+    // four cells can hold. A fifth real, distinct station id, not one of
+    // the three the rest of this file already uses, straight out of the
+    // site list rather than typed by hand so it is never a made-up id.
+    const fifth = NEXRAD_STATIONS.find(s => !['ktlx', 'kfws', 'kdyx', 'kama'].includes(s.id)).id;
+    ['kfws', 'kdyx', 'kama', fifth].forEach(id => _rcAddSite(id));
+    window.__toasts.length = 0;
+    out.slots = _rcSlots.length;
+    const ok2x2 = _rcSetGrid(2, 2);
+    out.refused = ok2x2 === false;
+    out.stillLinear = _rcGrid === null;
+    out.toastSaid = window.__toasts.some(t => /2.2/.test(t));
+
+    // Shrink back to three strips (fits a 2x2 exactly), then actually
+    // build the grid and check a shared column line moves every cell in
+    // the columns on either side of it, not just one.
+    _rcRemoveSlot(_rcSlots[_rcSlots.length - 1].id);
+    _rcGridCycle();   // 1x1 -> 2x2
+    out.gridBuilt = { ..._rcGrid };
+    const rowSplitBefore = _rcRowSplits[0];
+    const clipsBefore = _rcSlots.map(s => map.getPane('rc-' + s.id).style.clipPath);
+
+    _rcGridDrag = { axis: 'col', idx: 0 };
+    _rcSetGridSplit(500, 400);
+    out.colSplitAfter = _rcColSplits[0];
+    out.rowSplitUnchangedByColumnDrag = _rcRowSplits[0] === rowSplitBefore;
+    const clipsAfter = _rcSlots.map(s => map.getPane('rc-' + s.id).style.clipPath);
+    out.everyCellReclipped = clipsBefore.every((c, i) => c !== clipsAfter[i]);
+    _rcGridDrag = null;
+
+    _rcOff();
+    return out;
+  });
+  ok('four strips already fills a 2x2 grid, five is one too many', r.slots === 4, String(r.slots));
+  ok('shrinking to 2x2 is refused rather than silently dropping a strip',
+     r.refused && r.stillLinear && r.toastSaid, JSON.stringify(r));
+  ok('with room again, the grid actually builds', r.gridBuilt.rows === 2 && r.gridBuilt.cols === 2, JSON.stringify(r.gridBuilt));
+  ok('dragging the shared column line reclips every cell, and leaves the row line untouched',
+     r.colSplitAfter !== undefined && r.rowSplitUnchangedByColumnDrag && r.everyCellReclipped,
+     JSON.stringify(r));
+}
+
 console.log(fail ? `\n${fail} FAILED, ${pass} passed` : `\nall ${pass} passed`);
 process.exit(fail ? 1 : 0);
