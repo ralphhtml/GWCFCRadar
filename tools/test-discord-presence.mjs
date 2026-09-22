@@ -44,6 +44,10 @@ console.log('\n1. the pieces are in the page');
      /function _presenceSummary\(\)/.test(PAGE)
      && /function _presenceStart\(\)/.test(PAGE)
      && /function _presenceStop\(\)/.test(PAGE));
+  ok('the alerts entry names the pill people actually see ("Alert Polygons"), reading the same '
+     + 'alertsLayerVisible switch that pill itself toggles, not the warning-type filters under it',
+     /if \(typeof alertsLayerVisible !== 'undefined' && alertsLayerVisible\) overlays\.push\('Alert Polygons'\);/.test(PAGE)
+     && !/tornado: 'Tornado Warnings'/.test(PAGE));
   const EM = String.fromCharCode(0x2014);
   ok('no em dashes here or in the page',
      !PAGE.includes(EM)
@@ -117,8 +121,9 @@ console.log('\n3. turning it on starts posting a summary of the actual view');
   const body = JSON.parse(posts[0].body);
   ok('the radar product and site make it into details',
      /^Radar: Reflectivity/.test(body.details), body.details);
-  ok('active overlays make it into state, by their friendly names (tornado/forecasts are on by default)',
-     body.state.includes('Tornado Warnings') && body.state.includes('City Temps'), body.state);
+  ok('active overlays make it into state, named the way the pill itself reads '
+     + '("Alert Polygons", not the warning-type filters underneath it) - forecasts is on by default too',
+     body.state.includes('Alert Polygons') && body.state.includes('City Temps'), body.state);
 }
 
 console.log('\n4. the summary follows what is actually active, not a fixed line');
@@ -127,8 +132,9 @@ console.log('\n4. the summary follows what is actually active, not a fixed line'
     activeLayers.nexrad = false;
     activeLayers.satellite = true;
     _goesProductId = 'ch13';
+    alertsLayerVisible = false;
     // Every overlay this feature reads, off, to check the "nothing on" line.
-    ['tornado', 'tstm', 'flood', 'watch', 'meso', 'spc1', 'spc2', 'spc3', 'spcrpts',
+    ['spc1', 'spc2', 'spc3', 'spcrpts',
      'nhc', 'invest', 'sst', 'models', 'lightning', 'ltg30', 'forecasts', 'radio',
      'cloudcam'].forEach(k => { activeLayers[k] = false; });
     await _presenceTick();

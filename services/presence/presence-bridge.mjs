@@ -208,9 +208,15 @@ export function createBridgeServer({ ipc, startedAt = Date.now(), imageKey = IMA
             startTimestamp: Math.floor(startedAt / 1000),
             instance: false,
           });
+          // The site posts here every 15 seconds while the setting is on,
+          // completely silently otherwise - this is the only way to tell
+          // from this terminal whether the site is reaching the bridge at
+          // all, as opposed to Discord itself just not displaying it.
+          console.log(`Sent to Discord: "${details || ''}" / "${state || ''}"`);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true }));
         } catch (e) {
+          console.log('Discord refused the update:', e.message);
           res.writeHead(503, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: e.message }));
         }
