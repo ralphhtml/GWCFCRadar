@@ -721,6 +721,15 @@ const TIER_COLORS = {
 const ECONOMY_COLOR = 0xe8b800;
 const ECONOMY_ERROR_COLOR = 0xff4d4d;
 
+// The app's own gold, red and blue accents (index.html's --accent,
+// --danger and --accent2), so the profile-style embeds don't all wear the
+// same gold bar every time. Red appears twice as often as the other two,
+// it's the app's current primary accent.
+const ECONOMY_SIDEBAR_COLORS = [0xff1a00, 0xff1a00, 0xe8b800, 0x4ea2da];
+function economySidebarColor() {
+  return ECONOMY_SIDEBAR_COLORS[Math.floor(Math.random() * ECONOMY_SIDEBAR_COLORS.length)];
+}
+
 function blankEconomy() {
   return { cape: 0, lastChase: 0, chaseStreak: 0, petType: null,
            petName: null, petStage: 0, chases: 0, busts: 0 };
@@ -740,9 +749,9 @@ function petLine(eco) {
 
 async function handleEconomyProfile(i, eco) {
   const embed = new EmbedBuilder()
-    .setColor(ECONOMY_COLOR)
-    .setAuthor({ name: `${i.user.username}'s storm chasing profile`, iconURL: i.user.displayAvatarURL() })
-    .setDescription(petLine(eco))
+    .setColor(economySidebarColor())
+    .setAuthor({ name: i.user.username, iconURL: i.user.displayAvatarURL() })
+    .setDescription(`# ${i.user.username}'s storm chasing profile\n${petLine(eco)}`)
     .addFields(
       { name: 'Balance', value: `${eco.cape} ${CURRENCY_EMOJI} ${CURRENCY_NAME}`, inline: true },
       { name: 'Chase streak', value: `${eco.chaseStreak || 0} day${eco.chaseStreak === 1 ? '' : 's'} (+${Math.round(streakBonus(eco.chaseStreak || 0) * 100)}% bonus)`, inline: true },
@@ -776,8 +785,8 @@ async function handleEconomyChase(i, eco) {
   await patchEconomy(i.user.id, update);
   const embed = new EmbedBuilder()
     .setColor(TIER_COLORS[roll.tier] || ECONOMY_COLOR)
-    .setAuthor({ name: `${i.user.username} went storm chasing`, iconURL: i.user.displayAvatarURL() })
-    .setDescription(roll.line)
+    .setAuthor({ name: i.user.username, iconURL: i.user.displayAvatarURL() })
+    .setDescription(`# ${i.user.username} went storm chasing\n${roll.line}`)
     .addFields(
       { name: 'Result', value: payout > 0 ? `+${payout} ${CURRENCY_EMOJI}` : 'Nothing this time', inline: true },
       { name: 'Streak', value: `${newStreak} day${newStreak === 1 ? '' : 's'}${bonusPct > 0 ? ` (+${bonusPct}%)` : ''}`, inline: true },
@@ -802,9 +811,9 @@ async function handleEconomyAdopt(i, eco) {
   await patchEconomy(i.user.id, { petType: type, petStage: 0, petName: null });
   const t = PET_TYPES[type];
   const embed = new EmbedBuilder()
-    .setColor(ECONOMY_COLOR)
-    .setAuthor({ name: `${i.user.username} adopted a pet`, iconURL: i.user.displayAvatarURL() })
-    .setDescription(`${t.emoji} A **${t.label}** touches down and decides to stick around. `
+    .setColor(economySidebarColor())
+    .setAuthor({ name: i.user.username, iconURL: i.user.displayAvatarURL() })
+    .setDescription(`# ${i.user.username} adopted a pet\n${t.emoji} A **${t.label}** touches down and decides to stick around. `
       + `It starts at **${t.stages[0]}** on the ${t.scaleName}. `
       + 'Name it with `/economy name`, grow it with `/economy feed`.');
   await i.reply({ embeds: [embed] });
@@ -823,7 +832,7 @@ async function handleEconomyName(i, eco) {
   await patchEconomy(i.user.id, { petName: nickname });
   const t = PET_TYPES[eco.petType];
   const embed = new EmbedBuilder()
-    .setColor(ECONOMY_COLOR)
+    .setColor(economySidebarColor())
     .setDescription(`${t.emoji} Your ${t.label} is now named **${nickname}**.`);
   await i.reply({ embeds: [embed] });
 }
@@ -848,9 +857,9 @@ async function handleEconomyFeed(i, eco) {
   await patchEconomy(i.user.id, { cape: eco.cape - cost, petStage: newStage });
   const t = PET_TYPES[eco.petType];
   const embed = new EmbedBuilder()
-    .setColor(ECONOMY_COLOR)
-    .setAuthor({ name: `${eco.petName || t.label} grew`, iconURL: i.user.displayAvatarURL() })
-    .setDescription(`${t.emoji} Fed for ${cost} ${CURRENCY_EMOJI}. **${eco.petName || t.label}** is now **${petStageLabel(eco.petType, newStage)}** on the ${t.scaleName}.`)
+    .setColor(economySidebarColor())
+    .setAuthor({ name: i.user.username, iconURL: i.user.displayAvatarURL() })
+    .setDescription(`# ${eco.petName || t.label} grew\n${t.emoji} Fed for ${cost} ${CURRENCY_EMOJI}. **${eco.petName || t.label}** is now **${petStageLabel(eco.petType, newStage)}** on the ${t.scaleName}.`)
     .addFields({ name: 'Balance', value: `${eco.cape - cost} ${CURRENCY_EMOJI}` });
   await i.reply({ embeds: [embed] });
 }
@@ -863,9 +872,8 @@ async function handleEconomyLeaderboard(i) {
         + (row.petType ? ` (${PET_TYPES[row.petType].emoji} ${row.petName || PET_TYPES[row.petType].label})` : ''))
     : ['Nobody has chased yet. Be the first with `/economy chase`.'];
   const embed = new EmbedBuilder()
-    .setColor(ECONOMY_COLOR)
-    .setAuthor({ name: 'Top storm chasers' })
-    .setDescription(lines.join('\n'));
+    .setColor(economySidebarColor())
+    .setDescription(`# Top storm chasers\n${lines.join('\n')}`);
   await i.reply({ embeds: [embed] });
 }
 
