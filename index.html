@@ -4746,6 +4746,23 @@ body.lite-mode #export-modal { display: none !important; }
   width: 6px; height: 100%;
 }
 .r3d-cam-move input[type=range] { width: 100%; height: 6px; }
+/* The walking pad: held buttons, not clicked ones, so it works with a
+   thumb on any touch device the way WASD works on a keyboard. */
+#r3d-walk-pad {
+  position: absolute; left: 16px; top: 14px; z-index: 3;
+  display: grid; grid-template-columns: repeat(3, 32px); gap: 4px;
+}
+#r3d-walk-pad button {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: rgba(10,10,14,0.72); border: 1px solid rgba(232,184,0,0.45);
+  color: #e8b800; font-size: 13px; cursor: pointer;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+  display: flex; align-items: center; justify-content: center;
+}
+#r3d-walk-pad button:active { background: rgba(232,184,0,0.3); }
+#r3d-walk-btn.on, #r3d-vr-btn.on {
+  background: rgba(232,184,0,0.25); border-color: var(--accent);
+}
 @media (max-width: 640px) {
   #r3d-panel { left: 8px; right: 8px; width: auto; bottom: 72px; }
   #r3d-panel canvas { height: 220px; }
@@ -11846,6 +11863,8 @@ body.clean-mode #clean-hint { opacity: 1; }
     <select class="xsec-sel" id="r3d-site" title="Which radar the zone is seen from (nearest first)"></select>
     <span id="r3d-status"></span>
     <div class="xs-spacer"></div>
+    <button class="dtb-btn" id="r3d-walk-btn" type="button" title="Walk inside the box: drag to look around, WASD/arrows or the on-screen pad to move, wheel to walk forward">Walk</button>
+    <button class="dtb-btn" id="r3d-vr-btn" type="button" title="VR: fullscreen side-by-side stereo for a phone in a headset viewer, turning as you turn">VR</button>
     <button class="dtb-btn" id="r3d-info-btn" title="What this does" type="button"></button>
   </div>
   <div class="r3d-sliders">
@@ -11904,6 +11923,14 @@ body.clean-mode #clean-hint { opacity: 1; }
   </div>
   <div class="xs-plot">
     <canvas id="r3d-canvas"></canvas>
+    <div id="r3d-walk-pad" style="display:none;" title="Move around inside the box">
+      <button type="button" data-mv="up" title="Rise">&#8613;</button>
+      <button type="button" data-mv="fwd" title="Forward">&#9650;</button>
+      <button type="button" data-mv="down" title="Sink">&#8615;</button>
+      <button type="button" data-mv="left" title="Left">&#9664;</button>
+      <button type="button" data-mv="back" title="Back">&#9660;</button>
+      <button type="button" data-mv="right" title="Right">&#9654;</button>
+    </div>
     <div class="r3d-cam-zoom" title="Zoom">
       <input type="range" id="r3d-zoom" min="0" max="1000" value="500" step="1">
     </div>
@@ -67287,6 +67314,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-za', date: 'Sep 22, 2026',
+    text: 'You can now walk INSIDE the Radar 3D box. A new Walk button puts you in the storm: drag to look around, WASD or the arrow keys to move (E and Q to rise and sink), the scroll wheel to stride forward, and an on-screen pad does the same on any touch device. And a VR button turns it into fullscreen side-by-side stereo for a phone dropped into a headset viewer, steering with the phone\'s own gyroscope. Esc steps back out.' },
   { id: '2026-09-22-z', date: 'Sep 22, 2026',
     text: 'Radar 3D playback moved to the main animation bar. The little play button, speed box and slider along the bottom of the 3D panel are gone: while the panel is open, the map\'s own play, step and scrub controls drive the volume through its recent scans, with the times printed on the bar, exactly like every other layer. Closing the panel hands the bar back to whatever is underneath.' },
   { id: '2026-09-22-y', date: 'Sep 22, 2026',
@@ -71764,6 +71793,17 @@ let _r3dFrameIdx = -1;
 let _r3dDirty = true;
 let _r3dLoopStarted = false;
 let _r3dCam = { yaw: 0.6, pitch: 0.5, dist: 150 };
+// First-person mode: the viewer stands INSIDE the box instead of orbiting
+// it. Position in the zone's own km (z is drawn height, so exaggeration
+// applies), yaw/pitch is where they are looking. null means orbiting.
+let _r3dWalk = null;
+// Side-by-side stereo for a phone in a cardboard-style headset: two eyes,
+// each half the canvas, with the gyroscope steering the look direction.
+// Real WebXR needs WebGL, which this page deliberately has none of, so
+// this is the honest CPU version of VR.
+let _r3dVr = false;
+let _r3dMoveKeys = new Set();     // 'fwd' 'back' 'left' 'right' 'up' 'down', held right now
+let _r3dWalkLastTs = 0;
 const R3D_PITCH_MIN = -0.15, R3D_PITCH_MAX = 1.45;
 // Coarse while interacting, full quality the moment interaction stops.
 let _r3dQuality = 'fine';
@@ -72143,6 +72183,8 @@ function _r3dClose() {
   _r3dStation = null;
   _r3dLutCache = null;
   _r3dPaintSeq++;
+  if (_r3dVr) _r3dVrOff();
+  if (_r3dWalk) _r3dWalkToggle(false);
   // The bar goes back to whatever source is underneath.
   _r3dUpdateSlider();
 }
@@ -73177,6 +73219,9 @@ let _r3dWarmCv = null;
 function _r3dRenderKey(w, h) {
   const z = _r3dZone || {};
   return [w, h, _r3dCam.yaw.toFixed(4), _r3dCam.pitch.toFixed(4), _r3dCam.dist.toFixed(2),
+          _r3dWalk ? ['w', _r3dWalk.x.toFixed(2), _r3dWalk.y.toFixed(2), _r3dWalk.z.toFixed(2),
+                      _r3dWalk.yaw.toFixed(3), _r3dWalk.pitch.toFixed(3)].join(',') : 'o',
+          _r3dVr ? 'vr' : 'flat',
           _r3dExag, _r3dQuality, z.wKm, z.hKm, _r3dFilterPct, _r3dHeightMaxKft, _r3dOpacity,
           _r3dMode, _r3dCutSide, _r3dCutPct, _r3dHeightUnit, _r3dPaletteGen,
           ((_r3dEl('r3d-product') || {}).value) || 'ref', _r3dBoxTopKm().toFixed(3),
@@ -73226,10 +73271,113 @@ function _r3dWarmOne() {
 // marks the picture dirty again and the next tick starts a fresh march from
 // the newest view, so a drag never queues up stale frames.
 let _r3dRendering = false;
-function _r3dTick() {
+function _r3dTick(ts) {
+  if (_r3dOn) _r3dWalkStep(ts || performance.now());
   if (_r3dOn && _r3dDirty && !_r3dRendering) { _r3dDirty = false; _r3dRender(); }
   requestAnimationFrame(_r3dTick);
 }
+
+// ── Walking inside the box ───────────────────────────────────────────────
+// Movement is integrated here on the display clock: whatever keys or pad
+// buttons are held this frame push the walker along their look direction,
+// scaled to the zone so a big box and a small one feel the same to cross.
+function _r3dWalkStep(ts) {
+  const dt = Math.min(0.1, Math.max(0, (ts - _r3dWalkLastTs) / 1000));
+  _r3dWalkLastTs = ts;
+  if (!_r3dWalk || !_r3dMoveKeys.size) return;
+  const sp = _r3dZoneMaxKm() * 0.4 * dt;
+  const wlk = _r3dWalk, sy = Math.sin(wlk.yaw), cy = Math.cos(wlk.yaw);
+  let mx = 0, my = 0, mz = 0;
+  if (_r3dMoveKeys.has('fwd')) { mx += sy; my += cy; }
+  if (_r3dMoveKeys.has('back')) { mx -= sy; my -= cy; }
+  if (_r3dMoveKeys.has('left')) { mx -= cy; my += sy; }
+  if (_r3dMoveKeys.has('right')) { mx += cy; my -= sy; }
+  if (_r3dMoveKeys.has('up')) mz += 0.6;
+  if (_r3dMoveKeys.has('down')) mz -= 0.6;
+  const hx = (_r3dZone ? _r3dZone.wKm : 90) / 2 * 1.8, hy = (_r3dZone ? _r3dZone.hKm : 90) / 2 * 1.8;
+  const top = _r3dBoxTopKm() * _r3dExag;
+  wlk.x = Math.max(-hx, Math.min(hx, wlk.x + mx * sp));
+  wlk.y = Math.max(-hy, Math.min(hy, wlk.y + my * sp));
+  wlk.z = Math.max(0.15, Math.min(top * 1.5, wlk.z + mz * sp));
+  _r3dInteract();
+}
+
+function _r3dWalkToggle(force) {
+  const on = force !== undefined ? !!force : !_r3dWalk;
+  if (on && !_r3dWalk) {
+    // Step in from where the orbit camera was standing, facing the centre.
+    const d = _r3dZoneMaxKm() * 0.55;
+    const x = d * Math.sin(_r3dCam.yaw), y = d * Math.cos(_r3dCam.yaw);
+    const top = _r3dBoxTopKm() * _r3dExag;
+    _r3dWalk = { x, y, z: Math.max(0.5, Math.min(top * 0.35, 3 * _r3dExag)),
+                 yaw: Math.atan2(-x, -y), pitch: 0 };
+  } else if (!on) {
+    _r3dWalk = null;
+    _r3dMoveKeys.clear();
+    if (_r3dVr) _r3dVrOff();
+  }
+  const btn = _r3dEl('r3d-walk-btn');
+  if (btn) btn.classList.toggle('on', !!_r3dWalk);
+  const pad = _r3dEl('r3d-walk-pad');
+  if (pad) pad.style.display = _r3dWalk ? '' : 'none';
+  // The two camera bars steer the orbit only, so they step aside.
+  document.querySelectorAll('#r3d-panel .r3d-cam-zoom, #r3d-panel .r3d-cam-move')
+    .forEach(el => { el.style.display = _r3dWalk ? 'none' : ''; });
+  _r3dInteract();
+}
+
+// ── The honest VR: side-by-side stereo plus the gyroscope ────────────────
+// A phone in a cardboard-style viewer: fullscreen, one eye per half, and
+// turning the phone turns the view. Entering VR also enters walk mode,
+// because standing inside the storm is the whole point of putting it on
+// your face.
+let _r3dGyroBase = null;
+function _r3dOnGyro(e) {
+  if (!_r3dWalk || e.alpha == null || e.beta == null) return;
+  const rad = Math.PI / 180;
+  if (!_r3dGyroBase) _r3dGyroBase = { a: e.alpha, yaw0: _r3dWalk.yaw };
+  let da = e.alpha - _r3dGyroBase.a;
+  if (da > 180) da -= 360; else if (da < -180) da += 360;
+  _r3dWalk.yaw = _r3dGyroBase.yaw0 - da * rad;
+  // Holding the phone up to look ahead is beta around 60-90 degrees.
+  _r3dWalk.pitch = Math.max(-1.45, Math.min(1.45, (e.beta - 70) * rad));
+  _r3dInteract();
+}
+function _r3dGyroStart() {
+  _r3dGyroBase = null;
+  const wire = () => window.addEventListener('deviceorientation', _r3dOnGyro);
+  try {
+    // iOS gates the gyroscope behind a permission prompt that may only be
+    // asked from a user gesture, which the VR button press is.
+    if (typeof DeviceOrientationEvent !== 'undefined'
+        && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission()
+        .then(s => { if (s === 'granted') wire(); }).catch(() => {});
+    } else wire();
+  } catch (e) {}
+}
+function _r3dGyroStop() {
+  try { window.removeEventListener('deviceorientation', _r3dOnGyro); } catch (e) {}
+  _r3dGyroBase = null;
+}
+function _r3dVrOn() {
+  if (!_r3dWalk) _r3dWalkToggle(true);
+  _r3dVr = true;
+  const panel = _r3dEl('r3d-panel');
+  if (panel) panel.classList.add('fullscreen');
+  const btn = _r3dEl('r3d-vr-btn');
+  if (btn) btn.classList.add('on');
+  _r3dGyroStart();
+  _r3dDirty = true;
+}
+function _r3dVrOff() {
+  _r3dVr = false;
+  _r3dGyroStop();
+  const btn = _r3dEl('r3d-vr-btn');
+  if (btn) btn.classList.remove('on');
+  _r3dDirty = true;
+}
+function _r3dVrToggle() { if (_r3dVr) _r3dVrOff(); else _r3dVrOn(); }
 // Settles once nothing is marching and nothing is waiting to: the tests'
 // way of waiting for the picture.
 function _r3dRenderIdle(timeoutMs) {
@@ -73342,75 +73490,119 @@ function _r3dRender() {
 // volume and box drawn into the given context in one go once it is back,
 // so the previous picture stays up until the new one is whole. Resolves
 // true when it drew, false when a newer paint overtook it.
+// One camera, two models: the orbit around the box, or the walker inside
+// it. Both come back as position plus a right/up/forward basis, which is
+// all the marcher and the box drawing ever ask for. `eye` (-1 left, +1
+// right, 0 mono) slides the position along the right vector for stereo,
+// scaled to the scene, because a 6 cm human eyebase is invisible at
+// kilometre scale.
+function _r3dCamBasis(eye) {
+  const topKm = _r3dBoxTopKm(), exag = _r3dExag;
+  let camX, camY, camZ, fx, fy, fz;
+  if (_r3dWalk) {
+    const cp = Math.cos(_r3dWalk.pitch);
+    camX = _r3dWalk.x; camY = _r3dWalk.y; camZ = _r3dWalk.z;
+    fx = Math.sin(_r3dWalk.yaw) * cp; fy = Math.cos(_r3dWalk.yaw) * cp; fz = Math.sin(_r3dWalk.pitch);
+  } else {
+    const { yaw, pitch, dist } = _r3dCam;
+    const targetZ = topKm * exag / 2;
+    const horiz = dist * Math.cos(pitch);
+    camX = horiz * Math.sin(yaw); camY = horiz * Math.cos(yaw); camZ = targetZ + dist * Math.sin(pitch);
+    fx = -camX; fy = -camY; fz = targetZ - camZ;
+    const fl = Math.hypot(fx, fy, fz) || 1; fx /= fl; fy /= fl; fz /= fl;
+  }
+  let rx = fy, ry = -fx, rz = 0;                          // forward × world-up(0,0,1), flattened
+  const rl = Math.hypot(rx, ry, rz) || 1; rx /= rl; ry /= rl; rz /= rl;
+  const ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
+  if (eye) {
+    const sep = Math.max(0.04, _r3dZoneMaxKm() * 0.012) * eye / 2;
+    camX += rx * sep; camY += ry * sep;
+  }
+  return { camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz };
+}
+
 async function _r3dPaint(ctx, w, h, dpr, frame) {
   const seq = ++_r3dPaintSeq;
   const product = ((_r3dEl('r3d-product') || {}).value) || 'ref';
   const spec = _r3dSpec(product);
   const halfX = (_r3dZone ? _r3dZone.wKm : 90) / 2, halfY = (_r3dZone ? _r3dZone.hKm : 90) / 2;
   const topKm = _r3dBoxTopKm();
-  const { yaw, pitch, dist } = _r3dCam;
   const exag = _r3dExag;
-  const targetZ = topKm * exag / 2;
-  const horiz = dist * Math.cos(pitch);
-  const camX = horiz * Math.sin(yaw), camY = horiz * Math.cos(yaw), camZ = targetZ + dist * Math.sin(pitch);
-  // Look-at basis: forward toward the target, world-up projected off it.
-  let fx = -camX, fy = -camY, fz = targetZ - camZ;
-  const fl = Math.hypot(fx, fy, fz) || 1; fx /= fl; fy /= fl; fz /= fl;
-  let rx = fy, ry = -fx, rz = 0;                          // forward × world-up(0,0,1), flattened
-  const rl = Math.hypot(rx, ry, rz) || 1; rx /= rl; ry /= rl; rz /= rl;
-  const ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
   const focal = h * 1.15;
   const box = _r3dMarchBox(halfX, halfY);
+  // Stereo is two eyes side by side, each half the canvas; mono is one
+  // full-width "eye". Everything below runs per eye, so VR is the same
+  // pipeline twice rather than a second renderer.
+  const eyes = _r3dVr ? [-1, 1] : [0];
+  const eyeW = _r3dVr ? Math.floor(w / 2) : w;
+  const views = eyes.map(eye => _r3dCamBasis(eye));
 
-  let volume = null;
+  const volumes = [];
   if (frame) {
     const P = _r3dPolarFor(frame, spec);
     const fine = _r3dQuality === 'fine';
     // Fine mode renders at the canvas's own resolution (capped for huge
     // panels, the canvas's bilinear upscale reads as antialiasing on data
     // this soft); fast mode stays small so dragging never stutters.
-    const iw = fine ? Math.min(w, 720) : Math.max(140, Math.min(320, Math.round(w / 2.5)));
-    const ih = Math.max(60, Math.round(iw * h / w));
+    const iw = fine ? Math.min(eyeW, 720) : Math.max(140, Math.min(320, Math.round(eyeW / 2.5)));
+    const ih = Math.max(60, Math.round(iw * h / eyeW));
     // A step of half a range bin in fine mode: the native data is never
     // stepped over; coarser while dragging.
     const stepKm = Math.max(0.08, Math.min(1.5, P.rStep * (fine ? 0.6 : 1.3)));
     const pack = _r3dLutFor(product, stepKm);
-    // A single light, GR2Analyst style, fixed in eye space: above and a
-    // little to the left of the camera, so whatever faces the viewer is lit
-    // and the far sides fall into shade.
-    let lx = -0.35 * rx + 0.75 * ux - 0.55 * fx, ly = -0.35 * ry + 0.75 * uy - 0.55 * fy, lz = -0.35 * rz + 0.75 * uz - 0.55 * fz;
-    const ll = Math.hypot(lx, ly, lz) || 1; lx /= ll; ly /= ll; lz /= ll;
-    const prm = {
-      iw, ih, fine: fine ? 1 : 0, crisp: _r3dMode === 'pixels' ? 1 : 0, exag, stepKm,
-      cam: new Float64Array([camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz]),
-      minX: box.minX, maxX: box.maxX, minY: box.minY, maxY: box.maxY, maxZ: topKm * exag,
-      lut: pack.lut, floorRgb: pack.floorRgb, signed: !!spec.signed,
-      light: new Float32Array([lx, ly, lz]),
-    };
-    const data = await _r3dMarchAsync(P, prm);
-    if (seq !== _r3dPaintSeq) return false;
-    if (!data) return false;
-    volume = { data, iw, ih };
+    for (const v of views) {
+      // A single light, GR2Analyst style, fixed in eye space: above and a
+      // little to the left of the camera, so whatever faces the viewer is
+      // lit and the far sides fall into shade.
+      let lx = -0.35 * v.rx + 0.75 * v.ux - 0.55 * v.fx,
+          ly = -0.35 * v.ry + 0.75 * v.uy - 0.55 * v.fy,
+          lz = -0.35 * v.rz + 0.75 * v.uz - 0.55 * v.fz;
+      const ll = Math.hypot(lx, ly, lz) || 1; lx /= ll; ly /= ll; lz /= ll;
+      const prm = {
+        iw, ih, fine: fine ? 1 : 0, crisp: _r3dMode === 'pixels' ? 1 : 0, exag, stepKm,
+        cam: new Float64Array([v.camX, v.camY, v.camZ, v.rx, v.ry, v.rz, v.ux, v.uy, v.uz, v.fx, v.fy, v.fz]),
+        minX: box.minX, maxX: box.maxX, minY: box.minY, maxY: box.maxY, maxZ: topKm * exag,
+        lut: pack.lut, floorRgb: pack.floorRgb, signed: !!spec.signed,
+        light: new Float32Array([lx, ly, lz]),
+      };
+      const data = await _r3dMarchAsync(P, prm);
+      if (seq !== _r3dPaintSeq) return false;
+      if (!data) return false;
+      volumes.push({ data, iw, ih });
+    }
   }
 
   ctx.clearRect(0, 0, w, h);
   const bg = ctx.createLinearGradient(0, 0, 0, h);
   bg.addColorStop(0, '#08080b'); bg.addColorStop(1, '#000');
   ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
-  if (volume) {
-    if (!_r3dOffCv) _r3dOffCv = document.createElement('canvas');
-    if (_r3dOffCv.width !== volume.iw || _r3dOffCv.height !== volume.ih) {
-      _r3dOffCv.width = volume.iw; _r3dOffCv.height = volume.ih; _r3dImg = null;
+  views.forEach((v, i) => {
+    const ex = i * eyeW;
+    const volume = volumes[i];
+    if (volume) {
+      if (!_r3dOffCv) _r3dOffCv = document.createElement('canvas');
+      if (_r3dOffCv.width !== volume.iw || _r3dOffCv.height !== volume.ih) {
+        _r3dOffCv.width = volume.iw; _r3dOffCv.height = volume.ih; _r3dImg = null;
+      }
+      const octx = _r3dOffCv.getContext('2d');
+      if (!_r3dImg) _r3dImg = octx.createImageData(volume.iw, volume.ih);
+      _r3dImg.data.set(volume.data);
+      octx.putImageData(_r3dImg, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      try { ctx.imageSmoothingQuality = 'high'; } catch (e) {}
+      ctx.drawImage(_r3dOffCv, ex, 0, eyeW, h);
     }
-    const octx = _r3dOffCv.getContext('2d');
-    if (!_r3dImg) _r3dImg = octx.createImageData(volume.iw, volume.ih);
-    _r3dImg.data.set(volume.data);
-    octx.putImageData(_r3dImg, 0, 0);
-    ctx.imageSmoothingEnabled = true;
-    try { ctx.imageSmoothingQuality = 'high'; } catch (e) {}
-    ctx.drawImage(_r3dOffCv, 0, 0, w, h);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(ex, 0, eyeW, h); ctx.clip();
+    ctx.translate(ex, 0);
+    _r3dDrawBox(ctx, eyeW, h, v.camX, v.camY, v.camZ, v.rx, v.ry, v.rz, v.ux, v.uy, v.uz, v.fx, v.fy, v.fz, focal, halfX, halfY, topKm, dpr, exag, box);
+    ctx.restore();
+  });
+  if (_r3dVr) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = Math.max(1, dpr);
+    ctx.beginPath(); ctx.moveTo(eyeW, 0); ctx.lineTo(eyeW, h); ctx.stroke();
   }
-  _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz, focal, halfX, halfY, topKm, dpr, exag, box);
   if (!frame) {
     ctx.fillStyle = _r3dGoldFill(ctx, h);
     ctx.font = `${Math.round(12 * dpr)}px 'Comfortaa', sans-serif`;
@@ -73561,7 +73753,9 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
     try { cv.setPointerCapture(e.pointerId); } catch (err) {}
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 1) {
-      dragStart = { yaw: _r3dCam.yaw, pitch: _r3dCam.pitch, x: e.clientX, y: e.clientY };
+      dragStart = _r3dWalk
+        ? { walk: true, yaw: _r3dWalk.yaw, pitch: _r3dWalk.pitch, x: e.clientX, y: e.clientY }
+        : { yaw: _r3dCam.yaw, pitch: _r3dCam.pitch, x: e.clientX, y: e.clientY };
       cv.classList.add('r3d-dragging');
     } else if (pointers.size === 2) {
       dragStart = null;
@@ -73573,12 +73767,22 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 1 && dragStart) {
       const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
+      if (dragStart.walk && _r3dWalk) {
+        // Looking around from inside: drag right looks right, drag up
+        // looks up, like turning your own head.
+        _r3dWalk.yaw = dragStart.yaw + dx * 0.004;
+        _r3dWalk.pitch = Math.max(-1.45, Math.min(1.45, dragStart.pitch + dy * 0.004));
+        _r3dInteract();
+        return;
+      }
+      if (_r3dWalk) return;
       _r3dCam.yaw = dragStart.yaw + dx * 0.008;
       _r3dCam.pitch = Math.max(R3D_PITCH_MIN, Math.min(R3D_PITCH_MAX,
         dragStart.pitch - dy * 0.008));
       _r3dSyncCamBars();
       _r3dInteract();
     } else if (pointers.size === 2 && pinchStart) {
+      if (_r3dWalk) return;   // the pad moves the walker; pinch stays the orbit's zoom
       const ratio = pinchStart.dist / Math.max(1, pinchDist());
       _r3dCam.dist = Math.max(_r3dDistMin(), Math.min(_r3dDistMax(), pinchStart.camDist * ratio));
       _r3dSyncCamBars();
@@ -73594,10 +73798,39 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   cv.addEventListener('pointercancel', end);
   cv.addEventListener('wheel', (e) => {
     e.preventDefault();
+    if (_r3dWalk) {
+      // Rolling the wheel walks: forward into the storm, back out of it.
+      const sp = -e.deltaY * _r3dZoneMaxKm() * 0.0004;
+      const cp = Math.cos(_r3dWalk.pitch);
+      _r3dWalk.x += Math.sin(_r3dWalk.yaw) * cp * sp;
+      _r3dWalk.y += Math.cos(_r3dWalk.yaw) * cp * sp;
+      _r3dWalk.z = Math.max(0.15, _r3dWalk.z + Math.sin(_r3dWalk.pitch) * sp);
+      _r3dInteract();
+      return;
+    }
     _r3dCam.dist = Math.max(_r3dDistMin(), Math.min(_r3dDistMax(), _r3dCam.dist * (1 + e.deltaY * 0.0015)));
     _r3dSyncCamBars();
     _r3dInteract();
   }, { passive: false });
+
+  // WASD/arrows move the walker, E and Q rise and sink. Captured ahead of
+  // the app's own arrow-key shortcuts while walking, released otherwise.
+  const R3D_KEYMAP = { w: 'fwd', s: 'back', a: 'left', d: 'right', e: 'up', q: 'down',
+                       ArrowUp: 'fwd', ArrowDown: 'back', ArrowLeft: 'left', ArrowRight: 'right' };
+  document.addEventListener('keydown', (e) => {
+    if (!_r3dOn || !_r3dWalk) return;
+    const t = e.target;
+    if (t && /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) return;
+    const mv = R3D_KEYMAP[e.key] || R3D_KEYMAP[String(e.key).toLowerCase()];
+    if (!mv) return;
+    e.preventDefault();
+    e.stopPropagation();
+    _r3dMoveKeys.add(mv);
+  }, true);
+  document.addEventListener('keyup', (e) => {
+    const mv = R3D_KEYMAP[e.key] || R3D_KEYMAP[String(e.key).toLowerCase()];
+    if (mv) _r3dMoveKeys.delete(mv);
+  }, true);
 })();
 
 // ── The panel's own chrome ───────────────────────────────────────────────
@@ -73617,8 +73850,26 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && panel.classList.contains('fullscreen')) {
       fullOff();
+      if (_r3dVr) _r3dVrOff();
       _r3dDirty = true;
     }
+  });
+  const walkBtn = _r3dEl('r3d-walk-btn');
+  if (walkBtn) walkBtn.onclick = () => _r3dWalkToggle();
+  const vrBtn = _r3dEl('r3d-vr-btn');
+  if (vrBtn) vrBtn.onclick = () => _r3dVrToggle();
+  const pad = _r3dEl('r3d-walk-pad');
+  if (pad) pad.querySelectorAll('button').forEach(b => {
+    const mv = b.dataset.mv;
+    const hold = (e) => {
+      e.preventDefault();
+      _r3dMoveKeys.add(mv);
+      try { b.setPointerCapture(e.pointerId); } catch (err) {}
+    };
+    const release = () => _r3dMoveKeys.delete(mv);
+    b.addEventListener('pointerdown', hold);
+    b.addEventListener('pointerup', release);
+    b.addEventListener('pointercancel', release);
   });
   const x = panel.querySelector('.xs-x');
   if (x) x.onclick = () => { fullOff(); _r3dClose(); };

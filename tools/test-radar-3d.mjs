@@ -742,6 +742,93 @@ console.log('\n7c. Raw pixels: the exact gates, unshaded and crisp, plus the glo
      JSON.stringify({ on: r.fsOn, esc: r.fsEsc, closed: r.fsClosed }));
 }
 
+console.log('\n7d. walking inside the box, and the honest (WebGL-free) VR');
+{
+  ok('walk state, the shared camera basis, and stereo eyes are in the page',
+     /let _r3dWalk = null;/.test(PAGE)
+     && /function _r3dCamBasis\(eye\) \{/.test(PAGE)
+     && /const eyes = _r3dVr \? \[-1, 1\] : \[0\];/.test(PAGE));
+  ok('the panel has Walk and VR buttons and a held-button movement pad',
+     PAGE.includes('id="r3d-walk-btn"') && PAGE.includes('id="r3d-vr-btn"')
+     && PAGE.includes('id="r3d-walk-pad"'));
+  ok('WASD, arrows and E/Q are mapped, captured only while walking',
+     /const R3D_KEYMAP = \{ w: 'fwd', s: 'back', a: 'left', d: 'right', e: 'up', q: 'down',/.test(PAGE)
+     && /if \(!_r3dOn \|\| !_r3dWalk\) return;/.test(PAGE));
+  const r = await p.evaluate(async () => {
+    _r3dOpen('kfws');
+    _r3dToken++;
+    const site = { x: 0, y: -60 };
+    const xs = [], ys = [], zs = [], vs = [], rs = [], segs = [];
+    [0.5, 1.5, 2.4, 3.4, 4.5, 6, 8].forEach(a2 => {
+      const start = xs.length;
+      for (let x = -3; x <= 3; x += 0.4) for (let y = -3; y <= 3; y += 0.4) {
+        const s2 = Math.hypot(x - site.x, y - site.y);
+        xs.push(x); ys.push(y); zs.push(_xsBeamHeightKm(s2, a2, 0)); vs.push(62); rs.push(0.4, s2 * 0.00873);
+      }
+      segs.push({ start, end: xs.length, angle: a2 });
+    });
+    const frame = _r3dFinishFrame({ xs, ys, zs, vs, rs, site }, segs, null, segs.length);
+    _r3dFrames = [frame]; _r3dFrameIdx = 0; _r3dQuality = 'fine';
+    _r3dMode = 'cloud'; _r3dFilterPct = 0; _r3dOpacity = 1; _r3dLutCache = null;
+    const R = async () => { _r3dDirty = false; _r3dRender(); await _r3dRenderIdle(20000); };
+    const cv = document.getElementById('r3d-canvas'), ctx = cv.getContext('2d');
+    const reds = (x0, x1) => {
+      const d = ctx.getImageData(x0, 0, x1 - x0, cv.height).data;
+      let n = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i] > 60 && d[i + 1] < 45 && d[i + 2] < 45) n++;
+      return n;
+    };
+    const out = {};
+    // In: standing inside, facing the centre.
+    _r3dWalkToggle(true);
+    out.walkOn = !!_r3dWalk;
+    out.padShown = document.getElementById('r3d-walk-pad').style.display !== 'none';
+    out.btnLit = document.getElementById('r3d-walk-btn').classList.contains('on');
+    out.facingCentre = Math.abs(_r3dWalk.yaw - Math.atan2(-_r3dWalk.x, -_r3dWalk.y)) < 1e-9;
+    await R();
+    out.seesBlock = reds(0, cv.width);
+    // Moving: a held key walks the viewer forward on the display clock.
+    const distBefore = Math.hypot(_r3dWalk.x, _r3dWalk.y);
+    _r3dMoveKeys.add('fwd');
+    _r3dWalkLastTs = 1000;
+    _r3dWalkStep(1100);
+    _r3dMoveKeys.delete('fwd');
+    out.movedIn = Math.hypot(_r3dWalk.x, _r3dWalk.y) < distBefore - 1;
+    // The keyboard maps onto the same held-keys set.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', bubbles: true, cancelable: true }));
+    out.keyHeld = _r3dMoveKeys.has('fwd');
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'w', bubbles: true }));
+    out.keyReleased = !_r3dMoveKeys.has('fwd');
+    // VR: fullscreen, both eye halves genuinely drawn.
+    _r3dVrToggle();
+    out.vrOn = _r3dVr === true;
+    out.vrFullscreen = document.getElementById('r3d-panel').classList.contains('fullscreen');
+    await R();
+    const half = Math.floor(cv.width / 2);
+    out.leftEye = reds(0, half);
+    out.rightEye = reds(half, cv.width);
+    // Out: everything hands back cleanly.
+    _r3dVrOff();
+    _r3dWalkToggle(false);
+    out.walkOff = _r3dWalk === null && _r3dVr === false;
+    out.padHidden = document.getElementById('r3d-walk-pad').style.display === 'none';
+    document.getElementById('r3d-panel').classList.remove('fullscreen');
+    _r3dClose();
+    return out;
+  });
+  ok('Walk puts the viewer inside, facing the centre, pad up and button lit',
+     r.walkOn && r.padShown && r.btnLit && r.facingCentre, JSON.stringify(r));
+  ok('the block is visible from inside the box', r.seesBlock > 50, String(r.seesBlock));
+  ok('a held forward key genuinely walks the viewer inward', r.movedIn === true);
+  ok('the keyboard drives the held-keys set, and releases cleanly',
+     r.keyHeld === true && r.keyReleased === true, JSON.stringify([r.keyHeld, r.keyReleased]));
+  ok('VR goes fullscreen and draws the storm into BOTH eye halves',
+     r.vrOn && r.vrFullscreen && r.leftEye > 25 && r.rightEye > 25,
+     JSON.stringify({ left: r.leftEye, right: r.rightEye }));
+  ok('walking and VR shut off cleanly, pad hidden again',
+     r.walkOff && r.padHidden, JSON.stringify([r.walkOff, r.padHidden]));
+}
+
 console.log('\n8. the volume follows the drawn box: only the window the zone occupies, re-binned in place');
 {
   const r = await p.evaluate(() => {
