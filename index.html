@@ -31250,6 +31250,12 @@ function toggleForecastDots() {
     _scheduleCityTempRefresh();
   } else {
     cityMarkersLayer.clearLayers();
+    // _cityMarkerRefs remembers every dot by coordinate key so a pan only
+    // diffs what changed instead of rebuilding all eight hundred - but
+    // that memory has to go too, or the diff in _refreshVisibleCityTemps
+    // sees these coordinates as "already added" the next time this turns
+    // back on and never actually adds them back.
+    _cityMarkerRefs.clear();
   }
 }
 
@@ -54171,7 +54177,15 @@ async function _refreshVisibleCityTemps() {
 
   try {
     await _getMetarStations(); // single ArcGIS request, 15-min cached
-    if (gen !== _cityRefreshGen) return;
+    // The first await already rechecks the layer right after it - this one
+    // has to as well. Skipping it here was the gap: this phase only
+    // restyles markers that are still actually on the map (hasLayer guards
+    // that below), so on its own it could not add a dot back - but turning
+    // the layer off and back on while this was in flight left it holding a
+    // stale key it never dropped, and the next real refresh trusted that
+    // stale key instead of adding a fresh dot for a coordinate it had
+    // wrongly decided already had one.
+    if (gen !== _cityRefreshGen || !activeLayers.forecasts || !cityMarkersLayer) return;
     needTemp.forEach(city => {
       const key = ck(city);
       const temp = _nearestTemp(city.lat, city.lon);
@@ -66625,6 +66639,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-o', date: 'Sep 22, 2026',
+    text: 'Fixed Weather Forecasts city dots: turning the layer off while a temperature refresh was still loading could leave it thinking some dots were already there, and skip putting them back the next time you turned the layer on. It now always starts clean.' },
   { id: '2026-09-22-n', date: 'Sep 22, 2026',
     text: 'Radar site comparison: fixed a strip sometimes drawing full width across the whole map for a moment instead of staying inside its own band, and you can now rotate the divider from side-by-side to stacked with a new button on the comparison, picking up right where the strips already were.' },
   { id: '2026-09-22-m', date: 'Sep 22, 2026',
