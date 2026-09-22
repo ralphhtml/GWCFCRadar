@@ -37,9 +37,12 @@ console.log('\n1. the source keeps the shape of the feature');
      && /body\.lite-mode #overlay-toggle-btn/.test(PAGE));
   ok('the picker outranks the auto-tutorial on a first visit',
      /_modeChosen\(\)\) \{[\s\S]{0,700}_modeOpenPicker\(\)/.test(PAGE));
-  ok('choosing Lite-ning waives the full tutorial, not the greeting line',
-     /_modePick[\s\S]{0,900}gwcfc_tutorial_seen', '1'/.test(PAGE)
-     && /_liteIntroClose[\s\S]{0,200}_fvSignup\(\)/.test(PAGE));
+  ok('choosing either mode waives the eighteen-section tutorial and swaps '
+     + 'the same popup to a short ready screen, rather than opening a second one',
+     /function _modePick\(m\) \{[\s\S]{0,500}gwcfc_tutorial_seen', '1'/.test(PAGE)
+     && /function _modePick\(m\) \{[\s\S]{0,550}_fvShowReady\(m\);/.test(PAGE));
+  ok('the ready screen is built inside the one popup, not a second element',
+     /const wrap = document\.querySelector\('#mode-modal \.mode-card-wrap'\);/.test(PAGE));
   ok('the mode is changed in Settings, with no tag or button of its own',
      /id="lqm-set-mode"/.test(PAGE)
      && !/id="profile-mode-tag"/.test(PAGE) && !/id="lqm-mode-btn"/.test(PAGE));
@@ -112,11 +115,14 @@ console.log('\n2. a brand-new visitor is asked, and Lite-ning answers for them')
   ok('and the full tutorial does not', !first.tutorial);
 
   await p.click('#mode-pick-lite');
-  await p.waitForTimeout(400);
+  await p.waitForTimeout(200);
   const lite = await p.evaluate(() => ({
     saved: localStorage.getItem('gwcfc_mode'),
     body: document.body.classList.contains('lite-mode'),
-    intro: !!document.querySelector('#lite-intro.open'),
+    // No second modal opens: the SAME popup swaps its own content in place.
+    stillOnePopup: !!document.querySelector('#mode-modal.open'),
+    readyHead: document.querySelector('#mode-modal .mode-head')?.textContent || '',
+    tips: document.querySelectorAll('#mode-modal .lite-step').length,
     tutSeen: localStorage.getItem('gwcfc_tutorial_seen'),
     bubbles: [...document.querySelectorAll('#sub-bubbles .sb-label')].map(x => x.textContent),
     colGone: getComputedStyle(document.getElementById('sub-bubbles')).display === 'none',
@@ -128,7 +134,12 @@ console.log('\n2. a brand-new visitor is asked, and Lite-ning answers for them')
   }));
   ok('the choice is saved', lite.saved === 'lite', String(lite.saved));
   ok('the page wears the mode', lite.body === true);
-  ok('a four-line intro opens instead of eighteen sections', lite.intro);
+  ok('picking an answer does not open a second popup on top of the first',
+     lite.stillOnePopup, JSON.stringify(lite));
+  ok('the same card swaps to a short ready screen instead',
+     /YOU.RE SET/.test(lite.readyHead), lite.readyHead);
+  ok('with a short set of tips, not the eighteen-section tutorial',
+     lite.tips === 3, String(lite.tips));
   ok('so the full tutorial will not ambush the next visit',
      lite.tutSeen === '1', String(lite.tutSeen));
   ok('the bubble column is gone entirely, Radar button included',
@@ -140,32 +151,25 @@ console.log('\n2. a brand-new visitor is asked, and Lite-ning answers for them')
   ok('the drawing and measuring rail is gone', lite.railGone);
   ok('so is the overlay launcher', lite.launcherGone);
 
-  // Closing the intro no longer jumps straight to the welcome: the rest of
-  // the first-visit greeting line comes first. Sign-up panel (skippable),
-  // then the changelog, and only then the welcome flight.
+  // Tapping SHOW MY WEATHER closes the one popup and goes straight to the
+  // welcome flight. No sign-up panel, no changelog: those are optional
+  // links on the ready screen now, not a forced chain.
   const radar = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
-    _liteIntroClose();
+    _fvGo();
     await wait(700);
-    const signupOpen =
-      !!document.querySelector('#lqm-profile-overlay.lqm-panel-open');
-    lqmCloseProfile();
-    await wait(700);
-    const clOpen = !!document.querySelector('#changelog-modal.open');
-    _clClose();
-    await wait(900);
     return {
-      signupOpen, clOpen,
-      clSeen: localStorage.getItem('gwcfc_changelog_seen'),
-      newestId: APP_CHANGELOG[0].id,
+      popupGone: !document.querySelector('#mode-modal.open'),
+      signupOpen: !!document.querySelector('#lqm-profile-overlay.lqm-panel-open'),
+      clOpen: !!document.querySelector('#changelog-modal.open'),
       welcomeRan: _welcomeRan === true,
     };
   });
-  ok('closing the intro opens the sign-up panel', radar.signupOpen);
-  ok('closing that opens the changelog', radar.clOpen);
-  ok('which starts their history at today',
-     radar.clSeen === radar.newestId, `${radar.clSeen} vs ${radar.newestId}`);
-  ok('and dismissing the changelog starts the welcome', radar.welcomeRan);
+  ok('the one popup is gone', radar.popupGone);
+  ok('nothing opened the sign-up panel on its own', !radar.signupOpen);
+  ok('nor the changelog, a brand-new visitor has nothing to catch up on',
+     !radar.clOpen);
+  ok('and the welcome flight ran on its own', radar.welcomeRan);
 
   // And the way back up: one tap in the logo menu restores everything.
   const back = await p.evaluate(() => {
