@@ -10182,7 +10182,7 @@ body.gwcfc-crosshair #map::after {
 }
 
 /* Shared panel shell – applied to all overlay panels */
-#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #meso-panel, #storm-reports-panel, #tornado-tracks-panel, #metar-controls {
+#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #meso-panel, #storm-reports-panel, #tornado-tracks-panel {
   position: static;
   transform: none;
   width: 180px;
@@ -10203,7 +10203,6 @@ body.gwcfc-crosshair #map::after {
 #meso-panel   { border: 1.5px solid rgba(255,140,0,0.45); }
 #storm-reports-panel { border: 1.5px solid rgba(255,68,68,0.45); }
 #tornado-tracks-panel { border: 1.5px solid rgba(220,20,60,0.45); }
-#metar-controls { border: 1.5px solid rgba(0,224,96,0.45); }
 
 /* Title bars */
 .spc-float-title {
@@ -10237,10 +10236,6 @@ body.gwcfc-crosshair #map::after {
 .tt-float-title {
   font-family: var(--display); font-weight: 700; font-size: 10px; letter-spacing: 1px;
   color: #dc143c; text-align: center; text-transform: uppercase; margin-bottom: 1px;
-}
-.metar-float-title {
-  font-family: var(--display); font-weight: 700; font-size: 10px; letter-spacing: 1px;
-  color: #00e060; text-align: center; text-transform: uppercase; margin-bottom: 1px;
 }
 .ov-panel-header-row { display: flex; align-items: center; gap: 4px; margin-bottom: 1px; }
 .ov-panel-header-row .dtb-drag { padding: 0 2px; margin-bottom: 0; }
@@ -31378,8 +31373,6 @@ function toggleOverlayPill(id) {
     if (_metarActive) _metarStop(); else _metarStart();
     const pill = document.getElementById('op-metar');
     if (pill) pill.classList.toggle('active', _metarActive);
-    const ctrl = document.getElementById('metar-controls');
-    if (ctrl) ctrl.style.display = _metarActive ? 'flex' : 'none';
   } else if (id === 'forecasts') {
     toggleForecastDots();
     const pill = document.getElementById('op-forecasts');
@@ -53528,11 +53521,18 @@ const _METAR_KT_PER_KMH = 0.539957;
 async function _getMetarStations() {
   const now = Date.now();
   if (_metarStations && now - _metarStationsTime < _METAR_STATION_TTL) return _metarStations;
-  // Same FeatureServer used by the METAR Temp layer , no rate limit, global coverage
+  // Same FeatureServer used by the METAR Temp layer , no rate limit, global coverage.
+  // outFields asks for * rather than naming fields one by one: an ArcGIS
+  // FeatureServer errors the whole query on a single misnamed outField (this
+  // one used to ask for a plain STATION, which does not exist, the real
+  // field is STATION_NAME - that typo alone was enough to fail every request
+  // and make the whole overlay look broken), so asking for everything and
+  // reading only the fields this code actually knows about is the version
+  // that cannot be broken by a schema field it does not use.
   const url =
     'https://services9.arcgis.com/RHVPKKiFTONKtxq3/arcgis/rest/services/' +
     'NOAA_METAR_current_wind_speed_direction_v1/FeatureServer/0/query' +
-    '?where=1%3D1&outFields=TEMP,WIND_DIRECT,WIND_SPEED,WIND_GUST,STATION&f=geojson&resultRecordCount=9999';
+    '?where=1%3D1&outFields=*&f=geojson&resultRecordCount=9999';
   const r = await fetch(url, { signal: _abortSignal(15000) });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const js = await r.json();
@@ -53549,7 +53549,7 @@ async function _getMetarStations() {
       windDir: p.WIND_DIRECT != null ? p.WIND_DIRECT : null,
       windKt:  p.WIND_SPEED  != null ? p.WIND_SPEED  * _METAR_KT_PER_KMH : null,
       gustKt:  p.WIND_GUST   != null ? p.WIND_GUST   * _METAR_KT_PER_KMH : null,
-      name: p.STATION || null,
+      name: p.STATION_NAME || p.ICAO || null,
     };
     out.push(s);
   });
@@ -53637,7 +53637,7 @@ function _metarStart() {
     });
   }
   _metarCanvas.style.display = '';
-  _metarSyncStyleButtons();
+  _metarSyncStyleSelect();
   _metarLoad();
   clearInterval(_metarRefreshTimer);
   _metarRefreshTimer = setInterval(() => _metarLoad(), _METAR_STATION_TTL);
@@ -53663,19 +53663,20 @@ async function _metarLoad() {
   }
 }
 
+// The marker style lives in Settings > Display now, next to the pointer
+// picker it copies the pattern from, not in a floating panel of its own:
+// one place for every "how does this draw" choice instead of a picker
+// glued to the map for each overlay that has one.
 function _metarPickStyle(style) {
   if (!['dot', 'temp', 'barb', 'temp-wind'].includes(style)) return;
   _metarStyle = style;
   try { localStorage.setItem(METAR_STYLE_KEY, style); } catch (e) {}
-  _metarSyncStyleButtons();
+  _metarSyncStyleSelect();
   if (_metarActive) _metarDraw();
 }
-function _metarSyncStyleButtons() {
-  const map2 = { dot: 'metar-s-dot', temp: 'metar-s-temp', barb: 'metar-s-barb', 'temp-wind': 'metar-s-tempwind' };
-  Object.entries(map2).forEach(([style, id]) => {
-    const btn = document.getElementById(id);
-    if (btn) btn.classList.toggle('active', style === _metarStyle);
-  });
+function _metarSyncStyleSelect() {
+  const sel = document.getElementById('lqm-set-metarstyle');
+  if (sel) sel.value = _metarStyle;
 }
 
 // A dot, colored by temperature - the plainest of the four, and the same
@@ -54777,6 +54778,15 @@ function selectProduct(p) {
         <option value="tornado">Tornado</option>
         <option value="hurricane">Hurricane</option>
         <option value="supercell">Supercell</option>
+      </select>
+    </div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">METAR Station Symbol</span>
+      <select id="lqm-set-metarstyle" class="lqm-settings-select" onchange="_metarPickStyle(this.value)">
+        <option value="dot">Dot</option>
+        <option value="temp">Temperature</option>
+        <option value="barb">Wind Barb</option>
+        <option value="temp-wind">Temp + Wind</option>
       </select>
     </div>
     <!-- The "Always Show Logo Menu" switch is gone by request: the menu is
@@ -62033,6 +62043,7 @@ function lqmOpenSettings() {
   if (typeof _ovOrderRender === 'function') { try { _ovOrderRender(); } catch (e) {} }
   const mtSel = document.getElementById('lqm-set-maptype');
   if (mtSel) mtSel.value = currentMapType;
+  _metarSyncStyleSelect();
   const tzSel = document.getElementById('lqm-set-tz');
   if (tzSel) tzSel.value = _appTZ;
   const locCb = document.getElementById('lqm-set-location');
@@ -66388,6 +66399,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-j', date: 'Sep 22, 2026',
+    text: 'Fixed METAR Stations, which had stopped drawing anything: the overlay was asking the data source for a field it does not have, and that single bad request was enough to fail the whole fetch every time. It now asks for everything the source offers and reads only what it needs, so a field this app never touches can\'t break it again. The floating picker for how each station draws is gone too; that choice now lives in Settings > Display > METAR Station Symbol, with the rest of the app\'s look-and-feel controls.' },
   { id: '2026-09-22-i', date: 'Sep 22, 2026',
     text: 'Added a METAR Stations overlay: live surface observations at airports and other real reporting stations worldwide, drawn straight from actual instrument readings rather than a model. Pick how each station draws from its own floating picker: a plain dot, the temperature as a number, a full wind barb (the same notation Wind Barbs uses), or a temperature-colored circle with a wind direction tick. Like every overlay it has an info button and its own drag handle in the list. Refreshes every 15 minutes.' },
   { id: '2026-09-22-h', date: 'Sep 22, 2026',
@@ -68090,7 +68103,6 @@ document.addEventListener('DOMContentLoaded', () => {
   _makeDraggable(document.getElementById('storm-reports-panel'), document.getElementById('storm-reports-drag'));
   _makeDraggable(document.getElementById('meso-panel'),          document.getElementById('meso-drag'));
   _makeDraggable(document.getElementById('tornado-tracks-panel'), document.getElementById('tornado-tracks-drag'));
-  _makeDraggable(document.getElementById('metar-controls'),      document.getElementById('metar-drag'));
   _makeDraggable(document.getElementById('cc-modal'), document.getElementById('cc-drag'));
   _makeDraggable(document.getElementById('lqm-ai-overlay'),       document.getElementById('lqm-ai-drag'));
   _makeDraggable(document.getElementById('lqm-settings-overlay'), document.getElementById('lqm-settings-drag'));
@@ -69349,25 +69361,6 @@ function _tlTickHTML(times, fmt) {
     </div>
   </div>
 
-  <div id="metar-controls">
-    <div class="ov-panel-header-row"><div class="dtb-drag" id="metar-drag" title="Drag to move">⠿</div><div class="metar-float-title"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-cloud></use></svg> METAR Stations</div></div>
-    <div class="spc-picker-row">
-      <button class="spc-pick-btn" id="metar-s-dot"       onclick="_metarPickStyle('dot')"       title="A small dot, colored by temperature">Dot</button>
-      <button class="spc-pick-btn" id="metar-s-temp"      onclick="_metarPickStyle('temp')"      title="The temperature itself, as a number">Temp</button>
-    </div>
-    <div class="spc-picker-row">
-      <button class="spc-pick-btn" id="metar-s-barb"      onclick="_metarPickStyle('barb')"      title="A full wind barb: direction and speed, colored by temperature">Wind Barb</button>
-      <button class="spc-pick-btn" id="metar-s-tempwind"  onclick="_metarPickStyle('temp-wind')" title="A temperature-colored circle with a wind direction tick and the number underneath">Temp + Wind</button>
-    </div>
-    <hr class="ov-panel-sep">
-    <div class="ov-panel-legend">
-      <div class="ov-panel-row"><div class="ov-panel-swatch" style="background:#4EA2DA"></div>Freezing and below</div>
-      <div class="ov-panel-row"><div class="ov-panel-swatch" style="background:#00e060"></div>50s</div>
-      <div class="ov-panel-row"><div class="ov-panel-swatch" style="background:#ffe000"></div>70s</div>
-      <div class="ov-panel-row"><div class="ov-panel-swatch" style="background:#ff4400"></div>90s and up</div>
-    </div>
-  </div>
-
   <div id="cpc-controls">
     <div class="ov-panel-header-row"><div class="dtb-drag" id="cpc-drag" title="Drag to move">⠿</div><div class="cpc-float-title"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-chart-bar></use></svg> CPC Outlooks</div></div>
     <div class="cpc-type-cols">
@@ -69987,7 +69980,7 @@ const OV_DESCRIPTIONS = {
   'lightning':        'Live lightning strike data, updated as strikes happen.',
   'cloudcam':         'Upload a photo of the sky or storm damage near you, or browse photos other users have shared.',
   'radio':            'NOAA Weather Radio station locations, the stations that broadcast weather alerts over the radio.',
-  'metar':            'Live surface observations from METAR stations worldwide: airports and other official reporting sites, each one an actual instrument reading rather than a model guess. Pick how each station draws from the floating picker: a plain dot, the temperature as a number, a full wind barb, or a temperature-colored circle with a wind direction tick. All four are colored by temperature the same way. Refreshes every 15 minutes.',
+  'metar':            'Live surface observations from METAR stations worldwide: airports and other official reporting sites, each one an actual instrument reading rather than a model guess. Pick how each station draws in Settings > Display > METAR Station Symbol: a plain dot, the temperature as a number, a full wind barb, or a temperature-colored circle with a wind direction tick. All four are colored by temperature the same way. Refreshes every 15 minutes.',
   'forecasts':        'Short-term forecast dots placed across the map.',
   'fronts':           "Fronts, high pressure, and low pressure systems, the same map you'd see on a TV weather forecast.",
   'spotters':         'Live positions of trained storm spotters.',
@@ -74026,7 +74019,7 @@ function closeCredits() {
 #dtb-color-modal,
 #tutorial-modal-inner,
 #spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls,
-#meso-panel, #storm-reports-panel, #tornado-tracks-panel, #metar-controls,
+#meso-panel, #storm-reports-panel, #tornado-tracks-panel,
 .models-style-panel,
 .ss-firstrun-card,
 .sg-page-picker-card,
@@ -74802,7 +74795,7 @@ body {
    drive the app from, not a thing laid over the weather, so it stays in the
    house colour with the rest of the chrome. */
 #spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls,
-#meso-panel, #storm-reports-panel, #tornado-tracks-panel, #metar-controls {
+#meso-panel, #storm-reports-panel, #tornado-tracks-panel {
   background-image: var(--grad-ink);
   box-shadow: var(--lift-3d), var(--edge-3d-ink);
   border-color: var(--edge-ink);
@@ -74859,7 +74852,6 @@ body {
 :root[data-glass] #fw-controls, :root[data-glass] #cpc-controls,
 :root[data-glass] #ec-controls, :root[data-glass] #meso-panel,
 :root[data-glass] #storm-reports-panel, :root[data-glass] #tornado-tracks-panel,
-:root[data-glass] #metar-controls,
 :root[data-glass] .models-style-panel,
 :root[data-glass] .ss-firstrun-card,
 :root[data-glass] .sg-page-picker-card,
@@ -74937,8 +74929,7 @@ body {
 :root[data-glass] #spc-controls, :root[data-glass] #wpc-controls,
 :root[data-glass] #fw-controls, :root[data-glass] #cpc-controls,
 :root[data-glass] #ec-controls, :root[data-glass] #meso-panel,
-:root[data-glass] #storm-reports-panel, :root[data-glass] #tornado-tracks-panel,
-:root[data-glass] #metar-controls {
+:root[data-glass] #storm-reports-panel, :root[data-glass] #tornado-tracks-panel {
   background-color: transparent !important;
   background-image: linear-gradient(180deg,
     rgba(24,28,34,0.36) 0%, rgba(6,9,13,0.44) 100%);
