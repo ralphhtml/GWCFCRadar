@@ -4710,6 +4710,19 @@ body.lite-mode #export-modal { display: none !important; }
 }
 #r3d-panel canvas.r3d-dragging { cursor: grabbing; }
 #r3d-panel.big canvas { height: min(60vh, 560px); }
+/* True fullscreen: the whole viewport. The drag handle writes inline
+   left/top on the panel, so the pin here is forced over it. */
+#r3d-panel.fullscreen {
+  position: fixed;
+  left: 0 !important; top: 0 !important; right: 0 !important; bottom: 0 !important;
+  transform: none !important;
+  width: 100vw !important; max-width: 100vw !important;
+  height: 100vh; max-height: 100vh;
+  border-radius: 0; border: none;
+  z-index: 99999;
+  overflow: auto;
+}
+#r3d-panel.fullscreen canvas { height: calc(100vh - 260px); }
 /* The two camera bars: a vertical one to zoom, a horizontal one to orbit
    around, sitting over the canvas the way a map's own zoom control does.
    Dragging the canvas itself and pinching/scrolling still work exactly as
@@ -11850,6 +11863,7 @@ body.clean-mode #clean-hint { opacity: 1; }
     <span class="xs-where" id="r3d-where"></span>
     <div class="xs-spacer"></div>
     <button class="xs-big" title="Expand">&#11036;</button>
+    <button class="xs-big" id="r3d-full" title="Fullscreen">&#9974;</button>
     <button class="xs-x" title="Close">&#10005;</button>
   </div>
   <div class="r3d-controls">
@@ -11882,9 +11896,10 @@ body.clean-mode #clean-hint { opacity: 1; }
     </label>
     <label class="r3d-slider-row">
       <span>Look</span>
-      <select class="xsec-sel" id="r3d-mode" title="Lit cloud: see-through, shaded by a light. Solid surface: an opaque shell at the Show above value, like an isosurface.">
+      <select class="xsec-sel" id="r3d-mode" title="Lit cloud: see-through, shaded by a light. Solid surface: an opaque shell at the Show above value, like an isosurface. Raw pixels: the exact gates the radar measured, crisp and unshaded.">
         <option value="cloud" selected>Lit cloud</option>
         <option value="solid">Solid surface</option>
+        <option value="pixels">Raw pixels</option>
       </select>
       <select class="xsec-sel" id="r3d-cut" title="Cut the box open from one side to look inside the storm">
         <option value="off" selected>No cutaway</option>
@@ -67284,6 +67299,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-y', date: 'Sep 22, 2026',
+    text: 'Radar 3D upgrades. A new Raw pixels look in the Look picker draws the exact gates the radar measured, crisp and unshaded, next to the existing Lit cloud and Solid surface. In Lit cloud, the strongest returns now glow: a hail core or debris ball radiates out of the shading instead of sitting matte inside the storm. And the panel has a true fullscreen button, with Esc to leave it.' },
   { id: '2026-09-22-x', date: 'Sep 22, 2026',
     text: 'Fixed exported pictures showing the national radar mosaic painted over a single radar site. When you switch radars, the old layer is kept around invisibly so switching back is instant, and the exporter was accidentally treating those invisible layers as visible. An export now contains exactly what your screen shows.' },
   { id: '2026-09-22-w', date: 'Sep 22, 2026',
@@ -72693,6 +72710,12 @@ function _r3dPolarSample(P, x, y, z) {
 // dragging) takes the nearest bin, unlit, at a coarser step.
 function _r3dMarchBand(P, prm, y0, y1, data) {
   const iw = prm.iw, ih = prm.ih, fine = !!prm.fine;
+  // Raw-pixels look: sample the nearest gate (no blending between gates or
+  // tilts) and skip the light entirely, so the picture is the exact bytes
+  // the radar measured, crisp voxel edges and all. The coarse drag pass
+  // already samples this way for speed; crisp mode keeps it at full
+  // resolution on purpose.
+  const crisp = !!prm.crisp, lerp = fine && !crisp;
   const cam = prm.cam;
   const camX = cam[0], camY = cam[1], camZ = cam[2];
   const rx = cam[3], ry = cam[4], rz = cam[5], ux = cam[6], uy = cam[7], uz = cam[8], fx = cam[9], fy = cam[10], fz = cam[11];
@@ -72767,7 +72790,7 @@ function _r3dMarchBand(P, prm, y0, y1, data) {
       const floorFirst = hitsFloor && dz > 0;
       if (floorFirst) floorAt(camX + dx * floorT, camY + dy * floorT, acc);
 
-      const jitter = fine ? (Math.sin(px * 12.9898 + py * 78.233) * 43758.5453) % 1 : 0.5;
+      const jitter = lerp ? (Math.sin(px * 12.9898 + py * 78.233) * 43758.5453) % 1 : 0.5;
       let t = t0 + stepKm * (jitter < 0 ? jitter + 1 : jitter), guard = 0;
       let accR = acc[0], accG = acc[1], accB = acc[2], accA = acc[3];
       while (t < t1 && accA < 0.96 && guard++ < 1400) {
@@ -72798,7 +72821,7 @@ function _r3dMarchBand(P, prm, y0, y1, data) {
         const s0 = f | 0, ft = f - s0;
         const s1 = ft > 0.001 && s0 + 1 < nS ? s0 + 1 : s0;
         const pl0 = sweeps[s0], pl1 = sweeps[s1];
-        if (fine) {
+        if (lerp) {
           const i0 = ia | 0, tA = ia - i0, ri = ir | 0, tR = ir - ri;
           const b0 = i0 * nR + ri, b1 = b0 + nR;
           const v00 = pl0[b0], v01 = pl0[b0 + 1], v10 = pl0[b1], v11 = pl0[b1 + 1];
@@ -73301,20 +73324,28 @@ function _r3dLutFor(product, stepKm) {
     const rgb = colorOf(v);
     if (!rgb) continue;                                       // the picture draws nothing here
     floorRgb[b * 3] = rgb[0]; floorRgb[b * 3 + 1] = rgb[1]; floorRgb[b * 3 + 2] = rgb[2];
-    let a = 0;
+    let a = 0, glow = 1;
     if (mag >= t0) {
       if (_r3dMode === 'solid') {
         a = 1;                                                // an opaque shell at the threshold: an isosurface
+      } else if (_r3dMode === 'pixels') {
+        // Every gate above the threshold at one flat density, no value
+        // curve: quickly opaque, so the picture is the raw gates exactly
+        // as scanned, in pure palette colour.
+        a = Math.min(0.95, 0.6 * _r3dOpacity);
       } else {
         const u = (mag - t0) / Math.max(0.02, 1 - t0);
         a = (0.015 + Math.pow(u, 1.5) * 0.75) * _r3dOpacity;  // opacity per km of cloud
         if (spec.id === 'ref') { if (v >= 70) a *= 2; else if (v >= 60) a *= 1.5; }
         a = Math.min(0.95, a);
+        // The strongest returns radiate: a hail core or debris ball glows
+        // out of the shading rather than sitting matte inside the cloud.
+        if (mag > 0.72) glow = 1 + (mag - 0.72) * 2.2;
       }
     }
     a = a >= 1 ? 1 : 1 - Math.pow(1 - a, stepKm);             // per-step, for this step length
-    lut[b * 4] = rgb[0] * a; lut[b * 4 + 1] = rgb[1] * a;
-    lut[b * 4 + 2] = rgb[2] * a; lut[b * 4 + 3] = a;
+    lut[b * 4] = rgb[0] * glow * a; lut[b * 4 + 1] = rgb[1] * glow * a;
+    lut[b * 4 + 2] = rgb[2] * glow * a; lut[b * 4 + 3] = a;
   }
   _r3dLutCache = { key, lut, floorRgb };
   return _r3dLutCache;
@@ -73404,7 +73435,7 @@ async function _r3dPaint(ctx, w, h, dpr, frame) {
     let lx = -0.35 * rx + 0.75 * ux - 0.55 * fx, ly = -0.35 * ry + 0.75 * uy - 0.55 * fy, lz = -0.35 * rz + 0.75 * uz - 0.55 * fz;
     const ll = Math.hypot(lx, ly, lz) || 1; lx /= ll; ly /= ll; lz /= ll;
     const prm = {
-      iw, ih, fine: fine ? 1 : 0, exag, stepKm,
+      iw, ih, fine: fine ? 1 : 0, crisp: _r3dMode === 'pixels' ? 1 : 0, exag, stepKm,
       cam: new Float64Array([camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz]),
       minX: box.minX, maxX: box.maxX, minY: box.minY, maxY: box.maxY, maxZ: topKm * exag,
       lut: pack.lut, floorRgb: pack.floorRgb, signed: !!spec.signed,
@@ -73627,8 +73658,24 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
 (function _r3dWirePanel() {
   const panel = _r3dEl('r3d-panel');
   if (!panel) return;
+  const full = _r3dEl('r3d-full');
+  const fullOff = () => {
+    panel.classList.remove('fullscreen');
+    if (full) full.title = 'Fullscreen';
+  };
+  if (full) full.onclick = () => {
+    const on = panel.classList.toggle('fullscreen');
+    full.title = on ? 'Exit fullscreen (Esc)' : 'Fullscreen';
+    _r3dDirty = true;
+  };
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && panel.classList.contains('fullscreen')) {
+      fullOff();
+      _r3dDirty = true;
+    }
+  });
   const x = panel.querySelector('.xs-x');
-  if (x) x.onclick = () => _r3dClose();
+  if (x) x.onclick = () => { fullOff(); _r3dClose(); };
   const big = panel.querySelector('.xs-big');
   if (big) big.onclick = () => {
     panel.classList.toggle('big');
@@ -73698,7 +73745,10 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
     _r3dInteract();
   };
   const mode = _r3dEl('r3d-mode');
-  if (mode) mode.onchange = () => { _r3dMode = mode.value === 'solid' ? 'solid' : 'cloud'; _r3dInteract(); };
+  if (mode) mode.onchange = () => {
+    _r3dMode = mode.value === 'solid' || mode.value === 'pixels' ? mode.value : 'cloud';
+    _r3dInteract();
+  };
   const cut = _r3dEl('r3d-cut'), cutPct = _r3dEl('r3d-cutpct');
   if (cut) cut.onchange = () => { _r3dCutSide = ['n', 's', 'e', 'w'].includes(cut.value) ? cut.value : 'off'; _r3dInteract(); };
   if (cutPct) cutPct.oninput = () => { _r3dCutPct = Number(cutPct.value) || 0; _r3dInteract(); };
