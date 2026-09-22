@@ -65206,14 +65206,23 @@ function _applyUrlView(p) {
   // it, which is usually the thing someone actually wanted: "radar" is rarely
   // the question, "velocity" is.
 
-  // Radar product. Only what the sub-bubbles actually offer: the dual-pol
-  // products (cc, zdr, kdp, sw) are commented out of that row, so accepting
-  // them here would hand back a blank map for a product the app does not show.
+  // Radar product. selectProduct() decodes cc/zdr/kdp/sw/phi for whichever
+  // station is nearest the map's current centre (loadDualPolData/loadL3Data
+  // fall back to _nearestStation(map.getCenter()) on their own when nothing
+  // more specific is given), so as long as ?lat/?lon are applied before this
+  // runs, naming any of them here decodes the right station with no separate
+  // site parameter needed. This is the same short-code set _l2ArcShow's own
+  // shortOk list uses elsewhere - echo tops, VIL, 1-hr and storm total are
+  // real decoded products too, but nothing in this app's own product-to-data
+  // map (DP_LAYER_MAP) wires them to a short code yet, so naming them here
+  // would be the exact bug this fixes: a product the app cannot actually draw.
   //
   // The three paths mirror what the bubbles do, because they genuinely differ.
   // MRMS is not a selectProduct product at all and has to be loaded directly;
   // the accumulation products deliberately run with the NEXRAD layer off, and
   // selectProduct turns it off itself; only ref and vel want it on.
+  const RADAR_PRODUCTS_URL = ['ref','vel','hc','accum','boha',
+    'sw','cc','zdr','kdp','phi'];
   const product = (p.get('product') || '').trim();
   if (product) {
     try {
@@ -65223,10 +65232,33 @@ function _applyUrlView(p) {
         currentProduct = 'mrms';
         if (typeof _loadMrmsComposite === 'function') _loadMrmsComposite();
         if (typeof _syncParentBubble === 'function') _syncParentBubble('radar');
-      } else if (['ref','vel','hc','accum','boha'].includes(product)) {
+      } else if (RADAR_PRODUCTS_URL.includes(product)) {
         if (typeof _disableSatellite === 'function') _disableSatellite();
         if (product === 'ref' || product === 'vel') activeLayers.nexrad = true;
         selectProduct(product);
+      } else if (typeof PR_PRODUCTS === 'object' && PR_PRODUCTS[product] && product !== 'hydrohybrid') {
+        // The Pi/Level-3 menu: one station's own file, built server-side or
+        // decoded straight from Unidata's bucket when the Pi has not built
+        // that site. Whichever station is nearest the view already set above
+        // is picked automatically unless ?prsite names one - the same
+        // nearest-station fallback loadDualPolData/loadL3Data lean on for the
+        // Level 2 branch, so a place or a lat/lon alone is always enough.
+        // hydrohybrid is left out: PR_PRODUCTS lists it with no l2 or l3 file
+        // at all, so accepting it here would be the exact bug this fixes.
+        if (typeof _disableSatellite === 'function') _disableSatellite();
+        const site = (p.get('prsite') || '').trim().toLowerCase();
+        _prSite = /^[a-z0-9]{3,4}$/.test(site) ? site
+          : _nearestStation(map.getCenter().lat, map.getCenter().lng);
+        _prLevel = 'l3';
+        _prProduct = product;
+        _radarSource = 'l3';
+        try {
+          localStorage.setItem('gwcfc_pr_site', _prSite);
+          localStorage.setItem('gwcfc_pr_level', _prLevel);
+          localStorage.setItem('gwcfc_pr_product', _prProduct);
+        } catch (e) {}
+        _prOn = true;
+        if (typeof _prEnable === 'function') _prEnable();
       } else {
         console.warn('url: unknown radar product', product);
       }
@@ -66492,6 +66524,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-m', date: 'Sep 22, 2026',
+    text: 'The Discord bot\'s /map command can now ask for real dual-pol radar (correlation coefficient, differential reflectivity, spectral differential phase, spectrum width, differential phase), not just the handful of basic products it was stuck on. The site itself gained a matching fix: its own picture-sharing link only recognized five old radar codes, so a link asking for anything newer used to come back with a blank, legend-less map. It now recognizes the site\'s real dual-pol menu and its Level 3 station menu too, always decoding whichever radar station is nearest wherever the link points.' },
   { id: '2026-09-22-l', date: 'Sep 22, 2026',
     text: 'Fixed the METAR station popup opening underneath the station numbers instead of on top of them. The station canvas now goes quiet for as long as a popup is open, the same trick it already uses during a zoom.' },
   { id: '2026-09-22-k', date: 'Sep 22, 2026',

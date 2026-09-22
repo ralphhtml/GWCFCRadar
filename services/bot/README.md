@@ -211,9 +211,16 @@ is built from that file, so the two cannot drift apart. Typed by hand they
 already had: the command offered six radar products where the page shows five,
 and eight satellite bands where the page has sixteen.
 
-The generator keeps only what a visitor can actually click. The dual polarity
-radar products sit in the page commented out, so they are absent here too. A
-command that offered them would promise a picture nobody can see.
+The generator keeps only what a visitor can actually click, checked against
+the site's own real menus (`RADAR_L2_BUBBLES`, `PR_PRODUCTS`) rather than
+guessed at. Radar and satellite each have too many real products for one
+25-choice dropdown to hold honestly, so `/map` offers them as two linked
+options apiece: `radar-type` (Level 2, Level 3, or the national composite
+mosaic) then `radar-product` (typed and autocompleted, scoped to whichever
+type is picked), and the same shape for `satellite-type`/`satellite-product`
+(an ABI band, an RGB composite, or the global mosaic). Picking a type alone
+does nothing; it only narrows what the product option completes to, and a
+product's own value is still checked on its own even if no type was given.
 
 Run it after adding a layer, an overlay or a product to the site, then restart
 the bot so the command re-registers.
