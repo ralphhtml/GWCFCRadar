@@ -6560,6 +6560,12 @@ body.lite-mode #export-modal { display: none !important; }
   top: -1px; left: 0; right: 0; bottom: auto; height: 2px; width: auto;
 }
 .rc-divider.horizontal .sev-cmp-handle { cursor: ns-resize; }
+/* The two handles a split line carries: the grip above centre, the
+   rotate below it (beside it, on a horizontal line). */
+.rc-divider .cmp-drag-h { top: calc(50% - 22px); }
+.rc-divider .cmp-rot-h { top: calc(50% + 22px); cursor: pointer; }
+.rc-divider.horizontal .cmp-drag-h { top: 50%; left: calc(50% - 22px); }
+.rc-divider.horizontal .cmp-rot-h { top: 50%; left: calc(50% + 22px); cursor: pointer; }
 .rc-label.horizontal { max-width: none; }
 /* Peeking: the seam itself goes invisible for ten seconds so nothing is
    drawn across the two pictures while checking they line up. Scoped to
@@ -49752,8 +49758,19 @@ document.addEventListener('pointerdown', e => {
 // than one of each at once.
 // The split lines: (cols-1) vertical ones running the full height and
 // (rows-1) horizontal ones the full width, each SHARED by every cell it
-// touches. The line itself is the drag target - no knob riding it, no
-// separate separator per pane; the line is the whole control.
+// touches. The whole line drags, and it carries two small handles: a
+// grip that says so, and a rotate handle that transposes the split.
+// Shared by both comparisons through the prefix-free helpers below.
+function _cmpLineHandles(d, onRotate) {
+  d.innerHTML =
+    '<div class="sev-cmp-handle cmp-drag-h" title="Drag to resize the split">'
+    + '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></div>'
+    + '<div class="sev-cmp-handle cmp-rot-h" title="Rotate the split: side by side, or stacked">'
+    + '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-refresh-cw></use></svg></div>';
+  const rot = d.querySelector('.cmp-rot-h');
+  rot.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); });
+  rot.addEventListener('click', e => { e.stopPropagation(); onRotate(); });
+}
 function _rcRefreshGridDOM(dc, lc) {
   const { rows, cols } = _rcGrid;
   _rcGridDividerEls = { cols: [], rows: [] };
@@ -49761,6 +49778,7 @@ function _rcRefreshGridDOM(dc, lc) {
     const d = document.createElement('div');
     d.className = 'sev-cmp-divider active rc-divider';
     d.title = 'Drag to resize the split';
+    _cmpLineHandles(d, _rcToggleOrientation);
     d.addEventListener('pointerdown', e => { e.preventDefault(); _rcGridDrag = { axis: 'col', idx: i }; });
     dc.appendChild(d);
     _rcGridDividerEls.cols.push(d);
@@ -49769,6 +49787,7 @@ function _rcRefreshGridDOM(dc, lc) {
     const d = document.createElement('div');
     d.className = 'sev-cmp-divider active rc-divider horizontal';
     d.title = 'Drag to resize the split';
+    _cmpLineHandles(d, _rcToggleOrientation);
     d.addEventListener('pointerdown', e => { e.preventDefault(); _rcGridDrag = { axis: 'row', idx: i }; });
     dc.appendChild(d);
     _rcGridDividerEls.rows.push(d);
@@ -50236,8 +50255,8 @@ function _scBuildLabel(slot, lc) {
   lc.appendChild(l);
   slot.labelEl = l;
 }
-// Shared split lines only, exactly as the radars: the line itself is the
-// drag target, no knob riding it, no separate separator per pane.
+// Shared split lines with the same grip and rotate handles the radars
+// wear, through the same _cmpLineHandles helper.
 function _scRefreshGridDOM(dc, lc) {
   const { rows, cols } = _scGrid;
   _scGridDividerEls = { cols: [], rows: [] };
@@ -50245,6 +50264,7 @@ function _scRefreshGridDOM(dc, lc) {
     const d = document.createElement('div');
     d.className = 'sev-cmp-divider active rc-divider';
     d.title = 'Drag to resize the split';
+    _cmpLineHandles(d, _scToggleOrientation);
     d.addEventListener('pointerdown', e => { e.preventDefault(); _scGridDrag = { axis: 'col', idx: i }; });
     dc.appendChild(d);
     _scGridDividerEls.cols.push(d);
@@ -50253,6 +50273,7 @@ function _scRefreshGridDOM(dc, lc) {
     const d = document.createElement('div');
     d.className = 'sev-cmp-divider active rc-divider horizontal';
     d.title = 'Drag to resize the split';
+    _cmpLineHandles(d, _scToggleOrientation);
     d.addEventListener('pointerdown', e => { e.preventDefault(); _scGridDrag = { axis: 'row', idx: i }; });
     dc.appendChild(d);
     _scGridDividerEls.rows.push(d);
@@ -67383,6 +67404,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-zf', date: 'Sep 22, 2026',
+    text: 'The comparison split lines got their handles back: every line in the radar and satellite splits now carries a small grip (drag it, or anywhere on the line, to resize) and a rotate handle that flips the whole split between side-by-side and stacked, right where your finger already is.' },
   { id: '2026-09-22-ze', date: 'Sep 22, 2026',
     text: 'Fixed a split pane\'s corner label hiding underneath the site logo (or the search bar, or a status banner). A label that would land under any of those now slides straight down until it is in the clear, and steps back up into its corner the moment nothing covers it.' },
   { id: '2026-09-22-zd', date: 'Sep 22, 2026',
