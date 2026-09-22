@@ -10182,7 +10182,7 @@ body.gwcfc-crosshair #map::after {
 }
 
 /* Shared panel shell – applied to all overlay panels */
-#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #meso-panel, #storm-reports-panel, #tornado-tracks-panel {
+#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #meso-panel, #storm-reports-panel, #tornado-tracks-panel, #metar-controls {
   position: static;
   transform: none;
   width: 180px;
@@ -10203,6 +10203,7 @@ body.gwcfc-crosshair #map::after {
 #meso-panel   { border: 1.5px solid rgba(255,140,0,0.45); }
 #storm-reports-panel { border: 1.5px solid rgba(255,68,68,0.45); }
 #tornado-tracks-panel { border: 1.5px solid rgba(220,20,60,0.45); }
+#metar-controls { border: 1.5px solid rgba(0,224,96,0.45); }
 
 /* Title bars */
 .spc-float-title {
@@ -10236,6 +10237,10 @@ body.gwcfc-crosshair #map::after {
 .tt-float-title {
   font-family: var(--display); font-weight: 700; font-size: 10px; letter-spacing: 1px;
   color: #dc143c; text-align: center; text-transform: uppercase; margin-bottom: 1px;
+}
+.metar-float-title {
+  font-family: var(--display); font-weight: 700; font-size: 10px; letter-spacing: 1px;
+  color: #00e060; text-align: center; text-transform: uppercase; margin-bottom: 1px;
 }
 .ov-panel-header-row { display: flex; align-items: center; gap: 4px; margin-bottom: 1px; }
 .ov-panel-header-row .dtb-drag { padding: 0 2px; margin-bottom: 0; }
@@ -31369,6 +31374,12 @@ function toggleOverlayPill(id) {
     toggleLayer('radio');
     const pill = document.getElementById('op-radio');
     if (pill) pill.classList.toggle('active', activeLayers.radio);
+  } else if (id === 'metar') {
+    if (_metarActive) _metarStop(); else _metarStart();
+    const pill = document.getElementById('op-metar');
+    if (pill) pill.classList.toggle('active', _metarActive);
+    const ctrl = document.getElementById('metar-controls');
+    if (ctrl) ctrl.style.display = _metarActive ? 'flex' : 'none';
   } else if (id === 'forecasts') {
     toggleForecastDots();
     const pill = document.getElementById('op-forecasts');
@@ -53503,10 +53514,16 @@ const _cityMarkerRefs = new Map();  // coord key -> Leaflet marker on screen
 const _cityTempCache  = new Map();  // coord key -> °F (null = no station nearby)
 let   _cityRefreshTimer = null;
 
-// ── METAR station snapshot , one ArcGIS request feeds all city dots ──
-let   _metarStations     = null; // [{lat,lng,tempF}]
+// ── METAR station snapshot , one ArcGIS request feeds all city dots AND ──
+// the Stations overlay below. Field names are the service's own (confirmed
+// against its live schema, not guessed): TEMP and WIND_CHILL in °F,
+// WIND_DIRECT the direction in degrees the wind is blowing FROM (0/360 is
+// north, meteorological convention, not the math convention a wind barb
+// wants), WIND_SPEED and WIND_GUST in km/h.
+let   _metarStations     = null; // [{lat,lng,tempF,windDir,windKt,gustKt,name}]
 let   _metarStationsTime = 0;
 const _METAR_STATION_TTL = 15 * 60 * 1000; // 15 min
+const _METAR_KT_PER_KMH = 0.539957;
 
 async function _getMetarStations() {
   const now = Date.now();
@@ -53515,7 +53532,7 @@ async function _getMetarStations() {
   const url =
     'https://services9.arcgis.com/RHVPKKiFTONKtxq3/arcgis/rest/services/' +
     'NOAA_METAR_current_wind_speed_direction_v1/FeatureServer/0/query' +
-    '?where=1%3D1&outFields=TEMP&f=geojson&resultRecordCount=9999';
+    '?where=1%3D1&outFields=TEMP,WIND_DIRECT,WIND_SPEED,WIND_GUST,STATION&f=geojson&resultRecordCount=9999';
   const r = await fetch(url, { signal: _abortSignal(15000) });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const js = await r.json();
@@ -53524,7 +53541,17 @@ async function _getMetarStations() {
     const p = f.properties || {};
     const c = f.geometry?.coordinates;
     if (!c || p.TEMP == null) return;
-    out.push({ lat: c[1], lng: c[0], tempF: p.TEMP });
+    const s = {
+      lat: c[1], lng: c[0], tempF: p.TEMP,
+      // Absent on plenty of stations (a calm report, or a site that just
+      // does not send it) - left null rather than guessed at, so a symbol
+      // that needs wind can say so instead of drawing a made-up direction.
+      windDir: p.WIND_DIRECT != null ? p.WIND_DIRECT : null,
+      windKt:  p.WIND_SPEED  != null ? p.WIND_SPEED  * _METAR_KT_PER_KMH : null,
+      gustKt:  p.WIND_GUST   != null ? p.WIND_GUST   * _METAR_KT_PER_KMH : null,
+      name: p.STATION || null,
+    };
+    out.push(s);
   });
   _metarStations     = out;
   _metarStationsTime = now;
@@ -53560,6 +53587,187 @@ function tempColor(f) {
   if (f <= 86)  return '#ff8c00';
   if (f <= 95)  return '#ff4400';
   return '#AA0000';
+}
+
+// ── METAR STATIONS (map overlay) ─────────────────────────────────────────
+// Every reporting station on the same 15-minute snapshot the city dots
+// already pull, drawn on its own canvas rather than one DOM marker per
+// station - the same fix the city dots themselves needed once this app
+// had enough of them to lag a pan (see the comment above initCityMarkers).
+// Thousands of METAR stations is worse, not better, so this was never
+// going to be markers. The zoomstart/zoomend pair mirrors the Wind Barbs
+// overlay right above: hidden for the length of a zoom, redrawn once it
+// settles, rather than repainting every station on every frame of one.
+let _metarActive = false;
+let _metarCanvas = null;
+let _metarRefreshTimer = null;
+const METAR_STYLE_KEY = 'gwcfc_metar_style';
+const METAR_MIN_GAP_PX = 26;   // symbols closer than this on screen, one wins
+let _metarStyle = 'dot';       // 'dot' | 'temp' | 'barb' | 'temp-wind'
+try {
+  const saved = localStorage.getItem(METAR_STYLE_KEY);
+  if (saved && ['dot', 'temp', 'barb', 'temp-wind'].includes(saved)) _metarStyle = saved;
+} catch (e) {}
+
+function _metarSizeCanvas() {
+  if (!_metarCanvas) return;
+  const size = map.getSize();
+  _metarCanvas.width = size.x;
+  _metarCanvas.height = size.y;
+}
+function _metarOnResize() { _metarSizeCanvas(); _metarDraw(); }
+
+function _metarStart() {
+  if (typeof map === 'undefined' || !map) return;
+  _metarActive = true;
+  if (!_metarCanvas) {
+    _metarCanvas = document.createElement('canvas');
+    _metarCanvas.id = 'metar-canvas';
+    _metarCanvas.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:492;';
+    _metarSizeCanvas();
+    map.getContainer().appendChild(_metarCanvas);
+    map.on('move', _metarDraw);
+    map.on('viewreset', _metarDraw);
+    map.on('resize', _metarOnResize);
+    map.on('zoomstart', () => { if (_metarCanvas) _metarCanvas.style.visibility = 'hidden'; });
+    map.on('zoomend', () => {
+      if (!_metarCanvas) return;
+      _metarCanvas.style.visibility = '';
+      if (_metarActive) _metarDraw();
+    });
+  }
+  _metarCanvas.style.display = '';
+  _metarSyncStyleButtons();
+  _metarLoad();
+  clearInterval(_metarRefreshTimer);
+  _metarRefreshTimer = setInterval(() => _metarLoad(), _METAR_STATION_TTL);
+}
+function _metarStop() {
+  _metarActive = false;
+  clearInterval(_metarRefreshTimer);
+  _metarRefreshTimer = null;
+  if (_metarCanvas) {
+    _metarCanvas.getContext('2d').clearRect(0, 0, _metarCanvas.width, _metarCanvas.height);
+    _metarCanvas.style.display = 'none';
+  }
+}
+async function _metarLoad() {
+  if (!_metarActive) return;
+  try {
+    await _getMetarStations();
+    if (!_metarActive) return;
+    _metarDraw();
+  } catch (e) {
+    console.warn('METAR Stations overlay error:', e);
+    showToast('Station data unavailable right now', 3000);
+  }
+}
+
+function _metarPickStyle(style) {
+  if (!['dot', 'temp', 'barb', 'temp-wind'].includes(style)) return;
+  _metarStyle = style;
+  try { localStorage.setItem(METAR_STYLE_KEY, style); } catch (e) {}
+  _metarSyncStyleButtons();
+  if (_metarActive) _metarDraw();
+}
+function _metarSyncStyleButtons() {
+  const map2 = { dot: 'metar-s-dot', temp: 'metar-s-temp', barb: 'metar-s-barb', 'temp-wind': 'metar-s-tempwind' };
+  Object.entries(map2).forEach(([style, id]) => {
+    const btn = document.getElementById(id);
+    if (btn) btn.classList.toggle('active', style === _metarStyle);
+  });
+}
+
+// A dot, colored by temperature - the plainest of the four, and the same
+// look the city temperature dots already use.
+function _metarDrawDot(ctx, x, y, s) {
+  ctx.fillStyle = tempColor(s.tempF);
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(x, y, 4.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+}
+// The temperature itself, printed as a number, colored the same way the
+// dot is, with a dark halo so it reads over any basemap or radar return.
+function _metarDrawTemp(ctx, x, y, s) {
+  ctx.font = "700 11px 'Comfortaa', sans-serif";
+  ctx.fillStyle = tempColor(s.tempF);
+  ctx.shadowColor = 'rgba(0,0,0,0.85)'; ctx.shadowBlur = 3;
+  ctx.fillText(Math.round(s.tempF) + '°', x, y);
+  ctx.shadowBlur = 0;
+}
+// A full station-model wind barb, reusing the exact glyph the Wind Barbs
+// overlay draws (_barbGlyph, above), colored by temperature instead of by
+// speed so the two overlays read differently at a glance. METAR direction
+// is where the wind is blowing FROM, in degrees; _barbGlyph wants a
+// (u, v) vector for where it is blowing TOWARD, so this flips it first.
+// A station with no wind reading falls back to a plain dot - there is
+// nothing a barb can honestly draw without a direction.
+function _metarDrawBarb(ctx, x, y, s) {
+  if (s.windDir == null || s.windKt == null) { _metarDrawDot(ctx, x, y, s); return; }
+  const rad = s.windDir * Math.PI / 180;
+  const u = -Math.sin(rad), v = -Math.cos(rad);
+  _barbGlyph(ctx, x, y, u, v, s.windKt, tempColor(s.tempF), s.lat < 0 ? -1 : 1);
+}
+// The combined symbol: a temperature-colored circle, a short tick pointing
+// back toward where the wind is coming from (the same convention a barb's
+// staff uses, just without the feathers), and the temperature printed
+// underneath. The one request named explicitly, so it is the default a
+// person reaches for once they know it is there, even though Dot stays
+// the quieter default on first use.
+function _metarDrawTempWind(ctx, x, y, s) {
+  const color = tempColor(s.tempF);
+  ctx.fillStyle = color; ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  if (s.windDir != null) {
+    const rad = s.windDir * Math.PI / 180;
+    const dx = Math.sin(rad), dy = -Math.cos(rad);
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x + dx * 7, y + dy * 7);
+    ctx.lineTo(x + dx * 16, y + dy * 16);
+    ctx.stroke();
+  }
+  ctx.font = "700 10px 'Comfortaa', sans-serif";
+  ctx.fillStyle = color;
+  ctx.shadowColor = 'rgba(0,0,0,0.85)'; ctx.shadowBlur = 3;
+  ctx.fillText(Math.round(s.tempF) + '°', x, y + 17);
+  ctx.shadowBlur = 0;
+}
+function _metarSymbol(ctx, x, y, s) {
+  if (_metarStyle === 'temp') _metarDrawTemp(ctx, x, y, s);
+  else if (_metarStyle === 'barb') _metarDrawBarb(ctx, x, y, s);
+  else if (_metarStyle === 'temp-wind') _metarDrawTempWind(ctx, x, y, s);
+  else _metarDrawDot(ctx, x, y, s);
+}
+
+function _metarDraw() {
+  if (!_metarActive || !_metarCanvas || typeof map === 'undefined' || !map) return;
+  const ctx = _metarCanvas.getContext('2d');
+  const w = _metarCanvas.width, h = _metarCanvas.height;
+  ctx.clearRect(0, 0, w, h);
+  const stations = _metarStations;
+  if (!stations || !stations.length) return;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  // A dense region (a coastline full of airports at a wide zoom) would
+  // otherwise paint hundreds of overlapping symbols on top of each other,
+  // which reads as noise rather than data. The first station to land at a
+  // screen position wins that neighbourhood; the array is small enough
+  // per frame (only what is on screen) that a plain nested scan is cheap.
+  const placed = [];
+  for (const s of stations) {
+    let pt;
+    try { pt = map.latLngToContainerPoint([s.lat, s.lng]); } catch (e) { continue; }
+    const x = pt.x, y = pt.y;
+    if (x < -24 || x > w + 24 || y < -24 || y > h + 24) continue;
+    let tooClose = false;
+    for (let i = 0; i < placed.length; i++) {
+      const dx = placed[i][0] - x, dy = placed[i][1] - y;
+      if (dx * dx + dy * dy < METAR_MIN_GAP_PX * METAR_MIN_GAP_PX) { tooClose = true; break; }
+    }
+    if (tooClose) continue;
+    placed.push([x, y]);
+    _metarSymbol(ctx, x, y, s);
+  }
 }
 
 // One shared canvas for every city dot. These used to be DOM markers, one
@@ -66180,6 +66388,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-i', date: 'Sep 22, 2026',
+    text: 'Added a METAR Stations overlay: live surface observations at airports and other real reporting stations worldwide, drawn straight from actual instrument readings rather than a model. Pick how each station draws from its own floating picker: a plain dot, the temperature as a number, a full wind barb (the same notation Wind Barbs uses), or a temperature-colored circle with a wind direction tick. Like every overlay it has an info button and its own drag handle in the list. Refreshes every 15 minutes.' },
   { id: '2026-09-22-h', date: 'Sep 22, 2026',
     text: 'Three changes to Radar 3D. A box can now be drawn as big as you like, no more 300 km cap trimming it down. Two camera bars sit over the picture now, a vertical one to zoom and a horizontal one to move around, a second way to reach the same view dragging the picture itself already gives you. And a new Smoothing slider, alongside Opacity and the rest, blends each measured value with the ones around it so a storm reads as one smooth shape instead of blocky voxels, without ever inventing signal in air the radar saw as clear.' },
   { id: '2026-09-22-g', date: 'Sep 22, 2026',
@@ -67880,6 +68090,7 @@ document.addEventListener('DOMContentLoaded', () => {
   _makeDraggable(document.getElementById('storm-reports-panel'), document.getElementById('storm-reports-drag'));
   _makeDraggable(document.getElementById('meso-panel'),          document.getElementById('meso-drag'));
   _makeDraggable(document.getElementById('tornado-tracks-panel'), document.getElementById('tornado-tracks-drag'));
+  _makeDraggable(document.getElementById('metar-controls'),      document.getElementById('metar-drag'));
   _makeDraggable(document.getElementById('cc-modal'), document.getElementById('cc-drag'));
   _makeDraggable(document.getElementById('lqm-ai-overlay'),       document.getElementById('lqm-ai-drag'));
   _makeDraggable(document.getElementById('lqm-settings-overlay'), document.getElementById('lqm-settings-drag'));
@@ -68476,6 +68687,9 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
     <div class="ov-pill" id="op-radio" data-ovid="radio" title="NOAA Weather Radio (NWR) transmitter stations">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('radio')">NWR Stations</span><span class="ov-drag" title="Drag to reorder">⠿</span>
+    </div>
+    <div class="ov-pill" id="op-metar" data-ovid="metar" title="METAR Stations - live surface observations at airports and other reporting stations">
+      <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('metar')">METAR Stations</span><span class="ov-drag" title="Drag to reorder">⠿</span>
     </div>
     <div class="ov-pill active" id="op-forecasts" data-ovid="forecasts" title="Weather Forecasts - point forecast dots">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('forecasts')">Weather Forecasts</span><span class="ov-drag" title="Drag to reorder">⠿</span>
@@ -69135,6 +69349,25 @@ function _tlTickHTML(times, fmt) {
     </div>
   </div>
 
+  <div id="metar-controls">
+    <div class="ov-panel-header-row"><div class="dtb-drag" id="metar-drag" title="Drag to move">⠿</div><div class="metar-float-title"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-cloud></use></svg> METAR Stations</div></div>
+    <div class="spc-picker-row">
+      <button class="spc-pick-btn" id="metar-s-dot"       onclick="_metarPickStyle('dot')"       title="A small dot, colored by temperature">Dot</button>
+      <button class="spc-pick-btn" id="metar-s-temp"      onclick="_metarPickStyle('temp')"      title="The temperature itself, as a number">Temp</button>
+    </div>
+    <div class="spc-picker-row">
+      <button class="spc-pick-btn" id="metar-s-barb"      onclick="_metarPickStyle('barb')"      title="A full wind barb: direction and speed, colored by temperature">Wind Barb</button>
+      <button class="spc-pick-btn" id="metar-s-tempwind"  onclick="_metarPickStyle('temp-wind')" title="A temperature-colored circle with a wind direction tick and the number underneath">Temp + Wind</button>
+    </div>
+    <hr class="ov-panel-sep">
+    <div class="ov-panel-legend">
+      <div class="ov-panel-row"><div class="ov-panel-swatch" style="background:#4EA2DA"></div>Freezing and below</div>
+      <div class="ov-panel-row"><div class="ov-panel-swatch" style="background:#00e060"></div>50s</div>
+      <div class="ov-panel-row"><div class="ov-panel-swatch" style="background:#ffe000"></div>70s</div>
+      <div class="ov-panel-row"><div class="ov-panel-swatch" style="background:#ff4400"></div>90s and up</div>
+    </div>
+  </div>
+
   <div id="cpc-controls">
     <div class="ov-panel-header-row"><div class="dtb-drag" id="cpc-drag" title="Drag to move">⠿</div><div class="cpc-float-title"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-chart-bar></use></svg> CPC Outlooks</div></div>
     <div class="cpc-type-cols">
@@ -69754,6 +69987,7 @@ const OV_DESCRIPTIONS = {
   'lightning':        'Live lightning strike data, updated as strikes happen.',
   'cloudcam':         'Upload a photo of the sky or storm damage near you, or browse photos other users have shared.',
   'radio':            'NOAA Weather Radio station locations, the stations that broadcast weather alerts over the radio.',
+  'metar':            'Live surface observations from METAR stations worldwide: airports and other official reporting sites, each one an actual instrument reading rather than a model guess. Pick how each station draws from the floating picker: a plain dot, the temperature as a number, a full wind barb, or a temperature-colored circle with a wind direction tick. All four are colored by temperature the same way. Refreshes every 15 minutes.',
   'forecasts':        'Short-term forecast dots placed across the map.',
   'fronts':           "Fronts, high pressure, and low pressure systems, the same map you'd see on a TV weather forecast.",
   'spotters':         'Live positions of trained storm spotters.',
@@ -73402,6 +73636,16 @@ function _ovOrderReset(){
           <a class="credit-link" href="https://www.nifc.gov/" target="_blank" rel="noopener">nifc.gov</a>
         </div>
       </div>
+      <div class="credit-row">
+        <img class="credit-logo" src="https://www.google.com/s2/favicons?domain=weather.gov&amp;sz=64" alt="NOAA logo" loading="lazy">
+        <div class="credit-info">
+          <div class="credit-name">NOAA METAR Network</div>
+          <div class="credit-full">Surface observations at airports and reporting stations worldwide &middot; served via Esri ArcGIS</div>
+          <div class="credit-desc">Live temperature, wind speed and wind direction from real instrument readings, the same snapshot the city temperature dots read from. This is what the METAR Stations overlay draws its symbols from.</div>
+          <div class="credit-uses"><span class="credit-use">METAR Stations</span></div>
+          <a class="credit-link" href="https://www.weather.gov/asos/" target="_blank" rel="noopener">weather.gov/asos</a>
+        </div>
+      </div>
 
       <div class="credit-sep-label">International Weather Services</div>
       <div class="credit-row">
@@ -73782,7 +74026,7 @@ function closeCredits() {
 #dtb-color-modal,
 #tutorial-modal-inner,
 #spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls,
-#meso-panel, #storm-reports-panel, #tornado-tracks-panel,
+#meso-panel, #storm-reports-panel, #tornado-tracks-panel, #metar-controls,
 .models-style-panel,
 .ss-firstrun-card,
 .sg-page-picker-card,
@@ -74558,7 +74802,7 @@ body {
    drive the app from, not a thing laid over the weather, so it stays in the
    house colour with the rest of the chrome. */
 #spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls,
-#meso-panel, #storm-reports-panel, #tornado-tracks-panel {
+#meso-panel, #storm-reports-panel, #tornado-tracks-panel, #metar-controls {
   background-image: var(--grad-ink);
   box-shadow: var(--lift-3d), var(--edge-3d-ink);
   border-color: var(--edge-ink);
@@ -74615,6 +74859,7 @@ body {
 :root[data-glass] #fw-controls, :root[data-glass] #cpc-controls,
 :root[data-glass] #ec-controls, :root[data-glass] #meso-panel,
 :root[data-glass] #storm-reports-panel, :root[data-glass] #tornado-tracks-panel,
+:root[data-glass] #metar-controls,
 :root[data-glass] .models-style-panel,
 :root[data-glass] .ss-firstrun-card,
 :root[data-glass] .sg-page-picker-card,
@@ -74692,7 +74937,8 @@ body {
 :root[data-glass] #spc-controls, :root[data-glass] #wpc-controls,
 :root[data-glass] #fw-controls, :root[data-glass] #cpc-controls,
 :root[data-glass] #ec-controls, :root[data-glass] #meso-panel,
-:root[data-glass] #storm-reports-panel, :root[data-glass] #tornado-tracks-panel {
+:root[data-glass] #storm-reports-panel, :root[data-glass] #tornado-tracks-panel,
+:root[data-glass] #metar-controls {
   background-color: transparent !important;
   background-image: linear-gradient(180deg,
     rgba(24,28,34,0.36) 0%, rgba(6,9,13,0.44) 100%);
