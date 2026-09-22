@@ -6502,7 +6502,10 @@ body.lite-mode #export-modal { display: none !important; }
   color: #fff; font-size: 14px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
 }
-.cmp-grid-btn { font-family: var(--mono); font-size: 9px; letter-spacing: -0.5px; }
+.cmp-grid-btn {
+  width: auto; min-width: 30px; padding: 0 8px;
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0;
+}
 /* top:8/46px used to sit directly under #top-search-bar (top:18px,
    z-index:1150), which drew right over these at the same corner - "gets
    covered up" was these buttons losing to a higher stacking element
@@ -10992,7 +10995,7 @@ body.clean-mode #clean-hint { opacity: 1; }
     <!-- Radar site comparison: the same strips, a second set of them -->
     <div id="rc-dividers"></div>
     <div id="rc-labels"></div>
-    <button type="button" id="rc-rotate-btn" title="Rotate the divider: side by side, or stacked"
+    <button type="button" id="rc-rotate-btn" title="Rotate the split"
             onclick="_rcToggleOrientation()" style="display:none;">
       <svg class=svgi width=1em height=1em><use href=#ic-swap></use></svg>
     </button>
@@ -11000,14 +11003,14 @@ body.clean-mode #clean-hint { opacity: 1; }
             onclick="_cmpPeek('rc')" style="display:none;">
       <svg class=svgi width=1em height=1em><use href=#ic-eye></use></svg>
     </button>
-    <button type="button" id="rc-grid-btn" class="cmp-grid-btn" title="Split into a grid: 1x1, 2x2, or 2x4"
-            onclick="_rcGridCycle()" style="display:none;">1×1</button>
+    <button type="button" id="rc-grid-btn" class="cmp-grid-btn" title="Cycle the split: double, quad, octo"
+            onclick="_rcGridCycle()" style="display:none;">Double</button>
 
     <!-- Satellite comparison: the same strips a third time, satellite
          picture against satellite picture -->
     <div id="sc-dividers"></div>
     <div id="sc-labels"></div>
-    <button type="button" id="sc-rotate-btn" title="Rotate the divider: side by side, or stacked"
+    <button type="button" id="sc-rotate-btn" title="Rotate the split"
             onclick="_scToggleOrientation()" style="display:none;">
       <svg class=svgi width=1em height=1em><use href=#ic-swap></use></svg>
     </button>
@@ -11015,8 +11018,8 @@ body.clean-mode #clean-hint { opacity: 1; }
             onclick="_cmpPeek('sc')" style="display:none;">
       <svg class=svgi width=1em height=1em><use href=#ic-eye></use></svg>
     </button>
-    <button type="button" id="sc-grid-btn" class="cmp-grid-btn" title="Split into a grid: 1x1, 2x2, or 2x4"
-            onclick="_scGridCycle()" style="display:none;">1×1</button>
+    <button type="button" id="sc-grid-btn" class="cmp-grid-btn" title="Cycle the split: double, quad, octo"
+            onclick="_scGridCycle()" style="display:none;">Double</button>
 
     <!-- Cam Panel injected at body level via position:fixed --!>
     <div id="model-info">
@@ -31319,7 +31322,7 @@ const LAYER_DESCRIPTIONS = {
   'radar-l3':     'Level 3 is a single radar\'s lighter, pre-processed feed: slightly coarser than Level 2 but faster, with extra derived products like storm totals, VIL, and echo tops.',
   'radar-mrms':   'MRMS is a national mosaic NOAA builds by merging every radar together, then computing things no single radar can: rotation tracks, hail swaths, rainfall totals, lightning probability and more. Your Pi builds the pictures; the whole catalogue lives in here.',
   'timemachine': 'Travel the radar back to any moment. Pick a date and time, or jump by a day, a month or a year. A single site redraws as it looked then (Level 3 product files back to March 2022, the Level 2 tape archive before that, to 2008), with its own scrubbable loop around that moment. The mosaic travels too: with no single site on screen, the national NEXRAD composite Iowa Mesonet has kept every five minutes since November 2010 is what moves, since the MRMS 1 km mosaic only keeps its last few hours. A radar that was down that day has nothing to show and will say so.',
-  'sat-compare': 'Cuts the map into vertical strips and puts satellite pictures side by side, with draggable dividers. While it is on, tapping a product adds that product as the next strip, and tapping a sector pill adds the current product from that sector - so infrared can sit beside visible, GOES-East beside GOES-West, or a mesoscale box beside the CONUS view. Every strip follows the playbar at its own frame nearest the main picture\'s moment. Tap a strip\'s product again, or the × on its label, to take it out.',
+  'sat-compare': 'Splits the map into panes and puts satellite pictures side by side: a double split to start, growing to a quad (4) or octo (8) as you add pictures, with shared draggable split lines. While it is on, tapping a product adds that product as the next pane, and tapping a sector pill adds the current product from that sector - so infrared can sit beside visible, GOES-East beside GOES-West, or a mesoscale box beside the CONUS view. Every pane follows the playbar at its own frame nearest the main picture\'s moment. Tap a pane\'s product again, or the × on its label, to take it out.',
   // The Models row's two doors.
   'run-models':      'Forecast model charts - GFS, ECMWF, HRRR, NAM and more - browsable by product and forecast hour, with an Ensemble Spread view that shows where the models disagree.',
   'spaghetti-models': 'Tropical guidance from the NHC a-deck: official tracks and cones, plus storm-track spaghetti from every published model, each line wearing its model\'s name tag on a stem. Includes the track animation.',
@@ -49051,26 +49054,18 @@ function _sitePopCompare() {
 // Once a comparison is running, tapping a pill adds that site as the next
 // strip, and tapping a strip's pill again takes it out.
 let _rcOn = false;
-let _rcSlots = [];     // [{id, site, kind, plan, layer, frames, frameIso, stamp, dividerEl, labelEl, token}]
-let _rcSplits = [];    // ascending %, one per slot: the slot's left edge
+let _rcSlots = [];     // [{id, site, kind, plan, layer, frames, frameIso, stamp, labelEl, token}]
 let _rcSeq = 0;
-let _rcDragIdx = -1;
-let _rcHandleDown = null;   // {x,y} at pointerdown - a tap-not-drag on the handle rotates
 let _rcTimer = null;
 let _rcKey = '';
 let _rcTimeMs = 0;
-const RC_MAX_STRIPS = 5;   // six radars across one map is already a lot
-// 'v' (default): strips stand side by side, the divider runs top to bottom.
-// 'h': strips stack, the divider runs left to right. Only the axis _rcSetSplit
-// and _rcUpdateClips read from changes; nothing about which site is which
-// strip, or what it draws, cares which way the map is cut.
-let _rcOrientation = 'v';
-// Grid mode: null is the ordinary single-divider strip row above. Set to
-// {rows, cols} for a real 2x2 or 2x4 grid instead - column splits shared
-// down every row, row splits shared across every column, so dragging one
-// line moves every cell that touches it, the way a real split-screen
-// view works, rather than N independent boundaries per cell.
-let _rcGrid = null;
+// A comparison IS a split, always: double (1x2), quad (2x2) or octo (2x4),
+// with the rotated (transposed) shape of each also allowed. There is no
+// separate single-row mode with a divider per strip any more; every split
+// line is a SHARED grid line - column splits run down every row, row
+// splits across every column, so dragging one line moves every cell that
+// touches it, the way a real split-screen view works.
+let _rcGrid = null;    // {rows, cols} while comparing, null otherwise
 let _rcColSplits = [];   // ascending %, length cols-1
 let _rcRowSplits = [];   // ascending %, length rows-1
 let _rcGridDrag = null;  // {axis: 'col'|'row', idx} while dragging a grid line
@@ -49173,20 +49168,22 @@ function _rcAddSite(site) {
   if (!_rcOn) return;
   const sid = String(site).toLowerCase();
   if (sid === _rcMainSite()) {
-    if (typeof showToast === 'function') showToast(`${sid.toUpperCase()} is already strip A.`, 2500);
+    if (typeof showToast === 'function') showToast(`${sid.toUpperCase()} is already pane A.`, 2500);
     return;
   }
   const have = _rcSlots.find(x => x.site === sid);
-  if (have) { _rcRemoveSlot(have.id); return; }   // a strip's own pill, tapped again, takes it out
-  const max = _rcMaxStrips();
-  if (_rcSlots.length >= max) {
-    if (typeof showToast === 'function') showToast(`${max + 1} radars across one map is the most it can hold. Remove one first.`, 3500);
+  if (have) { _rcRemoveSlot(have.id); return; }   // a pane's own pill, tapped again, takes it out
+  // The first added site opens the double split; one more site than the
+  // split holds grows it (double -> quad -> octo), keeping whichever way
+  // round it stands; past octo is genuinely full.
+  if (!_rcGrid) _rcSetGrid(1, 2);
+  if (_rcSlots.length >= _rcMaxStrips() && !_rcGridGrow()) {
+    if (typeof showToast === 'function') showToast('8 pictures across one map (octo split) is the most it can hold. Remove one first.', 3500);
     return;
   }
   const slot = { id: 'r' + (++_rcSeq), site: sid, kind: null, plan: null, layer: null, blob: null,
-                 frames: null, frameIso: '', stamp: '', timeIso: '', dividerEl: null, labelEl: null, token: 0 };
+                 frames: null, frameIso: '', stamp: '', timeIso: '', labelEl: null, token: 0 };
   _rcSlots.push(slot);
-  _rcRecalcSplits();
   _rcRefreshDOM();
   _rcRenderSlot(slot);
   _rcUpdateClips();
@@ -49205,39 +49202,26 @@ function _rcRemoveSlot(id) {
     if (typeof showToast === 'function') showToast('Radar compare ended.', 2500);
     return;
   }
-  _rcRecalcSplits();
   _rcRefreshDOM();
   _rcUpdateClips();
   _refreshNexradSiteStyles();
 }
 
-// Spreads the strips evenly across the width after A's band, exactly as the
-// model comparison does. Grid mode's splits are shared row/column lines,
-// not one per slot, and only change shape when the grid itself does
-// (_rcSetGrid), so a slot coming or going leaves them alone.
-function _rcRecalcSplits() {
-  if (_rcGrid) return;
-  const n = _rcSlots.length;
-  _rcSplits = _rcSlots.map((_, i) => Math.round(10000 * (i + 1) / (n + 1)) / 100);
-}
-
-// How many strips fit beside strip A right now: the ordinary cap in the
-// single-row mode, or however many cells a grid has left once strip A's
-// own top-left one is spoken for.
+// How many pictures fit beside pane A: however many cells the split has
+// left once pane A's own top-left one is spoken for.
 function _rcMaxStrips() {
-  return _rcGrid ? (_rcGrid.rows * _rcGrid.cols - 1) : RC_MAX_STRIPS;
+  return _rcGrid ? (_rcGrid.rows * _rcGrid.cols - 1) : 1;
 }
 
-// null clears back to the single-divider row. Refuses to shrink onto a
-// grid too small for the strips already on screen rather than silently
-// dropping any of them - remove strips first, the same rule the ordinary
-// cap already enforces on the way up.
+// null clears the split entirely (only ending the comparison does that).
+// Refuses to shrink onto a split too small for the pictures already on
+// screen rather than silently dropping any of them.
 function _rcSetGrid(rows, cols) {
   if (!rows) { _rcGrid = null; _rcColSplits = []; _rcRowSplits = []; return true; }
   const need = rows * cols - 1;
   if (_rcSlots.length > need) {
     if (typeof showToast === 'function') {
-      showToast(`${rows}×${cols} only holds ${need + 1} pictures at once. Remove some strips first.`, 3500);
+      showToast(`That split only holds ${need + 1} pictures at once. Remove some first.`, 3500);
     }
     return false;
   }
@@ -49247,14 +49231,28 @@ function _rcSetGrid(rows, cols) {
   return true;
 }
 
-// Cycles 1x1 (the ordinary row) -> 2x2 -> 2x4 -> back to 1x1.
+// The next size up with the same way round: double -> quad -> octo.
+function _rcGridGrow() {
+  if (!_rcGrid) return _rcSetGrid(1, 2);
+  const cells = _rcGrid.rows * _rcGrid.cols;
+  const tall = _rcGrid.rows > _rcGrid.cols;
+  let next = cells === 2 ? [2, 2] : cells === 4 ? [2, 4] : null;
+  if (!next) return false;
+  if (tall) next = [next[1], next[0]];
+  if (!_rcSetGrid(next[0], next[1])) return false;
+  _rcRefreshDOM();
+  return true;
+}
+
+// Cycles double (1x2) -> quad (2x2) -> octo (2x4) -> back to double,
+// keeping whichever way round the current split stands.
 function _rcGridCycle() {
-  if (!_rcOn) return;
-  let ok;
-  if (!_rcGrid) ok = _rcSetGrid(2, 2);
-  else if (_rcGrid.rows === 2 && _rcGrid.cols === 2) ok = _rcSetGrid(2, 4);
-  else ok = _rcSetGrid(null);
-  if (!ok) return;
+  if (!_rcOn || !_rcGrid) return;
+  const cells = _rcGrid.rows * _rcGrid.cols;
+  const tall = _rcGrid.rows > _rcGrid.cols;
+  let next = cells === 2 ? [2, 2] : cells === 4 ? [2, 4] : [1, 2];
+  if (tall) next = [next[1], next[0]];
+  if (!_rcSetGrid(next[0], next[1])) return;
   _rcRefreshDOM();
   _rcUpdateClips();
 }
@@ -49569,14 +49567,9 @@ function _rcRefreshLabels() {
     if (t) t.textContent = _rcLetter(i) + '  ' + _rcSlotLabel(slot);
   });
 }
-// Built again whenever the strip count changes, never on a pan or zoom,
-// which would break a drag in progress. There is no panel: each strip is
-// named by its label on the map, and the × on that label removes it.
-// Builds a single strip's divider + label pair, shared by both the plain
-// row (one per slot, i is that slot's own index) and the grid's label
-// pass (i is still the slot's index, but the divider is built separately
-// in _rcRefreshGridDOM since grid dividers are shared lines, not one per
-// slot).
+// Builds one pane's corner label: the site, the product, the time, and
+// the × that removes that pane. Labels live in their pane's own top-left
+// corner, never on a split line.
 function _rcBuildLabel(slot, lc) {
   const l = document.createElement('div');
   l.className = 'sev-cmp-label rc-label';
@@ -49601,13 +49594,17 @@ function _rcBuildLabel(slot, lc) {
 // since a column line IS exactly that class's default (vertical) look
 // and a row line IS exactly its .horizontal look - a grid is just more
 // than one of each at once.
+// The split lines: (cols-1) vertical ones running the full height and
+// (rows-1) horizontal ones the full width, each SHARED by every cell it
+// touches. The line itself is the drag target - no knob riding it, no
+// separate separator per pane; the line is the whole control.
 function _rcRefreshGridDOM(dc, lc) {
   const { rows, cols } = _rcGrid;
   _rcGridDividerEls = { cols: [], rows: [] };
   for (let i = 0; i < cols - 1; i++) {
     const d = document.createElement('div');
     d.className = 'sev-cmp-divider active rc-divider';
-    d.innerHTML = '<div class="sev-cmp-handle" title="Drag to resize"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></div>';
+    d.title = 'Drag to resize the split';
     d.addEventListener('pointerdown', e => { e.preventDefault(); _rcGridDrag = { axis: 'col', idx: i }; });
     dc.appendChild(d);
     _rcGridDividerEls.cols.push(d);
@@ -49615,50 +49612,34 @@ function _rcRefreshGridDOM(dc, lc) {
   for (let i = 0; i < rows - 1; i++) {
     const d = document.createElement('div');
     d.className = 'sev-cmp-divider active rc-divider horizontal';
-    d.innerHTML = '<div class="sev-cmp-handle" title="Drag to resize"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></div>';
+    d.title = 'Drag to resize the split';
     d.addEventListener('pointerdown', e => { e.preventDefault(); _rcGridDrag = { axis: 'row', idx: i }; });
     dc.appendChild(d);
     _rcGridDividerEls.rows.push(d);
   }
   _rcSlots.forEach(slot => _rcBuildLabel(slot, lc));
 }
-// Built again whenever the strip count or the grid shape changes, never
+// Built again whenever the pane count or the split shape changes, never
 // on a pan or zoom, which would break a drag in progress. There is no
-// panel: each strip is named by its label on the map, and the × on that
-// label removes it.
+// panel: each pane is named by its corner label, and the × on that label
+// removes it.
 function _rcRefreshDOM() {
   const dc = document.getElementById('rc-dividers');
   const lc = document.getElementById('rc-labels');
   if (!dc || !lc) return;
   dc.innerHTML = ''; lc.innerHTML = '';
-  if (_rcGrid) {
-    _rcRefreshGridDOM(dc, lc);
-  } else {
-    const horiz = _rcOrientation === 'h';
-    _rcSlots.forEach((slot, i) => {
-      const d = document.createElement('div');
-      d.className = 'sev-cmp-divider active rc-divider' + (horiz ? ' horizontal' : '');
-      d.innerHTML = '<div class="sev-cmp-handle" title="Drag to resize, tap to rotate"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></div>';
-      d.addEventListener('pointerdown', e => { e.preventDefault(); _rcDragIdx = i; _rcHandleDown = { x: e.clientX, y: e.clientY }; });
-      dc.appendChild(d);
-      slot.dividerEl = d;
-      if (horiz) d.classList.add('horizontal');
-      _rcBuildLabel(slot, lc);
-      if (horiz) slot.labelEl.classList.add('horizontal');
-    });
-  }
+  if (_rcGrid) _rcRefreshGridDOM(dc, lc);
   _rcRefreshLabels();
   const btn = document.getElementById('rc-rotate-btn');
-  // Side-by-side vs stacked is a single-row concept; a grid has no
-  // equivalent, so the rotate button steps aside while one is active.
-  if (btn) btn.style.display = (_rcSlots.length && !_rcGrid) ? 'flex' : 'none';
+  if (btn) btn.style.display = _rcSlots.length ? 'flex' : 'none';
   const peekBtn = document.getElementById('rc-peek-btn');
   if (peekBtn) peekBtn.style.display = _rcSlots.length ? 'flex' : 'none';
   const gridBtn = document.getElementById('rc-grid-btn');
   if (gridBtn) {
     gridBtn.style.display = _rcSlots.length ? 'flex' : 'none';
-    gridBtn.textContent = _rcGrid ? (_rcGrid.rows + '×' + _rcGrid.cols) : '1×1';
-    gridBtn.classList.toggle('on', !!_rcGrid);
+    const cells = _rcGrid ? _rcGrid.rows * _rcGrid.cols : 2;
+    gridBtn.textContent = cells === 2 ? 'Double' : cells === 4 ? 'Quad' : 'Octo';
+    gridBtn.classList.toggle('on', true);
   }
 }
 // Reapplies every slot's clip from the current splits. Called after any
@@ -49687,46 +49668,25 @@ function _rcUpdateGridClips() {
     const g = _gridGeometry(leftPct, rightPct, topPct, bottomPct);
     const pane = map.getPane(_rcPaneName(slot));
     if (pane) pane.style.clipPath = g.polygon;
+    // View coordinates, not layer ones: the lines and labels live in
+    // fixed overlays that do not ride the map's pan the way a pane does.
     if (slot.labelEl) {
-      slot.labelEl.style.left = (g.leftPx + 8) + 'px';
-      slot.labelEl.style.top = (g.topPx + 8) + 'px';
+      slot.labelEl.style.left = (g.leftView + 8) + 'px';
+      slot.labelEl.style.top = (g.topView + 8) + 'px';
     }
   });
   _rcColSplits.forEach((pct, i) => {
     const el = _rcGridDividerEls.cols[i];
-    if (el) el.style.left = _stripGeometry(pct, pct, 'x').leftPx + 'px';
+    if (el) el.style.left = _stripGeometry(pct, pct, 'x').leftView + 'px';
   });
   _rcRowSplits.forEach((pct, i) => {
     const el = _rcGridDividerEls.rows[i];
-    if (el) el.style.top = _stripGeometry(pct, pct, 'y').leftPx + 'px';
+    if (el) el.style.top = _stripGeometry(pct, pct, 'y').leftView + 'px';
   });
 }
 function _rcUpdateClips() {
-  if (!_rcOn) return;
-  if (_rcGrid) { _rcUpdateGridClips(); return; }
-  const axis = _rcOrientation === 'h' ? 'y' : 'x';
-  _rcSlots.forEach((slot, i) => {
-    const leftPct = _rcSplits[i];
-    const rightPct = (i + 1 < _rcSplits.length) ? _rcSplits[i + 1] : 100;
-    const g = _stripGeometry(leftPct, rightPct, axis);
-    const pane = map.getPane(_rcPaneName(slot));
-    if (pane) pane.style.clipPath = g.polygon;
-    if (slot.dividerEl) {
-      if (axis === 'y') slot.dividerEl.style.top = g.leftView + 'px';
-      else slot.dividerEl.style.left = g.leftView + 'px';
-    }
-    if (slot.labelEl) {
-      if (axis === 'y') slot.labelEl.style.top = (g.leftView + 8) + 'px';
-      else slot.labelEl.style.left = (g.leftView + 8) + 'px';
-    }
-  });
-}
-function _rcSetSplit(idx, clientX, clientY) {
-  const axis = _rcOrientation === 'h' ? 'y' : 'x';
-  const pct = _stripPctFromClientX(clientX, _rcSplits, idx, axis, clientY);
-  if (pct == null) return;
-  _rcSplits[idx] = pct;
-  _rcUpdateClips();
+  if (!_rcOn || !_rcGrid) return;
+  _rcUpdateGridClips();
 }
 // A grid line's own drag: unlike a strip's split, one column or row line
 // is shared by every cell it touches, so this writes into _rcColSplits/
@@ -49740,35 +49700,20 @@ function _rcSetGridSplit(clientX, clientY) {
   splits[_rcGridDrag.idx] = pct;
   _rcUpdateClips();
 }
-// Flips which way the map is cut. The splits themselves (the percentages)
-// carry over unchanged - a divider at 60% is still at 60% of whichever
-// dimension is now being split - so nobody has to redo a comparison they
-// had just arranged to switch between side by side and stacked. Grid
-// mode has no equivalent (there is no single axis to flip), so the
-// button that reaches this is hidden while one is active.
+// Rotates the split: the grid transposed, so a side-by-side double
+// becomes a stacked one, and an octo's long axis swaps. The pictures and
+// their order carry over unchanged.
 function _rcToggleOrientation() {
-  if (!_rcOn || _rcGrid) return;
-  _rcOrientation = _rcOrientation === 'h' ? 'v' : 'h';
+  if (!_rcOn || !_rcGrid) return;
+  if (!_rcSetGrid(_rcGrid.cols, _rcGrid.rows)) return;
   _rcRefreshDOM();
   _rcUpdateClips();
 }
 window.addEventListener('pointermove', e => {
-  if (_rcDragIdx >= 0) _rcSetSplit(_rcDragIdx, e.clientX, e.clientY);
-  else if (_rcGridDrag) _rcSetGridSplit(e.clientX, e.clientY);
+  if (_rcGridDrag) _rcSetGridSplit(e.clientX, e.clientY);
 });
-window.addEventListener('pointerup', e => {
-  // A press-and-release with barely any movement is a tap, not a drag:
-  // the handle already wears the rotate icon, so tapping it (rather than
-  // dragging it) rotates instead of nudging the split by a stray pixel.
-  // Grid lines skip this entirely (_rcGridDrag, not _rcDragIdx, so this
-  // check never sees them): a fixed grid has no orientation to flip.
-  if (_rcDragIdx >= 0 && _rcHandleDown
-      && Math.hypot(e.clientX - _rcHandleDown.x, e.clientY - _rcHandleDown.y) < 6) {
-    _rcToggleOrientation();
-  }
-  _rcDragIdx = -1; _rcHandleDown = null; _rcGridDrag = null;
-});
-window.addEventListener('pointercancel', () => { _rcDragIdx = -1; _rcHandleDown = null; _rcGridDrag = null; });
+window.addEventListener('pointerup', () => { _rcGridDrag = null; });
+window.addEventListener('pointercancel', () => { _rcGridDrag = null; });
 
 // Everything down: the strips, their panes' contents, the dividers, the
 // labels, the panel and the pill rings. Strip A is left exactly as it was,
@@ -49779,7 +49724,7 @@ function _rcOff() {
   if (_rcTimer) { clearInterval(_rcTimer); _rcTimer = null; }
   try { map.off('move zoom resize', _rcUpdateClips); } catch (e) {}
   _rcSlots.forEach(_rcClearSlot);
-  _rcSlots = []; _rcSplits = []; _rcDragIdx = -1; _rcOrientation = 'v';
+  _rcSlots = [];
   _rcGrid = null; _rcColSplits = []; _rcRowSplits = []; _rcGridDrag = null;
   _rcGridDividerEls = { cols: [], rows: [] };
   ['rc-dividers', 'rc-labels'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
@@ -49788,7 +49733,7 @@ function _rcOff() {
   const rpBtn = document.getElementById('rc-peek-btn');
   if (rpBtn) rpBtn.style.display = 'none';
   const gridBtn = document.getElementById('rc-grid-btn');
-  if (gridBtn) { gridBtn.style.display = 'none'; gridBtn.textContent = '1×1'; }
+  if (gridBtn) { gridBtn.style.display = 'none'; gridBtn.textContent = 'Double'; }
   _cmpPeekReset('rc');
   try { _refreshNexradSiteStyles(); } catch (e) {}
 }
@@ -49806,18 +49751,15 @@ function _rcOff() {
 // current product in that sector. The strips follow the playbar: each one
 // shows its own frame nearest the moment strip A is on.
 let _scOn = false;
-let _scSlots = [];     // [{id, productId, regionId, kind, layer, frames, frameIso, dividerEl, labelEl, token}]
-let _scSplits = [];    // ascending %, one per slot: the slot's left edge
+let _scSlots = [];     // [{id, productId, regionId, kind, layer, frames, frameIso, labelEl, token}]
 let _scSeq = 0;
-let _scDragIdx = -1;
-let _scHandleDown = null;   // {x,y} at pointerdown - a tap-not-drag on the handle rotates
 // A sector picked from inside a specific kind's own menu (see
 // _satRegionRow), waiting for a product tap to actually use it. Lets an
 // ABI band and an RGB composite be added in the same, chosen sector even
 // though the two publish completely different sector lists.
 let _scPendingRegion = null;
-let _scOrientation = 'v';   // 'v' side by side, 'h' stacked - see _scToggleOrientation
-let _scGrid = null;         // null (single row) | {rows, cols} - see _rcGrid's own comment
+// A comparison IS a split, exactly as the radars: see _rcGrid's comment.
+let _scGrid = null;         // {rows, cols} while comparing, null otherwise
 let _scColSplits = [];
 let _scRowSplits = [];
 let _scGridDrag = null;
@@ -49825,7 +49767,6 @@ let _scGridDividerEls = { cols: [], rows: [] };
 let _scTimer = null;
 let _scKey = '';
 let _scTimeMs = 0;
-const SC_MAX_STRIPS = 5;   // six pictures across one map, matching the radars
 
 function _scProductOf(id) { return GOES_PRODUCTS.find(p => p.id === id) || null; }
 function _scRegionLabel(id) {
@@ -49876,20 +49817,21 @@ function _scAddSlot(productId, regionId) {
   if (!_scOn) return;
   const rid = regionId !== undefined ? regionId : _goesRegionId;
   if (productId === _goesProductId && rid === _goesRegionId) {
-    if (typeof showToast === 'function') showToast('That is already strip A.', 2500);
+    if (typeof showToast === 'function') showToast('That is already pane A.', 2500);
     return;
   }
   const have = _scSlots.find(s => s.productId === productId && s.regionId === rid);
   if (have) { _scRemoveSlot(have.id); return; }   // its own tap, again, takes it out
-  const max = _scMaxStrips();
-  if (_scSlots.length >= max) {
-    if (typeof showToast === 'function') showToast(`${max + 1} pictures across one map is the most it can hold. Remove one first.`, 3500);
+  // Same shape as the radars: the first added picture opens the double
+  // split, one more than the split holds grows it, past octo is full.
+  if (!_scGrid) _scSetGrid(1, 2);
+  if (_scSlots.length >= _scMaxStrips() && !_scGridGrow()) {
+    if (typeof showToast === 'function') showToast('8 pictures across one map (octo split) is the most it can hold. Remove one first.', 3500);
     return;
   }
   const slot = { id: 's' + (++_scSeq), productId, regionId: rid, kind: null, layer: null,
-                 frames: null, frameIso: '', dividerEl: null, labelEl: null, token: 0 };
+                 frames: null, frameIso: '', labelEl: null, token: 0 };
   _scSlots.push(slot);
-  _scRecalcSplits();
   _scRefreshDOM();
   _scRenderSlot(slot);
   _scUpdateClips();
@@ -49900,25 +49842,18 @@ function _scRemoveSlot(id) {
   if (!slot) return;
   _scClearSlot(slot);
   _scSlots = _scSlots.filter(s => s.id !== id);
-  // The last strip gone is the comparison over, matching the radars.
+  // The last pane gone is the comparison over, matching the radars.
   if (!_scSlots.length) {
     _scOff();
     if (typeof showToast === 'function') showToast('Satellite compare ended.', 2500);
     return;
   }
-  _scRecalcSplits();
   _scRefreshDOM();
   _scUpdateClips();
 }
 
-function _scRecalcSplits() {
-  if (_scGrid) return;
-  const n = _scSlots.length;
-  _scSplits = _scSlots.map((_, i) => Math.round(10000 * (i + 1) / (n + 1)) / 100);
-}
-
 function _scMaxStrips() {
-  return _scGrid ? (_scGrid.rows * _scGrid.cols - 1) : SC_MAX_STRIPS;
+  return _scGrid ? (_scGrid.rows * _scGrid.cols - 1) : 1;
 }
 
 function _scSetGrid(rows, cols) {
@@ -49926,7 +49861,7 @@ function _scSetGrid(rows, cols) {
   const need = rows * cols - 1;
   if (_scSlots.length > need) {
     if (typeof showToast === 'function') {
-      showToast(`${rows}×${cols} only holds ${need + 1} pictures at once. Remove some strips first.`, 3500);
+      showToast(`That split only holds ${need + 1} pictures at once. Remove some first.`, 3500);
     }
     return false;
   }
@@ -49936,13 +49871,28 @@ function _scSetGrid(rows, cols) {
   return true;
 }
 
+// The next size up with the same way round: double -> quad -> octo.
+function _scGridGrow() {
+  if (!_scGrid) return _scSetGrid(1, 2);
+  const cells = _scGrid.rows * _scGrid.cols;
+  const tall = _scGrid.rows > _scGrid.cols;
+  let next = cells === 2 ? [2, 2] : cells === 4 ? [2, 4] : null;
+  if (!next) return false;
+  if (tall) next = [next[1], next[0]];
+  if (!_scSetGrid(next[0], next[1])) return false;
+  _scRefreshDOM();
+  return true;
+}
+
+// Cycles double (1x2) -> quad (2x2) -> octo (2x4) -> back to double,
+// keeping whichever way round the current split stands.
 function _scGridCycle() {
-  if (!_scOn) return;
-  let ok;
-  if (!_scGrid) ok = _scSetGrid(2, 2);
-  else if (_scGrid.rows === 2 && _scGrid.cols === 2) ok = _scSetGrid(2, 4);
-  else ok = _scSetGrid(null);
-  if (!ok) return;
+  if (!_scOn || !_scGrid) return;
+  const cells = _scGrid.rows * _scGrid.cols;
+  const tall = _scGrid.rows > _scGrid.cols;
+  let next = cells === 2 ? [2, 2] : cells === 4 ? [2, 4] : [1, 2];
+  if (tall) next = [next[1], next[0]];
+  if (!_scSetGrid(next[0], next[1])) return;
   _scRefreshDOM();
   _scUpdateClips();
 }
@@ -50127,13 +50077,15 @@ function _scBuildLabel(slot, lc) {
   lc.appendChild(l);
   slot.labelEl = l;
 }
+// Shared split lines only, exactly as the radars: the line itself is the
+// drag target, no knob riding it, no separate separator per pane.
 function _scRefreshGridDOM(dc, lc) {
   const { rows, cols } = _scGrid;
   _scGridDividerEls = { cols: [], rows: [] };
   for (let i = 0; i < cols - 1; i++) {
     const d = document.createElement('div');
     d.className = 'sev-cmp-divider active rc-divider';
-    d.innerHTML = '<div class="sev-cmp-handle" title="Drag to resize"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></div>';
+    d.title = 'Drag to resize the split';
     d.addEventListener('pointerdown', e => { e.preventDefault(); _scGridDrag = { axis: 'col', idx: i }; });
     dc.appendChild(d);
     _scGridDividerEls.cols.push(d);
@@ -50141,7 +50093,7 @@ function _scRefreshGridDOM(dc, lc) {
   for (let i = 0; i < rows - 1; i++) {
     const d = document.createElement('div');
     d.className = 'sev-cmp-divider active rc-divider horizontal';
-    d.innerHTML = '<div class="sev-cmp-handle" title="Drag to resize"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></div>';
+    d.title = 'Drag to resize the split';
     d.addEventListener('pointerdown', e => { e.preventDefault(); _scGridDrag = { axis: 'row', idx: i }; });
     dc.appendChild(d);
     _scGridDividerEls.rows.push(d);
@@ -50153,31 +50105,18 @@ function _scRefreshDOM() {
   const lc = document.getElementById('sc-labels');
   if (!dc || !lc) return;
   dc.innerHTML = ''; lc.innerHTML = '';
-  if (_scGrid) {
-    _scRefreshGridDOM(dc, lc);
-  } else {
-    const horiz = _scOrientation === 'h';
-    _scSlots.forEach((slot, i) => {
-      const d = document.createElement('div');
-      d.className = 'sev-cmp-divider active rc-divider' + (horiz ? ' horizontal' : '');
-      d.innerHTML = '<div class="sev-cmp-handle" title="Drag to resize, tap to rotate"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></div>';
-      d.addEventListener('pointerdown', e => { e.preventDefault(); _scDragIdx = i; _scHandleDown = { x: e.clientX, y: e.clientY }; });
-      dc.appendChild(d);
-      slot.dividerEl = d;
-      _scBuildLabel(slot, lc);
-      if (horiz) slot.labelEl.classList.add('horizontal');
-    });
-  }
+  if (_scGrid) _scRefreshGridDOM(dc, lc);
   _scRefreshLabels();
   const rotBtn = document.getElementById('sc-rotate-btn');
-  if (rotBtn) rotBtn.style.display = (_scSlots.length && !_scGrid) ? 'flex' : 'none';
+  if (rotBtn) rotBtn.style.display = _scSlots.length ? 'flex' : 'none';
   const peekBtn = document.getElementById('sc-peek-btn');
   if (peekBtn) peekBtn.style.display = _scSlots.length ? 'flex' : 'none';
   const gridBtn = document.getElementById('sc-grid-btn');
   if (gridBtn) {
     gridBtn.style.display = _scSlots.length ? 'flex' : 'none';
-    gridBtn.textContent = _scGrid ? (_scGrid.rows + '×' + _scGrid.cols) : '1×1';
-    gridBtn.classList.toggle('on', !!_scGrid);
+    const cells = _scGrid ? _scGrid.rows * _scGrid.cols : 2;
+    gridBtn.textContent = cells === 2 ? 'Double' : cells === 4 ? 'Quad' : 'Octo';
+    gridBtn.classList.toggle('on', true);
   }
 }
 function _scUpdateGridClips() {
@@ -50192,46 +50131,24 @@ function _scUpdateGridClips() {
     const g = _gridGeometry(leftPct, rightPct, topPct, bottomPct);
     const pane = map.getPane(_scPaneName(slot));
     if (pane) pane.style.clipPath = g.polygon;
+    // View coordinates, same reasoning as the radar grid's own.
     if (slot.labelEl) {
-      slot.labelEl.style.left = (g.leftPx + 8) + 'px';
-      slot.labelEl.style.top = (g.topPx + 8) + 'px';
+      slot.labelEl.style.left = (g.leftView + 8) + 'px';
+      slot.labelEl.style.top = (g.topView + 8) + 'px';
     }
   });
   _scColSplits.forEach((pct, i) => {
     const el = _scGridDividerEls.cols[i];
-    if (el) el.style.left = _stripGeometry(pct, pct, 'x').leftPx + 'px';
+    if (el) el.style.left = _stripGeometry(pct, pct, 'x').leftView + 'px';
   });
   _scRowSplits.forEach((pct, i) => {
     const el = _scGridDividerEls.rows[i];
-    if (el) el.style.top = _stripGeometry(pct, pct, 'y').leftPx + 'px';
+    if (el) el.style.top = _stripGeometry(pct, pct, 'y').leftView + 'px';
   });
 }
 function _scUpdateClips() {
-  if (!_scOn) return;
-  if (_scGrid) { _scUpdateGridClips(); return; }
-  const axis = _scOrientation === 'h' ? 'y' : 'x';
-  _scSlots.forEach((slot, i) => {
-    const leftPct = _scSplits[i];
-    const rightPct = (i + 1 < _scSplits.length) ? _scSplits[i + 1] : 100;
-    const g = _stripGeometry(leftPct, rightPct, axis);
-    const pane = map.getPane(_scPaneName(slot));
-    if (pane) pane.style.clipPath = g.polygon;
-    if (slot.dividerEl) {
-      if (axis === 'y') slot.dividerEl.style.top = g.leftView + 'px';
-      else slot.dividerEl.style.left = g.leftView + 'px';
-    }
-    if (slot.labelEl) {
-      if (axis === 'y') slot.labelEl.style.top = (g.leftView + 8) + 'px';
-      else slot.labelEl.style.left = (g.leftView + 8) + 'px';
-    }
-  });
-}
-function _scSetSplit(idx, clientX, clientY) {
-  const axis = _scOrientation === 'h' ? 'y' : 'x';
-  const pct = _stripPctFromClientX(clientX, _scSplits, idx, axis, clientY);
-  if (pct == null) return;
-  _scSplits[idx] = pct;
-  _scUpdateClips();
+  if (!_scOn || !_scGrid) return;
+  _scUpdateGridClips();
 }
 function _scSetGridSplit(clientX, clientY) {
   if (!_scGridDrag) return;
@@ -50242,26 +50159,18 @@ function _scSetGridSplit(clientX, clientY) {
   splits[_scGridDrag.idx] = pct;
   _scUpdateClips();
 }
+// Rotates the split: the grid transposed, exactly as the radars.
 function _scToggleOrientation() {
-  if (!_scOn || _scGrid) return;
-  _scOrientation = _scOrientation === 'h' ? 'v' : 'h';
+  if (!_scOn || !_scGrid) return;
+  if (!_scSetGrid(_scGrid.cols, _scGrid.rows)) return;
   _scRefreshDOM();
   _scUpdateClips();
 }
 window.addEventListener('pointermove', e => {
-  if (_scDragIdx >= 0) _scSetSplit(_scDragIdx, e.clientX, e.clientY);
-  else if (_scGridDrag) _scSetGridSplit(e.clientX, e.clientY);
+  if (_scGridDrag) _scSetGridSplit(e.clientX, e.clientY);
 });
-window.addEventListener('pointerup', e => {
-  // Same tap-vs-drag distinction radar compare's handle makes. Grid lines
-  // skip this (_scGridDrag, not _scDragIdx), same reasoning as radar's.
-  if (_scDragIdx >= 0 && _scHandleDown
-      && Math.hypot(e.clientX - _scHandleDown.x, e.clientY - _scHandleDown.y) < 6) {
-    _scToggleOrientation();
-  }
-  _scDragIdx = -1; _scHandleDown = null; _scGridDrag = null;
-});
-window.addEventListener('pointercancel', () => { _scDragIdx = -1; _scHandleDown = null; _scGridDrag = null; });
+window.addEventListener('pointerup', () => { _scGridDrag = null; });
+window.addEventListener('pointercancel', () => { _scGridDrag = null; });
 
 // ── BROADCAST SWEEP ────────────────────────────────────────────────────────
 // The TV radar beam: a wedge rotating over whichever single-site radar owns
@@ -50344,7 +50253,7 @@ function _scOff() {
   if (_scTimer) { clearInterval(_scTimer); _scTimer = null; }
   try { map.off('move zoom resize', _scUpdateClips); } catch (e) {}
   _scSlots.forEach(_scClearSlot);
-  _scSlots = []; _scSplits = []; _scDragIdx = -1; _scOrientation = 'v';
+  _scSlots = [];
   _scGrid = null; _scColSplits = []; _scRowSplits = []; _scGridDrag = null;
   _scGridDividerEls = { cols: [], rows: [] };
   _scPendingRegion = null;
@@ -50354,7 +50263,7 @@ function _scOff() {
   const peekBtn = document.getElementById('sc-peek-btn');
   if (peekBtn) peekBtn.style.display = 'none';
   const gridBtn = document.getElementById('sc-grid-btn');
-  if (gridBtn) { gridBtn.style.display = 'none'; gridBtn.textContent = '1×1'; }
+  if (gridBtn) { gridBtn.style.display = 'none'; gridBtn.textContent = 'Double'; }
   _cmpPeekReset('sc');
   _scSyncBubble();
   document.querySelectorAll('#sub-bubbles .in-compare')
@@ -67314,6 +67223,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-zd', date: 'Sep 22, 2026',
+    text: 'The radar and satellite comparisons were redone as true splits. A comparison now starts as a double split, grows itself to a quad (4) or octo (8) as you add pictures, and a button cycles between the three; rotate turns a side-by-side split into a stacked one. Every split line is shared: drag it and every pane it touches resizes together, with no separate separator or knob per pane, and each picture is named by a small label in its own corner.' },
   { id: '2026-09-22-zc', date: 'Sep 22, 2026',
     text: 'Radar 3D knows where you are. Your location now shows inside the box as the same blue dot the map uses (labelled You, clamped to the rim with a note when you are outside the zone), and pressing Walk spawns you at your own spot at eye height, facing the storm, so walking into a storm over your house starts at your house. Uses the map\'s live location when tracking is on, or one quiet fix if you have already granted permission; opening the 3D panel never pops a permission prompt on its own.' },
   { id: '2026-09-22-zb', date: 'Sep 22, 2026',
