@@ -66,8 +66,18 @@ console.log('\n2. shortcuts press the real button');
      /if \(a\.srm && typeof _prSetProduct === 'function'\) _prSetProduct\('srvelocity'\);/.test(PAGE));
   ok('a failing action does not take the keyboard down with it',
      /catch \(e\) \{ console\.warn\('shortcut ' \+ a\.id \+ ':', e\); \}/.test(PAGE));
-  ok('only a shortcut that really ran swallows the key',
-     /if \(_kbdRun\(action\)\) e\.preventDefault\(\);/.test(PAGE));
+  // Leaflet's own keyboard handler pans on every arrow key, and it listens
+  // on document too, just in the bubble phase from the moment the map is
+  // made - well before this listener exists. A bubble-phase listener here
+  // would always lose that race, so this one has to run in the capture
+  // phase and stop the event outright once a shortcut has actually fired,
+  // rather than only calling preventDefault (which cannot undo a pan that
+  // already happened in another listener).
+  ok('only a shortcut that really ran swallows the key, and stops it '
+     + 'outright rather than just preventing the browser\'s own default',
+     /if \(_kbdRun\(action\)\) \{ e\.preventDefault\(\); e\.stopPropagation\(\); \}/.test(PAGE));
+  ok('the shortcut listener runs in the capture phase, ahead of Leaflet\'s own',
+     /const binds = _kbdLoad\(\);[\s\S]{0,400}\}, true\);/.test(PAGE));
 }
 
 console.log('\n3. typing and the browser are left alone');
