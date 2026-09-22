@@ -11,14 +11,21 @@
 
 import {
   Client, GatewayIntentBits, Partials, Events,
-  REST, Routes, SlashCommandBuilder, ActivityType,
+  REST, Routes, SlashCommandBuilder, ActivityType, EmbedBuilder,
 } from 'discord.js';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { timingSafeEqual, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { getLinkCode, claimLinkCode, getSyncHistory, appendSyncHistory,
-         addChatMessage, upsertRosterEntry } from './firestore.mjs';
+         addChatMessage, upsertRosterEntry,
+         getEconomy, patchEconomy, queryTopEconomy } from './firestore.mjs';
+import {
+  CURRENCY_NAME, CURRENCY_EMOJI, PET_TYPES, PET_TYPE_IDS, isPetType,
+  petStageLabel, petIsMaxed, feedCost, CHASE_OUTCOMES, canChase,
+  msUntilNextChase, formatDuration, computeStreak, rollChase,
+  applyStreakBonus, streakBonus,
+} from './economy.mjs';
 
 const TOKEN     = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.DISCORD_CLIENT_ID;
@@ -643,6 +650,32 @@ function chunk(text, limit = DISCORD_LIMIT) {
   return out.length ? out : ['(empty response)'];
 }
 
+// ── Asturio's own replies, as embeds ─────────────────────────────────────
+// Every answer Asturio gives in Discord, whether from /ask or from being
+// mentioned, goes out as an embed rather than plain chat text, so it reads
+// as Asturio speaking rather than an undecorated wall of text. An embed's
+// description holds up to 4096 characters, well past the 2000 a plain
+// message allows, so this chunks separately and larger, at ASK_CHUNK_LIMIT
+// rather than DISCORD_LIMIT: fewer messages for the same long answer.
+const ASTURIO_EMBED_COLOR = 0xe8b800;  // the app's own gold accent
+const ASTURIO_ERROR_COLOR = 0xff4d4d;
+const ASK_CHUNK_LIMIT = 4000;          // a little headroom under the 4096 cap
+
+function askEmbed(text, iconURL, part, total) {
+  const embed = new EmbedBuilder()
+    .setColor(ASTURIO_EMBED_COLOR)
+    .setAuthor({ name: 'Asturio AI', iconURL: iconURL || undefined })
+    .setDescription(text);
+  if (total > 1) embed.setFooter({ text: `Part ${part} of ${total}` });
+  return embed;
+}
+function askErrorEmbed(text, iconURL) {
+  return new EmbedBuilder()
+    .setColor(ASTURIO_ERROR_COLOR)
+    .setAuthor({ name: 'Asturio AI', iconURL: iconURL || undefined })
+    .setDescription(text);
+}
+
 // ── Linked-account chat history ───────────────────────────────────────────
 // A linked user's Discord conversation is written into the same asturioChats
 // field the website reads, so a question asked here shows up in the panel and
@@ -665,6 +698,178 @@ async function loadHistory(discordId) {
 async function saveHistory(discordId, question, answer) {
   await appendSyncHistory(discordId, question, answer)
     .catch(e => console.warn('save history:', e.message));
+}
+
+// ── /economy: a weather-themed game, one save file per Discord user ────────
+// The rules themselves live in economy.mjs, pure and untestable-by-hand no
+// more; this just reads and writes the Firestore record and turns the result
+// into embeds. A missing record is not an error, it is just a player who has
+// never played: everything below treats getEconomy() returning null as a
+// fresh CAPE-0, pet-less, streak-0 account rather than a failure.
+const TIER_COLORS = {
+  bust: 0x808080, small: 0x63b3ed, decent: 0x48bb78,
+  great: 0xed8936, legendary: 0xecc94b,
+};
+const ECONOMY_COLOR = 0xe8b800;
+const ECONOMY_ERROR_COLOR = 0xff4d4d;
+
+function blankEconomy() {
+  return { cape: 0, lastChase: 0, chaseStreak: 0, petType: null,
+           petName: null, petStage: 0, chases: 0, busts: 0 };
+}
+
+function petLine(eco) {
+  if (!eco.petType) return 'No pet yet. Adopt one with `/economy adopt`.';
+  const t = PET_TYPES[eco.petType];
+  const stage = eco.petStage || 0;
+  const name = eco.petName || t.label;
+  const maxed = petIsMaxed(eco.petType, stage);
+  const growth = maxed
+    ? `${t.scaleName} maxed out`
+    : `${t.scaleName}, next stage costs ${feedCost(stage)} ${CURRENCY_EMOJI}`;
+  return `${t.emoji} **${name}** the ${t.label} - ${petStageLabel(eco.petType, stage)} (${growth})`;
+}
+
+async function handleEconomyProfile(i, eco) {
+  const embed = new EmbedBuilder()
+    .setColor(ECONOMY_COLOR)
+    .setAuthor({ name: `${i.user.username}'s storm chasing profile`, iconURL: i.user.displayAvatarURL() })
+    .setDescription(petLine(eco))
+    .addFields(
+      { name: 'Balance', value: `${eco.cape} ${CURRENCY_EMOJI} ${CURRENCY_NAME}`, inline: true },
+      { name: 'Chase streak', value: `${eco.chaseStreak || 0} day${eco.chaseStreak === 1 ? '' : 's'} (+${Math.round(streakBonus(eco.chaseStreak || 0) * 100)}% bonus)`, inline: true },
+      { name: 'Chases / busts', value: `${eco.chases || 0} / ${eco.busts || 0}`, inline: true },
+    );
+  const wait = msUntilNextChase(eco.lastChase, Date.now());
+  embed.addFields({ name: 'Next chase', value: wait > 0 ? `Ready in ${formatDuration(wait)}` : 'Ready now, run `/economy chase`' });
+  await i.reply({ embeds: [embed] });
+}
+
+async function handleEconomyChase(i, eco) {
+  const now = Date.now();
+  if (!canChase(eco.lastChase, now)) {
+    const embed = new EmbedBuilder()
+      .setColor(ECONOMY_ERROR_COLOR)
+      .setDescription(`Still capped in. You can chase again in ${formatDuration(msUntilNextChase(eco.lastChase, now))}.`);
+    await i.reply({ embeds: [embed], ephemeral: true });
+    return;
+  }
+  const roll = rollChase();
+  const newStreak = computeStreak(eco.chaseStreak, eco.lastChase, now);
+  const payout = applyStreakBonus(roll.baseCape, newStreak);
+  const bonusPct = Math.round(streakBonus(newStreak) * 100);
+  const update = {
+    cape: (eco.cape || 0) + payout,
+    lastChase: now,
+    chaseStreak: newStreak,
+    chases: (eco.chases || 0) + 1,
+    busts: (eco.busts || 0) + (roll.tier === 'bust' ? 1 : 0),
+  };
+  await patchEconomy(i.user.id, update);
+  const embed = new EmbedBuilder()
+    .setColor(TIER_COLORS[roll.tier] || ECONOMY_COLOR)
+    .setAuthor({ name: `${i.user.username} went storm chasing`, iconURL: i.user.displayAvatarURL() })
+    .setDescription(roll.line)
+    .addFields(
+      { name: 'Result', value: payout > 0 ? `+${payout} ${CURRENCY_EMOJI}` : 'Nothing this time', inline: true },
+      { name: 'Streak', value: `${newStreak} day${newStreak === 1 ? '' : 's'}${bonusPct > 0 ? ` (+${bonusPct}%)` : ''}`, inline: true },
+      { name: 'Balance', value: `${update.cape} ${CURRENCY_EMOJI}`, inline: true },
+    );
+  await i.reply({ embeds: [embed] });
+}
+
+async function handleEconomyAdopt(i, eco) {
+  const type = i.options.getString('type', true);
+  if (!isPetType(type)) {
+    await i.reply({ content: 'That is not a pet this bot knows how to raise.', ephemeral: true });
+    return;
+  }
+  if (eco.petType) {
+    const embed = new EmbedBuilder()
+      .setColor(ECONOMY_ERROR_COLOR)
+      .setDescription(`You already have ${PET_TYPES[eco.petType].emoji} **${eco.petName || PET_TYPES[eco.petType].label}**. One storm at a time.`);
+    await i.reply({ embeds: [embed], ephemeral: true });
+    return;
+  }
+  await patchEconomy(i.user.id, { petType: type, petStage: 0, petName: null });
+  const t = PET_TYPES[type];
+  const embed = new EmbedBuilder()
+    .setColor(ECONOMY_COLOR)
+    .setAuthor({ name: `${i.user.username} adopted a pet`, iconURL: i.user.displayAvatarURL() })
+    .setDescription(`${t.emoji} A **${t.label}** touches down and decides to stick around. `
+      + `It starts at **${t.stages[0]}** on the ${t.scaleName}. `
+      + 'Name it with `/economy name`, grow it with `/economy feed`.');
+  await i.reply({ embeds: [embed] });
+}
+
+async function handleEconomyName(i, eco) {
+  if (!eco.petType) {
+    await i.reply({ content: 'You do not have a pet yet. Adopt one with `/economy adopt`.', ephemeral: true });
+    return;
+  }
+  const nickname = i.options.getString('nickname', true).trim().slice(0, 40);
+  if (!nickname) {
+    await i.reply({ content: 'That name is empty once trimmed. Try a real one.', ephemeral: true });
+    return;
+  }
+  await patchEconomy(i.user.id, { petName: nickname });
+  const t = PET_TYPES[eco.petType];
+  const embed = new EmbedBuilder()
+    .setColor(ECONOMY_COLOR)
+    .setDescription(`${t.emoji} Your ${t.label} is now named **${nickname}**.`);
+  await i.reply({ embeds: [embed] });
+}
+
+async function handleEconomyFeed(i, eco) {
+  if (!eco.petType) {
+    await i.reply({ content: 'You do not have a pet yet. Adopt one with `/economy adopt`.', ephemeral: true });
+    return;
+  }
+  const stage = eco.petStage || 0;
+  if (petIsMaxed(eco.petType, stage)) {
+    const t = PET_TYPES[eco.petType];
+    await i.reply({ content: `${t.emoji} ${eco.petName || t.label} is already at ${petStageLabel(eco.petType, stage)}, the top of the ${t.scaleName}. Nothing left to feed toward.`, ephemeral: true });
+    return;
+  }
+  const cost = feedCost(stage);
+  if ((eco.cape || 0) < cost) {
+    await i.reply({ content: `Feeding costs ${cost} ${CURRENCY_EMOJI} and you have ${eco.cape || 0}. Go chase some more CAPE first.`, ephemeral: true });
+    return;
+  }
+  const newStage = stage + 1;
+  await patchEconomy(i.user.id, { cape: eco.cape - cost, petStage: newStage });
+  const t = PET_TYPES[eco.petType];
+  const embed = new EmbedBuilder()
+    .setColor(ECONOMY_COLOR)
+    .setAuthor({ name: `${eco.petName || t.label} grew`, iconURL: i.user.displayAvatarURL() })
+    .setDescription(`${t.emoji} Fed for ${cost} ${CURRENCY_EMOJI}. **${eco.petName || t.label}** is now **${petStageLabel(eco.petType, newStage)}** on the ${t.scaleName}.`)
+    .addFields({ name: 'Balance', value: `${eco.cape - cost} ${CURRENCY_EMOJI}` });
+  await i.reply({ embeds: [embed] });
+}
+
+async function handleEconomyLeaderboard(i) {
+  const top = await queryTopEconomy(10);
+  const medals = ['🥇', '🥈', '🥉'];
+  const lines = top.length
+    ? top.map((row, n) => `${medals[n] || `${n + 1}.`} <@${row.discordId}> - ${row.cape || 0} ${CURRENCY_EMOJI}`
+        + (row.petType ? ` (${PET_TYPES[row.petType].emoji} ${row.petName || PET_TYPES[row.petType].label})` : ''))
+    : ['Nobody has chased yet. Be the first with `/economy chase`.'];
+  const embed = new EmbedBuilder()
+    .setColor(ECONOMY_COLOR)
+    .setAuthor({ name: 'Top storm chasers' })
+    .setDescription(lines.join('\n'));
+  await i.reply({ embeds: [embed] });
+}
+
+async function handleEconomy(i) {
+  const sub = i.options.getSubcommand();
+  const eco = { ...blankEconomy(), ...(await getEconomy(i.user.id).catch(() => null)) };
+  if (sub === 'profile')     return handleEconomyProfile(i, eco);
+  if (sub === 'chase')       return handleEconomyChase(i, eco);
+  if (sub === 'adopt')       return handleEconomyAdopt(i, eco);
+  if (sub === 'name')        return handleEconomyName(i, eco);
+  if (sub === 'feed')        return handleEconomyFeed(i, eco);
+  if (sub === 'leaderboard') return handleEconomyLeaderboard(i);
 }
 
 // ── Discord ───────────────────────────────────────────────────────────────
@@ -856,6 +1061,41 @@ function validateMapOptions(opt) {
   return bad;
 }
 
+// ── /economy ─────────────────────────────────────────────────────────────
+// The game itself lives in economy.mjs, pure and Discord-free. This just
+// shapes it into a slash command, exactly the way mapCommand() above shapes
+// map-options.json into /map. Pet type choices are written out by hand
+// rather than generated from economy.mjs: there are exactly three, they are
+// never going to change without a deliberate edit here anyway, and it keeps
+// this function free of any import this file's own test harness would have
+// to know how to resolve from a data: URL module.
+function economyCommand() {
+  return new SlashCommandBuilder()
+    .setName('economy')
+    .setDescription('Storm chasing economy: earn CAPE, adopt a pet, grow it into a legend')
+    .addSubcommand(s => s.setName('profile')
+      .setDescription('Your CAPE balance, your pet, and your chase streak'))
+    .addSubcommand(s => s.setName('chase')
+      .setDescription('Go storm chasing for CAPE. Once every 20 hours'))
+    .addSubcommand(s => s.setName('adopt')
+      .setDescription('Adopt a pet: a supercell, a tornado, or a hurricane')
+      .addStringOption(o => o.setName('type')
+        .setDescription('Which one').setRequired(true)
+        .addChoices(
+          { name: 'Supercell', value: 'supercell' },
+          { name: 'Tornado', value: 'tornado' },
+          { name: 'Hurricane', value: 'hurricane' },
+        )))
+    .addSubcommand(s => s.setName('name')
+      .setDescription('Give your pet a name')
+      .addStringOption(o => o.setName('nickname')
+        .setDescription('The new name').setRequired(true)))
+    .addSubcommand(s => s.setName('feed')
+      .setDescription("Spend CAPE to grow your pet to its next stage"))
+    .addSubcommand(s => s.setName('leaderboard')
+      .setDescription('Top CAPE balances across the server'));
+}
+
 const commands = [
   new SlashCommandBuilder()
     .setName('ask')
@@ -900,6 +1140,7 @@ const commands = [
         { name: 'Invisible',     value: 'invisible' },
       )),
   mapCommand(),
+  economyCommand(),
 ].map(c => c.toJSON());
 
 async function registerCommands() {
@@ -1196,9 +1437,16 @@ client.on(Events.InteractionCreate, async (i) => {
       ]);
       const answer = await askAsturio(q, { user, server: serverContextOf(i.guild), recent }, prior.history, images);
       saveHistory(i.user.id, q, answer).catch(() => {});
-      for (const [n, part] of chunk(answer).entries()) {
-        n === 0 ? await i.editReply(part) : await i.followUp(part);
+      const parts = chunk(answer, ASK_CHUNK_LIMIT);
+      const icon = client.user?.displayAvatarURL();
+      for (const [n, part] of parts.entries()) {
+        const embed = askEmbed(part, icon, n + 1, parts.length);
+        n === 0 ? await i.editReply({ embeds: [embed] }) : await i.followUp({ embeds: [embed] });
       }
+    }
+
+    if (i.commandName === 'economy') {
+      await handleEconomy(i);
     }
   } catch (e) {
     console.error('interaction:', e);
@@ -1311,7 +1559,9 @@ client.on(Events.MessageCreate, async (m) => {
     } catch {}
   }
 
-  if (!q && !sources.length) { await m.reply(`Ask me something, or use /ask. Live map: ${SITE_URL}`); return; }
+  const icon = client.user?.displayAvatarURL();
+  const promptEmbed = () => askEmbed(`Ask me something, or use /ask. Live map: ${SITE_URL}`, icon, 1, 1);
+  if (!q && !sources.length) { await m.reply({ embeds: [promptEmbed()] }); return; }
   try {
     await m.channel.sendTyping();
     const [user, recent, prior, images] = await Promise.all([
@@ -1320,17 +1570,18 @@ client.on(Events.MessageCreate, async (m) => {
       loadHistory(m.author.id).catch(() => ({ linked: false, history: [] })),
       imageParts(sources),
     ]);
-    if (!q && !images.length) { await m.reply(`Ask me something, or use /ask. Live map: ${SITE_URL}`); return; }
+    if (!q && !images.length) { await m.reply({ embeds: [promptEmbed()] }); return; }
     // A bare picture is a question in itself.
     if (!q) q = 'What does this image show? If it is weather, say what is happening and where.';
     const answer = await askAsturio(q, { user, server: serverContextOf(m.guild), recent }, prior.history, images);
     saveHistory(m.author.id, q, answer).catch(() => {});
-    for (const part of chunk(answer)) await m.reply(part);
+    const parts = chunk(answer, ASK_CHUNK_LIMIT);
+    for (const [n, part] of parts.entries()) await m.reply({ embeds: [askEmbed(part, icon, n + 1, parts.length)] });
   } catch (e) {
     // One line. A stack trace per mention buries everything else in the log
     // and tells nobody anything the message does not already say.
     console.error('mention:', e.message || e);
-    await m.reply(`Could not answer that: ${e.message}`).catch(() => {});
+    await m.reply({ embeds: [askErrorEmbed(`Could not answer that: ${e.message}`, icon)] }).catch(() => {});
   }
 });
 

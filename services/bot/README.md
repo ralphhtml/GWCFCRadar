@@ -82,9 +82,28 @@ Leave the terminal open, the bot is only online while it's running.
 | `/ask <question>` | Ask anything weather-related |
 | `/alerts` | Nationwide NWS alert summary |
 | `@Asturio <question>` | Same as `/ask`, just by mention |
+| `/economy profile` | Your CAPE balance, your pet, and your chase streak |
+| `/economy chase` | Go storm chasing for CAPE, once every 20 hours |
+| `/economy adopt <type>` | Adopt a pet: a supercell, a tornado, or a hurricane |
+| `/economy name <nickname>` | Give your pet a name |
+| `/economy feed` | Spend CAPE to grow your pet to its next stage |
+| `/economy leaderboard` | Top CAPE balances across the server |
 
 Answers take a few seconds because it fetches live data first, so the bot defers
 the reply, that's the "thinking" state, not a hang.
+
+Every reply Asturio gives, from `/ask` or from a plain `@Asturio` mention, goes
+out as a Discord embed rather than plain chat text, so it reads as Asturio
+speaking rather than an undecorated wall of text. `/economy` is the same:
+a weather-themed little economy, one save file per Discord user. Every chaser
+gets a CAPE balance (Convective Available Potential Energy, the number every
+real chaser actually watches) and can adopt one pet: a supercell, a tornado,
+or a hurricane, each one growing through the real scale chasers use for it
+(EF Scale, Saffir-Simpson, and hail size). Chasing pays out on a weighted
+table where most days are, honestly, a bust, same as the real hobby, with the
+odd legendary day making up for it. A chase streak stacks a bonus on the
+payout, and CAPE spent on `/economy feed` grows the pet toward its next
+stage.
 
 ---
 

@@ -284,3 +284,50 @@ export async function getUser(uid) {
     throw e;
   }
 }
+
+// ── The Discord economy ─────────────────────────────────────────────────────
+// Keyed by Discord id, in its own collection, deliberately separate from
+// users/{uid}: the economy is a Discord thing, and playing it should never
+// require linking a GWCFC Radar account. Same PATCH-with-mask upsert shape as
+// the roster above: the first ever write creates the document, and every one
+// after that touches only the fields it names.
+export async function getEconomy(discordId) {
+  try {
+    const doc = await call(`/discordEconomy/${encodeURIComponent(discordId)}`);
+    return fromFields(doc.fields);
+  } catch (e) {
+    if (/404|NOT[_ ]FOUND/i.test(e.message)) return null;   // never played before
+    throw e;
+  }
+}
+
+export async function patchEconomy(discordId, fields) {
+  const mask = Object.keys(fields).map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
+  return call(`/discordEconomy/${encodeURIComponent(discordId)}?${mask}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      fields: Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, toValue(v)])),
+    }),
+  });
+}
+
+// Top CAPE balances in the server, for the leaderboard. Every player is in
+// one flat collection rather than split per guild, since a Discord id is the
+// same person everywhere, so this is a global leaderboard: the bot has no
+// per-guild membership list to filter it by without the privileged intent
+// most servers will never turn on.
+export async function queryTopEconomy(limit = 10) {
+  const res = await call(':runQuery', {
+    method: 'POST',
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: 'discordEconomy' }],
+        orderBy: [{ field: { fieldPath: 'cape' }, direction: 'DESCENDING' }],
+        limit,
+      },
+    }),
+  });
+  return (Array.isArray(res) ? res : [])
+    .filter(r => r.document)
+    .map(r => ({ discordId: r.document.name.split('/').pop(), ...fromFields(r.document.fields) }));
+}
