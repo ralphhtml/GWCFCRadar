@@ -104,6 +104,10 @@
       "name": "NOAA Weather Radio (NWR) transmitter stations"
     },
     {
+      "value": "metar",
+      "name": "METAR Stations"
+    },
+    {
       "value": "forecasts",
       "name": "Weather Forecasts"
     },
@@ -320,6 +324,150 @@
       "name": "Shortwave IR"
     }
   ],
+  "satelliteTypes": {
+    "band": [
+      {
+        "value": "ch01",
+        "name": "Blue Visible (ch01)"
+      },
+      {
+        "value": "ch02",
+        "name": "Red Visible (ch02)"
+      },
+      {
+        "value": "ch03",
+        "name": "Veggie (ch03)"
+      },
+      {
+        "value": "ch04",
+        "name": "Cirrus (ch04)"
+      },
+      {
+        "value": "ch05",
+        "name": "Snow/Ice (ch05)"
+      },
+      {
+        "value": "ch06",
+        "name": "Cloud Top (ch06)"
+      },
+      {
+        "value": "ch07",
+        "name": "Shortwave IR (ch07)"
+      },
+      {
+        "value": "ch08",
+        "name": "Upper Water Vapor (ch08)"
+      },
+      {
+        "value": "ch09",
+        "name": "Mid Water Vapor (ch09)"
+      },
+      {
+        "value": "ch10",
+        "name": "Low Water Vapor (ch10)"
+      },
+      {
+        "value": "ch11",
+        "name": "Cloud Top Temp (ch11)"
+      },
+      {
+        "value": "ch12",
+        "name": "Fire Temp (ch12)"
+      },
+      {
+        "value": "ch13",
+        "name": "Clean IR (ch13)"
+      },
+      {
+        "value": "ch14",
+        "name": "IR Longwave (ch14)"
+      },
+      {
+        "value": "ch15",
+        "name": "Dirty IR (ch15)"
+      },
+      {
+        "value": "ch16",
+        "name": "CO₂ (ch16)"
+      }
+    ],
+    "composite": [
+      {
+        "value": "rgb-airmass",
+        "name": "Air Mass"
+      },
+      {
+        "value": "rgb-truecolor",
+        "name": "True Colour"
+      },
+      {
+        "value": "rgb-cloudphase",
+        "name": "Day Cloud Phase"
+      },
+      {
+        "value": "rgb-nightmicro",
+        "name": "Night Microphysics"
+      },
+      {
+        "value": "rgb-dust",
+        "name": "Dust"
+      },
+      {
+        "value": "rgb-ash",
+        "name": "Volcanic Ash"
+      },
+      {
+        "value": "rgb-daylandcloud",
+        "name": "Day Land Cloud"
+      },
+      {
+        "value": "rgb-daysnowfog",
+        "name": "Day Snow and Fog"
+      },
+      {
+        "value": "rgb-dayconvection",
+        "name": "Day Convection"
+      },
+      {
+        "value": "rgb-simplewv",
+        "name": "Simple Water Vapor"
+      },
+      {
+        "value": "rgb-diffwv",
+        "name": "Differential Water Vapor"
+      },
+      {
+        "value": "rgb-daylandcloudfire",
+        "name": "Day Land Cloud Fire"
+      },
+      {
+        "value": "rgb-so2",
+        "name": "Sulphur Dioxide"
+      },
+      {
+        "value": "rgb-firetemp",
+        "name": "Fire Temperature"
+      }
+    ],
+    "global": [
+      {
+        "value": "glb-ir",
+        "name": "Infrared"
+      },
+      {
+        "value": "glb-vis",
+        "name": "Visible"
+      },
+      {
+        "value": "glb-wv",
+        "name": "Water Vapor"
+      },
+      {
+        "value": "glb-swir",
+        "name": "Shortwave IR"
+      }
+    ]
+  },
   "satregions": [
     {
       "value": "auto",
@@ -405,32 +553,6 @@
     }
   ],
   "families": {
-    "radar": [
-      {
-        "value": "ref",
-        "name": "Reflectivity"
-      },
-      {
-        "value": "vel",
-        "name": "Velocity"
-      },
-      {
-        "value": "hc",
-        "name": "Hydro. Class."
-      },
-      {
-        "value": "accum",
-        "name": "Storm Accum."
-      },
-      {
-        "value": "boha",
-        "name": "1-Hr Accum."
-      },
-      {
-        "value": "mrms",
-        "name": "MRMS Composite"
-      }
-    ],
     "wind": [
       {
         "value": "wind-surface",
@@ -504,6 +626,90 @@
         "value": "surface",
         "name": "Surface"
       }
-    ]
+    ],
+    "radar": {
+      "l2": [
+        {
+          "value": "ref",
+          "name": "Reflectivity"
+        },
+        {
+          "value": "vel",
+          "name": "Velocity"
+        },
+        {
+          "value": "cc",
+          "name": "Corr. Coeff."
+        },
+        {
+          "value": "zdr",
+          "name": "Diff. Refl."
+        },
+        {
+          "value": "kdp",
+          "name": "Spec. Diff. Phase"
+        },
+        {
+          "value": "sw",
+          "name": "Spectrum Width"
+        },
+        {
+          "value": "phi",
+          "name": "Diff. Phase"
+        }
+      ],
+      "l3": [
+        {
+          "value": "reflectivity",
+          "name": "Reflectivity"
+        },
+        {
+          "value": "velocity",
+          "name": "Velocity"
+        },
+        {
+          "value": "corrcoeff",
+          "name": "Corr. Coeff."
+        },
+        {
+          "value": "diffrefl",
+          "name": "Diff. Refl."
+        },
+        {
+          "value": "hydroclass",
+          "name": "Hydro. Class."
+        },
+        {
+          "value": "srvelocity",
+          "name": "Storm Rel. Velocity"
+        },
+        {
+          "value": "onehour",
+          "name": "1-Hr Precip"
+        },
+        {
+          "value": "stormtotal",
+          "name": "Storm Total"
+        },
+        {
+          "value": "vil",
+          "name": "VIL"
+        },
+        {
+          "value": "echotops",
+          "name": "Echo Tops"
+        },
+        {
+          "value": "composite",
+          "name": "Composite Refl. (this station)"
+        }
+      ],
+      "composite": [
+        {
+          "value": "mrms",
+          "name": "Composite Reflectivity (national mosaic)"
+        }
+      ]
+    }
   }
 }

@@ -70,7 +70,6 @@ for (const m of html.matchAll(/data-ovid="([^"]+)"/g)) {
 
 // ── Products, one family at a time ─────────────────────────────────────────
 const families = {
-  radar:       entries(block('const RADAR_SUB_BUBBLES')),
   wind:        entries(block('const WIND_SUB_BUBBLES')),
   temperature: entries(block('const TEMPERATURE_SUB_BUBBLES')),
   waves:       entries(block('const WAVES_SUB_BUBBLES')),
@@ -78,19 +77,48 @@ const families = {
   pressure:    entries(block('const PRESSURE_SUB_BUBBLES')),
 };
 
-// The radar sub bubbles are named for people, and the URL takes short ids.
-const RADAR_URL_ID = {
-  reflectivity: 'ref', velocity: 'vel',
-  hc: 'hc', accum: 'accum', boha: 'boha',
-};
-families.radar = families.radar
-  .filter(p => RADAR_URL_ID[p.value])
-  .map(p => ({ value: RADAR_URL_ID[p.value], name: p.name }));
-// MRMS is a radar product on the page but is loaded by its own path rather
-// than through selectProduct, so it is not in that row. The URL accepts it.
-if (!families.radar.some(p => p.value === 'mrms')) {
-  families.radar.push({ value: 'mrms', name: 'MRMS Composite' });
+// ── Radar, the real menu structure rather than one flat list ───────────────
+// Level 2 comes straight from RADAR_L2_BUBBLES, the site's own single-station
+// dual-pol row. Level 3 / Pi comes from PR_PRODUCTS, an object rather than an
+// array (a different shape needs its own reader, not the entries() helper).
+// A key already offered at Level 2 (kdp, phi share the exact same short code
+// as their Level 2 entry) is left out of Level 3: the URL reader tries the
+// Level 2 list first, so that string could never actually reach Level 3
+// regardless of which menu the command says it came from. Composite is its
+// own thing again, the national MRMS mosaic, loaded by its own path rather
+// than through either menu, so it is added by hand the same way it always
+// was.
+const l2Block = html.match(/const RADAR_L2_BUBBLES = \[([\s\S]*?)\n\];/);
+const l2Text = l2Block ? live(l2Block[1]) : '';
+const radarL2 = [];
+for (const m of l2Text.matchAll(/product:\s*'([^']+)',\s*label:\s*'([^']+)'/g)) {
+  radarL2.push({ value: m[1], name: m[2] });
 }
+const l2Values = new Set(radarL2.map(p => p.value));
+
+const prBlock = html.match(/const PR_PRODUCTS = \{([\s\S]*?)\n\};/);
+const prText = prBlock ? live(prBlock[1]) : '';
+const radarL3 = [];
+for (const m of prText.matchAll(/(\w+):\s*\{([^}]*)\}/g)) {
+  const [, key, body] = m;
+  if (key === 'hydrohybrid') continue;    // no l2 or l3 file at all
+  if (!/\bl3\s*:/.test(body)) continue;   // Level 3 only offers what has an l3 file
+  if (l2Values.has(key)) continue;        // string collision with a Level 2 code
+  const label = body.match(/\blabel\s*:\s*'([^']+)'/);
+  if (!label) continue;
+  // PR_PRODUCTS' own "composite" (one station's own vertical column max) and
+  // the outer Composite category's national MRMS mosaic share the plain
+  // word "Composite" - distinct things reached through entirely different
+  // code, so the label says which is which rather than repeating itself.
+  const name = key === 'composite' ? `${label[1]} (this station)` : label[1];
+  radarL3.push({ value: key, name });
+}
+
+families.radar = {
+  l2: radarL2,
+  l3: radarL3,
+  composite: [{ value: 'mrms', name: 'Composite Reflectivity (national mosaic)' }],
+};
 
 // ── Satellite products, all of them ────────────────────────────────────────
 // Used to keep only the 16 ABI bands (id 'chNN'); the page has since grown
@@ -110,6 +138,14 @@ const satellite = [];
     satellite.push({ value: id[1], name: band ? `${name} (${id[1]})` : name });
   }
 }
+// The id itself already says which of the three menus a product belongs to
+// (chNN a band, rgb- a Pi composite, glb- a global mosaic product), so the
+// split costs nothing beyond reading the prefix back off the list above.
+const satelliteTypes = {
+  band:      satellite.filter(p => /^ch\d+$/.test(p.value)),
+  composite: satellite.filter(p => p.value.startsWith('rgb-')),
+  global:    satellite.filter(p => p.value.startsWith('glb-')),
+};
 
 // ── Satellite regions ──────────────────────────────────────────────────────
 // The view the satellite is drawn over: CONUS east/west, Alaska, the meso
@@ -157,7 +193,7 @@ const basemaps = basemapSelect
 
 const out = {
   generated: 'by tools/extract-map-options.js from index.html, do not edit',
-  layers, overlays, basemaps, satellite, satregions, cpctypes, families,
+  layers, overlays, basemaps, satellite, satelliteTypes, satregions, cpctypes, families,
 };
 
 const dest = path.join(root, 'services', 'bot', 'map-options.json');
@@ -167,9 +203,18 @@ console.log(`layers      ${layers.length}`);
 console.log(`overlays    ${overlays.length}`);
 console.log(`basemaps    ${basemaps.length}   ${basemaps.join(', ')}`);
 console.log(`satellite   ${satellite.length}`);
+for (const [sub, list] of Object.entries(satelliteTypes)) {
+  console.log(`satellite.${sub.padEnd(9)} ${list.length}   ${list.map(p => p.value).join(', ')}`);
+}
 console.log(`satregions  ${satregions.length}   ${satregions.map(r => r.value).join(', ')}`);
 console.log(`cpctypes    ${cpctypes.length}   ${cpctypes.map(c => c.value).join(', ')}`);
 for (const [k, v] of Object.entries(families)) {
+  if (k === 'radar') {
+    for (const [sub, list] of Object.entries(v)) {
+      console.log(`radar.${sub.padEnd(9)} ${list.length}   ${list.map(p => p.value).join(', ')}`);
+    }
+    continue;
+  }
   console.log(`${k.padEnd(11)} ${v.length}   ${v.map(p => p.value).join(', ')}`);
 }
 console.log(`\nwrote ${path.relative(root, dest)}`);

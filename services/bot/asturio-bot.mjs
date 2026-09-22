@@ -578,6 +578,14 @@ async function screenshotMap(opt) {
   for (const [name, , param] of FAMILY_OPTIONS) {
     if (opt[name]) q.set(param, String(opt[name]));
   }
+  // Radar and satellite are two linked options apiece (a type, then a
+  // product scoped to it) rather than one flat family: too many real
+  // products to fit in one 25-choice dropdown honestly. The type itself
+  // never rides in the URL - each product's own value already says which
+  // menu it came from to the page's own ?product=/?satproduct= reader, the
+  // same way it does to _prSetLevel/_setGoesProduct on the page itself.
+  if (opt['radar-product'])     q.set('product', String(opt['radar-product']));
+  if (opt['satellite-product']) q.set('satproduct', String(opt['satellite-product']));
   // Everything else passes through verbatim under the name the page uses.
   for (const k of ['basemap','layers','overlays','model','modelvar',
                    'spcday','spchaz','wpcday','fwday','cpctype']) {
@@ -595,7 +603,7 @@ async function screenshotMap(opt) {
   if (overlays.size) q.set('overlays', [...overlays].join(','));
   // A region without a product would aim the camera with nothing in front
   // of it, so it brings the everyday Clean IR band along.
-  if (opt.satregion && !opt.satellite) q.set('satproduct', 'ch13');
+  if (opt.satregion && !opt['satellite-product']) q.set('satproduct', 'ch13');
 
   const url = `${SITE_URL}?${q}`;
   return queueShot(async () => {
@@ -899,13 +907,17 @@ function choicesFor(list) {
 
 // One command option per product family. Each row is
 // [command option, list in map-options.json, URL parameter, description]:
-// the command speaks the word a person would say ('radar', 'satellite') and
-// the URL parameter is whatever the page happens to call it ('product',
-// 'satproduct'), translated in exactly one place. A family added to the site
-// appears here on the next run of the generator with no edit to this file.
+// the command speaks the word a person would say ('satregion', 'wind') and
+// the URL parameter is whatever the page happens to call it, translated in
+// exactly one place. A family added to the site appears here on the next
+// run of the generator with no edit to this file.
+//
+// Radar and satellite are NOT in this table. Both have too many real
+// products for one 25-choice dropdown to hold honestly (radar alone is 19
+// once Level 2, Level 3 and the composite mosaic are counted for real,
+// rather than the 6 the command used to offer), so each gets its own pair
+// of linked options below instead: a type, then a product scoped to it.
 const FAMILY_OPTIONS = [
-  ['radar',      'radar',       'product',    'Radar product. Switches radar on by itself'],
-  ['satellite',  'satellite',   'satproduct', 'Satellite product: ABI band, RGB composite or global mosaic'],
   ['satregion',  'satregions',  'satregion',  'Satellite view: CONUS, meso box, full disk, world sector'],
   ['wind',       'wind',        'wind',       'Wind product'],
   ['temperature','temperature', 'temperature','Temperature product'],
@@ -914,10 +926,26 @@ const FAMILY_OPTIONS = [
   ['pressure',   'pressure',    'pressure',   'Pressure product'],
 ];
 
+// The three radar menus and the three satellite menus, named the way the
+// site itself names them (PR_LEVELS, and the chNN/rgb-/glb- id prefixes the
+// generator already splits satellite on). Picking one of these alone does
+// nothing; it only scopes what radar-product/satellite-product complete to.
+const RADAR_TYPES = [
+  { value: 'l2',        name: 'Level 2 (single station, full detail)' },
+  { value: 'l3',        name: 'Level 3 (single station, lighter)' },
+  { value: 'composite', name: 'Composite (national mosaic)' },
+];
+const SATELLITE_TYPES = [
+  { value: 'band',      name: 'ABI Band (ch01-ch16)' },
+  { value: 'composite', name: 'RGB Composite' },
+  { value: 'global',    name: 'Global Mosaic' },
+];
+
 // Every string option the /map handler reads, family and plain alike, so the
 // handler and the validator never chase a list of names by hand again.
 const MAP_STRING_OPTIONS = [
   'place', 'basemap', 'layers', 'overlays', 'spchaz', 'cpctype',
+  'radar-type', 'radar-product', 'satellite-type', 'satellite-product',
   ...FAMILY_OPTIONS.map(f => f[0]),
 ];
 const MAP_INT_OPTIONS = ['zoom', 'spcday', 'wpcday', 'fwday'];
@@ -946,8 +974,25 @@ function mapCommand() {
       .addChoices(...choicesFor(
         Object.keys(PLACES).map(k => ({ value: k, name: k })))));
 
-  c = addFamilyOption(c, 'radar');
-  c = addFamilyOption(c, 'satellite');
+  // Radar and satellite: a type first (choices, always short), then a
+  // product scoped to it (typed and autocompleted, since even one menu -
+  // satellite's 16 bands, or radar's 11 Level 3 products - can run past
+  // what a plain dropdown holds). Picking a type alone does nothing; it
+  // only narrows what the product option completes to.
+  c = c
+    .addStringOption(o => o.setName('radar-type')
+      .setDescription('Which radar menu: Level 2, Level 3, or the composite mosaic')
+      .addChoices(...choicesFor(RADAR_TYPES)))
+    .addStringOption(o => o.setName('radar-product')
+      .setDescription('Radar product within radar-type. Switches radar on by itself')
+      .setAutocomplete(true))
+    .addStringOption(o => o.setName('satellite-type')
+      .setDescription('Which satellite menu: an ABI band, an RGB composite, or the global mosaic')
+      .addChoices(...choicesFor(SATELLITE_TYPES)))
+    .addStringOption(o => o.setName('satellite-product')
+      .setDescription('Satellite product within satellite-type')
+      .setAutocomplete(true));
+
   c = addFamilyOption(c, 'satregion');
 
   // Several at once, so completed as typed rather than picked from a list.
@@ -983,7 +1028,7 @@ function mapCommand() {
       .addChoices(...choicesFor(MAP_OPTIONS.cpctypes || [])));
 
   for (const [name] of FAMILY_OPTIONS) {
-    if (['radar', 'satellite', 'satregion'].includes(name)) continue;
+    if (name === 'satregion') continue;
     c = addFamilyOption(c, name);
   }
 
@@ -1000,10 +1045,21 @@ function mapCommand() {
       .setDescription('Zoom, 3 to 12').setMinValue(3).setMaxValue(12));
 }
 
-// What each autocompleting option is completing against.
+// What each autocompleting option is completing against. radar-product and
+// satellite-product take the interaction's own current options so they can
+// read the sibling -type value and complete against only that menu; every
+// other source ignores the argument, plain functions of no arguments.
 const AUTOCOMPLETE_SOURCE = {
   layers:   () => MAP_OPTIONS.layers.map(v => ({ value: v, name: v })),
   overlays: () => MAP_OPTIONS.overlays,
+  'radar-product': (opts) => {
+    const type = (opts && opts.getString('radar-type')) || 'l2';
+    return MAP_OPTIONS.families.radar[type] || [];
+  },
+  'satellite-product': (opts) => {
+    const type = (opts && opts.getString('satellite-type')) || 'band';
+    return MAP_OPTIONS.satelliteTypes[type] || [];
+  },
   ...Object.fromEntries(FAMILY_OPTIONS.map(([opt, fam]) =>
     [opt, () => MAP_OPTIONS.families[fam] || MAP_OPTIONS[fam] || []])),
 };
@@ -1011,8 +1067,8 @@ const AUTOCOMPLETE_SOURCE = {
 // Completes the value being typed, not the whole string: these take a comma
 // separated list, so what is being finished is whatever follows the last comma
 // and everything before it has to be handed back untouched.
-function completeList(optName, typed) {
-  const list = (AUTOCOMPLETE_SOURCE[optName] || (() => []))();
+function completeList(optName, typed, opts) {
+  const list = (AUTOCOMPLETE_SOURCE[optName] || (() => []))(opts);
   const multi = optName === 'layers' || optName === 'overlays';
   const cut = multi ? typed.lastIndexOf(',') : -1;
   const head = cut >= 0 ? typed.slice(0, cut + 1) : '';
@@ -1058,6 +1114,17 @@ function validateMapOptions(opt) {
       .map(p => p.value);
     check(name, opt[name], list);
   }
+  // Checked against the union of every menu rather than only the one named
+  // in -type: someone can leave -type unset and still type a valid product
+  // (the type is just what autocomplete narrows to, not a hard gate), and
+  // refusing that would be exactly the "the site has this but the command
+  // won't let you ask for it" bug the whole reorganisation set out to fix.
+  check('radar-type', opt['radar-type'], RADAR_TYPES.map(t => t.value));
+  check('radar-product', opt['radar-product'],
+    Object.values(MAP_OPTIONS.families.radar).flat().map(p => p.value));
+  check('satellite-type', opt['satellite-type'], SATELLITE_TYPES.map(t => t.value));
+  check('satellite-product', opt['satellite-product'],
+    Object.values(MAP_OPTIONS.satelliteTypes).flat().map(p => p.value));
   return bad;
 }
 
@@ -1318,7 +1385,7 @@ client.on(Events.InteractionCreate, async (i) => {
   if (i.isAutocomplete()) {
     try {
       const focused = i.options.getFocused(true);
-      await i.respond(completeList(focused.name, String(focused.value || '')));
+      await i.respond(completeList(focused.name, String(focused.value || ''), i.options));
     } catch (e) {
       // A failed completion must not look like a failed command.
       console.warn('autocomplete:', e.message);
