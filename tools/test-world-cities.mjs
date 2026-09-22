@@ -90,7 +90,7 @@ await p.addInitScript(() => {
   try { localStorage.setItem('gwcfc_tutorial_seen', '1'); } catch (e) {}
 });
 let tileHits = 0;
-await p.route('**://**', route => {
+await p.route('**://**', async route => {
   const url = route.request().url();
   if (url.startsWith('file://')) return route.continue();
   if (url.includes('all-the-cities'))
@@ -103,6 +103,13 @@ await p.route('**://**', route => {
     if (url.includes('t_24_19.json'))
       return route.fulfill({ contentType: 'application/json', body: TILE });
     return route.fulfill({ status: 404, body: 'not here' });
+  }
+  if (url.includes('NOAA_METAR_current_wind_speed_direction_v1')) {
+    // Slow on purpose: the race test below needs the layer to still be
+    // in flight when it flips the toggle off.
+    await new Promise(res => setTimeout(res, 350));
+    return route.fulfill({ contentType: 'application/json',
+      body: JSON.stringify({ features: [] }) });
   }
   if (url.includes('leaflet') && url.endsWith('.js'))
     return route.fulfill({ contentType: 'application/javascript',
@@ -215,6 +222,46 @@ console.log('\nX. searching a place flies there AND opens its forecast');
   });
   ok('the forecast card opens, titled with the town alone, and the map heads there',
      r.open && r.title === 'Chicago', JSON.stringify(r));
+}
+
+console.log('\n5. turning the layer off clears every dot, even mid-fetch');
+{
+  const r = await p.evaluate(async () => {
+    // Fresh ground: nothing cached, so this refresh must really wait on
+    // the (slow, routed) METAR fetch before it can finish.
+    _cityTempCache.clear();
+    _metarStations = null; _metarStationsTime = 0;
+    map.setView([33.2, -83.5], 7, { animate: false });
+    await new Promise(res => setTimeout(res, 150));
+    const refreshPromise = _refreshVisibleCityTemps();
+    // The dots exist while the METAR fetch is still in flight...
+    await new Promise(res => setTimeout(res, 60));
+    const duringCount = cityMarkersLayer.getLayers().length;
+    // ...and now the layer is switched off before that fetch resolves.
+    toggleForecastDots();
+    await refreshPromise;
+    return {
+      duringCount,
+      afterCount: cityMarkersLayer.getLayers().length,
+      refsCleared: _cityMarkerRefs.size === 0,
+      layerOn: activeLayers.forecasts,
+    };
+  });
+  ok('dots were actually on screen mid-fetch, so this race is real',
+     r.duringCount > 0, String(r.duringCount));
+  ok('turning it off mid-fetch leaves no dot behind once that fetch lands',
+     r.afterCount === 0, JSON.stringify(r));
+  ok('the marker-by-coordinate memory is cleared too, so re-enabling starts clean',
+     r.refsCleared);
+  ok('and the toggle itself is off', r.layerOn === false);
+  // Turning it back on afterward must still work: nothing left half-set.
+  const r2 = await p.evaluate(async () => {
+    toggleForecastDots();
+    await new Promise(res => setTimeout(res, 150));
+    await _refreshVisibleCityTemps();
+    return cityMarkersLayer.getLayers().length;
+  });
+  ok('re-enabling afterward brings the dots back', r2 > 0, String(r2));
 }
 
 await b.close();
