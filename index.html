@@ -5,10 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>GWCFC Radar</title>
 <meta name="description" content="Live NEXRAD radar, NWS warnings, satellite, models and storm tools on one map.">
-<!-- The artwork's own average purple while the loading screen is up, so a
-     phone's status bar and toolbar blend into the art instead of framing it
-     in black; _actuallyDismiss hands the app's dark chrome back. -->
-<meta name="theme-color" content="#714871">
+<!-- Discord, Slack and friends read THIS static tag for the accent bar on a
+     shared link's embed card - they never run the page's JS, so whatever
+     value sits here is the one that ships in every link preview. It is the
+     app's own red for that reason: the phone status bar during loading
+     gets the same red from it (still far better than the near-black this
+     replaced), and _actuallyDismiss hands the app's steady dark chrome
+     back once the map is up. -->
+<meta name="theme-color" content="#AA0000">
 
 <!-- Link preview. Absolute URLs are required: Slack, Discord, iMessage and X
      fetch these server-side, where a relative path has no origin to resolve
@@ -2372,10 +2376,10 @@ body {
 /* Loading overlay */
 #loading {
   position: fixed; inset: 0;
-  /* The artwork's own average purple, not black: it is what shows for the
-     instant before the background image arrives, and what bleeds into any
-     edge the image does not reach. */
-  background: #714871;
+  /* The app's own red, not black: it is what shows for the instant before
+     the background image arrives, and what bleeds into any edge the image
+     does not reach - the same red the theme-color meta above now carries. */
+  background: #AA0000;
   display: flex; align-items: center; justify-content: space-between;
   flex-direction: column;
   padding: 7vh 0 6vh;
@@ -65986,6 +65990,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-a', date: 'Sep 22, 2026',
+    text: 'The Settings rail, on a phone where it becomes a strip of chips, had a bug the blue re-colour left behind: the selected chip\'s label was the same blue as its own background, so it read blank. That chip and a few button labels sharing the same bug (Open Export, Reset Border Colors, Past Alerts, the fullscreen hint) now wear dark ink instead. Shared links also get their proper red accent bar back on Discord and other previews.' },
   { id: '2026-09-21-ah', date: 'Sep 21, 2026',
     text: 'The loading screen now shows the red-to-blue artwork exactly as supplied, untouched - the earlier brightening pass is gone - and the phone status bar and toolbar blend into its true plum tone while it is up.' },
   { id: '2026-09-21-ag', date: 'Sep 21, 2026',
@@ -73609,11 +73615,18 @@ function closeCredits() {
   box-shadow: var(--edge-3d-soft);
   border: 1px solid transparent;
 }
-.lqm-set-tab:hover { background-image: var(--grad-raise); }
+/* --grad-raise is a LIGHT blue (the timestamp chip lives at this same end
+   of the family), so white text on it reads at barely 2:1 - close to
+   invisible, which is exactly the bug reported here. Black is what the
+   timestamp chip already proved works, clearing 8:1+ on every stop, so
+   every text-bearing control on this gradient wears black ink instead of
+   the white the rest of the file's DARKER surfaces use. */
+.lqm-set-tab:hover { background-image: var(--grad-raise); color: #0b1520; }
 .lqm-set-tab.on {
   background-image: var(--grad-raise);
   border-color: var(--edge-red);
   box-shadow: var(--edge-3d), 0 0 0 1px rgba(255,90,80,0.25);
+  color: #0b1520;
 }
 .lqm-settings-btn,
 .lqm-settings-select,
@@ -73623,7 +73636,7 @@ function closeCredits() {
   background-image: var(--grad-raise);
   box-shadow: var(--edge-3d-soft);
   border-color: var(--edge-red);
-  color: #ffe9e6;
+  color: #0b1520;
 }
 .lqm-settings-btn:hover { background-image: var(--grad-raise-h); }
 /* The track a slider runs in should look cut into the panel, not laid on it. */
@@ -74073,13 +74086,18 @@ function closeCredits() {
   background-image: radial-gradient(circle at 35% 30%, #ff9d92 0%, #d02020 55%, #6a0000 100%);
 }
 
+/* Both wore a text colour tuned for their old near-black fill (--muted, a
+   translucent white); against the now-light --grad-raise that reads as
+   barely-there. Same fix as the settings tabs: black ink. */
 #past-alerts-toggle, #clean-hint {
   background-image: var(--grad-raise);
   box-shadow: var(--edge-3d-soft);
   border-color: var(--edge-red);
+  color: #0b1520;
 }
 #past-alerts-toggle:hover {
   background-image: var(--grad-raise-h);
+  color: #0b1520;
 }
 /* The search button in the layer bubbles' red, by request - it left the
    shared raise group above so the buttons' cyan cannot pull it back. */

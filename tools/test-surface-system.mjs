@@ -278,6 +278,35 @@ console.log('\n4. Settings, which is what started this');
     return !v.missing && v.stops.some(([r, g, b]) => b > 150 && g > 120 && r < 150);
   });
   ok('and the selected tab wears the button blue', tabRaise);
+  // The exact bug a colour sweep produces if a state is missed: the label
+  // and its own background land on the same hue and the tab reads blank.
+  // Opened here rather than folded into 9b's ancestor-walking check because
+  // that one only runs while Settings happens to be open for other reasons;
+  // this element's whole background is on itself, so a direct check is both
+  // simpler and the one place guaranteed to catch it again.
+  const tabContrast = await page.evaluate(() => {
+    const lum = ([r, g, b]) => {
+      const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92
+                                        : Math.pow((c + 0.055) / 1.055, 2.4); };
+      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+    };
+    const parse = s => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(s || '');
+                         return m ? [+m[1], +m[2], +m[3]] : null; };
+    const on = document.querySelector('#lqm-set-rail .lqm-set-tab.on');
+    if (!on) return null;
+    const cs = getComputedStyle(on);
+    const fg = parse(cs.color);
+    const stops = [...(cs.backgroundImage || '').matchAll(
+      /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/g)].map(m => [+m[1], +m[2], +m[3]]);
+    if (!fg || !stops.length) return null;
+    return stops.map(st => {
+      const l1 = lum(fg), l2 = lum(st);
+      return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    });
+  });
+  ok('the selected tab\'s own label still clears 4.5:1 against its own fill',
+     tabContrast && tabContrast.every(ratio => ratio >= 4.5),
+     JSON.stringify(tabContrast));
   ok('there is a selected tab and an unselected one to compare', r.onOff.haveBoth);
   ok('a selected tab does not look like an unselected one',
      r.onOff.haveBoth && !r.onOff.same, `on=${r.onOff.on} off=${r.onOff.off}`);
