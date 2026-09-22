@@ -29879,7 +29879,8 @@ function toggleSmooth() {
 }
 
 // ── GOES SATELLITE (CONUS IR - Iowa Mesonet WMS) ──
-// GOES satellite: 12 × 10-min frames, 60-s auto-refresh with cache-bust.
+// GOES satellite: 10-min frames, 60-s auto-refresh that only rebuilds when
+// there is genuinely something new, holding the old picture through the swap.
 // Pattern ported from wms_satellite_3.js: pending guard, hide-by-opacity, force-redraw on refresh.
 
 // Products - IEM WMS channel suffix per product type.
@@ -30282,6 +30283,11 @@ let _goesPending         = false; // pending guard - mirrors wms_satellite_3.js 
 // over its memory limit.
 let _goesPool       = [];
 let _goesPoolLoaded = [];
+// The layer whose picture is actually on the glass right now. Usually the
+// current frame, but when playback steps onto a frame whose tiles have not
+// arrived yet, this stays pointing at the last one that HAD arrived, and
+// that one is left showing so the map never flashes empty between frames.
+let _goesShownLayer = null;
 // A Pi composite frame is a picture up to 3200 pixels on its long side, some
 // 25 MB once decoded, and every pooled frame is decoded because it is an
 // attached overlay. Three is the most a phone can hold beside the basemap,
@@ -30337,7 +30343,16 @@ function _goesEnsureLayer(i) {
                      { opacity: 0, interactive: false, pane: 'satPhotoPane',
                        crossOrigin: 'anonymous', zIndex: 11 }).addTo(map)
     : _makeGoesLayer(f.timeStr, 0);
-  l.on('load', () => { _goesPoolLoaded[i] = true; });
+  l.on('load', () => {
+    _goesPoolLoaded[i] = true;
+    // If this is the frame the map is waiting on, promote it the moment it
+    // is ready: the previous picture was left showing so the map never sat
+    // blank, and this is where that hold ends.
+    if (goesCurrentFrame === i && activeLayers.satellite && _goesPool[i] === l) {
+      _goesShownLayer = l;
+      _goesPool.forEach((x, j) => { if (x) x.setOpacity(j === i ? 0.85 : 0); });
+    }
+  });
   if (!f.url) _goesTmWatch(l);
   _goesPool[i] = l;
 }
@@ -30364,6 +30379,7 @@ function _goesOnZoomStart() {
     if (i === goesCurrentFrame) continue;
     if (_goesPool[i]) {
       try { map.removeLayer(_goesPool[i]); } catch (e) {}
+      if (_goesPool[i] === _goesShownLayer) _goesShownLayer = null;
       _goesPool[i] = null;
       _goesPoolLoaded[i] = false;
     }
@@ -30381,6 +30397,7 @@ function _goesClearPool() {
   _goesPool.forEach(l => { if (l) { try { map.removeLayer(l); } catch (e) {} } });
   _goesPool = [];
   _goesPoolLoaded = [];
+  _goesShownLayer = null;
 }
 
 // ── How far back satellite playback reaches ────────────────────────────────
@@ -30477,7 +30494,12 @@ function _makeGoesLayer(timeStr, opacity) {
     detectRetina: !_isIOS
       && (((typeof navigator !== 'undefined' && navigator.deviceMemory) || 8) > 4),
   };
-  const layer = L.tileLayer.wms(`${cfg.url}?_cb=${Date.now()}`, opts);
+  // No cache-bust. Every frame carries an explicit TIME, and the picture for
+  // a fixed past TIME never changes, so the browser cache is the right
+  // answer. Busting per-build meant a frame the pool had evicted was a full
+  // server round trip when playback came back around, which is why looping
+  // the satellite never got smoother on the second pass.
+  const layer = L.tileLayer.wms(cfg.url, opts);
   // Satellite is imagery, not banded data, so it must NOT inherit the crisp
   // rendering the radar panes force. Blending between neighbouring cloud-top
   // temperatures is physically sensible; blending between two reflectivity
@@ -30527,6 +30549,51 @@ async function _goesLoadPiFrames() {
         : _goesPiWhy(), 8000);
     }
   }
+}
+
+// Replace the frame list without ever blanking the map: the picture already
+// showing is detached from the pool's bookkeeping, left on the map through
+// the teardown, and removed only once the new current frame has actually
+// loaded (with a timeout so a dead tile server cannot pin it forever).
+function _goesSwapFrames(frames) {
+  const held = _goesShownLayer || _goesLayer;
+  if (held) {
+    const i = _goesPool.indexOf(held);
+    if (i !== -1) { _goesPool[i] = null; _goesPoolLoaded[i] = false; }
+    if (_goesShownLayer === held) _goesShownLayer = null;
+    if (_goesLayer === held) _goesLayer = null;
+  }
+  _clearGoesLayer();
+  _goesApplyFrames(frames);
+  if (!held) return;
+  let dropped = false;
+  const drop = () => {
+    if (dropped) return;
+    dropped = true;
+    try { map.removeLayer(held); } catch (e) {}
+  };
+  const l = _goesPool[goesCurrentFrame];
+  if (!l || _goesPoolLoaded[goesCurrentFrame]) drop();
+  else { l.on('load', drop); setTimeout(drop, 20000); }
+}
+
+// The refresh path for a Pi composite. The initial load (_goesLoadPiFrames)
+// may honestly show nothing while the manifest answers, because there is
+// nothing on screen yet to keep. A refresh is different: something IS on
+// screen, so the manifest is asked FIRST and the picture is only touched
+// when the answer holds something genuinely new. A failed or empty answer
+// keeps the current picture, because stale imagery beats a map going blank
+// once a minute, which is exactly what tearing down before asking did.
+async function _goesRefreshPiFrames() {
+  const gen = ++_goesPiGen;
+  let frames = null;
+  try { frames = await _goesPiFrames(); } catch (e) { frames = null; }
+  if (gen !== _goesPiGen || !activeLayers.satellite || !_goesIsPi()) return;
+  if (!frames || !frames.length) return;
+  const cur = goesFrames;
+  if (cur.length && cur.length === frames.length
+      && cur[cur.length - 1].url === frames[frames.length - 1].url) return;
+  _goesSwapFrames(frames);
 }
 
 // ── The satellite archive: any moment since 2017, through the Pi ──────────
@@ -30645,9 +30712,16 @@ function loadGoesLayer() {
       if (typeof _tmSatAt === 'number' && _tmSatAt) return;
       const wasAtNewest = goesCurrentFrame >= goesFrames.length - 1;
       if (!wasAtNewest) return;
-      _clearGoesLayer();
-      if (_goesIsPi()) { _goesLoadPiFrames(); return; }
-      _goesApplyFrames(_buildGoesFrames());
+      if (_goesIsPi()) { _goesRefreshPiFrames(); return; }
+      // Only rebuild when the ten-minute grid has actually rolled forward.
+      // This used to tear the whole layer down and rebuild an identical
+      // list nine minutes out of ten, so watching satellite meant watching
+      // it vanish and slowly refetch once a minute.
+      const fresh = _buildGoesFrames();
+      const cur = goesFrames;
+      if (cur.length && cur.length === fresh.length
+          && cur[cur.length - 1].timeStr === fresh[fresh.length - 1].timeStr) return;
+      _goesSwapFrames(fresh);
     }, 60000);
 
   } finally {
@@ -30674,19 +30748,33 @@ function showGoesFrame(idx) {
   const { s, e } = _goesPoolWindow(idx);
   for (let i = 0; i < _goesPool.length; i++) {
     if ((i >= s && i <= e) || i === idx) continue;
+    // The picture currently on the glass is spared while the frame being
+    // jumped to is still loading, even when it falls outside the new
+    // window: it is the only thing standing between the viewer and a blank
+    // map, and the next call evicts it normally once the jump has landed.
+    if (_goesPool[i] === _goesShownLayer && !_goesPoolLoaded[idx]) continue;
     if (_goesPool[i]) {
       try { map.removeLayer(_goesPool[i]); } catch (err) {}
+      if (_goesPool[i] === _goesShownLayer) _goesShownLayer = null;
       _goesPool[i] = null;
       _goesPoolLoaded[i] = false;
     }
   }
   for (let i = s; i <= e; i++) _goesEnsureLayer(i);
 
-  // One opacity swap, no network wait: the frame being shown was already
-  // fetched while its neighbours were on screen.
+  // One opacity swap, no network wait, when the frame is already fetched.
+  // When it is not fetched yet (playback stepped past the preloaded window,
+  // or the list was just rebuilt), the last picture that actually finished
+  // loading stays showing underneath while the new frame's tiles arrive,
+  // and the load handler in _goesEnsureLayer finishes the swap. Satellite
+  // used to flash to an empty map on every such step, which made playback
+  // look like nothing but blinking.
   const vis = activeLayers.satellite ? 0.85 : 0;
-  _goesPool.forEach((l, i) => { if (l) l.setOpacity(i === idx ? vis : 0); });
-  _goesLayer = _goesPool[idx] || null;
+  const tgt = _goesPool[idx] || null;
+  const keep = (tgt && !_goesPoolLoaded[idx]) ? _goesShownLayer : null;
+  _goesPool.forEach(l => { if (l) l.setOpacity((l === tgt || l === keep) ? vis : 0); });
+  if (tgt && _goesPoolLoaded[idx]) _goesShownLayer = tgt;
+  _goesLayer = tgt;
   goesLayer  = _goesLayer;
 
   const animTimeEl = document.getElementById('anim-time');
@@ -49902,7 +49990,9 @@ function _scRenderSlot(slot) {
   slot.frames = _buildGoesFrames();
   const newest = slot.frames[slot.frames.length - 1];
   slot.frameIso = newest ? newest.timeStr : '';
-  slot.layer = L.tileLayer.wms(`${cfg.url}?_cb=${Date.now()}`, {
+  // No cache-bust, same reason as _makeGoesLayer: TIME names the picture,
+  // so the browser cache can hand back a frame it has already seen.
+  slot.layer = L.tileLayer.wms(cfg.url, {
     layers: cfg.layer, styles: '', format: 'image/png', transparent: true,
     version: '1.1.1', opacity: 0.85, pane: paneName, crossOrigin: 'anonymous',
     noWrap: true, TIME: slot.frameIso, keepBuffer: _isIOS ? 1 : 2,
@@ -67169,6 +67259,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-v', date: 'Sep 22, 2026',
+    text: 'Satellite no longer disappears and playback actually plays. The live refresh used to tear the whole picture down every minute even when nothing new had arrived; now it only rebuilds when a new scan exists, and the old picture stays on screen until the new one has loaded. Stepping or playing through frames never flashes to an empty map anymore: the last loaded frame holds until the next one is ready. And looping is much quicker the second time around, because frames are now cached properly instead of being refetched every lap.' },
   { id: '2026-09-22-u', date: 'Sep 22, 2026',
     text: 'The loading screen no longer plays music.' },
   { id: '2026-09-22-t', date: 'Sep 22, 2026',
