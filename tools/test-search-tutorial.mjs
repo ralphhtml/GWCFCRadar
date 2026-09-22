@@ -235,9 +235,11 @@ console.log('\n6. typing finds the thing');
   ok('"warning" finds the Alert Desk', r.desk.some(l => /Alert Desk/.test(l)), r.desk.join(' | '));
   ok('"eas" finds the EAS panel', r.eas.some(l => /EAS/.test(l)), r.eas.join(' | '));
   ok('"county" finds the county borders switch', r.county.some(l => /County/.test(l)), r.county.join(' | '));
-  // The two that should now find nothing, because neither exists.
-  ok('"metar" finds nothing, because that overlay was removed',
-     r.metar.length === 0, r.metar.join(' | '));
+  // METAR Stations came back as a real overlay; the search catalogue picks
+  // up every .ov-pill automatically, so this is really a check that the
+  // new overlay is wired into the DOM the same way every other one is.
+  ok('"metar" finds the METAR Stations overlay, which exists again',
+     r.metar.some(l => /METAR Stations/.test(l)), r.metar.join(' | '));
   ok('"ice mode" finds nothing, because that tab was retired',
      r.ice.length === 0, r.ice.join(' | '));
 }
@@ -280,7 +282,12 @@ console.log('\n7. the tutorial describes the app as it is');
   });
   ok('the tutorial has real content', r.length > 5000, String(r.length));
   console.log(`       (${r.length} characters of prose, ${r.scriptChars} of embedded script skipped)`);
-  ok('it no longer sends people to a METAR overlay that was removed',
+  // METAR Stations exists again (it is a real overlay once more, not a
+  // stale reference), so this now just holds that the tutorial's own prose
+  // was not touched by that change - it never promised METAR before and
+  // still does not, which is fine since the overlay explains itself
+  // through its own info button.
+  ok('the tutorial prose is unaffected by METAR Stations coming back',
      !r.mentionsMetar);
   ok('it names the Units tab as it is actually called now', !r.mentionsUnitsTime);
   ok('every Settings route it promises leads to a tab that exists',
@@ -291,7 +298,7 @@ console.log('\n7. the tutorial describes the app as it is');
      strays.length === 0, strays.join(' | '));
 }
 
-console.log('\n8. the credits do not claim a use that was removed');
+console.log('\n8. the credits name every source the map actually uses');
 {
   const r = await page.evaluate(() => {
     if (typeof openCredits === 'function') openCredits();
@@ -301,8 +308,10 @@ console.log('\n8. the credits do not claim a use that was removed');
     return { has: text.length > 200, metar: /METAR/i.test(text) };
   });
   ok('the credits modal has content', r.has);
-  ok('and it does not list METAR stations as something the app does',
-     !r.metar);
+  // METAR Stations is a real overlay again, reading a real NOAA feed, so
+  // the credits should say so rather than staying silent about it.
+  ok('and it credits the METAR data source the new overlay reads from',
+     r.metar);
 }
 
 console.log('\n9. nothing threw');
