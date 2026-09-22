@@ -155,6 +155,19 @@ console.log('\n4. the compose really captures what is on screen, where it is');
     const shown = mk('#ff00ff', 140);
     const hidden = mk('#00ff00', 260);
     hidden.style.display = 'none';
+    // A parked pool layer, the way the radar and satellite pools hide a
+    // frame: an opaque picture inside a CONTAINER at opacity 0. Opacity is
+    // not inherited, so a check on the picture element alone misses this,
+    // which is how the invisible national mosaic was painted over a
+    // single-site export.
+    const parkedWrap = document.createElement('div');
+    parkedWrap.style.cssText = 'position:absolute;left:0;top:0;opacity:0;';
+    const parked = document.createElement('canvas');
+    parked.width = 60; parked.height = 60;
+    const pg = parked.getContext('2d');
+    pg.fillStyle = '#ff0000'; pg.fillRect(0, 0, 60, 60);
+    parked.style.cssText = 'position:absolute;left:380px;top:140px;width:60px;height:60px;';
+    parkedWrap.appendChild(parked); pane.appendChild(parkedWrap);
     const out = await _expComposeView(new Map());
     const rect = map.getContainer().getBoundingClientRect();
     const scale = out.width / rect.width;
@@ -167,14 +180,19 @@ console.log('\n4. the compose really captures what is on screen, where it is');
     const mid = at(shown, 30, 30);
     // the hidden square's spot, measured from the shown one 120px over
     const ghost = at(shown, 150, 30);
-    shown.remove(); hidden.remove();
-    return { w: out.width, h: out.height, mid, ghost };
+    // the parked square's spot, 240px over from the shown one
+    const parkedPx = at(shown, 270, 30);
+    shown.remove(); hidden.remove(); parkedWrap.remove();
+    return { w: out.width, h: out.height, mid, ghost, parkedPx };
   });
   ok('the output canvas has real size', r.w > 100 && r.h > 100, r.w + 'x' + r.h);
   ok('a visible canvas lands at its on-screen spot',
      r.mid[0] === 255 && r.mid[1] === 0 && r.mid[2] === 255, JSON.stringify(r.mid));
   ok('a hidden element is left out', !(r.ghost[1] === 255 && r.ghost[0] === 0),
      JSON.stringify(r.ghost));
+  ok('an opaque picture inside a zero-opacity container (a parked pool frame) is left out too',
+     !(r.parkedPx[0] === 255 && r.parkedPx[1] === 0 && r.parkedPx[2] === 0),
+     JSON.stringify(r.parkedPx));
 }
 
 console.log('\n5. Save Picture downloads the view as a PNG');
