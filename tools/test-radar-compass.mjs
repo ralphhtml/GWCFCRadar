@@ -83,7 +83,10 @@ console.log('\n4. the heading, tilt and wedge math read correctly');
   ok('opening the tool locks the real map so it cannot be dragged out from under the dial',
      /function _radcLockMapView\(\)[\s\S]{0,400}map\.dragging\.disable\(\)/.test(PAGE));
   ok('closing restores whatever view the map was on before',
-     /function _radcUnlockMapView\(\)[\s\S]{0,600}map\.setView\(_radcPrevMapView\.center, _radcPrevMapView\.zoom/.test(PAGE));
+     /function _radcUnlockMapView\(\)[\s\S]{0,800}map\.setView\(_radcPrevMapView\.center, _radcPrevMapView\.zoom/.test(PAGE));
+  ok('and does not turn Leaflet\'s own wheel handler back on, which used to '
+     + 'double every zoom for the rest of the session',
+     !/function _radcUnlockMapView\(\)[\s\S]{0,800}map\.scrollWheelZoom\.enable/.test(PAGE));
   ok('the map is re-zoomed so the outer ring matches its real-world distance',
      /function _radcSyncMapView\(\)[\s\S]{0,700}Math\.log2\(metersPerPixelAtZ0 \/ metersPerPixel\)/.test(PAGE));
   ok('tilting to a new range ring re-zooms the map too, not just the ring labels',

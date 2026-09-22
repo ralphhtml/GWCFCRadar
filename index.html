@@ -43976,7 +43976,10 @@ function _radcUnlockMapView() {
   if (typeof map === 'undefined' || !map) return;
   try { map.dragging.enable(); } catch (e) {}
   try { map.doubleClickZoom.enable(); } catch (e) {}
-  try { map.scrollWheelZoom.enable(); } catch (e) {}
+  // scrollWheelZoom stays off on purpose: _wireWheelZoom disabled Leaflet's
+  // own handler for good at boot and wired the wheel itself instead, so
+  // turning this back on left both answering one wheel event - every notch
+  // zoomed twice, for the rest of the session, from the moment this ran.
   try { if (map.touchZoom) map.touchZoom.enable(); } catch (e) {}
   window.removeEventListener('resize', _radcSyncMapView);
   if (_radcPrevMapView) {
@@ -44753,6 +44756,19 @@ function _kbdRun(a) {
   return false;
 }
 
+// Capturing, not bubbling, and for a reason: Leaflet's own keyboard handler
+// also listens on document (not the map container), added in the bubble
+// phase the moment the map is created, well before this listener exists.
+// A bubble-phase listener here would always run AFTER Leaflet's, once the
+// event has already bubbled all the way back up, so Leaflet's panBy had
+// already happened by the time preventDefault() arrived here, and that
+// call only cancels the browser's own default action, not another
+// listener's side effect that already ran. A capture-phase listener on
+// document fires as the event travels down, before any bubble-phase
+// listener on document regardless of which was registered first, so
+// stopPropagation() here actually stops Leaflet from ever seeing the key,
+// which is what ArrowLeft/ArrowRight (bound to Next/Previous Frame) need,
+// since Leaflet's default is to pan on every arrow key.
 document.addEventListener('keydown', (e) => {
   if (_kbdIsTyping(e.target)) return;
   // Ctrl and Meta chords belong to the browser. Rebinding Ctrl+T or Cmd+W
@@ -44765,8 +44781,8 @@ document.addEventListener('keydown', (e) => {
   if (!hit) return;
   const action = KBD_ACTIONS.find(a => a.id === hit);
   if (!action) return;
-  if (_kbdRun(action)) e.preventDefault();
-});
+  if (_kbdRun(action)) { e.preventDefault(); e.stopPropagation(); }
+}, true);
 
 function togglePlay() {
   if (!_animationReady()) { _refreshPlayButtonsEnabled(); return; }
@@ -66075,6 +66091,10 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-e', date: 'Sep 22, 2026',
+    text: 'Arrow keys bound to Next/Previous Frame (Left/Right in the default layouts) now only step the radar frame. They used to nudge the map itself a little too, because Leaflet\'s own keyboard handling was never actually turned off underneath the app\'s own shortcuts, it was just getting outrun most of the time. Now the app\'s shortcut listener gets first look at every key and stops a bound one from reaching Leaflet at all, so panning by arrow key is gone for good, not just usually beaten to the punch.' },
+  { id: '2026-09-22-d', date: 'Sep 22, 2026',
+    text: 'Fixed the scroll wheel zooming way too fast after opening the Radar Compass tool even once. Closing that dial was quietly turning a piece of Leaflet\'s own zoom handling back on that the app disables for good at boot and handles itself instead, so from that point on every wheel notch was answered twice. One open-and-close of the compass was all it took, for the rest of the session.' },
   { id: '2026-09-22-c', date: 'Sep 22, 2026',
     text: 'Asturio AI can now see exactly what every layer is showing, not just which switches are on: the wind, waves, temperature, pressure and air quality products it was blind to, and a satellite read that used to name a band even when satellite was switched off. The Predict button is gone; asking for a briefing, a forecast or "should I be worried" reads a typed question the same way it always did, just without a dedicated button for it. The panel itself is rebuilt on the app\'s current look with subtle frost, the app\'s blue for its chips instead of alert red, and the read-aloud button finally has a style of its own.' },
   { id: '2026-09-22-b', date: 'Sep 22, 2026',
