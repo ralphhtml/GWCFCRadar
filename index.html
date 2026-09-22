@@ -67314,6 +67314,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-zc', date: 'Sep 22, 2026',
+    text: 'Radar 3D knows where you are. Your location now shows inside the box as the same blue dot the map uses (labelled You, clamped to the rim with a note when you are outside the zone), and pressing Walk spawns you at your own spot at eye height, facing the storm, so walking into a storm over your house starts at your house. Uses the map\'s live location when tracking is on, or one quiet fix if you have already granted permission; opening the 3D panel never pops a permission prompt on its own.' },
   { id: '2026-09-22-zb', date: 'Sep 22, 2026',
     text: 'Server-side repairs from the CT 112 bug report. Seven model products (Alaska NAM, Arctic waves, the wider GFS set and more) had been silently building nothing because the chart builder could not read grids drawn around the poles; it now computes those grids itself, so the missing models come back. Also: server logs finally say WHICH file a 404 was for, a phone hanging up mid-download no longer spams error traces, sounding builds can no longer install software at runtime, the Discord bot shuts down cleanly and stops parking an idle browser in memory for hours, and the self-updater is no longer blocked by stray files.' },
   { id: '2026-09-22-za', date: 'Sep 22, 2026',
@@ -71806,6 +71808,46 @@ let _r3dWalk = null;
 let _r3dVr = false;
 let _r3dMoveKeys = new Set();     // 'fwd' 'back' 'left' 'right' 'up' 'down', held right now
 let _r3dWalkLastTs = 0;
+// The viewer's own place on earth, for the You dot in the box and for
+// spawning walk mode where they actually stand. Fed by the map's live
+// location watch when that is on, else by one silent fix taken when the
+// panel opens IF permission was already granted - opening a 3D panel must
+// never be what pops a permission prompt.
+let _r3dUserFix = null;
+
+function _r3dUserLatLng() {
+  try {
+    if (typeof _locMarker !== 'undefined' && _locMarker) {
+      const p = _locMarker.getLatLng();
+      return { lat: p.lat, lng: p.lng };
+    }
+  } catch (e) {}
+  return _r3dUserFix;
+}
+
+// A place on earth into the zone's own km frame: x east, y north, from
+// the zone centre, the same frame the box, the station tick and the
+// walker all live in.
+function _r3dZoneKmOf(lat, lng) {
+  if (!_r3dZone) return null;
+  const y = (lat - _r3dZone.lat) * 111.32;
+  const x = (lng - _r3dZone.lng) * 111.32 * Math.cos(_r3dZone.lat * Math.PI / 180);
+  return { x, y };
+}
+
+function _r3dFetchUserFix() {
+  if (_r3dUserLatLng() || !navigator.geolocation) return;
+  const grab = () => navigator.geolocation.getCurrentPosition(pos => {
+    _r3dUserFix = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    _r3dDirty = true;
+  }, () => {}, { maximumAge: 60000, timeout: 8000 });
+  try {
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'geolocation' })
+        .then(s => { if (s.state === 'granted') grab(); }).catch(() => {});
+    }
+  } catch (e) {}
+}
 const R3D_PITCH_MIN = -0.15, R3D_PITCH_MAX = 1.45;
 // Coarse while interacting, full quality the moment interaction stops.
 let _r3dQuality = 'fine';
@@ -72165,6 +72207,8 @@ function _r3dOpen(stationId) {
   _r3dStation = String(stationId || '').toLowerCase();
   _r3dFillSites();
   _r3dLoad();
+  // A silent fix for the You dot, only if permission already stands.
+  _r3dFetchUserFix();
   // The animation bar is the 3D playback control now; hand it the bar.
   _r3dUpdateSlider();
 }
@@ -73224,6 +73268,8 @@ function _r3dRenderKey(w, h) {
           _r3dWalk ? ['w', _r3dWalk.x.toFixed(2), _r3dWalk.y.toFixed(2), _r3dWalk.z.toFixed(2),
                       _r3dWalk.yaw.toFixed(3), _r3dWalk.pitch.toFixed(3)].join(',') : 'o',
           _r3dVr ? 'vr' : 'flat',
+          (() => { const f = _r3dUserLatLng();
+                   return f ? f.lat.toFixed(3) + ',' + f.lng.toFixed(3) : 'nofix'; })(),
           _r3dExag, _r3dQuality, z.wKm, z.hKm, _r3dFilterPct, _r3dHeightMaxKft, _r3dOpacity,
           _r3dMode, _r3dCutSide, _r3dCutPct, _r3dHeightUnit, _r3dPaletteGen,
           ((_r3dEl('r3d-product') || {}).value) || 'ref', _r3dBoxTopKm().toFixed(3),
@@ -73307,12 +73353,28 @@ function _r3dWalkStep(ts) {
 function _r3dWalkToggle(force) {
   const on = force !== undefined ? !!force : !_r3dWalk;
   if (on && !_r3dWalk) {
-    // Step in from where the orbit camera was standing, facing the centre.
-    const d = _r3dZoneMaxKm() * 0.55;
-    const x = d * Math.sin(_r3dCam.yaw), y = d * Math.cos(_r3dCam.yaw);
     const top = _r3dBoxTopKm() * _r3dExag;
-    _r3dWalk = { x, y, z: Math.max(0.5, Math.min(top * 0.35, 3 * _r3dExag)),
-                 yaw: Math.atan2(-x, -y), pitch: 0 };
+    // Spawn where the viewer actually stands, when they stand inside the
+    // zone: eye height on the floor, facing the centre of the box. The
+    // whole point of walking into a storm over your house is starting at
+    // your house.
+    const fix = _r3dUserLatLng();
+    const me = fix ? _r3dZoneKmOf(fix.lat, fix.lng) : null;
+    const halfX = (_r3dZone ? _r3dZone.wKm : 90) / 2;
+    const halfY = (_r3dZone ? _r3dZone.hKm : 90) / 2;
+    if (me && Math.abs(me.x) <= halfX && Math.abs(me.y) <= halfY) {
+      const yaw = (Math.abs(me.x) + Math.abs(me.y) > 0.05)
+        ? Math.atan2(-me.x, -me.y) : _r3dCam.yaw + Math.PI;
+      _r3dWalk = { x: me.x, y: me.y, z: Math.max(0.4, Math.min(top * 0.1, 0.2 * _r3dExag)),
+                   yaw, pitch: 0.12 };
+    } else {
+      // No fix, or standing outside the box: step in from where the orbit
+      // camera was, facing the centre, as before.
+      const d = _r3dZoneMaxKm() * 0.55;
+      const x = d * Math.sin(_r3dCam.yaw), y = d * Math.cos(_r3dCam.yaw);
+      _r3dWalk = { x, y, z: Math.max(0.5, Math.min(top * 0.35, 3 * _r3dExag)),
+                   yaw: Math.atan2(-x, -y), pitch: 0 };
+    }
   } else if (!on) {
     _r3dWalk = null;
     _r3dMoveKeys.clear();
@@ -73734,6 +73796,33 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
     if (sp) {
       ctx.beginPath(); ctx.arc(sp[0], sp[1], 3 * dpr, 0, Math.PI * 2); ctx.fill();
       ctx.fillText(_r3dStation.toUpperCase(), sp[0], sp[1] - 6 * dpr);
+    }
+  }
+
+  // The viewer, standing on the floor of the box: the same blue dot the
+  // map wears for Your location, so the two read as one thing. Inside the
+  // zone it stands exactly where they stand; outside, it clamps to the rim
+  // in their direction, the way the station tick does.
+  const fix = _r3dUserLatLng();
+  const me = fix ? _r3dZoneKmOf(fix.lat, fix.lng) : null;
+  if (me) {
+    let mx = me.x, my = me.y;
+    const inside = Math.abs(mx) <= halfX && Math.abs(my) <= halfY;
+    if (!inside) {
+      const s2 = 1 / Math.max(Math.abs(mx) / halfX, Math.abs(my) / halfY, 1e-6);
+      mx *= s2; my *= s2;
+    }
+    const mp = project(mx, my, 0);
+    if (mp) {
+      ctx.save();
+      ctx.fillStyle = '#4EA2DA';
+      ctx.beginPath(); ctx.arc(mp[0], mp[1], 3.5 * dpr, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.lineWidth = Math.max(1, dpr);
+      ctx.beginPath(); ctx.arc(mp[0], mp[1], 3.5 * dpr, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = gold;
+      ctx.fillText(inside ? 'You' : 'You (outside)', mp[0], mp[1] - 6 * dpr);
     }
   }
 }

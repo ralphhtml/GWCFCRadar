@@ -829,6 +829,65 @@ console.log('\n7d. walking inside the box, and the honest (WebGL-free) VR');
      r.walkOff && r.padHidden, JSON.stringify([r.walkOff, r.padHidden]));
 }
 
+console.log('\n7e. the You dot in the box, and walking spawns where you stand');
+{
+  ok('a user fix is kept, converted into the zone\'s own km frame, and asked for silently on open',
+     /let _r3dUserFix = null;/.test(PAGE)
+     && /function _r3dZoneKmOf\(lat, lng\) \{/.test(PAGE)
+     && /function _r3dFetchUserFix\(\) \{/.test(PAGE)
+     && PAGE.includes("navigator.permissions.query({ name: 'geolocation' })"));
+  ok('the live map location marker is preferred over the one-shot fix',
+     /if \(typeof _locMarker !== 'undefined' && _locMarker\) \{/.test(PAGE));
+  const r = await p.evaluate(async () => {
+    const out = {};
+    _r3dOpen('kfws');
+    _r3dToken++;
+    _r3dFrames = []; _r3dFrameIdx = -1;
+    _r3dQuality = 'fine';
+    // Looking down from high up, so a spot on the floor a few km from the
+    // centre is inside the little canvas.
+    _r3dCam.yaw = 0.6; _r3dCam.pitch = 1.1; _r3dCam.dist = 110;
+    // Standing 5-ish km northeast of the zone centre.
+    _r3dUserFix = { lat: _r3dZone.lat + 0.05, lng: _r3dZone.lng + 0.05 };
+    const me = _r3dZoneKmOf(_r3dUserFix.lat, _r3dUserFix.lng);
+    out.meKm = [me.x, me.y];
+    const R = async () => { _r3dDirty = false; _r3dRender(); await _r3dRenderIdle(15000); };
+    await R();
+    const cv = document.getElementById('r3d-canvas'), ctx = cv.getContext('2d');
+    const d = ctx.getImageData(0, 0, cv.width, cv.height).data;
+    let blue = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] > 55 && d[i] < 100 && d[i + 1] > 140 && d[i + 1] < 180
+          && d[i + 2] > 195 && d[i + 2] < 240) blue++;
+    }
+    out.bluePx = blue;
+    // Walking spawns at that exact spot, eye height, facing the centre.
+    _r3dWalkToggle(true);
+    out.spawnAtMe = Math.abs(_r3dWalk.x - me.x) < 1e-9 && Math.abs(_r3dWalk.y - me.y) < 1e-9;
+    out.eyeLevel = _r3dWalk.z > 0 && _r3dWalk.z <= 1.5;
+    out.facing = Math.abs(_r3dWalk.yaw - Math.atan2(-me.x, -me.y)) < 1e-9;
+    _r3dWalkToggle(false);
+    // A fix far outside the zone falls back to the old rim spawn.
+    _r3dUserFix = { lat: _r3dZone.lat + 3.0, lng: _r3dZone.lng + 3.0 };
+    _r3dWalkToggle(true);
+    const far = _r3dZoneKmOf(_r3dUserFix.lat, _r3dUserFix.lng);
+    out.outsideFallsBack = Math.abs(_r3dWalk.x - far.x) > 1;
+    _r3dWalkToggle(false);
+    _r3dUserFix = null;
+    _r3dClose();
+    return out;
+  });
+  ok('the fix lands a few km northeast in zone coordinates',
+     r.meKm[0] > 3 && r.meKm[0] < 8 && r.meKm[1] > 3 && r.meKm[1] < 8,
+     JSON.stringify(r.meKm));
+  ok('the You dot is genuinely painted in the box, in the map\'s own location blue',
+     r.bluePx >= 6, String(r.bluePx));
+  ok('walking spawns exactly where you stand, at eye height, facing the storm',
+     r.spawnAtMe && r.eyeLevel && r.facing, JSON.stringify(r));
+  ok('standing far outside the zone falls back to the rim spawn instead',
+     r.outsideFallsBack === true);
+}
+
 console.log('\n8. the volume follows the drawn box: only the window the zone occupies, re-binned in place');
 {
   const r = await p.evaluate(() => {
