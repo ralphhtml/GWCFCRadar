@@ -67284,6 +67284,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-x', date: 'Sep 22, 2026',
+    text: 'Fixed exported pictures showing the national radar mosaic painted over a single radar site. When you switch radars, the old layer is kept around invisibly so switching back is instant, and the exporter was accidentally treating those invisible layers as visible. An export now contains exactly what your screen shows.' },
   { id: '2026-09-22-w', date: 'Sep 22, 2026',
     text: 'Discord Rich Presence now knows a lot more about what you are doing. Comparing radar sites shows every site being compared (and the grid layout, like 2x2), comparing satellite products lists the products, orbiting a storm in Radar 3D says so with the station, and viewing a single radar site names that site up front.' },
   { id: '2026-09-22-v', date: 'Sep 22, 2026',
@@ -81110,17 +81112,32 @@ async function _expComposeView(imgCache) {
     .filter(p => p.querySelector('img, canvas, svg'))
     .sort((a, b) => ((+getComputedStyle(a).zIndex) || 0)
                   - ((+getComputedStyle(b).zIndex) || 0));
+  // Opacity is not inherited, so an element-only check misses a parked
+  // Leaflet layer: the frame pools hide a layer by zeroing its CONTAINER
+  // div while the tile images inside still compute to opacity 1. That is
+  // how the invisible national mosaic ended up painted over a single-site
+  // picture in exports. What the screen shows is the product of every
+  // ancestor's opacity, so that is what gets drawn.
+  const effOpacity = (el) => {
+    let o = 1;
+    for (let n = el; n && n !== cont; n = n.parentElement) {
+      const s = getComputedStyle(n);
+      if (s.display === 'none' || s.visibility === 'hidden') return 0;
+      const po = parseFloat(s.opacity);
+      o *= isFinite(po) ? po : 1;
+      if (!(o > 0)) return 0;
+    }
+    return o;
+  };
   for (const pane of panes) {
     for (const el of pane.querySelectorAll('img, canvas, svg')) {
-      const cs = getComputedStyle(el);
-      if (cs.display === 'none' || cs.visibility === 'hidden') continue;
-      const op = parseFloat(cs.opacity);
+      const op = effOpacity(el);
       if (!(op > 0)) continue;
       const r = el.getBoundingClientRect();
       if (!r.width || !r.height) continue;
       if (r.right < rect.left || r.left > rect.right
           || r.bottom < rect.top || r.top > rect.bottom) continue;
-      ctx.globalAlpha = isFinite(op) ? op : 1;
+      ctx.globalAlpha = op;
       const x = r.left - rect.left, y = r.top - rect.top;
       try {
         const tag = el.tagName.toLowerCase();
