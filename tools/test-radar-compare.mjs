@@ -62,8 +62,11 @@ console.log('\n1. the pieces are in the page');
      && /cells === 2 \? \[2, 2\] : cells === 4 \? \[2, 4\] : \[1, 2\];/.test(PAGE));
   ok('cycling to a split too small for the pictures already on screen is refused, not silently trimmed',
      /function _rcSetGrid\(rows, cols\) \{[\s\S]*?if \(_rcSlots\.length > need\) \{[\s\S]{0,200}return false;/.test(PAGE));
-  ok('no knob rides a split line: the line itself is the whole control, no separate separator',
-     !/function _rcRefreshGridDOM[\s\S]{0,900}sev-cmp-handle/.test(PAGE)
+  ok('every split line carries the two handles: a drag grip and a rotate, shared by both comparisons',
+     /function _cmpLineHandles\(d, onRotate\) \{/.test(PAGE)
+     && /cmp-drag-h/.test(PAGE) && /cmp-rot-h/.test(PAGE)
+     && /_cmpLineHandles\(d, _rcToggleOrientation\);/.test(PAGE)
+     && /_cmpLineHandles\(d, _scToggleOrientation\);/.test(PAGE)
      && /d\.title = 'Drag to resize the split';/.test(PAGE));
   ok('rotate transposes the split, so a side-by-side double becomes a stacked one',
      /function _rcToggleOrientation\(\) \{\s*\n\s*if \(!_rcOn \|\| !_rcGrid\) return;\s*\n\s*if \(!_rcSetGrid\(_rcGrid\.cols, _rcGrid\.rows\)\) return;/.test(PAGE));
@@ -301,7 +304,17 @@ console.log('\n4b. the rotate button transposes the split, and back');
     btn.click();   // back to side by side, for the tests after this one
     await new Promise(res => setTimeout(res, 50));
     const restored = { grid: { ..._rcGrid } };
-    return { shownWhileComparing, before, after, restored };
+    // The rotate handle riding the line does the same as the button, and
+    // pressing it must not start a drag.
+    const line = _rcGridDividerEls.cols[0];
+    line.querySelector('.cmp-rot-h').dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+    const noDragStarted = _rcGridDrag === null;
+    line.querySelector('.cmp-rot-h').click();
+    const viaHandle = { grid: { ..._rcGrid }, noDragStarted };
+    document.getElementById('rc-rotate-btn').click();   // back again
+    await new Promise(res => setTimeout(res, 50));
+    return { shownWhileComparing, before, after, restored, viaHandle };
   });
   ok('the rotate button is on screen once a comparison is running',
      r.shownWhileComparing, JSON.stringify(r.shownWhileComparing));
@@ -315,6 +328,9 @@ console.log('\n4b. the rotate button transposes the split, and back');
      JSON.stringify(r.after));
   ok('a second click transposes it straight back',
      r.restored.grid.rows === 1 && r.restored.grid.cols === 2, JSON.stringify(r.restored));
+  ok('the rotate handle on the line itself transposes too, without starting a drag',
+     r.viaHandle.grid.rows === 2 && r.viaHandle.grid.cols === 1 && r.viaHandle.noDragStarted,
+     JSON.stringify(r.viaHandle));
 }
 
 console.log('\n5. the split line follows the pointer, and stays put when the map is dragged');

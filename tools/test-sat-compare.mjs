@@ -57,8 +57,8 @@ console.log('\n1. the pieces are in the page');
      /if \(!_scGrid\) _scSetGrid\(1, 2\);/.test(PAGE)
      && /function _scGridGrow\(\) \{/.test(PAGE)
      && /if \(_scSlots\.length >= _scMaxStrips\(\) && !_scGridGrow\(\)\) \{/.test(PAGE));
-  ok('no knob rides a split line on the satellite side either',
-     !/function _scRefreshGridDOM[\s\S]{0,900}sev-cmp-handle/.test(PAGE));
+  ok('the satellite split lines wear the same drag grip and rotate handle as the radars',
+     /function _scRefreshGridDOM[\s\S]{0,900}_cmpLineHandles\(d, _scToggleOrientation\);/.test(PAGE));
   ok('a Pi strip reclips the instant its own image lands, not just on the next pan/zoom '
      + '(the same race radar compare had to fix)',
      /if \(!slot\.layer\) \{\s*\n\s*slot\.layer = L\.imageOverlay\(f\.url, f\.bounds,[\s\S]{0,600}_scUpdateClips\(\);\s*\n\s*\} else \{/.test(PAGE));
