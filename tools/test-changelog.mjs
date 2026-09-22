@@ -139,10 +139,11 @@ console.log('\n2. a returning visitor is told what changed, exactly once');
   await p.close();
 }
 
-console.log('\n3. a first visit walks the whole greeting line, in order');
+console.log('\n3. a first visit gets one popup, and never the changelog');
 {
-  // Question, tutorial, sign-up panel, changelog, welcome. Each step opens
-  // when the one before it closes, and nothing stacks.
+  // The question, one popup, swaps to a ready screen and goes straight to
+  // the welcome flight. Nothing else opens on its own, the changelog least
+  // of all: a brand-new visitor has no history to have missed.
   const p = await boot(null);
   const r = await p.evaluate(async () => {
     const wait = ms => new Promise(res => setTimeout(res, ms));
@@ -151,37 +152,64 @@ console.log('\n3. a first visit walks the whole greeting line, in order');
     out.changelogTooEarly = !!document.querySelector('#changelog-modal.open');
     _modePick('expert');
     await wait(200);
-    out.tutorial =
+    out.stillOnePopup = !!document.querySelector('#mode-modal.open');
+    out.tutorialForced =
       !!document.querySelector('#tutorial-modal-overlay.open');
-    closeTutorial();
+    _fvGo();
     await wait(700);
+    out.popupGone = !document.querySelector('#mode-modal.open');
     out.signup =
       !!document.querySelector('#lqm-profile-overlay.lqm-panel-open');
-    out.changelogStillWaiting =
-      !!document.querySelector('#changelog-modal.open');
-    lqmCloseProfile();
-    await wait(700);
     out.changelog = !!document.querySelector('#changelog-modal.open');
-    _clClose();
-    await wait(900);
     out.seen = localStorage.getItem('gwcfc_changelog_seen');
-    out.newest = APP_CHANGELOG[0].id;
     out.welcomeRan = _welcomeRan === true;
     return out;
   });
   ok('the mode question comes first, not the changelog',
      r.picker && !r.changelogTooEarly, JSON.stringify(r));
-  ok('choosing Wx-pert opens the tutorial', r.tutorial);
-  ok('closing the tutorial opens the sign-up panel',
-     r.signup && !r.changelogStillWaiting);
-  ok('closing that opens the changelog', r.changelog);
-  ok('dismissing it starts their history at today', r.seen === r.newest,
-     `${r.seen} vs ${r.newest}`);
-  ok('and only then does the welcome fly', r.welcomeRan);
+  ok('choosing Wx-pert does not force the full tutorial open',
+     !r.tutorialForced, JSON.stringify(r));
+  ok('the same one popup just swaps its own content',
+     r.stillOnePopup, JSON.stringify(r));
+  ok('closing it opens nothing else: no sign-up panel',
+     r.popupGone && !r.signup, JSON.stringify(r));
+  ok('and no changelog either, there is nothing to catch up on yet',
+     !r.changelog && r.seen === null, JSON.stringify(r));
+  ok('the welcome flight runs on its own', r.welcomeRan);
   await p.close();
 }
 
-console.log('\n4. the history stays reachable, and the black bubble is gone');
+console.log('\n4. the tour link is optional, and still leads to the weather');
+{
+  // Reaching for "Read the full tour" on the ready screen is a real reader
+  // choosing to read it, not the app forcing it - so it is allowed to open,
+  // and closing it (same as closing the tutorial from the menu any other
+  // time) is what finally starts the welcome flight for that visit.
+  const p = await boot(null);
+  const r = await p.evaluate(async () => {
+    const wait = ms => new Promise(res => setTimeout(res, ms));
+    _modePick('expert');
+    await wait(200);
+    _fvOpenTutorial();
+    await wait(200);
+    const tutorialOpen =
+      !!document.querySelector('#tutorial-modal-overlay.open');
+    closeTutorial();
+    await wait(700);
+    return {
+      tutorialOpen,
+      changelog: !!document.querySelector('#changelog-modal.open'),
+      welcomeRan: _welcomeRan === true,
+    };
+  });
+  ok('the tour opens when asked for', r.tutorialOpen);
+  ok('still no changelog', !r.changelog);
+  ok('and closing the tour is what starts the welcome flight this time',
+     r.welcomeRan);
+  await p.close();
+}
+
+console.log('\n5. the history stays reachable, and the black bubble is gone');
 {
   const p = await boot({ gwcfc_tutorial_seen: '1', gwcfc_mode: 'expert',
                          gwcfc_changelog_seen: 'up-to-date-sentinel' });

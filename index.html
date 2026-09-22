@@ -4416,12 +4416,12 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
    and the class that does the cutting. Lite-ning is subtractive on purpose:
    one body class hides the expert chrome, so nothing is duplicated and
    turning Wx-pert back on is removing a class, not rebuilding a page. */
-#mode-modal, #lite-intro, #changelog-modal {
+#mode-modal, #changelog-modal {
   display: none; position: fixed; inset: 0; z-index: 5000;
   background: linear-gradient(180deg, rgba(20,2,2,0.78), rgba(10,1,1,0.82));
   align-items: center; justify-content: center;
 }
-#mode-modal.open, #lite-intro.open, #changelog-modal.open { display: flex; }
+#mode-modal.open, #changelog-modal.open { display: flex; }
 /* The changelog list inside the shared card. The card centers everything,
    which is right for a two-button choice and wrong for reading, so the list
    flips back to left-aligned text and scrolls on its own when history grows
@@ -4452,6 +4452,8 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
 }
 .mode-head { font-weight: 700; font-size: 17px; letter-spacing: 2px; color: #e8b800; }
 .mode-sub { font-size: 12px; opacity: 0.85; margin: 8px 0 16px; }
+.mode-sub a { color: #e8b800; text-decoration: underline; cursor: pointer; }
+.mode-sub a:hover { color: #ffe9a8; }
 .mode-cards { display: flex; gap: 14px; }
 .mode-card {
   flex: 1; display: flex; flex-direction: column; gap: 6px; align-items: center;
@@ -63101,10 +63103,10 @@ function openTutorial() {
   document.getElementById('tutorial-modal-overlay').classList.add('open');
   document.getElementById('tut-close-btn').classList.add('open');
   document.body.style.overflow = 'hidden';
-  // Here rather than in lqmOpenTutorial, because three other places open the
-  // tutorial directly (the first-visit prompt, the welcome flow and the quick
-  // menu) and a diagram that only filled itself in on one of those routes
-  // would be blank on the other two.
+  // Here rather than in lqmOpenTutorial, because more than one place opens
+  // the tutorial directly (the mode picker's own "read the tour" link, the
+  // welcome flow and the quick menu) and a diagram that only filled itself
+  // in on one of those routes would be blank on the other two.
   try { _tutRenderBubbleDemo(); } catch (e) {}
   // Activate tutorial TOC highlight on scroll
   const scrollArea = document.getElementById('tut-scroll-area');
@@ -63123,31 +63125,79 @@ function closeTutorial() {
   // rearranged and a forecast panel put in front of them for the trouble.
   if (_tutAutoOpened) {
     _tutAutoOpened = false;
-    _fvSignup();
+    try { _runWelcome(); } catch (e) {}
   }
 }
 
-// ── THE FIRST-VISIT GREETING LINE ──────────────────────────────────────────
-// A brand-new visitor is walked through, in order: the Wx-pert / Lite-ning
-// question, the tutorial (the four-line intro if they chose Lite-ning), the
-// account panel with its sign-up options (shown once, closing it is always
-// allowed), then the changelog, and only then the welcome flight that turns
-// the radar on. Each step starts when the previous one closes, so nothing
-// ever stacks on top of anything else.
-let _fvStep = null;
-function _fvSignup() {
-  _fvStep = 'signup';
-  setTimeout(() => {
-    try { if (typeof _profileOpen !== 'undefined' && !_profileOpen) lqmToggleProfile(); }
-    catch (e) {}
-  }, 400);
+// ── THE FIRST-VISIT GREETING, IN ONE POPUP ─────────────────────────────────
+// This used to be a chain: the mode question, then the tutorial, then the
+// account panel's sign-up pitch, then the changelog, each one popping up the
+// instant the last one closed. Four or five things to dismiss before anyone
+// could touch the map read as a wall of pop-ups, not a greeting. Now there
+// is exactly one: the mode question, and picking an answer swaps that same
+// card's own content in place for a short "you're set" screen with a couple
+// of tips and two optional links, rather than opening a second dialog on top
+// of it. The tour and the account panel are still a tap away, they are just
+// no longer forced on anyone, and the changelog is skipped here entirely -
+// there is nothing for a brand-new visitor to have missed yet.
+function _fvShowReady(mode) {
+  const wrap = document.querySelector('#mode-modal .mode-card-wrap');
+  if (!wrap) { try { _runWelcome(); } catch (e) {} return; }
+  const tips = mode === 'lite' ? [
+    'The live radar is coming on. Green is rain, yellow is heavy rain, red is storms.',
+    'Warnings draw themselves on the map automatically. Tap one to read it.',
+    'Tap anywhere on the map, or search a town up top, for its forecast.',
+  ] : [
+    'The radar is coming on, with every level, model and overlay one tap away in the menu.',
+    'Warnings draw themselves on the map automatically. Tap one to read it.',
+    'Search a town, or tap the map, for its forecast. Settings and the full tour live in the account panel, top left.',
+  ];
+  wrap.innerHTML = `
+    <div class="mode-head">YOU'RE SET</div>
+    <div class="lite-steps">
+      ${tips.map((t, i) => `<div class="lite-step"><b>${i + 1}</b>${t}</div>`).join('')}
+    </div>
+    <div class="mode-sub">
+      <a href="javascript:void(0)" onclick="_fvOpenTutorial()">Read the full tour</a>
+      &nbsp;&middot;&nbsp;
+      <a href="javascript:void(0)" onclick="_fvOpenAccount()">Create a free account</a>
+    </div>
+    <div class="mode-go"><button type="button" class="tm-btn tm-btn-go" onclick="_fvGo()">SHOW MY WEATHER</button></div>`;
 }
-// Called from BOTH ways the account panel closes (the X path and tapping
-// the pill again), so the line moves on no matter how they leave it.
+function _fvClose() {
+  const m = document.getElementById('mode-modal');
+  if (m) m.classList.remove('open');
+}
+// The primary way out: close the one popup and go straight to the weather.
+function _fvGo() {
+  _fvClose();
+  setTimeout(() => { try { _runWelcome(); } catch (e) {} }, 400);
+}
+// Both links below are genuinely optional: choosing one closes the one
+// popup and opens exactly the single thing asked for, on demand, the same
+// as tapping it from the menu later would. _runWelcome() is idempotent (it
+// no-ops on a second call), so whichever of these somebody reaches for, or
+// neither, the radar still comes on exactly once.
+function _fvOpenTutorial() {
+  _fvClose();
+  _tutAutoOpened = true;
+  openTutorial();
+}
+function _fvOpenAccount() {
+  _fvClose();
+  _fvWantsWelcome = true;
+  try { if (typeof _profileOpen !== 'undefined' && !_profileOpen) lqmToggleProfile(); }
+  catch (e) {}
+}
+// Called from both ways the account panel closes (the X path and tapping
+// the pill again). Only actually does anything for the one visit that
+// reached the panel from the link above; a regular checking their own
+// profile later must not have this fire the welcome flight all over again.
+let _fvWantsWelcome = false;
 function _fvProfileClosed() {
-  if (_fvStep !== 'signup') return;
-  _fvStep = 'changelog';
-  setTimeout(() => { try { _clOpen(); } catch (e) {} }, 400);
+  if (!_fvWantsWelcome) return;
+  _fvWantsWelcome = false;
+  setTimeout(() => { try { _runWelcome(); } catch (e) {} }, 400);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -63281,9 +63331,10 @@ function _modeToggle() {
   _setMode(_isLite() ? 'expert' : 'lite');
 }
 
-// The first-visit question. Two cards, one tap, and the answer is remembered;
-// the modal has no other way out because "which of these are you" is the one
-// thing the page cannot guess on its own.
+// The first-visit question, and the only popup a first visit forces open.
+// Two cards, one tap, and the answer is remembered; picking one swaps this
+// same card's content for a short "you're set" screen (see _fvShowReady)
+// rather than opening anything new on top of it.
 function _modeOpenPicker() {
   let m = document.getElementById('mode-modal');
   if (!m) {
@@ -63314,48 +63365,14 @@ function _modeOpenPicker() {
 }
 
 function _modePick(m) {
-  const modal = document.getElementById('mode-modal');
-  if (modal) modal.classList.remove('open');
   _setMode(m, { quiet: true });
-  if (m === 'lite') {
-    // The full eighteen-section tutorial is exactly what a Lite-ning person
-    // asked not to have. Four lines cover their whole app; the real tutorial
-    // stays a menu tap away, and marking it seen here is what stops it
-    // auto-opening over their map on the next visit.
-    try { localStorage.setItem('gwcfc_tutorial_seen', '1'); } catch (e) {}
-    _liteIntroOpen();
-  } else {
-    _tutAutoOpened = true;
-    openTutorial();
-  }
-}
-
-// The whole Lite-ning manual. Closing it starts the welcome, so the first
-// thing after reading "the radar is on" is watching it come on.
-function _liteIntroOpen() {
-  let m = document.getElementById('lite-intro');
-  if (!m) {
-    m = document.createElement('div');
-    m.id = 'lite-intro';
-    m.innerHTML = `
-      <div class="mode-card-wrap" role="dialog" aria-modal="true" aria-label="Lite-ning mode">
-        <div class="mode-head"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-bolt></use></svg> LITE-NING MODE</div>
-        <div class="lite-steps">
-          <div class="lite-step"><b>1</b>The live radar is coming on. Green is rain, yellow is heavy rain, red is storms.</div>
-          <div class="lite-step"><b>2</b>Warnings draw themselves on the map automatically. Tap one to read it.</div>
-          <div class="lite-step"><b>3</b>Tap anywhere on the map, or search a town up top, for its forecast.</div>
-          <div class="lite-step"><b>4</b>Want more power later? Open the account panel, top left, and tap the WX-PERT button.</div>
-        </div>
-        <div class="mode-go"><button type="button" class="tm-btn tm-btn-go" onclick="_liteIntroClose()">SHOW MY WEATHER</button></div>
-      </div>`;
-    document.body.appendChild(m);
-  }
-  m.classList.add('open');
-}
-function _liteIntroClose() {
-  const m = document.getElementById('lite-intro');
-  if (m) m.classList.remove('open');
-  _fvSignup();
+  // The full eighteen-section tutorial (or, for Lite-ning, the fact that
+  // there even is one) is exactly what nobody needs forced on them right
+  // after answering this question. Marking it seen here, for both modes,
+  // is what stops anything auto-opening over the map on the next visit;
+  // the real tour stays one tap away, in this very screen and in the menu.
+  try { localStorage.setItem('gwcfc_tutorial_seen', '1'); } catch (e) {}
+  _fvShowReady(m);
 }
 
 // The simplified radar menu Lite-ning shows in place of the source list.
@@ -66128,6 +66145,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-g', date: 'Sep 22, 2026',
+    text: 'The first visit is one popup now, not a chain of them. It used to be the mode question, then the tutorial, then a sign-up pitch, then the changelog, each one popping up the moment the last one closed. Now picking Lite-ning or Wx-pert swaps that same card to a short "you\'re set" screen with a couple of tips and two optional links (the full tour, and creating an account), and closing it goes straight to the weather. Nothing forces itself open behind it.' },
   { id: '2026-09-22-f', date: 'Sep 22, 2026',
     text: 'Fixed satellite taking an unusually long time to catch up after zooming. The radar tile pool, the wind particles and the wave particles all already go quiet for the length of a zoom and rebuild once it settles; satellite never got the same treatment, so a held scroll-wheel zoom (which applies many small zoom steps rather than one smooth motion) meant every one of the satellite view\'s pooled frames was re-fetching its whole picture from the server on every single step. Satellite now drops everything but the frame already on screen for the length of the zoom, the same as radar, and rebuilds once, a beat after zooming actually stops.' },
   { id: '2026-09-22-e', date: 'Sep 22, 2026',
@@ -66423,12 +66442,6 @@ function _clClose() {
   const m = document.getElementById('changelog-modal');
   if (m) m.classList.remove('open');
   _clMarkSeen();
-  // The changelog is the last greeting on a first visit: closing it is what
-  // finally starts the welcome flight.
-  if (typeof _fvStep !== 'undefined' && _fvStep) {
-    _fvStep = null;
-    setTimeout(() => { try { _runWelcome(); } catch (e) {} }, 600);
-  }
 }
 
 function _clOpen() {
