@@ -590,5 +590,70 @@ console.log('\n12. shared lines move every cell they touch');
      JSON.stringify(r));
 }
 
+console.log('\n13. a pane can pick its OWN product, and its own Level 2/Level 3 source');
+{
+  ok('the plan takes the pane, and the pane carries its choices',
+     /function _rcPlan\(site, slot\) \{/.test(PAGE)
+     && /prodSel: null, srcSel: null/.test(PAGE)
+     && /const plan = _rcPlan\(slot\.site, slot\);/.test(PAGE));
+  ok('the label wears a ≡ that opens the picker, and compare-off closes it',
+     /className = 'rc-gear';/.test(PAGE)
+     && /function _rcCfgOpen\(slot, labelEl\) \{/.test(PAGE)
+     && /function _rcOff\(\) \{[\s\S]*?_rcCfgClose\(\);/.test(PAGE));
+  const r = await p.evaluate(async () => {
+    const out = {};
+    _loadSingleSiteRef('ktlx');
+    _rcOn = true;
+    _rcAddSite('kfws');
+    await new Promise(res => setTimeout(res, 200));
+    const slot = _rcSlots[0];
+    // Its own product on the standard per-site service.
+    slot.prodSel = 'vel';
+    out.velPlan = _rcPlan(slot.site, slot);
+    // Its own source: the same product as Level 2.
+    slot.srcSel = 'l2';
+    _rcRenderSlot(slot);
+    out.l2Plan = { ...slot.plan };
+    // Level 3 with a dual-pol product resolves to a real bucket code.
+    slot.prodSel = 'cc'; slot.srcSel = 'l3';
+    out.l3Plan = _rcPlan(slot.site, slot);
+    // The label says what the pane chose, not what pane A shows.
+    _rcRenderSlot(slot);
+    _rcRefreshLabels();
+    out.label = slot.labelEl.querySelector('.rc-label-text').textContent;
+    // Same as A hands the choice back to the globals.
+    slot.prodSel = null; slot.srcSel = null;
+    out.followPlan = _rcPlan(slot.site, slot);
+    // The picker itself: the ≡ opens it beside the label, a choice
+    // applies to this pane and closes it.
+    slot.labelEl.querySelector('.rc-gear').click();
+    const box = document.getElementById('rc-slot-cfg');
+    out.boxOpen = !!box;
+    out.rows = box ? box.querySelectorAll('.rc-cfg-row').length : 0;
+    const velBtn = box && [...box.querySelectorAll('button')].find(b => b.textContent === 'Vel');
+    if (velBtn) velBtn.click();
+    out.picked = slot.prodSel;
+    out.boxClosed = !document.getElementById('rc-slot-cfg');
+    out.labelAfterPick = slot.labelEl.querySelector('.rc-label-text').textContent;
+    _rcOff();
+    return out;
+  });
+  ok('a pane set to velocity plans the velocity layer of ITS site',
+     r.velPlan.kind === 'wms' && r.velPlan.layer === 'kfws_sr_bvel', JSON.stringify(r.velPlan));
+  ok('a pane set to Level 2 plans the Level 2 decode of that product',
+     r.l2Plan.kind === 'mesh-l2' && r.l2Plan.product === 'vel', JSON.stringify(r.l2Plan));
+  ok('a pane set to Level 3 CC resolves the real bucket code',
+     r.l3Plan.kind === 'mesh-l3' && r.l3Plan.code === 'N0C', JSON.stringify(r.l3Plan));
+  ok('its label says what it chose: the product and the source',
+     /KFWS · Corr\. Coeff\. · L3/.test(r.label), r.label);
+  ok('Same as A hands the pane back to the main picture\'s own switches',
+     r.followPlan.kind === 'wms' && r.followPlan.layer === 'kfws_sr_bref', JSON.stringify(r.followPlan));
+  ok('the ≡ opens a two-row picker, and picking Vel applies it and closes',
+     r.boxOpen && r.rows === 2 && r.picked === 'vel' && r.boxClosed
+     && /KFWS · Velocity/.test(r.labelAfterPick),
+     JSON.stringify({ open: r.boxOpen, rows: r.rows, picked: r.picked, closed: r.boxClosed, label: r.labelAfterPick }));
+  ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
+}
+
 console.log(fail ? `\n${fail} FAILED, ${pass} passed` : `\nall ${pass} passed`);
 process.exit(fail ? 1 : 0);

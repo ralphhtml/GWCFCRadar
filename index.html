@@ -6309,6 +6309,29 @@ body.lite-mode #export-modal { display: none !important; }
   padding: 0; flex: none;
 }
 .rc-label .rc-x:hover { background: rgba(170,0,0,0.35); }
+.rc-label .rc-gear {
+  background: none; border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 4px; width: 16px; height: 16px; font-size: 11px; line-height: 1;
+  cursor: pointer; padding: 0; flex: none;
+  color: rgba(255,230,150,0.9); margin-right: 2px;
+}
+.rc-label .rc-gear:hover { background: rgba(232,184,0,0.3); }
+/* The per-pane picker the ≡ opens: this pane's own product and source. */
+#rc-slot-cfg {
+  position: absolute; z-index: 950; pointer-events: auto;
+  background: rgba(15,15,19,0.95); border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 10px; padding: 8px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.rc-cfg-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.rc-cfg-row span { font-size: 10px; color: #aaa; width: 46px; flex: none; }
+.rc-cfg-row button {
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2);
+  color: #fff; border-radius: 6px; font-size: 10px; padding: 3px 7px; cursor: pointer;
+}
+.rc-cfg-row button.on {
+  background: rgba(232,184,0,0.3); border-color: var(--accent); color: var(--accent);
+}
 .city-tooltip {
   background: rgba(30,0,0,0.9) !important;
   border: 1px solid rgba(232,184,0,0.5) !important;
@@ -49103,11 +49126,46 @@ function _rcSourceLabel() {
   return _radarSource === 'l2' ? 'Level 2' : _radarSource === 'l3' ? 'Level 3' : 'Normal';
 }
 
-// What a strip should draw for one site, decided from the same switches
-// the main picture is drawn from: the source, the product and the tilt.
-function _rcPlan(site) {
+// What a pane should draw for one site. By default the same switches the
+// main picture is drawn from (the source, the product and the tilt); a
+// pane that has chosen its own product or source through its label's
+// picker overrides exactly those, so one split can hold reflectivity
+// beside velocity, or Level 2 beside Level 3, of the same storm.
+const RC_PANE_PRODUCTS = { ref: 'Reflectivity', vel: 'Velocity', cc: 'Corr. Coeff.',
+                           zdr: 'Diff. Refl.', kdp: 'Spec. Diff. Phase', sw: 'Spectrum Width' };
+const RC_L3_KEY = { ref: 'reflectivity', vel: 'velocity', cc: 'corrcoeff',
+                    zdr: 'diffrefl', kdp: 'kdp', sw: 'spectrum' };
+function _rcPlan(site, slot) {
   const sid = String(site).toUpperCase();
   const lc = String(site).toLowerCase();
+  const srcSel = (slot && slot.srcSel) || null;
+  const prodSel = (slot && slot.prodSel) || null;
+  if (srcSel || prodSel) {
+    const src = srcSel || (_radarSource === 'l3' ? 'l3' : _radarSource === 'l2' ? 'l2' : 'normal');
+    let prod = prodSel;
+    if (!prod) {
+      if (_radarSource === 'l3') {
+        const rev = { reflectivity: 'ref', velocity: 'vel', corrcoeff: 'cc',
+                      diffrefl: 'zdr', kdp: 'kdp', spectrum: 'sw' };
+        prod = rev[_prProduct] || 'ref';
+      } else {
+        prod = RC_PANE_PRODUCTS[currentProduct] ? currentProduct : 'ref';
+      }
+    }
+    if (src === 'l3') {
+      const code = _l3BucketCode(sid, RC_L3_KEY[prod], 1);
+      if (!code) {
+        return { kind: 'none', why: `${sid} does not publish ${RC_PANE_PRODUCTS[prod]} as Level 3.` };
+      }
+      return { kind: 'mesh-l3', code };
+    }
+    if (src === 'l2') return { kind: 'mesh-l2', product: prod };
+    if (prod === 'ref') return { kind: 'wms', layer: `${lc}_sr_bref` };
+    if (prod === 'vel') return { kind: 'wms', layer: `${lc}_sr_bvel` };
+    // The standard per-site service has no dual-pol layers, so those ride
+    // the Level 2 decoder whatever the source choice says.
+    return { kind: 'mesh-l2', product: prod };
+  }
   const p = currentProduct;
   if (_radarSource === 'l3') {
     const built = _prIndex && _prIndex.sites && _prIndex.sites[sid];
@@ -49182,7 +49240,8 @@ function _rcAddSite(site) {
     return;
   }
   const slot = { id: 'r' + (++_rcSeq), site: sid, kind: null, plan: null, layer: null, blob: null,
-                 frames: null, frameIso: '', stamp: '', timeIso: '', labelEl: null, token: 0 };
+                 frames: null, frameIso: '', stamp: '', timeIso: '', labelEl: null, token: 0,
+                 prodSel: null, srcSel: null };
   _rcSlots.push(slot);
   _rcRefreshDOM();
   _rcRenderSlot(slot);
@@ -49302,7 +49361,7 @@ function _rcRenderSlot(slot) {
     p.style.pointerEvents = 'none';
   }
   _rcSyncPaneZ();
-  const plan = _rcPlan(slot.site);
+  const plan = _rcPlan(slot.site, slot);
   slot.kind = plan.kind;
   slot.plan = plan;
   const token = ++slot.token;
@@ -49559,7 +49618,10 @@ function _rcSlotLabel(slot) {
     else if (slot.kind === 'pi' && slot.stamp) when = _fmtHHMM(new Date(_prStampToMs(slot.stamp)));
     else if (slot.timeIso) when = _fmtHHMM(new Date(slot.timeIso));
   } catch (e) {}
-  return slot.site.toUpperCase() + ' · ' + _rcProductLabel() + (when ? ' · ' + when : '');
+  const prod = slot.prodSel ? RC_PANE_PRODUCTS[slot.prodSel] : _rcProductLabel();
+  const src = slot.srcSel === 'l2' ? ' · L2' : slot.srcSel === 'l3' ? ' · L3'
+            : slot.srcSel === 'normal' ? ' · Std' : '';
+  return slot.site.toUpperCase() + ' · ' + prod + src + (when ? ' · ' + when : '');
 }
 function _rcRefreshLabels() {
   _rcSlots.forEach((slot, i) => {
@@ -49575,18 +49637,85 @@ function _rcBuildLabel(slot, lc) {
   l.className = 'sev-cmp-label rc-label';
   const t = document.createElement('span');
   t.className = 'rc-label-text';
+  const g = document.createElement('button');
+  g.type = 'button';
+  g.className = 'rc-gear';
+  g.title = 'This pane: pick its own product and Level 2/Level 3 source';
+  g.textContent = '≡';
+  g.addEventListener('pointerdown', e => e.stopPropagation());
+  g.addEventListener('click', e => { e.stopPropagation(); _rcCfgOpen(slot, l); });
   const x = document.createElement('button');
   x.type = 'button';
   x.className = 'rc-x';
-  x.title = 'Remove this strip';
+  x.title = 'Remove this pane';
   x.textContent = '×';
   x.addEventListener('pointerdown', e => e.stopPropagation());
   x.addEventListener('click', e => { e.stopPropagation(); _rcRemoveSlot(slot.id); });
   l.appendChild(t);
+  l.appendChild(g);
   l.appendChild(x);
   lc.appendChild(l);
   slot.labelEl = l;
 }
+
+// ── each pane's own product and source ───────────────────────────────────
+// A pane follows pane A's product and source until told otherwise; the ≡
+// on its label opens this picker, and Same as A hands the choice back.
+// This is what lets one split hold reflectivity beside velocity, or the
+// Level 2 picture of a storm beside the Level 3 one.
+let _rcCfgFor = null;
+function _rcCfgClose() {
+  const el = document.getElementById('rc-slot-cfg');
+  if (el) el.remove();
+  _rcCfgFor = null;
+}
+function _rcCfgOpen(slot, labelEl) {
+  if (_rcCfgFor === slot.id) { _rcCfgClose(); return; }
+  _rcCfgClose();
+  _rcCfgFor = slot.id;
+  const box = document.createElement('div');
+  box.id = 'rc-slot-cfg';
+  box.addEventListener('pointerdown', e => e.stopPropagation());
+  const row = (title, opts, cur, set) => {
+    const r = document.createElement('div');
+    r.className = 'rc-cfg-row';
+    const cap = document.createElement('span');
+    cap.textContent = title;
+    r.appendChild(cap);
+    opts.forEach(([val, name]) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = name;
+      b.classList.toggle('on', cur === val);
+      b.addEventListener('click', e => {
+        e.stopPropagation();
+        set(val);
+        _rcRenderSlot(slot);
+        _rcUpdateClips();
+        _rcRefreshLabels();
+        _rcCfgClose();
+      });
+      r.appendChild(b);
+    });
+    return r;
+  };
+  box.appendChild(row('Product',
+    [[null, 'Same as A'], ['ref', 'Refl'], ['vel', 'Vel'], ['cc', 'CC'],
+     ['zdr', 'ZDR'], ['kdp', 'KDP'], ['sw', 'SW']],
+    slot.prodSel || null, v => { slot.prodSel = v; }));
+  box.appendChild(row('Source',
+    [[null, 'Same as A'], ['normal', 'Std'], ['l2', 'Level 2'], ['l3', 'Level 3']],
+    slot.srcSel || null, v => { slot.srcSel = v; }));
+  const lr = labelEl.getBoundingClientRect();
+  const mr = document.getElementById('map').getBoundingClientRect();
+  box.style.left = Math.max(4, lr.left - mr.left) + 'px';
+  box.style.top = (lr.bottom - mr.top + 6) + 'px';
+  document.getElementById('rc-labels').appendChild(box);
+}
+document.addEventListener('pointerdown', e => {
+  const el = document.getElementById('rc-slot-cfg');
+  if (el && !el.contains(e.target)) _rcCfgClose();
+}, true);
 // A grid's dividers are shared lines, not one per slot: (cols-1) vertical
 // ones running the full height, each moving every cell in the columns on
 // either side of it at once, and (rows-1) horizontal ones the same way
@@ -49627,6 +49756,7 @@ function _rcRefreshDOM() {
   const dc = document.getElementById('rc-dividers');
   const lc = document.getElementById('rc-labels');
   if (!dc || !lc) return;
+  _rcCfgClose();
   dc.innerHTML = ''; lc.innerHTML = '';
   if (_rcGrid) _rcRefreshGridDOM(dc, lc);
   _rcRefreshLabels();
@@ -49725,6 +49855,7 @@ function _rcOff() {
   try { map.off('move zoom resize', _rcUpdateClips); } catch (e) {}
   _rcSlots.forEach(_rcClearSlot);
   _rcSlots = [];
+  _rcCfgClose();
   _rcGrid = null; _rcColSplits = []; _rcRowSplits = []; _rcGridDrag = null;
   _rcGridDividerEls = { cols: [], rows: [] };
   ['rc-dividers', 'rc-labels'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
@@ -67224,7 +67355,7 @@ function lqmOpenTutorial() {
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
   { id: '2026-09-22-zd', date: 'Sep 22, 2026',
-    text: 'The radar and satellite comparisons were redone as true splits. A comparison now starts as a double split, grows itself to a quad (4) or octo (8) as you add pictures, and a button cycles between the three; rotate turns a side-by-side split into a stacked one. Every split line is shared: drag it and every pane it touches resizes together, with no separate separator or knob per pane, and each picture is named by a small label in its own corner.' },
+    text: 'The radar and satellite comparisons were redone as true splits. A comparison now starts as a double split, grows itself to a quad (4) or octo (8) as you add pictures, and a button cycles between the three; rotate turns a side-by-side split into a stacked one. Every split line is shared: drag it and every pane it touches resizes together, with no separate separator or knob per pane, and each picture is named by a small label in its own corner. Radar panes also gained a ≡ picker on that label: each pane can now show its OWN product (reflectivity, velocity, CC, ZDR, KDP, spectrum width) and its own source (standard, Level 2 or Level 3), so one split can hold reflectivity beside velocity, or the Level 2 picture of a storm beside the Level 3 one.' },
   { id: '2026-09-22-zc', date: 'Sep 22, 2026',
     text: 'Radar 3D knows where you are. Your location now shows inside the box as the same blue dot the map uses (labelled You, clamped to the rim with a note when you are outside the zone), and pressing Walk spawns you at your own spot at eye height, facing the storm, so walking into a storm over your house starts at your house. Uses the map\'s live location when tracking is on, or one quiet fix if you have already granted permission; opening the 3D panel never pops a permission prompt on its own.' },
   { id: '2026-09-22-zb', date: 'Sep 22, 2026',
