@@ -247,8 +247,9 @@ console.log('\n7. no panel is left out of the frost');
   // its inline background layers the event tint over an opaque base.
   ok('the outlook legends and popup bodies wear the heavy blur',
      (PAGE.match(/backdrop-filter: blur\(24px\) saturate\(1\.5\) !important;/g) || []).length >= 6);
-  ok('the popup title bar stays solid under its event tint',
-     (PAGE.match(/class="ap-header" style="background:linear-gradient\(\$\{colorBg\},\$\{colorBg\}\), rgb\(10,13,17\);/g) || []).length === 2);
+  ok('the popup title bar stays solid under its event tint, on every popup that shares the shell '
+     + '(alert polygons, the NHC storm popup, and METAR Stations)',
+     (PAGE.match(/class="ap-header" style="background:linear-gradient\(\$\{colorBg\},\$\{colorBg\}\), rgb\(10,13,17\);/g) || []).length === 3);
   ok('the alerts, EAS and forecast panels wear the heavy glass too',
      /:root\[data-glass\] #alerts-panel \{\s*\n\s*background-image: linear-gradient/.test(PAGE)
      && /:root\[data-glass\] #eas-panel \{\s*\n\s*background-image: linear-gradient\(180deg,\s*\n\s*rgba\(138,68,0/.test(PAGE)
