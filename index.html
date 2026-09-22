@@ -4714,6 +4714,30 @@ body.lite-mode #export-modal { display: none !important; }
 }
 #r3d-panel canvas.r3d-dragging { cursor: grabbing; }
 #r3d-panel.big canvas { height: min(60vh, 560px); }
+/* The two camera bars: a vertical one to zoom, a horizontal one to orbit
+   around, sitting over the canvas the way a map's own zoom control does.
+   Dragging the canvas itself and pinching/scrolling still work exactly as
+   before; these are a second, slider-based way to reach the same camera,
+   for anyone who would rather drag a bar than the picture itself. Exactly
+   two, on purpose: one vertical, one horizontal, nothing else added. */
+.r3d-cam-zoom, .r3d-cam-move { position: absolute; pointer-events: none; z-index: 2; }
+.r3d-cam-zoom {
+  top: 14px; bottom: 42px; right: 16px; width: 26px;
+  display: flex; align-items: center; justify-content: center;
+}
+.r3d-cam-move {
+  left: 16px; right: 48px; bottom: 14px; height: 26px;
+  display: flex; align-items: center; justify-content: center;
+}
+.r3d-cam-zoom input[type=range], .r3d-cam-move input[type=range] {
+  pointer-events: auto; accent-color: #e8b800;
+  background: rgba(10,10,12,0.55); border-radius: 8px;
+}
+.r3d-cam-zoom input[type=range] {
+  writing-mode: vertical-lr; direction: rtl;
+  width: 6px; height: 100%;
+}
+.r3d-cam-move input[type=range] { width: 100%; height: 6px; }
 .r3d-timebar {
   display: flex; align-items: center; gap: 8px; margin-top: 6px;
 }
@@ -11783,6 +11807,11 @@ body.clean-mode #clean-hint { opacity: 1; }
       <span id="r3d-opacity-label">1.0&times;</span>
     </label>
     <label class="r3d-slider-row">
+      <span>Smoothing</span>
+      <input type="range" id="r3d-smooth" min="0" max="100" value="0" step="5" title="Blend each measured value with the ones around it, so the storm reads as one smooth shape instead of blocky voxels. Never invents signal where the radar saw none.">
+      <span id="r3d-smooth-label">Off</span>
+    </label>
+    <label class="r3d-slider-row">
       <span>Look</span>
       <select class="xsec-sel" id="r3d-mode" title="Lit cloud: see-through, shaded by a light. Solid surface: an opaque shell at the Show above value, like an isosurface.">
         <option value="cloud" selected>Lit cloud</option>
@@ -11816,6 +11845,12 @@ body.clean-mode #clean-hint { opacity: 1; }
   </div>
   <div class="xs-plot">
     <canvas id="r3d-canvas"></canvas>
+    <div class="r3d-cam-zoom" title="Zoom">
+      <input type="range" id="r3d-zoom" min="0" max="1000" value="500" step="1">
+    </div>
+    <div class="r3d-cam-move" title="Move around">
+      <input type="range" id="r3d-yaw" min="-180" max="180" value="0" step="1">
+    </div>
     <div class="r3d-timebar">
       <button id="r3d-play" title="Play recent volumes">&#9654;</button>
       <span class="r3d-speed" title="Playback speed: type any number of volumes per second">
@@ -66145,6 +66180,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-h', date: 'Sep 22, 2026',
+    text: 'Three changes to Radar 3D. A box can now be drawn as big as you like, no more 300 km cap trimming it down. Two camera bars sit over the picture now, a vertical one to zoom and a horizontal one to move around, a second way to reach the same view dragging the picture itself already gives you. And a new Smoothing slider, alongside Opacity and the rest, blends each measured value with the ones around it so a storm reads as one smooth shape instead of blocky voxels, without ever inventing signal in air the radar saw as clear.' },
   { id: '2026-09-22-g', date: 'Sep 22, 2026',
     text: 'The first visit is one popup now, not a chain of them. It used to be the mode question, then the tutorial, then a sign-up pitch, then the changelog, each one popping up the moment the last one closed. Now picking Lite-ning or Wx-pert swaps that same card to a short "you\'re set" screen with a couple of tips and two optional links (the full tour, and creating an account), and closing it goes straight to the weather. Nothing forces itself open behind it.' },
   { id: '2026-09-22-f', date: 'Sep 22, 2026',
@@ -70508,8 +70545,11 @@ let _r3dHeightUnit = 'kft';
 // screenshot is dragged out, or taken from a radius or polygon already on
 // the map. Gates are stored for exactly that box (plus a footprint's worth
 // of margin), so nothing outside it can ever be smeared onto its walls.
+// There is no upper size limit: draw a box as big as the screen lets you.
+// R3D_POLAR_MAX_BYTES is the real safety valve, coarsening the bin
+// resolution automatically as a box grows, rather than an arbitrary cap on
+// how big a storm somebody is allowed to look at.
 const R3D_ZONE_MIN_KM = 3;
-const R3D_ZONE_MAX_KM = 300;
 let _r3dZone = null;             // { lat, lng, wKm, hKm } - centre and extents
 let _r3dZoneRect = null;         // the Leaflet rectangle shown on the map
 function _r3dZoneMaxKm() { return _r3dZone ? Math.max(_r3dZone.wKm, _r3dZone.hKm) : 90; }
@@ -70598,6 +70638,14 @@ let _r3dOpacity = 1;             // multiplier on the transfer function's alpha
 let _r3dMode = 'cloud';          // 'cloud' (lit, see-through) or 'solid' (isosurface-like shell)
 let _r3dCutSide = 'off';         // 'off' | 'n' | 's' | 'e' | 'w'
 let _r3dCutPct = 50;             // how far in the cutaway reaches, percent of the box
+// 0 (off, the default) to 1 (fully blended): how much each measured value
+// is blended with its immediate neighbours - across range, azimuth AND
+// tilt - before the box is even built, rather than a per-pixel effect the
+// marcher has to redo on every ray. Off leaves the render exactly as it
+// always was. A bin that never saw a return stays untouched either way:
+// smoothing blends what the radar measured together, it never grows a
+// storm's footprint into air the radar saw as clear.
+let _r3dSmoothing = 0;
 
 // Zoom in as far as you like - all the way inside the cloud (the marcher
 // handles a camera inside the box, so there is no reason to stop short) -
@@ -70622,6 +70670,39 @@ function _r3dBoxTopKm() {
 function _r3dCamFit() {
   const wide = _r3dZoneMaxKm(), tall = _r3dBoxTopKm() * _r3dExag;
   _r3dCam.dist = Math.max(_r3dDistMin(), Math.min(_r3dDistMax(), Math.max(wide * 1.7, tall * 1.5)));
+  _r3dSyncCamBars();
+}
+
+// Keeps the two camera bars agreeing with wherever dragging, pinching or
+// scrolling the canvas left the camera. Skipped for whichever bar the hand
+// is actually on: fighting a drag in progress with a sync from the very
+// state the drag is producing is how a slider stutters under a live touch.
+function _r3dSyncCamBars() {
+  const zoom = _r3dEl('r3d-zoom');
+  if (zoom && document.activeElement !== zoom) {
+    const lo = _r3dDistMin(), hi = Math.max(lo + 1, _r3dDistMax());
+    const t = Math.max(0, Math.min(1, (hi - _r3dCam.dist) / (hi - lo)));
+    zoom.value = String(Math.round(t * 1000));
+  }
+  const yaw = _r3dEl('r3d-yaw');
+  if (yaw && document.activeElement !== yaw) {
+    let deg = (_r3dCam.yaw * 180 / Math.PI) % 360;
+    if (deg > 180) deg -= 360; else if (deg < -180) deg += 360;
+    yaw.value = String(Math.round(deg));
+  }
+}
+// The bars' own input, the other direction: pushed to the top the zoom bar
+// reads 1000, which is the closest the distance range allows - "zoom in"
+// reads as "push up", the way a phone's own volume/zoom bars do.
+function _r3dZoomFromBar(v) {
+  const lo = _r3dDistMin(), hi = Math.max(lo + 1, _r3dDistMax());
+  const t = 1 - Math.max(0, Math.min(1000, Number(v) || 0)) / 1000;
+  _r3dCam.dist = lo + t * (hi - lo);
+  _r3dInteract();
+}
+function _r3dYawFromBar(v) {
+  _r3dCam.yaw = (Number(v) || 0) * Math.PI / 180;
+  _r3dInteract();
 }
 
 // Marks the view as needing a redraw at drag quality, and books the full
@@ -70682,8 +70763,8 @@ function _cmRadar3DDraw() {
 
 // Open the 3D view on a box given as map bounds (south, west, north, east):
 // the drawn rectangle, a radius's bounding square, or a polygon's extent.
-// Boxes are kept between R3D_ZONE_MIN_KM and R3D_ZONE_MAX_KM on a side,
-// shrunk around their own centre if they are too big.
+// A box has no upper size limit, only the R3D_ZONE_MIN_KM floor so a
+// near-zero drag does not open on an empty sliver.
 function _r3dOpenBounds(south, west, north, east) {
   const lat = (south + north) / 2, lng = (west + east) / 2;
   const kmLat = 111.32, kmLng = 111.32 * Math.max(0.2, Math.cos(lat * Math.PI / 180));
@@ -70693,10 +70774,6 @@ function _r3dOpenBounds(south, west, north, east) {
     return false;
   }
   wKm = Math.max(R3D_ZONE_MIN_KM, wKm); hKm = Math.max(R3D_ZONE_MIN_KM, hKm);
-  if (wKm > R3D_ZONE_MAX_KM || hKm > R3D_ZONE_MAX_KM) {
-    if (typeof showToast === 'function') showToast('That box is huge; trimmed to ' + R3D_ZONE_MAX_KM + ' km on a side.', 2800);
-    wKm = Math.min(R3D_ZONE_MAX_KM, wKm); hKm = Math.min(R3D_ZONE_MAX_KM, hKm);
-  }
   const near = _r3dNearestStation(lat, lng);
   if (!near) return false;
   if (near.km > 420) {
@@ -71205,6 +71282,44 @@ const R3D_SKIRT_BELOW = 1.2;
 const R3D_COL_N = 64;                    // the column map: 64 by 64 cells over the zone, each with its top of echo
 let _r3dVolSeq = 0;
 
+// The Smoothing slider: blend each bin with its immediate neighbours in
+// range, azimuth and, across adjacent tilt planes, height, weighted by k
+// (0 = off, exactly today's render, unchanged). A bin that never held a
+// real value is left at 0 no matter what its neighbours hold: smoothing
+// blends together what the radar actually measured, it never grows a
+// storm's edge into air the radar saw as clear. Runs once per grid build,
+// not per ray per pixel, so even at 100% it costs nothing during playback.
+function _r3dSmoothSweeps(sweeps, rows, nR, k) {
+  if (!(k > 0)) return sweeps;
+  const nS = sweeps.length;
+  return sweeps.map((plane, si) => {
+    const below = si > 0 ? sweeps[si - 1] : null;
+    const above = si < nS - 1 ? sweeps[si + 1] : null;
+    const out = new Uint8Array(plane.length);
+    for (let row = 0; row < rows; row++) {
+      const r0 = row === 0 ? row : row - 1, r1 = row === rows - 1 ? row : row + 1;
+      for (let col = 0; col < nR; col++) {
+        const idx = row * nR + col;
+        const c = plane[idx];
+        if (!c) continue;
+        let sum = c, wsum = 1;
+        const c0 = col === 0 ? col : col - 1, c1 = col === nR - 1 ? col : col + 1;
+        for (let rr = r0; rr <= r1; rr++) {
+          for (let cc = c0; cc <= c1; cc++) {
+            if (rr === row && cc === col) continue;
+            const v = plane[rr * nR + cc];
+            if (v) { sum += v; wsum++; }
+          }
+        }
+        if (below) { const v = below[idx]; if (v) { sum += v; wsum++; } }
+        if (above) { const v = above[idx]; if (v) { sum += v; wsum++; } }
+        out[idx] = Math.round(c * (1 - k) + (sum / wsum) * k);
+      }
+    }
+    return out;
+  });
+}
+
 function _r3dPolarFrame(frame, zone, specOrVel) {
   const spec = specOrVel && typeof specOrVel === 'object' ? specOrVel : _r3dSpec(specOrVel ? 'vel' : 'ref');
   const halfX = zone.wKm / 2, halfY = zone.hKm / 2;
@@ -71341,6 +71456,7 @@ function _r3dPolarFrame(frame, zone, specOrVel) {
       plane.set(plane.subarray(nR, 2 * nR), (nA + 1) * nR);
     }
   });
+  const smoothed = _r3dSmoothSweeps(sweeps, rows, nR, _r3dSmoothing);
 
   // The angle index, OpenStorm's own idea: a table from elevation angle to
   // a fractional tilt number, linear between one tilt and the next, so the
@@ -71368,7 +71484,7 @@ function _r3dPolarFrame(frame, zone, specOrVel) {
   }
 
   return {
-    id: ++_r3dVolSeq, sweeps, nS, nR, nA, r0, rStep, az0, azStep, span, full,
+    id: ++_r3dVolSeq, sweeps: smoothed, nS, nR, nA, r0, rStep, az0, azStep, span, full,
     angles: new Float32Array(sorted), angIdx, angFade, elMin: R3D_EL_MIN, elStep: R3D_EL_STEP,
     sx, sy, colMaxZ: grown, colN: R3D_COL_N, halfX, halfY, wKm: zone.wKm, hKm: zone.hKm,
     signed: !!spec.signed, product: spec.id,
@@ -71377,15 +71493,15 @@ function _r3dPolarFrame(frame, zone, specOrVel) {
   };
 }
 
-// The volume for the zone on screen, built once per zone size and product
-// and kept on the frame, so a resize of the box is a re-bin and never a
-// refetch.
+// The volume for the zone on screen, built once per zone size, product and
+// smoothing level, and kept on the frame, so a resize of the box (or a
+// change to the Smoothing slider) is a re-bin and never a refetch.
 function _r3dPolarFor(frame, productOrVel) {
   const spec = typeof productOrVel === 'string' ? _r3dSpec(productOrVel)
              : productOrVel && typeof productOrVel === 'object' ? productOrVel
              : _r3dSpec(productOrVel ? 'vel' : 'ref');
   const zone = _r3dZone || { wKm: 90, hKm: 90 };
-  const key = zone.wKm + 'x' + zone.hKm + '|' + spec.id;
+  const key = zone.wKm + 'x' + zone.hKm + '|' + spec.id + '|' + _r3dSmoothing;
   if (!frame._grids) frame._grids = {};
   if (!frame._grids[key]) {
     frame._grids = {};
@@ -72324,7 +72440,7 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   };
 
   cv.addEventListener('pointerdown', (e) => {
-    cv.setPointerCapture(e.pointerId);
+    try { cv.setPointerCapture(e.pointerId); } catch (err) {}
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 1) {
       dragStart = { yaw: _r3dCam.yaw, pitch: _r3dCam.pitch, x: e.clientX, y: e.clientY };
@@ -72342,10 +72458,12 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
       _r3dCam.yaw = dragStart.yaw + dx * 0.008;
       _r3dCam.pitch = Math.max(R3D_PITCH_MIN, Math.min(R3D_PITCH_MAX,
         dragStart.pitch - dy * 0.008));
+      _r3dSyncCamBars();
       _r3dInteract();
     } else if (pointers.size === 2 && pinchStart) {
       const ratio = pinchStart.dist / Math.max(1, pinchDist());
       _r3dCam.dist = Math.max(_r3dDistMin(), Math.min(_r3dDistMax(), pinchStart.camDist * ratio));
+      _r3dSyncCamBars();
       _r3dInteract();
     }
   });
@@ -72359,6 +72477,7 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   cv.addEventListener('wheel', (e) => {
     e.preventDefault();
     _r3dCam.dist = Math.max(_r3dDistMin(), Math.min(_r3dDistMax(), _r3dCam.dist * (1 + e.deltaY * 0.0015)));
+    _r3dSyncCamBars();
     _r3dInteract();
   }, { passive: false });
 })();
@@ -72379,6 +72498,10 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
     try { _makeDraggable(panel, panel.querySelector('.xs-head')); } catch (e) {}
   }
   window.addEventListener('resize', () => { if (_r3dOn) _r3dDirty = true; });
+  const zoomBar = _r3dEl('r3d-zoom');
+  if (zoomBar) zoomBar.oninput = () => _r3dZoomFromBar(zoomBar.value);
+  const yawBar = _r3dEl('r3d-yaw');
+  if (yawBar) yawBar.oninput = () => _r3dYawFromBar(yawBar.value);
   const slider = _r3dEl('r3d-slider');
   if (slider) slider.oninput = () => _r3dSetFrame(Number(slider.value));
   const play = _r3dEl('r3d-play');
@@ -72422,6 +72545,15 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   if (opacity) opacity.oninput = () => {
     _r3dOpacity = Math.max(0.25, Math.min(4, Number(opacity.value) / 100 || 1));
     if (opacityLabel) opacityLabel.textContent = _r3dOpacity.toFixed(2).replace(/0$/, '') + '×';
+    _r3dInteract();
+  };
+  // A different smoothing level is a different cache key (_r3dPolarFor), so
+  // this alone is what makes moving the slider re-bin the box; no separate
+  // invalidation call needed.
+  const smooth = _r3dEl('r3d-smooth'), smoothLabel = _r3dEl('r3d-smooth-label');
+  if (smooth) smooth.oninput = () => {
+    _r3dSmoothing = Math.max(0, Math.min(1, Number(smooth.value) / 100 || 0));
+    if (smoothLabel) smoothLabel.textContent = _r3dSmoothing <= 0 ? 'Off' : Math.round(_r3dSmoothing * 100) + '%';
     _r3dInteract();
   };
   const mode = _r3dEl('r3d-mode');

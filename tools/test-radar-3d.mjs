@@ -49,6 +49,17 @@ console.log('\n1. the panel: a zone picker and volumetric controls, no toolbar b
      /_cmRadar3DDraw\(\)/.test(PAGE) && /Draw a 3D zone/.test(PAGE));
   ok('the renderer marches the radar\'s own polar volume, in workers',
      /_r3dMarchBand/.test(PAGE) && /_r3dPolarFrame/.test(PAGE) && /_r3dMarchAsync/.test(PAGE));
+  ok('a box has no upper size limit any more',
+     !/R3D_ZONE_MAX_KM/.test(PAGE) && /const R3D_ZONE_MIN_KM = 3;/.test(PAGE));
+  ok('exactly two camera bars exist: one vertical, one horizontal',
+     PAGE.includes('id="r3d-zoom"') && PAGE.includes('id="r3d-yaw"')
+     && (PAGE.match(/class="r3d-cam-zoom"/g) || []).length === 1
+     && (PAGE.match(/class="r3d-cam-move"/g) || []).length === 1);
+  ok('the zoom bar is styled vertical, the move bar horizontal',
+     /\.r3d-cam-zoom input\[type=range\] \{\s*\n\s*writing-mode: vertical-lr; direction: rtl;/.test(PAGE)
+     && /\.r3d-cam-move input\[type=range\] \{ width: 100%; height: 6px; \}/.test(PAGE));
+  ok('a Smoothing slider sits with the rest of the sliders',
+     PAGE.includes('id="r3d-smooth"') && /<span>Smoothing<\/span>/.test(PAGE));
   const EM = String.fromCharCode(0x2014);
   ok('no em dashes in the feature or in this test file',
      !PAGE.slice(PAGE.indexOf('RADAR 3D (VOLUMETRIC)'), PAGE.indexOf('TOOLBAR (#right-menu) HOVER FLYOUT')).includes(EM)
@@ -686,6 +697,85 @@ console.log('\n8. the volume follows the drawn box: only the window the zone occ
      r.round.full && r.round.r0 === 0, JSON.stringify(r.round));
 }
 
+console.log('\n8b. a box can be drawn as big as the screen lets you, with no upper cap');
+{
+  const r = await p.evaluate(() => {
+    const savedZone = _r3dZone, savedOn = _r3dOn, savedStation = _r3dStation;
+    const pos = _xsSiteLatLon('kfws');
+    // Five degrees on a side is roughly 550 km, comfortably past the old
+    // 300 km trim, and this box is centred right on the radar so the
+    // nearest-station distance check has nothing to do with its size.
+    const ok1 = _r3dOpenBounds(pos.lat - 2.5, pos.lng - 2.5, pos.lat + 2.5, pos.lng + 2.5);
+    const zone = ok1 ? { wKm: _r3dZone.wKm, hKm: _r3dZone.hKm } : null;
+    _r3dZone = savedZone; _r3dOn = savedOn; _r3dStation = savedStation;
+    const panel = document.getElementById('r3d-panel');
+    if (panel) panel.classList.remove('open');
+    // _r3dOpenBounds finishing means it also kicked off a real _r3dOpen
+    // load in the background, aimed at a network this test file has no
+    // route for. Bumping the token orphans that in-flight attempt (every
+    // await inside it checks token against _r3dToken and bails), and
+    // clearing the busy flag directly means later tests are not left
+    // reading "already loading a volume" from a fetch nothing ever
+    // answers - the same abandon-in-flight pattern the Time Machine jump
+    // already relies on elsewhere in this file.
+    ++_r3dToken; _r3dBuilding = false;
+    return { ok1, zone };
+  });
+  ok('the box actually opened', r.ok1 === true, JSON.stringify(r));
+  ok('and kept its real, huge size instead of being trimmed to 300 km',
+     r.zone && r.zone.wKm > 400 && r.zone.hKm > 400, JSON.stringify(r.zone));
+}
+
+console.log('\n8c. the Smoothing slider blends measured values, but never invents new ones');
+{
+  const r = await p.evaluate(() => {
+    const savedZone = _r3dZone, savedSmoothing = _r3dSmoothing;
+    _r3dZone = { lat: 36, lng: -96, wKm: 30, hKm: 30 };
+    const site = { x: 0, y: -20 };
+    // Two adjacent gates at the same tilt, one strong and one weaker,
+    // plus one isolated gate at a different tilt, with plenty of empty
+    // air around all three.
+    const z1 = _xsBeamHeightKm(20, 0.5, 0);
+    const z2 = _xsBeamHeightKm(20, 1.5, 0);
+    const frame = {
+      gates: new Float32Array([0, 0, z1, 55, 0.3, 0, z1, 35, 6, 6, z2, 45]),
+      count: 3,
+      segs: [{ start: 0, end: 2, angle: 0.5 }, { start: 2, end: 3, angle: 1.5 }],
+      time: null, cuts: 1, site, _grids: {},
+    };
+    _r3dSmoothing = 0;
+    const off = _r3dPolarFor(frame, 'ref');
+    const offSweeps = off.sweeps.map(pl => pl.slice());
+    frame._grids = {};
+    _r3dSmoothing = 1;
+    const on = _r3dPolarFor(frame, 'ref');
+    const onSweeps = on.sweeps.map(pl => pl.slice());
+    // Count how many bins hold a nonzero byte, off vs. smoothed, and
+    // whether any bin that was 0 with smoothing off is still 0 with it on.
+    let offNonzero = 0, onNonzero = 0, grewIntoAir = false, changed = false;
+    for (let s = 0; s < offSweeps.length; s++) {
+      for (let i = 0; i < offSweeps[s].length; i++) {
+        const o = offSweeps[s][i], n = onSweeps[s][i];
+        if (o) offNonzero++;
+        if (n) onNonzero++;
+        if (!o && n) grewIntoAir = true;
+        if (o && n && o !== n) changed = true;
+      }
+    }
+    _r3dZone = savedZone; _r3dSmoothing = savedSmoothing;
+    return { offNonzero, onNonzero, grewIntoAir, changed,
+             diffCache: off !== on };
+  });
+  ok('the same number of bins hold a value whether smoothing is on or off',
+     r.offNonzero === r.onNonzero && r.offNonzero > 0, JSON.stringify(r));
+  ok('smoothing never turns previously-empty air into a painted bin',
+     r.grewIntoAir === false, JSON.stringify(r));
+  ok('but it does actually blend the values that are there',
+     r.changed === true, JSON.stringify(r));
+  ok('a different smoothing level is a different cached grid, not a stale reuse',
+     r.diffCache === true, JSON.stringify(r));
+}
+
 console.log('\n9. Level 3 builds the same frame from separate tilt files');
 {
   const r = await p.evaluate(async () => {
@@ -937,6 +1027,55 @@ console.log('\n11. the orbit camera, the quality switch, and the panel controls'
   ok('dragging Up to updates the height cap', r.sliders.heightKft === 20,
      JSON.stringify(r.sliders));
   ok('closing puts the panel away', !r.after.panel, JSON.stringify(r.after));
+}
+
+console.log('\n11a. the two camera bars: a second way to reach the same camera');
+{
+  const r = await p.evaluate(() => {
+    _r3dOpen('kfws');
+    const zoomBar = document.getElementById('r3d-zoom');
+    const yawBar = document.getElementById('r3d-yaw');
+    const out = {};
+
+    // Pushed all the way up, the zoom bar reads its max and the camera
+    // sits as close as the distance range allows.
+    zoomBar.value = '1000'; zoomBar.dispatchEvent(new Event('input', { bubbles: true }));
+    out.zoomedIn = _r3dCam.dist;
+    out.atMin = Math.abs(_r3dCam.dist - _r3dDistMin()) < 0.05;
+    // All the way down, it reads its farthest.
+    zoomBar.value = '0'; zoomBar.dispatchEvent(new Event('input', { bubbles: true }));
+    out.zoomedOut = _r3dCam.dist;
+    out.atMax = Math.abs(_r3dCam.dist - _r3dDistMax()) < 0.5;
+
+    // The move bar sets yaw directly, in degrees.
+    yawBar.value = '90'; yawBar.dispatchEvent(new Event('input', { bubbles: true }));
+    out.yawAt90 = Math.abs(_r3dCam.yaw - Math.PI / 2) < 0.01;
+    yawBar.value = '-45'; yawBar.dispatchEvent(new Event('input', { bubbles: true }));
+    out.yawAtMinus45 = Math.abs(_r3dCam.yaw + Math.PI / 4) < 0.01;
+
+    // Dragging the canvas itself still works, and it pushes its new yaw
+    // and distance back out to both bars, so they never fall out of sync
+    // with the picture they are supposed to control.
+    const cv = document.getElementById('r3d-canvas');
+    cv.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 5, clientX: 100, clientY: 100, bubbles: true }));
+    cv.dispatchEvent(new PointerEvent('pointermove', { pointerId: 5, clientX: 260, clientY: 100, bubbles: true }));
+    cv.dispatchEvent(new PointerEvent('pointerup', { pointerId: 5, bubbles: true }));
+    const yawDeg = _r3dCam.yaw * 180 / Math.PI;
+    out.barFollowsDrag = Math.abs(Number(yawBar.value) - yawDeg) < 1.5
+      || Math.abs(Number(yawBar.value) - (yawDeg - 360)) < 1.5
+      || Math.abs(Number(yawBar.value) - (yawDeg + 360)) < 1.5;
+
+    _r3dClose();
+    return out;
+  });
+  ok('pushed to the top, the zoom bar zooms all the way in',
+     r.atMin, JSON.stringify(r));
+  ok('pushed to the bottom, it zooms all the way back out',
+     r.atMax && r.zoomedOut > r.zoomedIn, JSON.stringify(r));
+  ok('the move bar sets yaw to +90 degrees exactly', r.yawAt90, JSON.stringify(r));
+  ok('and to -45 degrees the other way', r.yawAtMinus45, JSON.stringify(r));
+  ok('dragging the canvas keeps the move bar in sync with the camera it just moved',
+     r.barFollowsDrag, JSON.stringify(r));
 }
 
 console.log('\n11b. taller: the 80 kft ceiling, vertical exaggeration, and Comfortaa inside the box');
