@@ -33,10 +33,13 @@ console.log('\n1. the pieces are in the page');
   ok('the old load lives on, whole, as _siteView', PAGE.includes('async function _siteView(s) {')
      && /async function _siteView\(s\) \{[\s\S]*?_loadSingleSiteRef\(s\.id\);[\s\S]*?map\.setView\(\[s\.lat, s\.lon\]/.test(PAGE));
   ok('both comparisons share one strip geometry',
-     PAGE.includes('function _stripGeometry(leftPct, rightPct)')
+     PAGE.includes('function _stripGeometry(leftPct, rightPct, axis)')
      && (PAGE.match(/_stripGeometry\(/g) || []).length >= 3
-     && PAGE.includes('function _stripPctFromClientX(clientX, splits, idx)')
+     && PAGE.includes('function _stripPctFromClientX(clientX, splits, idx, axis, clientY)')
      && (PAGE.match(/_stripPctFromClientX\(/g) || []).length >= 3);
+  ok('the axis argument is additive: the model and satellite comparisons still call '
+     + 'with just three arguments, unaffected by radar compare\'s own axis/clientY calls',
+     /_sevSetSplit\(idx, clientX\) \{\s*\n\s*const pct = _stripPctFromClientX\(clientX, _sevSplits, idx\);/.test(PAGE));
   ok('switching the radar off ends the comparison',
      /function _disableRadar\(\) \{[\s\S]*?_rcOff\(\)/.test(PAGE));
   ok('the layer stack keeps the strips just above the radar',
@@ -47,6 +50,15 @@ console.log('\n1. the pieces are in the page');
   ok('no panel, and no station name in the popup: the map label and the pill say those',
      !PAGE.includes('id="rc-panel"') && !PAGE.includes('site-pop-site')
      && PAGE.includes("x.className = 'rc-x';"));
+  ok('a strip is reclipped the moment its own picture actually lands, not just on the next pan/zoom',
+     /if \(!slot\.layer\) \{\s*\n\s*slot\.layer = L\.imageOverlay\(url, man\.bounds,[\s\S]{0,600}_rcUpdateClips\(\);\s*\n\s*\} else \{/.test(PAGE)
+     && /slot\.layer = L\.imageOverlay\(slot\.blob, img\.leafletBounds,[\s\S]{0,600}_rcUpdateClips\(\);\s*\n\s*_rcRefreshLabels\(\);\s*\n\s*\} catch \(e\) \{/.test(PAGE));
+  ok('the rotate button exists, hidden until a comparison is running',
+     /<button type="button" id="rc-rotate-btn"[\s\S]{0,120}onclick="_rcToggleOrientation\(\)"[\s\S]{0,40}style="display:none;">/.test(PAGE));
+  ok('toggling orientation flips the state and re-renders, without touching whether compare is even on',
+     /function _rcToggleOrientation\(\) \{\s*\n\s*if \(!_rcOn\) return;\s*\n\s*_rcOrientation = _rcOrientation === 'h' \? 'v' : 'h';\s*\n\s*_rcRefreshDOM\(\);\s*\n\s*_rcUpdateClips\(\);/.test(PAGE));
+  ok('the horizontal CSS is scoped to radar compare\'s own classes, not the shared .sev-cmp- ones',
+     /\.rc-divider\.horizontal \{/.test(PAGE) && /\.rc-divider\.horizontal::before \{/.test(PAGE));
   const EM = String.fromCharCode(0x2014);
   ok('no em dashes here or in the page',
      !PAGE.includes(EM)
@@ -207,6 +219,51 @@ console.log('\n4. while comparing, a pill tap adds a strip, and a second tap tak
   ok('tapping B again removes it, and C becomes B',
      d.n === 1 && d.sites.join(',') === 'kdyx' && d.letters.join('') === 'B' && d.splits.join(',') === '50' && !d.ring,
      JSON.stringify(d));
+}
+
+console.log('\n4b. the rotate button flips side-by-side to stacked, and back');
+{
+  const r = await p.evaluate(async () => {
+    const btn = document.getElementById('rc-rotate-btn');
+    const shownWhileComparing = getComputedStyle(btn).display !== 'none';
+    const slot = _rcSlots[0];
+    const pane = map.getPane('rc-' + slot.id);
+    const before = {
+      orientation: _rcOrientation,
+      dividerClass: slot.dividerEl.className,
+      dividerLeft: slot.dividerEl.style.left,
+      dividerTop: slot.dividerEl.style.top,
+      clip: pane.style.clipPath,
+    };
+    btn.click();
+    await new Promise(res => setTimeout(res, 50));
+    const after = {
+      orientation: _rcOrientation,
+      dividerClass: slot.dividerEl.className,
+      dividerLeft: slot.dividerEl.style.left,
+      dividerTop: slot.dividerEl.style.top,
+      clip: pane.style.clipPath,
+      split: _rcSplits.slice(),
+    };
+    btn.click();   // back to vertical, for the tests after this one
+    await new Promise(res => setTimeout(res, 50));
+    const restored = { orientation: _rcOrientation, dividerClass: slot.dividerEl.className };
+    return { shownWhileComparing, before, after, restored };
+  });
+  ok('the rotate button is on screen once a comparison is running',
+     r.shownWhileComparing, JSON.stringify(r.shownWhileComparing));
+  ok('vertical to start: a left-positioned divider, an x-clipped pane',
+     r.before.orientation === 'v' && !r.before.dividerClass.includes('horizontal')
+     && r.before.dividerLeft && !r.before.dividerTop
+     && /^polygon\(-?[\d.]+px -99999px,/.test(r.before.clip), JSON.stringify(r.before));
+  ok('one click rotates it: a top-positioned divider, a y-clipped pane, same split percent',
+     r.after.orientation === 'h' && r.after.dividerClass.includes('horizontal')
+     && r.after.dividerTop && !r.after.dividerLeft
+     && /^polygon\(-99999px -?[\d.]+px,/.test(r.after.clip)
+     && r.after.split.join(',') === '50', JSON.stringify(r.after));
+  ok('a second click rotates it straight back',
+     r.restored.orientation === 'v' && !r.restored.dividerClass.includes('horizontal'),
+     JSON.stringify(r.restored));
 }
 
 console.log('\n5. the divider follows the pointer, and stays put when the map is dragged');

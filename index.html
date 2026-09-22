@@ -6488,6 +6488,28 @@ body.lite-mode #export-modal { display: none !important; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
+/* Radar compare, rotated: the divider runs left-right instead of top-bottom,
+   and the strips stack instead of standing side by side. Everything here
+   only ever applies to .rc-divider/.rc-label, so the model and satellite
+   comparisons (which share the plain .sev-cmp- classes with no .rc- of
+   their own) are untouched by any of it. */
+#rc-rotate-btn {
+  position: absolute; top: 8px; right: 8px; z-index: 660;
+  width: 30px; height: 30px; border-radius: 8px;
+  background: rgba(20,20,24,0.85); border: 1px solid rgba(255,255,255,0.25);
+  color: #fff; font-size: 14px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+#rc-rotate-btn:hover { background: rgba(40,40,46,0.92); }
+.rc-divider.horizontal {
+  top: auto; left: 0; right: 0; bottom: auto; width: auto; height: 0;
+}
+.rc-divider.horizontal::before {
+  top: -1px; left: 0; right: 0; bottom: auto; height: 2px; width: auto;
+}
+.rc-divider.horizontal .sev-cmp-handle { cursor: ns-resize; }
+.rc-label.horizontal { max-width: none; }
+
 /* ── FORECAST MODAL ── */
 #forecast-modal {
   display: none;
@@ -10938,6 +10960,10 @@ body.clean-mode #clean-hint { opacity: 1; }
     <!-- Radar site comparison: the same strips, a second set of them -->
     <div id="rc-dividers"></div>
     <div id="rc-labels"></div>
+    <button type="button" id="rc-rotate-btn" title="Rotate the divider: side by side, or stacked"
+            onclick="_rcToggleOrientation()" style="display:none;">
+      <svg class=svgi width=1em height=1em><use href=#ic-swap></use></svg>
+    </button>
 
     <!-- Satellite comparison: the same strips a third time, satellite
          picture against satellite picture -->
@@ -33285,21 +33311,34 @@ function _sevSetSplit(idx, clientX) {
 // map's frame, so they take the plain view x. (They used to be handed the
 // pane-relative number as well, and walked away from their bands by exactly
 // the width of any drag of the map.)
-function _stripGeometry(leftPct, rightPct) {
+// axis defaults to 'x' (the original, still what the model and satellite
+// comparisons call this with), so neither picks up a behaviour change from
+// radar compare's own 'y' calls below.
+function _stripGeometry(leftPct, rightPct, axis) {
   const pos = (map._mapPane && L.DomUtil.getPosition(map._mapPane)) || { x: 0, y: 0 };
+  if (axis === 'y') {
+    const h = map.getSize().y;
+    const topView = h * (leftPct / 100), bottomView = h * (rightPct / 100);
+    const topPx = topView - pos.y, bottomPx = bottomView - pos.y;
+    return { leftView: topView, rightView: bottomView, leftPx: topPx, rightPx: bottomPx,
+             polygon: `polygon(-99999px ${topPx}px, 99999px ${topPx}px, 99999px ${bottomPx}px, -99999px ${bottomPx}px)` };
+  }
   const w = map.getSize().x;
   const leftView = w * (leftPct / 100), rightView = w * (rightPct / 100);
   const leftPx = leftView - pos.x, rightPx = rightView - pos.x;
   return { leftView, rightView, leftPx, rightPx,
            polygon: `polygon(${leftPx}px -99999px, ${rightPx}px -99999px, ${rightPx}px 99999px, ${leftPx}px 99999px)` };
 }
-// Where a dragged divider lands, as a percent of the map's width, kept at
-// least four percent clear of its neighbours and of both edges.
-function _stripPctFromClientX(clientX, splits, idx) {
+// Where a dragged divider lands, as a percent of the map's width (or height,
+// stacked), kept at least four percent clear of its neighbours and of both
+// edges. axis defaults to 'x' for the same reason _stripGeometry's does.
+function _stripPctFromClientX(clientX, splits, idx, axis, clientY) {
   const mapEl = document.getElementById('map');
   if (!mapEl) return null;
   const rect = mapEl.getBoundingClientRect();
-  const pct = ((clientX - rect.left) / rect.width) * 100;
+  const pct = axis === 'y'
+    ? ((clientY - rect.top) / rect.height) * 100
+    : ((clientX - rect.left) / rect.width) * 100;
   const minBound = idx > 0 ? splits[idx - 1] + 4 : 4;
   const maxBound = idx + 1 < splits.length ? splits[idx + 1] - 4 : 96;
   return Math.max(minBound, Math.min(maxBound, pct));
@@ -48805,6 +48844,11 @@ let _rcTimer = null;
 let _rcKey = '';
 let _rcTimeMs = 0;
 const RC_MAX_STRIPS = 5;   // six radars across one map is already a lot
+// 'v' (default): strips stand side by side, the divider runs top to bottom.
+// 'h': strips stack, the divider runs left to right. Only the axis _rcSetSplit
+// and _rcUpdateClips read from changes; nothing about which site is which
+// strip, or what it draws, cares which way the map is cut.
+let _rcOrientation = 'v';
 
 // The site strip A is showing, read from whichever single-site machinery
 // currently owns the screen. Lower case, the way the pills spell it.
@@ -48860,7 +48904,12 @@ function _rcPlan(site) {
   if (p === 'ref') return { kind: 'wms', layer: `${lc}_sr_bref` };
   if (p === 'vel') return { kind: 'wms', layer: `${lc}_sr_bvel` };
   if (p === 'hc' || p === 'accum' || p === 'boha') return { kind: 'wms', layer: `${lc}_${DP_LAYER_MAP[p]}` };
-  if (p === 'cc' || p === 'zdr' || p === 'kdp' || p === 'sw') return { kind: 'mesh-l2', product: p };
+  // _radarSource === 'l2' above already catches every real Level 2 product
+  // today (selectProduct sets it now too), so this legacy branch normally
+  // never runs for these - kept, and kept matching _rcMainSite's own list
+  // one line up, as a second line of defence rather than a second source
+  // of truth that could quietly drift from it again.
+  if (p === 'cc' || p === 'zdr' || p === 'kdp' || p === 'sw' || p === 'phi') return { kind: 'mesh-l2', product: p };
   return { kind: 'none', why: 'Pick a single-site radar product first, then compare sites.' };
 }
 
@@ -49091,6 +49140,12 @@ async function _rcPiShow(slot, stamp) {
   if (!slot.layer) {
     slot.layer = L.imageOverlay(url, man.bounds,
       { opacity: 0.78, interactive: false, pane: _rcPaneName(slot) }).addTo(map);
+    // The pane was created empty back in _rcRenderSlot and clipped then, so
+    // in the common case this is a no-op - but a slow Pi answering well
+    // after that first clip, or a splits change that landed mid-fetch,
+    // would otherwise leave this strip's first frame drawn full width for
+    // as long as it took the next pan or zoom to come along and fix it.
+    _rcUpdateClips();
   } else {
     slot.layer.setUrl(url);
     slot.layer.setBounds(man.bounds);
@@ -49141,6 +49196,12 @@ async function _rcMeshSlot(slot, plan, alive) {
     slot.layer = L.imageOverlay(slot.blob, img.leafletBounds,
       { opacity: typeof radarOpacity === 'number' ? radarOpacity : 0.85,
         interactive: false, pane: _rcPaneName(slot) }).addTo(map);
+    // Same reasoning as the Pi path above: a decode is the slow half of
+    // this strip (measured at ~1850ms, against a fetch of a few hundred),
+    // so this is the one most likely to land well after the clip that ran
+    // right after the pane was created, and the one most worth reclipping
+    // the moment its own picture actually exists.
+    _rcUpdateClips();
     _rcRefreshLabels();
   } catch (e) {
     if (!alive()) return;
@@ -49248,15 +49309,16 @@ function _rcRefreshDOM() {
   const lc = document.getElementById('rc-labels');
   if (!dc || !lc) return;
   dc.innerHTML = ''; lc.innerHTML = '';
+  const horiz = _rcOrientation === 'h';
   _rcSlots.forEach((slot, i) => {
     const d = document.createElement('div');
-    d.className = 'sev-cmp-divider active rc-divider';
+    d.className = 'sev-cmp-divider active rc-divider' + (horiz ? ' horizontal' : '');
     d.innerHTML = '<div class="sev-cmp-handle"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></div>';
     d.addEventListener('pointerdown', e => { e.preventDefault(); _rcDragIdx = i; });
     dc.appendChild(d);
     slot.dividerEl = d;
     const l = document.createElement('div');
-    l.className = 'sev-cmp-label rc-label';
+    l.className = 'sev-cmp-label rc-label' + (horiz ? ' horizontal' : '');
     const t = document.createElement('span');
     t.className = 'rc-label-text';
     const x = document.createElement('button');
@@ -49272,26 +49334,56 @@ function _rcRefreshDOM() {
     slot.labelEl = l;
   });
   _rcRefreshLabels();
+  const btn = document.getElementById('rc-rotate-btn');
+  if (btn) btn.style.display = _rcSlots.length ? 'flex' : 'none';
 }
+// Reapplies every slot's clip from the current splits. Called after any
+// splits or orientation change, and - critically - a second time from
+// inside _rcMeshSlot/_rcPiShow once a strip's own image actually lands:
+// the pane is created synchronously up front, but a pane holding nothing
+// yet still clips nothing worth seeing, and a fetch/decode that outlasts
+// this call (a slow station, a slow network) used to leave that strip's
+// picture drawn edge to edge over the whole map - visually on top of every
+// other site's strip - until the next pan or zoom happened to call this
+// again. A strip's own picture landing is exactly as good a reason to
+// reclip as a pan is.
 function _rcUpdateClips() {
   if (!_rcOn) return;
+  const axis = _rcOrientation === 'h' ? 'y' : 'x';
   _rcSlots.forEach((slot, i) => {
     const leftPct = _rcSplits[i];
     const rightPct = (i + 1 < _rcSplits.length) ? _rcSplits[i + 1] : 100;
-    const g = _stripGeometry(leftPct, rightPct);
+    const g = _stripGeometry(leftPct, rightPct, axis);
     const pane = map.getPane(_rcPaneName(slot));
     if (pane) pane.style.clipPath = g.polygon;
-    if (slot.dividerEl) slot.dividerEl.style.left = g.leftView + 'px';
-    if (slot.labelEl) slot.labelEl.style.left = (g.leftView + 8) + 'px';
+    if (slot.dividerEl) {
+      if (axis === 'y') slot.dividerEl.style.top = g.leftView + 'px';
+      else slot.dividerEl.style.left = g.leftView + 'px';
+    }
+    if (slot.labelEl) {
+      if (axis === 'y') slot.labelEl.style.top = (g.leftView + 8) + 'px';
+      else slot.labelEl.style.left = (g.leftView + 8) + 'px';
+    }
   });
 }
-function _rcSetSplit(idx, clientX) {
-  const pct = _stripPctFromClientX(clientX, _rcSplits, idx);
+function _rcSetSplit(idx, clientX, clientY) {
+  const axis = _rcOrientation === 'h' ? 'y' : 'x';
+  const pct = _stripPctFromClientX(clientX, _rcSplits, idx, axis, clientY);
   if (pct == null) return;
   _rcSplits[idx] = pct;
   _rcUpdateClips();
 }
-window.addEventListener('pointermove', e => { if (_rcDragIdx >= 0) _rcSetSplit(_rcDragIdx, e.clientX); });
+// Flips which way the map is cut. The splits themselves (the percentages)
+// carry over unchanged - a divider at 60% is still at 60% of whichever
+// dimension is now being split - so nobody has to redo a comparison they
+// had just arranged to switch between side by side and stacked.
+function _rcToggleOrientation() {
+  if (!_rcOn) return;
+  _rcOrientation = _rcOrientation === 'h' ? 'v' : 'h';
+  _rcRefreshDOM();
+  _rcUpdateClips();
+}
+window.addEventListener('pointermove', e => { if (_rcDragIdx >= 0) _rcSetSplit(_rcDragIdx, e.clientX, e.clientY); });
 window.addEventListener('pointerup', () => { _rcDragIdx = -1; });
 window.addEventListener('pointercancel', () => { _rcDragIdx = -1; });
 
@@ -49304,8 +49396,10 @@ function _rcOff() {
   if (_rcTimer) { clearInterval(_rcTimer); _rcTimer = null; }
   try { map.off('move zoom resize', _rcUpdateClips); } catch (e) {}
   _rcSlots.forEach(_rcClearSlot);
-  _rcSlots = []; _rcSplits = []; _rcDragIdx = -1;
+  _rcSlots = []; _rcSplits = []; _rcDragIdx = -1; _rcOrientation = 'v';
   ['rc-dividers', 'rc-labels'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+  const btn = document.getElementById('rc-rotate-btn');
+  if (btn) btn.style.display = 'none';
   try { _refreshNexradSiteStyles(); } catch (e) {}
 }
 
@@ -54496,6 +54590,13 @@ function selectProduct(p) {
     if (velocityLayer) { try { map.removeLayer(velocityLayer); } catch(e){} velocityLayer = null; }
     _dpLayerPool.forEach(l => { try { map.removeLayer(l); } catch(e){} });
     _dpLayerPool = []; _dpPoolLoaded = [];
+    // This is genuinely the Level 2 menu's own decode (loadL3Data, despite
+    // the name, is what the Level 2 row calls too), reached here without
+    // going through toggleRadarL2Sub() - a picture-link's ?product=zdr, say.
+    // Leaving _radarSource on whatever it was before (often 'normal') is
+    // what let Compare radar sites, and the site pill highlight, both miss
+    // that a real Level 2 product was actually on screen.
+    _radarSource = 'l2';
     loadL3Data(p);
   } else if (p === 'vel') {
     if (playing)     { _stopRAF(); playing     = false; document.getElementById('play-btn').innerHTML = '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg>'; document.getElementById('play-btn').classList.remove('active'); }
@@ -66524,6 +66625,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-n', date: 'Sep 22, 2026',
+    text: 'Radar site comparison: fixed a strip sometimes drawing full width across the whole map for a moment instead of staying inside its own band, and you can now rotate the divider from side-by-side to stacked with a new button on the comparison, picking up right where the strips already were.' },
   { id: '2026-09-22-m', date: 'Sep 22, 2026',
     text: 'The Discord bot\'s /map command can now ask for real dual-pol radar (correlation coefficient, differential reflectivity, spectral differential phase, spectrum width, differential phase), not just the handful of basic products it was stuck on. The site itself gained a matching fix: its own picture-sharing link only recognized five old radar codes, so a link asking for anything newer used to come back with a blank, legend-less map. It now recognizes the site\'s real dual-pol menu and its Level 3 station menu too, always decoding whichever radar station is nearest wherever the link points.' },
   { id: '2026-09-22-l', date: 'Sep 22, 2026',

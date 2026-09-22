@@ -43,7 +43,8 @@ console.log('\n1. the pieces are in the page');
      && /function _goesPiTargetFor\(product, regionId\)/.test(PAGE)
      && /async function _goesPiFramesFor\(product, regionId\)/.test(PAGE));
   ok('the clip geometry is shared with the other two comparisons',
-     (PAGE.match(/_stripGeometry\(leftPct, rightPct\)/g) || []).length >= 3);
+     PAGE.includes('function _stripGeometry(leftPct, rightPct, axis)')
+     && (PAGE.match(/_stripGeometry\(leftPct, rightPct\)/g) || []).length >= 2);
   ok('a bubble in a running comparison wears the strip ring',
      /\.sub-bubble\.in-compare \{/.test(PAGE));
   ok('and the info description says what it does',
