@@ -666,6 +666,81 @@ console.log('\n7b. lit, solid, thinner, and cut open: the controls gauged from G
      JSON.stringify(r.wired));
 }
 
+console.log('\n7c. Raw pixels: the exact gates, unshaded and crisp, plus the glowing core and fullscreen');
+{
+  ok('the marcher takes a crisp flag that turns off blending and the light',
+     /const crisp = !!prm\.crisp, lerp = fine && !crisp;/.test(PAGE)
+     && /crisp: _r3dMode === 'pixels' \? 1 : 0/.test(PAGE)
+     && PAGE.includes('<option value="pixels">Raw pixels</option>'));
+  ok('the panel has a fullscreen button and a viewport-pinned fullscreen state',
+     PAGE.includes('id="r3d-full"') && /#r3d-panel\.fullscreen \{/.test(PAGE));
+  const r = await p.evaluate(async () => {
+    _r3dOpen('kfws');
+    _r3dToken++;
+    const site = { x: 0, y: -60 };
+    const xs = [], ys = [], zs = [], vs = [], rs = [], segs = [];
+    [0.5, 1.5, 2.4, 3.4, 4.5, 6, 8].forEach(a2 => {
+      const start = xs.length;
+      for (let x = -3; x <= 3; x += 0.4) for (let y = -3; y <= 3; y += 0.4) {
+        const s2 = Math.hypot(x - site.x, y - site.y);
+        xs.push(x); ys.push(y); zs.push(_xsBeamHeightKm(s2, a2, 0)); vs.push(62); rs.push(0.4, s2 * 0.00873);
+      }
+      segs.push({ start, end: xs.length, angle: a2 });
+    });
+    const frame = _r3dFinishFrame({ xs, ys, zs, vs, rs, site }, segs, null, segs.length);
+    _r3dFrames = [frame]; _r3dFrameIdx = 0; _r3dQuality = 'fine';
+    _r3dCam.yaw = 0.6; _r3dCam.pitch = 0.35; _r3dCam.dist = 50;
+    const R = async () => { _r3dDirty = false; _r3dRender(); await _r3dRenderIdle(15000); };
+    const saved = { f: _r3dFilterPct, o: _r3dOpacity, m: _r3dMode };
+    _r3dFilterPct = 0; _r3dOpacity = 1; _r3dCutSide = 'off';
+    const cv = document.getElementById('r3d-canvas'), ctx = cv.getContext('2d');
+    const reds = () => {
+      const d = ctx.getImageData(0, 0, cv.width, cv.height).data;
+      const vals = [];
+      for (let i = 0; i < d.length; i += 4) if (d[i] > 60 && d[i + 1] < 45 && d[i + 2] < 45) vals.push(d[i]);
+      vals.sort((a, b) => a - b);
+      return { n: vals.length, lo: vals[Math.floor(vals.length * 0.1)] || 0, hi: vals[Math.floor(vals.length * 0.9)] || 0 };
+    };
+    _r3dMode = 'cloud'; _r3dLutCache = null; await R(); const lit = reds();
+    _r3dMode = 'pixels'; _r3dLutCache = null; await R(); const pix = reds();
+    // The transfer function itself: pixels is flat, cloud curves and glows.
+    const spec = _r3dSpec('ref');
+    const b30 = _r3dNormByte(30, spec), b65 = _r3dNormByte(65, spec);
+    _r3dMode = 'pixels'; _r3dLutCache = null;
+    const pl = _r3dLutFor('ref', 0.5).lut;
+    const flat = pl[b30 * 4 + 3] > 0 && Math.abs(pl[b30 * 4 + 3] - pl[b65 * 4 + 3]) < 1e-6;
+    _r3dMode = 'cloud'; _r3dLutCache = null;
+    const cl = _r3dLutFor('ref', 0.5);
+    const curved = Math.abs(cl.lut[b30 * 4 + 3] - cl.lut[b65 * 4 + 3]) > 1e-4;
+    const glowRatio = (cl.lut[b65 * 4] / Math.max(1e-6, cl.lut[b65 * 4 + 3]))
+                    / Math.max(1, cl.floorRgb[b65 * 3]);
+    // Fullscreen: the button, Esc, and closing the panel all leave it clean.
+    const panel = document.getElementById('r3d-panel');
+    document.getElementById('r3d-full').click();
+    const fsOn = panel.classList.contains('fullscreen');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    const fsEsc = panel.classList.contains('fullscreen');
+    document.getElementById('r3d-full').click();
+    panel.querySelector('.xs-x').click();
+    const fsClosed = panel.classList.contains('fullscreen');
+    _r3dFilterPct = saved.f; _r3dOpacity = saved.o; _r3dMode = saved.m; _r3dLutCache = null;
+    return { lit, pix, flat, curved, glowRatio, fsOn, fsEsc, fsClosed };
+  });
+  ok('Raw pixels still draws the whole block', r.pix.n > 400, JSON.stringify(r.pix));
+  // Brightness still varies in pixels mode - the raw cones and the fade at
+  // the stack's edges are the point of it - but the LIGHT is off, so no
+  // face is dimmed below its palette colour the way the lit cloud's are.
+  ok('and unshaded: its brightest red is at least the lit cloud\'s, nothing darkened by the light',
+     r.pix.hi >= r.lit.hi, JSON.stringify({ pix: r.pix, lit: r.lit }));
+  ok('the pixels transfer function is flat while the cloud one still curves',
+     r.flat && r.curved, JSON.stringify({ flat: r.flat, curved: r.curved }));
+  ok('the strongest returns glow brighter than their own palette colour in cloud mode',
+     r.glowRatio > 1.15, String(r.glowRatio));
+  ok('fullscreen toggles on, Esc leaves it, and closing the panel always leaves it',
+     r.fsOn === true && r.fsEsc === false && r.fsClosed === false,
+     JSON.stringify({ on: r.fsOn, esc: r.fsEsc, closed: r.fsClosed }));
+}
+
 console.log('\n8. the volume follows the drawn box: only the window the zone occupies, re-binned in place');
 {
   const r = await p.evaluate(() => {
