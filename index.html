@@ -33587,6 +33587,33 @@ function _stripPctFromClientX(clientX, splits, idx, axis, clientY) {
 // "<prefix>-dividers"; prefix is 'rc' or 'sc'. A second press while
 // already peeking just restarts the ten seconds rather than stacking
 // timers.
+// A pane's corner label can land under the furniture floating over the
+// top of the map: the logo, the search bar, the status banner. Rather
+// than teach the layout about every such element, the label is slid
+// straight down until it clears whatever it actually overlaps, checked
+// against the real on-screen rectangles. Shared by both comparisons.
+const _CMP_LABEL_BLOCKERS = ['logo-wrap', 'top-search-bar', 'load-status'];
+function _cmpDodgeLabel(el) {
+  if (!el) return;
+  for (let pass = 0; pass < 3; pass++) {
+    const r = el.getBoundingClientRect();
+    if (!r.width) return;
+    let shifted = false;
+    for (const id of _CMP_LABEL_BLOCKERS) {
+      const b = document.getElementById(id);
+      if (!b) continue;
+      const br = b.getBoundingClientRect();
+      if (!br.width || !br.height) continue;
+      if (r.left < br.right && r.right > br.left && r.top < br.bottom && r.bottom > br.top) {
+        el.style.top = ((parseFloat(el.style.top) || 0) + (br.bottom - r.top) + 6) + 'px';
+        shifted = true;
+        break;
+      }
+    }
+    if (!shifted) return;
+  }
+}
+
 const _cmpPeekTimers = {};
 function _cmpPeek(prefix) {
   const dc = document.getElementById(prefix + '-dividers');
@@ -49803,6 +49830,7 @@ function _rcUpdateGridClips() {
     if (slot.labelEl) {
       slot.labelEl.style.left = (g.leftView + 8) + 'px';
       slot.labelEl.style.top = (g.topView + 8) + 'px';
+      _cmpDodgeLabel(slot.labelEl);
     }
   });
   _rcColSplits.forEach((pct, i) => {
@@ -50266,6 +50294,7 @@ function _scUpdateGridClips() {
     if (slot.labelEl) {
       slot.labelEl.style.left = (g.leftView + 8) + 'px';
       slot.labelEl.style.top = (g.topView + 8) + 'px';
+      _cmpDodgeLabel(slot.labelEl);
     }
   });
   _scColSplits.forEach((pct, i) => {
@@ -67354,6 +67383,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-ze', date: 'Sep 22, 2026',
+    text: 'Fixed a split pane\'s corner label hiding underneath the site logo (or the search bar, or a status banner). A label that would land under any of those now slides straight down until it is in the clear, and steps back up into its corner the moment nothing covers it.' },
   { id: '2026-09-22-zd', date: 'Sep 22, 2026',
     text: 'The radar and satellite comparisons were redone as true splits. A comparison now starts as a double split, grows itself to a quad (4) or octo (8) as you add pictures, and a button cycles between the three; rotate turns a side-by-side split into a stacked one. Every split line is shared: drag it and every pane it touches resizes together, with no separate separator or knob per pane, and each picture is named by a small label in its own corner. Radar panes also gained a ≡ picker on that label: each pane can now show its OWN product (reflectivity, velocity, CC, ZDR, KDP, spectrum width) and its own source (standard, Level 2 or Level 3), so one split can hold reflectivity beside velocity, or the Level 2 picture of a storm beside the Level 3 one.' },
   { id: '2026-09-22-zc', date: 'Sep 22, 2026',
