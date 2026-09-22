@@ -148,7 +148,48 @@ console.log('\n4. the summary follows what is actually active, not a fixed line'
      body.state === 'No overlays', body.state);
 }
 
-console.log('\n5. turning it back off stops the timer and the posting');
+console.log('\n5. comparing, Radar 3D, and a single radar site each name themselves');
+{
+  const r = await p.evaluate(() => {
+    const out = {};
+    // A single radar site.
+    activeLayers.satellite = false; activeLayers.nexrad = true;
+    currentProduct = 'ref'; _refStation = 'ktlx';
+    out.site = _presenceSummary().details;
+    // Radar compare, in a grid.
+    _rcOn = true;
+    _rcSlots.push({ site: 'kama' }, { site: 'kfdr' });
+    _rcGrid = { rows: 2, cols: 2 };
+    out.rc = _presenceSummary().details;
+    _rcGrid = null; _rcSlots.length = 0; _rcOn = false;
+    // Satellite compare.
+    activeLayers.nexrad = false; activeLayers.satellite = true;
+    _goesProductId = 'ch13';
+    const other = GOES_PRODUCTS.find(p => p.id !== 'ch13' && p.label);
+    _scOn = true;
+    _scSlots.push({ productId: other.id });
+    out.otherLabel = other.label;
+    out.sc = _presenceSummary().details;
+    _scSlots.length = 0; _scOn = false;
+    // Radar 3D outranks everything else on screen.
+    _r3dOn = true; _r3dStation = 'ktlx';
+    out.r3d = _presenceSummary().details;
+    _r3dOn = false; _r3dStation = null;
+    _refStation = null; activeLayers.satellite = false; activeLayers.nexrad = true;
+    return out;
+  });
+  ok('a single radar site is named as the thing being viewed',
+     /^Radar site KTLX:/.test(r.site), r.site);
+  ok('a radar comparison lists every site, and says when it is a grid',
+     r.rc === 'Comparing radar: KTLX vs KAMA vs KFDR in a 2x2 grid', r.rc);
+  ok('a satellite comparison lists the products being compared',
+     r.sc.startsWith('Comparing satellite: ')
+     && r.sc.includes(' vs ') && r.sc.includes(r.otherLabel), r.sc);
+  ok('Radar 3D wins over every other state and names the station',
+     r.r3d === 'Radar 3D: orbiting a storm volume (KTLX)', r.r3d);
+}
+
+console.log('\n6. turning it back off stops the timer and the posting');
 {
   const before = posts.length;
   const r = await p.evaluate(async () => {
@@ -162,7 +203,7 @@ console.log('\n5. turning it back off stops the timer and the posting');
   ok('nothing new was posted after switching off', posts.length === before);
 }
 
-console.log('\n6. a bridge that is not running fails silently');
+console.log('\n7. a bridge that is not running fails silently');
 {
   await p.route('http://127.0.0.1:32473/**', route => route.abort('connectionrefused'));
   const r = await p.evaluate(async () => {

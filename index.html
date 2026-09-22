@@ -60555,10 +60555,35 @@ let _presenceTimer = null;
 function _presenceSummary() {
   let details = 'Browsing the map';
   try {
-    if (activeLayers.nexrad) {
+    // Most specific first: a 3D volume or a comparison says more about what
+    // the person is doing than which layer happens to be underneath it.
+    if (typeof _r3dOn !== 'undefined' && _r3dOn) {
+      const st = (typeof _r3dStation === 'string' && _r3dStation)
+        ? ' (' + _r3dStation.toUpperCase() + ')' : '';
+      details = 'Radar 3D: orbiting a storm volume' + st;
+    } else if (typeof _rcOn !== 'undefined' && _rcOn) {
+      const sites = [];
+      const main = typeof _rcMainSite === 'function' ? _rcMainSite() : null;
+      if (main) sites.push(String(main).toUpperCase());
+      _rcSlots.forEach(s => { if (s && s.site) sites.push(String(s.site).toUpperCase()); });
+      const grid = (typeof _rcGrid !== 'undefined' && _rcGrid)
+        ? ' in a ' + _rcGrid.rows + 'x' + _rcGrid.cols + ' grid' : '';
+      details = 'Comparing radar' + (sites.length ? ': ' + sites.join(' vs ') : ' sites') + grid;
+    } else if (typeof _scOn !== 'undefined' && _scOn) {
+      const names = [];
+      try { const g = _goesProduct(); if (g && g.label) names.push(g.label); } catch (e) {}
+      _scSlots.forEach(s => {
+        const pr = s && typeof _scProductOf === 'function' ? _scProductOf(s.productId) : null;
+        if (pr && pr.label) names.push(pr.label);
+      });
+      const grid = (typeof _scGrid !== 'undefined' && _scGrid)
+        ? ' in a ' + _scGrid.rows + 'x' + _scGrid.cols + ' grid' : '';
+      details = 'Comparing satellite' + (names.length ? ': ' + names.join(' vs ') : ' views') + grid;
+    } else if (activeLayers.nexrad) {
       const site = typeof _rcMainSite === 'function' ? _rcMainSite() : null;
       const label = typeof _rcProductLabel === 'function' ? _rcProductLabel() : currentProduct;
-      details = 'Radar: ' + label + (site ? ' (' + site.toUpperCase() + ')' : '');
+      details = site ? 'Radar site ' + site.toUpperCase() + ': ' + label
+                     : 'Radar: ' + label;
     } else if (activeLayers.satellite && typeof _goesProduct === 'function') {
       const g = _goesProduct();
       details = 'Satellite: ' + (g && g.label ? g.label : _goesProductId);
@@ -67259,6 +67284,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-w', date: 'Sep 22, 2026',
+    text: 'Discord Rich Presence now knows a lot more about what you are doing. Comparing radar sites shows every site being compared (and the grid layout, like 2x2), comparing satellite products lists the products, orbiting a storm in Radar 3D says so with the station, and viewing a single radar site names that site up front.' },
   { id: '2026-09-22-v', date: 'Sep 22, 2026',
     text: 'Satellite no longer disappears and playback actually plays. The live refresh used to tear the whole picture down every minute even when nothing new had arrived; now it only rebuilds when a new scan exists, and the old picture stays on screen until the new one has loaded. Stepping or playing through frames never flashes to an empty map anymore: the last loaded frame holds until the next one is ready. And looping is much quicker the second time around, because frames are now cached properly instead of being refetched every lap.' },
   { id: '2026-09-22-u', date: 'Sep 22, 2026',
