@@ -12324,6 +12324,8 @@ function initMap() {
   // metered connection.
   map.on('moveend', () => { try { _arcWarmVisible(); } catch (e) {} });
   _initGraticule();
+  map.on('zoomstart', _goesOnZoomStart);
+  map.on('zoomend', _goesOnZoomEnd);
 }
 
 // ── RECENTER LOCATION ──
@@ -30226,6 +30228,41 @@ function _goesEnsureLayer(i) {
   l.on('load', () => { _goesPoolLoaded[i] = true; });
   if (!f.url) _goesTmWatch(l);
   _goesPool[i] = l;
+}
+
+// The satellite pool goes quiet during a zoom, the same way the radar pool
+// does (see the zoomstart/zoomend pair in initMap) and for the same reason:
+// a hidden tile layer still rides the zoom animation and then re-fetches
+// its whole viewport the instant the zoom ends. _wireWheelZoom applies a
+// held scroll as many small, non-animated zoom steps rather than one
+// smooth gesture, so every one of those steps was its own zoomend for up
+// to GOES_POOL_MAX pooled WMS layers at once - and a WMS tile is rendered
+// on the server on request rather than served from a pre-built pyramid, so
+// it is slower to begin with. That pile-up, repeating on every step of the
+// scroll, is what made satellite in particular look unusually slow to
+// catch up once the zooming stopped. Detaching every frame but the one on
+// screen leaves that one frame's old-zoom tiles in place for the length of
+// the gesture (nothing visible is lost, the picture was already stale for
+// the old zoom anyway) and the window is rebuilt once, a beat after the
+// zoom actually settles.
+let _goesZoomTimer = null;
+function _goesOnZoomStart() {
+  if (!activeLayers.satellite || !_goesPool.length) return;
+  for (let i = 0; i < _goesPool.length; i++) {
+    if (i === goesCurrentFrame) continue;
+    if (_goesPool[i]) {
+      try { map.removeLayer(_goesPool[i]); } catch (e) {}
+      _goesPool[i] = null;
+      _goesPoolLoaded[i] = false;
+    }
+  }
+}
+function _goesOnZoomEnd() {
+  if (!activeLayers.satellite) return;
+  clearTimeout(_goesZoomTimer);
+  _goesZoomTimer = setTimeout(() => {
+    if (activeLayers.satellite && goesFrames.length) showGoesFrame(goesCurrentFrame);
+  }, 300);
 }
 
 function _goesClearPool() {
@@ -66091,6 +66128,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-f', date: 'Sep 22, 2026',
+    text: 'Fixed satellite taking an unusually long time to catch up after zooming. The radar tile pool, the wind particles and the wave particles all already go quiet for the length of a zoom and rebuild once it settles; satellite never got the same treatment, so a held scroll-wheel zoom (which applies many small zoom steps rather than one smooth motion) meant every one of the satellite view\'s pooled frames was re-fetching its whole picture from the server on every single step. Satellite now drops everything but the frame already on screen for the length of the zoom, the same as radar, and rebuilds once, a beat after zooming actually stops.' },
   { id: '2026-09-22-e', date: 'Sep 22, 2026',
     text: 'Arrow keys bound to Next/Previous Frame (Left/Right in the default layouts) now only step the radar frame. They used to nudge the map itself a little too, because Leaflet\'s own keyboard handling was never actually turned off underneath the app\'s own shortcuts, it was just getting outrun most of the time. Now the app\'s shortcut listener gets first look at every key and stops a bound one from reaching Leaflet at all, so panning by arrow key is gone for good, not just usually beaten to the punch.' },
   { id: '2026-09-22-d', date: 'Sep 22, 2026',
