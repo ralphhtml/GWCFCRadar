@@ -510,6 +510,7 @@ function browserAlive(b) {
 }
 
 async function getBrowser() {
+  _browserLastUse = Date.now();   // for the idle reaper below
   if (browserAlive(_browser)) return _browser;
 
   let puppeteer;
@@ -1661,6 +1662,42 @@ client.on(Events.MessageCreate, async (m) => {
 });
 
 process.on('unhandledRejection', e => console.error('unhandled:', e));
+
+// A clean way out. systemd stops a service with SIGTERM and waits; with no
+// handler, the warm Chromium and the Discord gateway connection kept the
+// process alive until systemd gave up and SIGKILLed it, so every restart
+// ended "Failed with result 'timeout'". Close what is open and leave.
+let _stopping = false;
+async function shutdown(signal) {
+  if (_stopping) return;
+  _stopping = true;
+  console.log(`${signal}: shutting down`);
+  const jobs = [];
+  if (_browser) jobs.push(_browser.close().catch(() => {}));
+  try { jobs.push(Promise.resolve(client.destroy()).catch(() => {})); } catch {}
+  // Whatever refuses to close in five seconds is abandoned; exiting IS the
+  // point, and systemd's own kill would be no gentler.
+  await Promise.race([Promise.allSettled(jobs),
+                      new Promise(res => setTimeout(res, 5000))]);
+  process.exit(0);
+}
+process.on('SIGTERM', () => { shutdown('SIGTERM'); });
+process.on('SIGINT', () => { shutdown('SIGINT'); });
+
+// The warm browser earns its memory while screenshots are flowing and is
+// pure cost the rest of the day: a dozen Chromium processes sitting on
+// about:blank for hours. Reused within ten minutes, closed after.
+const BROWSER_IDLE_MS = 10 * 60 * 1000;
+let _browserLastUse = 0;
+setInterval(() => {
+  if (_browser && _browserLastUse
+      && Date.now() - _browserLastUse > BROWSER_IDLE_MS) {
+    const b = _browser;
+    _browser = null;
+    b.close().catch(() => {});
+    console.log('screenshot browser closed after idling');
+  }
+}, 60 * 1000).unref();
 
 // Discord answers a bad token with "No Description", which explains nothing, so
 // both failure paths get a message that actually says what to check.

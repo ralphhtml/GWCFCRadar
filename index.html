@@ -67314,6 +67314,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-zb', date: 'Sep 22, 2026',
+    text: 'Server-side repairs from the CT 112 bug report. Seven model products (Alaska NAM, Arctic waves, the wider GFS set and more) had been silently building nothing because the chart builder could not read grids drawn around the poles; it now computes those grids itself, so the missing models come back. Also: server logs finally say WHICH file a 404 was for, a phone hanging up mid-download no longer spams error traces, sounding builds can no longer install software at runtime, the Discord bot shuts down cleanly and stops parking an idle browser in memory for hours, and the self-updater is no longer blocked by stray files.' },
   { id: '2026-09-22-za', date: 'Sep 22, 2026',
     text: 'You can now walk INSIDE the Radar 3D box. A new Walk button puts you in the storm: drag to look around, WASD or the arrow keys to move (E and Q to rise and sink), the scroll wheel to stride forward, and an on-screen pad does the same on any touch device. And a VR button turns it into fullscreen side-by-side stereo for a phone dropped into a headset viewer, steering with the phone\'s own gyroscope. Esc steps back out.' },
   { id: '2026-09-22-z', date: 'Sep 22, 2026',
