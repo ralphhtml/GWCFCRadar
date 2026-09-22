@@ -10546,6 +10546,23 @@ window.GLASS_ALPHA = {
   medium: { p: 0.62, b: 0.80 },
   full:   { p: 0.42, b: 0.66 },
 };
+// A no-hover device - PS5, a phone, an iPad, anything driven by a touch
+// screen or a game pad rather than a precise pointer - already has an
+// `@media (hover: none)` rule near the top of this file that strips every
+// backdrop-filter blur, because it is the single biggest GPU cost on those
+// platforms and the one that reads as the tab lagging or dying outright.
+// That rule is a plain `*` selector, though, and every popup and panel this
+// file has given heavy frost since (alerts, EAS, the outlook legends, the
+// NWR popup, the loading screen's own fact card) does it with a higher
+// specificity selector plus `!important`, which wins the cascade over that
+// plain rule regardless of which one comes later in the file - so each one
+// quietly punched a hole back through the kill switch. Rather than re-win
+// that fight in every rule this file will ever add, glass is refused here
+// instead: with no [data-glass] attribute at all, none of those selectors
+// have anything to match, on this device or the next one.
+function _glassAllowed() {
+  try { return matchMedia('(hover: hover)').matches; } catch (e) { return true; }
+}
 // Rewrites every colour in a gradient string at a lower alpha. rgb()/rgba()
 // first, then hex, in that order: the first pass emits rgba() text that the
 // second pass must not touch again.
@@ -10569,7 +10586,10 @@ window._glassSync = function () {
   const r = document.documentElement;
   const KEYS = ['--grad-panel', '--grad-surface', '--grad-card',
                 '--grad-raise', '--grad-raise-h', '--grad-sunk'];
-  const lvl = window._glassLevel;
+  // The stored preference still travels with the account (it will apply the
+  // next time this same person opens the app on a mouse-driven browser), but
+  // it never takes effect here: see _glassAllowed above.
+  const lvl = _glassAllowed() ? window._glassLevel : null;
   // The opaque truth for each token: the saved theme's own surface when it
   // has one, else whatever the stylesheet ships. Read from storage rather
   // than from the tokens themselves, because once glass has run the tokens
@@ -10615,7 +10635,8 @@ window._glassSet = function (lvl) {
 // The attribute goes on right now so the blur is there from the first
 // painted frame; the token rewrite has to wait for the stylesheet that
 // defines the shipped gradients, which sits further down the document.
-if (window._glassLevel) {
+// _glassAllowed is safe this early: matchMedia needs nothing from the DOM.
+if (window._glassLevel && _glassAllowed()) {
   document.documentElement.setAttribute('data-glass', window._glassLevel);
 }
 (function () {
@@ -12396,7 +12417,20 @@ function _initGraticule() {
     if (_gratRaf) return;
     _gratRaf = requestAnimationFrame(() => { _gratRaf = null; redraw(); });
   };
-  map.on('move zoom moveend zoomend resize', _gratDraw);
+  map.on('move moveend zoomend resize', _gratDraw);
+  // Radar tiles get detached for the length of a zoom and rebuilt once it
+  // settles (see the zoomstart/zoomend pair up in initMap) because
+  // recomputing anything on every frame of a zoom is exactly the lag people
+  // felt - and this grid was the one layer still doing that. It used to
+  // redraw on the live 'zoom' event too: every latitude and longitude line's
+  // pixel position, plus a measured label for each, recomputed and repainted
+  // up to sixty times over a quarter-second animation - and worse under a
+  // held scroll-wheel or trackpad zoom, where each fractional step is its
+  // own instant zoom, not one shared animation. A faint reference grid
+  // nobody is watching frame-by-frame just hides for that instant and
+  // reappears correctly placed the moment the zoom settles.
+  map.on('zoomstart', () => { canvas.style.visibility = 'hidden'; });
+  map.on('zoomend', () => { canvas.style.visibility = ''; });
   redraw();
 }
 
@@ -29223,14 +29257,24 @@ function _barbStart() {
     _barbSizeCanvas();
     map.getContainer().appendChild(_barbCanvas);
     // The canvas sits in the map container, which does not move when the map
-    // is dragged, so every pan and zoom frame has to redraw or the barbs slide
-    // off the places they describe. Redrawing a couple of hundred glyphs is
-    // well under a frame, so this is a redraw rather than the anchor-shifting
-    // the particle trails need.
+    // is dragged, so every pan frame has to redraw or the barbs slide off
+    // the places they describe. Redrawing a couple of hundred glyphs, each
+    // under a shadowed stroke (Canvas2D's most expensive per-shape cost), is
+    // fine once - it is not fine sixty times over a quarter-second zoom, or
+    // once per fractional step of a held scroll-wheel zoom, which is exactly
+    // the frame the old 'zoom' binding redrew on. The wind particles and the
+    // radar tile pool already hide for the length of a zoom and pick back up
+    // once it settles; the barbs get the same treatment here instead of
+    // being the one layer still paying per-frame.
     map.on('move', _barbDraw);
-    map.on('zoom', _barbDraw);
     map.on('viewreset', _barbDraw);
     map.on('resize', _barbOnResize);
+    map.on('zoomstart', () => { if (_barbCanvas) _barbCanvas.style.visibility = 'hidden'; });
+    map.on('zoomend', () => {
+      if (!_barbCanvas) return;
+      _barbCanvas.style.visibility = '';
+      if (_barbActive) _barbDraw();
+    });
   }
   _barbCanvas.style.display = '';
   _barbLoad();
@@ -65990,6 +66034,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-b', date: 'Sep 22, 2026',
+    text: 'Two performance fixes for a laggy zoom. The faint lat/lon grid and the wind barbs were the last two layers still redrawing themselves on every single frame of a zoom, live, instead of pausing for the length of the gesture the way the radar tiles and the particle layers already do - fixed, so zooming has two fewer things computing behind it. Separately, and this is the bigger one for consoles: the switch that turns off the liquid-glass blur on PS5 and touch devices (blur is by far the most expensive thing a browser can be asked to do, and is exactly what reads as lagging or crashing) only ever caught the very first glass rule written. Every heavy-frost popup and panel added since - alerts, EAS, the outlook legends, the NWR popup, this week\'s Did You Know card - was written with a stronger rule that quietly punched a hole back through that switch, so those devices had been getting full blur on every one of them despite the safeguard. Glass itself is now refused outright on a device without a precise pointer, so nothing can punch through it again.' },
   { id: '2026-09-22-a', date: 'Sep 22, 2026',
     text: 'The Settings rail, on a phone where it becomes a strip of chips, had a bug the blue re-colour left behind: the selected chip\'s label was the same blue as its own background, so it read blank. That chip and a few button labels sharing the same bug (Open Export, Reset Border Colors, Past Alerts, the fullscreen hint) now wear dark ink instead. Shared links also get their proper red accent bar back on Discord and other previews.' },
   { id: '2026-09-21-ah', date: 'Sep 21, 2026',
