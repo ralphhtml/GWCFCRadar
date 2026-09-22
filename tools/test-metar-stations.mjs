@@ -168,6 +168,40 @@ console.log('\n7. the style choice is remembered, and the select agrees with it'
      /function _metarSyncStyleSelect\(\) \{\s*\n\s*const sel = document\.getElementById\('lqm-set-metarstyle'\);\s*\n\s*if \(sel\) sel\.value = _metarStyle;/.test(PAGE));
 }
 
+console.log('\n8. clicking a station opens a popup, the alert-popup shell redesigned');
+{
+  ok('the canvas stays click-through, so this can never block whatever is layered under it '
+     + '(the exact bug class task #28 fixed for alert polygons)',
+     /_metarCanvas\.style\.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:492;'/.test(PAGE));
+  ok('a click is instead heard on the map itself, and only while the layer is on',
+     /map\.on\('click', _metarHandleClick\);/.test(PAGE)
+     && /function _metarHandleClick\(ev\) \{\s*\n\s*if \(!_metarActive \|\| !_metarPlaced\.length\) return;/.test(PAGE));
+  ok('the hit test is against what was really drawn on the last frame, not the full station list',
+     /_metarPlaced\.push\(\{ x, y, s \}\);/.test(PAGE)
+     && /for \(const p of _metarPlaced\) \{/.test(PAGE));
+  ok('a click only counts within a real radius of a symbol, not the whole screen',
+     /const METAR_CLICK_RADIUS_PX = 14;/.test(PAGE)
+     && /bestD2 <= METAR_CLICK_RADIUS_PX \* METAR_CLICK_RADIUS_PX/.test(PAGE));
+  ok('a hit opens the exact same popup shell the alert polygon popup uses',
+     /function _metarOpenPopup\(s, latlng\) \{[\s\S]{0,220}className: 'ap-popup-container'/.test(PAGE));
+  ok('the popup border is tinted the same temperature colour the symbol itself is drawn in',
+     /function _metarOpenPopup\(s, latlng\) \{\s*\n\s*const color = tempColor\(s\.tempF\);/.test(PAGE));
+  ok('the content is built from the ap- shell classes, not a copy of the alert markup',
+     /function _buildMetarPopupHTML\(s\) \{/.test(PAGE)
+     && /class="ap-header"/.test(PAGE.match(/function _buildMetarPopupHTML[\s\S]*?\n\}/)[0])
+     && /class="ap-meta-grid"/.test(PAGE.match(/function _buildMetarPopupHTML[\s\S]*?\n\}/)[0]));
+  ok('it shows temperature, wind, gust and coordinates, not a copy of alert fields like counties or a timeline',
+     /TEMPERATURE<\/div>/.test(PAGE) && /WIND<\/div>/.test(PAGE)
+     && /GUST<\/div>/.test(PAGE) && /COORDINATES<\/div>/.test(PAGE)
+     && !/function _buildMetarPopupHTML[\s\S]*?ap-counties/.test(PAGE));
+  ok('a station with no wind reading says so honestly rather than inventing a direction',
+     /const windLine = hasWind\s*\n\s*\? [\s\S]{0,160}\n\s*: 'Calm or not reporting';/.test(PAGE));
+  ok('the station name is escaped before it reaches the page, same as every other user-facing feed text',
+     /const name = _ccEsc\(s\.name \|\| 'METAR Station'\);/.test(PAGE));
+  ok('the placed list and any open handler state are cleared on stop, so a stale hit test cannot fire',
+     /function _metarStop\(\) \{\s*\n\s*_metarActive = false;\s*\n\s*clearInterval\(_metarRefreshTimer\);\s*\n\s*_metarRefreshTimer = null;\s*\n\s*_metarPlaced = \[\];/.test(PAGE));
+}
+
 let chromium;
 try { ({ chromium } = await import('playwright')); } catch { /* below */ }
 if (!chromium) {
@@ -176,7 +210,7 @@ if (!chromium) {
   process.exit(fail ? 1 : 0);
 }
 
-console.log('\n8. the drawing, run against a real canvas');
+console.log('\n9. the drawing, run against a real canvas');
 {
   const b = await chromium.launch({
     executablePath: process.env.CHROME_PATH
@@ -270,7 +304,7 @@ console.log('\n8. the drawing, run against a real canvas');
   await b.close();
 }
 
-console.log('\n9. live in the browser: toggling the overlay, and the declutter');
+console.log('\n10. live in the browser: toggling the overlay, and the declutter');
 {
   const LEAFLET = process.env.LEAFLET_DIST || '/tmp/node_modules/leaflet/dist';
   const b = await chromium.launch({
@@ -333,6 +367,39 @@ console.log('\n9. live in the browser: toggling the overlay, and the declutter')
     _metarDraw();
     const declutter = { drawnFromThree: symbolCalls };
     _metarSymbol = realSymbol;
+    // Clicking the station drawn right at the map centre (AAA) opens a
+    // popup - the same shell class the alert polygon popup uses, filled in
+    // with this station's own reading. Fired through Leaflet's own event
+    // system rather than a real mouse event, the same way the map itself
+    // would hand a click to any 'click' listener. _metarOpenPopup itself is
+    // intercepted to count calls, so "did this click open something" is
+    // read from the call count rather than a DOM query that a popup's own
+    // fade-out animation could leave stale for a beat after closePopup().
+    const realOpenPopup = _metarOpenPopup;
+    let opens = [];
+    _metarOpenPopup = (s, latlng) => { opens.push(s.name); return realOpenPopup(s, latlng); };
+    map.fire('click', { containerPoint: centerPt, latlng: L.latLng(center.lat, center.lng) });
+    await wait(60);
+    // The selector itself proves the popup carries ap-popup-container, the
+    // same class name the alert polygon popup opens with.
+    const hitEl = document.querySelector('.ap-popup-container .leaflet-popup-content-wrapper');
+    const clickHit = {
+      opened: opens.length === 1 && opens[0] === 'AAA',
+      hasStationName: hitEl ? hitEl.textContent.includes('AAA') : false,
+      hasTemp: hitEl ? hitEl.textContent.includes('70') : false,
+      hasWind: hitEl ? /15 kt/.test(hitEl.textContent) : false,
+      hasGust: hitEl ? /20 kt/.test(hitEl.textContent) : false,
+      hasCoords: hitEl ? hitEl.textContent.includes(center.lat.toFixed(2)) : false,
+    };
+    map.closePopup();
+    opens = [];
+    // Clicking well away from every drawn station opens nothing at all.
+    const missPt = L.point(30, 30);
+    map.fire('click', { containerPoint: missPt, latlng: map.containerPointToLatLng(missPt) });
+    await wait(60);
+    const clickMiss = { opened: opens.length > 0 };
+    _metarOpenPopup = realOpenPopup;
+    map.closePopup();
     // Style picking, live, through the Settings select rather than a
     // floating panel button.
     lqmOpenSettings();
@@ -351,12 +418,18 @@ console.log('\n9. live in the browser: toggling the overlay, and the declutter')
       pillLit: document.getElementById('op-metar').classList.contains('active'),
       canvasShown: getComputedStyle(document.getElementById('metar-canvas')).display !== 'none',
     };
-    return { on, declutter, styleOn, off };
+    return { on, declutter, clickHit, clickMiss, styleOn, off };
   });
   ok('turning it on lights the pill and shows the canvas, with no floating panel',
      r.on.active && r.on.pillLit && r.on.canvasShown && r.on.noOldPanel, JSON.stringify(r.on));
   ok('a real redraw of three stations, two of them crowded, draws two symbols, not three',
      r.declutter.drawnFromThree === 2, JSON.stringify(r.declutter));
+  ok('clicking a drawn station opens the alert-popup shell, filled with its own reading',
+     r.clickHit.opened && r.clickHit.hasStationName && r.clickHit.hasTemp
+     && r.clickHit.hasWind && r.clickHit.hasGust && r.clickHit.hasCoords,
+     JSON.stringify(r.clickHit));
+  ok('clicking away from every station opens nothing',
+     !r.clickMiss.opened, JSON.stringify(r.clickMiss));
   ok('picking a style from the Settings select updates state, storage and the select together',
      r.styleOn.style === 'temp' && r.styleOn.saved === 'temp' && r.styleOn.selectAgrees,
      JSON.stringify(r.styleOn));

@@ -53635,6 +53635,7 @@ function _metarStart() {
       _metarCanvas.style.visibility = '';
       if (_metarActive) _metarDraw();
     });
+    map.on('click', _metarHandleClick);
   }
   _metarCanvas.style.display = '';
   _metarSyncStyleSelect();
@@ -53646,6 +53647,7 @@ function _metarStop() {
   _metarActive = false;
   clearInterval(_metarRefreshTimer);
   _metarRefreshTimer = null;
+  _metarPlaced = [];
   if (_metarCanvas) {
     _metarCanvas.getContext('2d').clearRect(0, 0, _metarCanvas.width, _metarCanvas.height);
     _metarCanvas.style.display = 'none';
@@ -53740,11 +53742,19 @@ function _metarSymbol(ctx, x, y, s) {
   else _metarDrawDot(ctx, x, y, s);
 }
 
+// Screen position of every symbol actually drawn on the last frame, {x,y,s}
+// - the declutter pass means most stations never get placed at all, so this
+// is only ever what is really on screen. _metarHandleClick hit-tests against
+// it rather than the full station list, the same list the eye is reading.
+let _metarPlaced = [];
+const METAR_CLICK_RADIUS_PX = 14;
+
 function _metarDraw() {
   if (!_metarActive || !_metarCanvas || typeof map === 'undefined' || !map) return;
   const ctx = _metarCanvas.getContext('2d');
   const w = _metarCanvas.width, h = _metarCanvas.height;
   ctx.clearRect(0, 0, w, h);
+  _metarPlaced = [];
   const stations = _metarStations;
   if (!stations || !stations.length) return;
   ctx.textAlign = 'center';
@@ -53768,7 +53778,76 @@ function _metarDraw() {
     if (tooClose) continue;
     placed.push([x, y]);
     _metarSymbol(ctx, x, y, s);
+    _metarPlaced.push({ x, y, s });
   }
+}
+
+// The canvas itself is pointer-events:none (so a drag still reaches the map
+// underneath, and so this never blocks a click meant for whatever overlay
+// is layered below it - alert polygons learned that lesson the hard way).
+// A click still reaches the map underneath, so this listens there instead
+// and hit-tests against what was actually drawn on the last frame.
+function _metarHandleClick(ev) {
+  if (!_metarActive || !_metarPlaced.length) return;
+  const pt = ev.containerPoint;
+  let best = null, bestD2 = Infinity;
+  for (const p of _metarPlaced) {
+    const dx = p.x - pt.x, dy = p.y - pt.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestD2) { bestD2 = d2; best = p; }
+  }
+  if (best && bestD2 <= METAR_CLICK_RADIUS_PX * METAR_CLICK_RADIUS_PX) {
+    _metarOpenPopup(best.s, ev.latlng);
+  }
+}
+
+function _metarOpenPopup(s, latlng) {
+  const color = tempColor(s.tempF);
+  const html = _buildMetarPopupHTML(s);
+  const pop = L.popup({ className: 'ap-popup-container', maxWidth: 300, autoPan: true, closeButton: true })
+    .setLatLng(latlng).setContent(html).openOn(map);
+  setTimeout(() => {
+    const el = pop.getElement ? pop.getElement() : null;
+    if (!el) return;
+    const cw = el.querySelector('.leaflet-popup-content-wrapper');
+    if (cw) { cw.style.borderColor = color; cw.style.boxShadow = `0 4px 28px rgba(0,0,0,0.7), 0 0 0 1px ${color}33`; }
+  }, 10);
+}
+
+// Same shell the alert polygon popup uses (ap-header/ap-body/ap-meta-grid),
+// redesigned for what a station actually reports rather than an alert:
+// no counties, no timeline, just the reading itself and a plain-English
+// summary of it.
+function _buildMetarPopupHTML(s) {
+  const color = tempColor(s.tempF);
+  const colorBg = color + '18', colorBdr = color + '50';
+  const tempC = Math.round((s.tempF - 32) * 5 / 9);
+  const hasWind = s.windDir != null && s.windKt != null;
+  const windLine = hasWind
+    ? `${_degToCompass(s.windDir)} (${Math.round(s.windDir)}°) at ${Math.round(s.windKt)} kt`
+    : 'Calm or not reporting';
+  const gustLine = s.gustKt != null ? `${Math.round(s.gustKt)} kt` : '-';
+  const name = _ccEsc(s.name || 'METAR Station');
+  const summary = hasWind
+    ? `${Math.round(s.tempF)}°F, winds from the ${_degToCompass(s.windDir)} at ${Math.round(s.windKt)} kt`
+      + (s.gustKt != null ? `, gusting to ${Math.round(s.gustKt)} kt` : '') + '.'
+    : `${Math.round(s.tempF)}°F. No wind currently reported.`;
+  return `
+    <div class="ap-header" style="background:linear-gradient(${colorBg},${colorBg}), rgb(10,13,17);border-bottom:1px solid ${colorBdr}">
+      <div class="ap-event-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-temp></use></svg></div>
+      <div class="ap-event-name">${name.toUpperCase()}</div>
+    </div>
+    <div class="ap-body">
+      <div class="ap-meta-grid">
+        <div class="ap-meta-cell"><div class="ap-meta-lbl">TEMPERATURE</div><div class="ap-meta-val">${Math.round(s.tempF)}°F / ${tempC}°C</div></div>
+        <div class="ap-meta-cell"><div class="ap-meta-lbl">WIND</div><div class="ap-meta-val">${windLine}</div></div>
+        <div class="ap-meta-cell"><div class="ap-meta-lbl">GUST</div><div class="ap-meta-val">${gustLine}</div></div>
+        <div class="ap-meta-cell"><div class="ap-meta-lbl">COORDINATES</div><div class="ap-meta-val">${s.lat.toFixed(2)}, ${s.lng.toFixed(2)}</div></div>
+      </div>
+      <div class="ap-section">SUMMARY</div>
+      <div class="ap-headline">${summary}</div>
+      <div class="ap-approx-note">Live instrument reading from a real reporting station. Refreshes every 15 minutes.</div>
+    </div>`;
 }
 
 // One shared canvas for every city dot. These used to be DOM markers, one
@@ -66399,6 +66478,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-k', date: 'Sep 22, 2026',
+    text: 'METAR Stations are tappable now. Tap any station symbol for a popup with its full reading: temperature, wind, gust and coordinates, in the same style the alert warning popups use, just recoloured to the station\'s own temperature instead of an alert\'s severity.' },
   { id: '2026-09-22-j', date: 'Sep 22, 2026',
     text: 'Fixed METAR Stations, which had stopped drawing anything: the overlay was asking the data source for a field it does not have, and that single bad request was enough to fail the whole fetch every time. It now asks for everything the source offers and reads only what it needs, so a field this app never touches can\'t break it again. The floating picker for how each station draws is gone too; that choice now lives in Settings > Display > METAR Station Symbol, with the rest of the app\'s look-and-feel controls.' },
   { id: '2026-09-22-i', date: 'Sep 22, 2026',
@@ -69980,7 +70061,7 @@ const OV_DESCRIPTIONS = {
   'lightning':        'Live lightning strike data, updated as strikes happen.',
   'cloudcam':         'Upload a photo of the sky or storm damage near you, or browse photos other users have shared.',
   'radio':            'NOAA Weather Radio station locations, the stations that broadcast weather alerts over the radio.',
-  'metar':            'Live surface observations from METAR stations worldwide: airports and other official reporting sites, each one an actual instrument reading rather than a model guess. Pick how each station draws in Settings > Display > METAR Station Symbol: a plain dot, the temperature as a number, a full wind barb, or a temperature-colored circle with a wind direction tick. All four are colored by temperature the same way. Refreshes every 15 minutes.',
+  'metar':            'Live surface observations from METAR stations worldwide: airports and other official reporting sites, each one an actual instrument reading rather than a model guess. Pick how each station draws in Settings > Display > METAR Station Symbol: a plain dot, the temperature as a number, a full wind barb, or a temperature-colored circle with a wind direction tick. All four are colored by temperature the same way. Tap a station for its full reading: temperature, wind, gust and coordinates. Refreshes every 15 minutes.',
   'forecasts':        'Short-term forecast dots placed across the map.',
   'fronts':           "Fronts, high pressure, and low pressure systems, the same map you'd see on a TV weather forecast.",
   'spotters':         'Live positions of trained storm spotters.',
