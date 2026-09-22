@@ -53636,6 +53636,20 @@ function _metarStart() {
       if (_metarActive) _metarDraw();
     });
     map.on('click', _metarHandleClick);
+    // A station symbol sits on its own canvas, raised above the base map by
+    // a plain CSS z-index on an element that is a sibling of Leaflet's own
+    // pane stack rather than a member of it - so a popup opened from inside
+    // that stack (Leaflet's popupPane) can still end up drawn UNDER this
+    // canvas's own symbols, one z-index comparison too many away to fix by
+    // raising the popup's number alone. Simplest fix: this canvas goes
+    // quiet for as long as any popup is open, the same "go quiet, come
+    // back" pattern zoomstart/zoomend already uses.
+    map.on('popupopen', () => { if (_metarCanvas) _metarCanvas.style.visibility = 'hidden'; });
+    map.on('popupclose', () => {
+      if (!_metarCanvas) return;
+      _metarCanvas.style.visibility = '';
+      if (_metarActive) _metarDraw();
+    });
   }
   _metarCanvas.style.display = '';
   _metarSyncStyleSelect();
@@ -66478,6 +66492,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-l', date: 'Sep 22, 2026',
+    text: 'Fixed the METAR station popup opening underneath the station numbers instead of on top of them. The station canvas now goes quiet for as long as a popup is open, the same trick it already uses during a zoom.' },
   { id: '2026-09-22-k', date: 'Sep 22, 2026',
     text: 'METAR Stations are tappable now. Tap any station symbol for a popup with its full reading: temperature, wind, gust and coordinates, in the same style the alert warning popups use, just recoloured to the station\'s own temperature instead of an alert\'s severity.' },
   { id: '2026-09-22-j', date: 'Sep 22, 2026',
