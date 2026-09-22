@@ -44,11 +44,23 @@ console.log('\n1. the pieces are in the page');
      && /async function _goesPiFramesFor\(product, regionId\)/.test(PAGE));
   ok('the clip geometry is shared with the other two comparisons',
      PAGE.includes('function _stripGeometry(leftPct, rightPct, axis)')
-     && (PAGE.match(/_stripGeometry\(leftPct, rightPct\)/g) || []).length >= 2);
+     // Model comparison never passes axis, radar and satellite compare
+     // both do now - so exactly one bare 2-arg call site should remain.
+     && (PAGE.match(/_stripGeometry\(leftPct, rightPct\)/g) || []).length === 1
+     && (PAGE.match(/_stripGeometry\(leftPct, rightPct, axis\)/g) || []).length >= 2);
   ok('a bubble in a running comparison wears the strip ring',
      /\.sub-bubble\.in-compare \{/.test(PAGE));
   ok('and the info description says what it does',
      /'sat-compare': 'Cuts the map into vertical strips/.test(PAGE));
+  ok('a Pi strip reclips the instant its own image lands, not just on the next pan/zoom '
+     + '(the same race radar compare had to fix)',
+     /if \(!slot\.layer\) \{\s*\n\s*slot\.layer = L\.imageOverlay\(f\.url, f\.bounds,[\s\S]{0,600}_scUpdateClips\(\);\s*\n\s*\} else \{/.test(PAGE));
+  ok('the rotate button, the orientation state, and its toggle function all exist, same shape as radar\'s',
+     PAGE.includes('id="sc-rotate-btn"') && /let _scOrientation = 'v';/.test(PAGE)
+     && /function _scToggleOrientation\(\) \{\s*\n\s*if \(!_scOn\) return;\s*\n\s*_scOrientation = _scOrientation === 'h' \? 'v' : 'h';\s*\n\s*_scRefreshDOM\(\);\s*\n\s*_scUpdateClips\(\);/.test(PAGE));
+  ok('a peek button reuses the shared hide-for-ten-seconds function, and satellite off cleans it up',
+     PAGE.includes('id="sc-peek-btn"') && PAGE.includes("onclick=\"_cmpPeek('sc')\"")
+     && /function _scOff\(\) \{[\s\S]*?_cmpPeekReset\('sc'\)/.test(PAGE));
   const EM = String.fromCharCode(0x2014);
   ok('no em dashes here or in the page',
      !PAGE.includes(EM)
@@ -175,6 +187,69 @@ console.log('\n3. the strips follow the playbar and leave cleanly');
   ok('the last strip out ends the comparison and clears the map furniture',
      r.ended && r.domCleared);
   ok('the satellite layer going off ends it too', r.endedOnLayerOff === true);
+  ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
+}
+
+console.log('\n4. the rotate button flips side-by-side to stacked, same as radar\'s');
+{
+  const r = await p.evaluate(async () => {
+    _scToggle();
+    _scAddSlot('ch08');
+    const btn = document.getElementById('sc-rotate-btn');
+    const before = {
+      shown: btn.style.display,
+      cls: _scSlots[0].dividerEl.className,
+      left: _scSlots[0].dividerEl.style.left, top: _scSlots[0].dividerEl.style.top,
+      clip: map.getPane('sc-' + _scSlots[0].id).style.clipPath,
+    };
+    btn.click();
+    const after = {
+      cls: _scSlots[0].dividerEl.className,
+      left: _scSlots[0].dividerEl.style.left, top: _scSlots[0].dividerEl.style.top,
+      clip: map.getPane('sc-' + _scSlots[0].id).style.clipPath,
+      split: _scSplits[0],
+    };
+    btn.click();   // and back
+    const back = { cls: _scSlots[0].dividerEl.className, split: _scSplits[0] };
+    _scOff();
+    return { before, after, back };
+  });
+  ok('vertical to start: a left-positioned divider, an x-clipped pane',
+     r.before.shown === 'flex' && !r.before.cls.includes('horizontal')
+     && r.before.left !== '' && r.before.top === ''
+     && /^polygon\(-?[\d.]+px -99999px,/.test(r.before.clip), JSON.stringify(r.before));
+  ok('one click rotates it: a top-positioned divider, a y-clipped pane, same split percent',
+     r.after.cls.includes('horizontal') && r.after.left === '' && r.after.top !== ''
+     && /^polygon\(-99999px -?[\d.]+px,/.test(r.after.clip) && r.after.split === 50,
+     JSON.stringify(r.after));
+  ok('a second click rotates it straight back',
+     !r.back.cls.includes('horizontal') && r.back.split === 50, JSON.stringify(r.back));
+}
+
+console.log('\n5. peeking hides the divider, shared with radar compare, cleans up on satellite off');
+{
+  const r = await p.evaluate(async () => {
+    _scToggle();
+    _scAddSlot('ch08');
+    const btn = document.getElementById('sc-peek-btn');
+    const before = { shown: btn.style.display, opacity: getComputedStyle(_scSlots[0].dividerEl).opacity };
+    btn.click();
+    await new Promise(res => setTimeout(res, 300));
+    const during = {
+      peeking: document.getElementById('sc-dividers').classList.contains('cmp-peeking'),
+      active: btn.classList.contains('active'),
+      opacity: getComputedStyle(_scSlots[0].dividerEl).opacity,
+    };
+    _scOff();
+    const stuckCheck = document.getElementById('sc-dividers').classList.contains('cmp-peeking');
+    return { before, during, stuckCheck };
+  });
+  ok('the peek button appears once a comparison is running, divider fully visible',
+     r.before.shown === 'flex' && r.before.opacity === '1', JSON.stringify(r.before));
+  ok('clicking it hides the divider and lights the button, same mechanism as radar\'s',
+     r.during.peeking && r.during.active && r.during.opacity === '0', JSON.stringify(r.during));
+  ok('ending the comparison mid-peek clears the state, nothing left stuck for next time',
+     r.stuckCheck === false, String(r.stuckCheck));
   ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
 }
 

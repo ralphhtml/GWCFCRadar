@@ -42,6 +42,10 @@ console.log('\n1. the pieces are in the page');
      /_sevSetSplit\(idx, clientX\) \{\s*\n\s*const pct = _stripPctFromClientX\(clientX, _sevSplits, idx\);/.test(PAGE));
   ok('switching the radar off ends the comparison',
      /function _disableRadar\(\) \{[\s\S]*?_rcOff\(\)/.test(PAGE));
+  ok('a peek button and the shared hide-for-ten-seconds function exist, and radar off cleans it up',
+     PAGE.includes('id="rc-peek-btn"') && PAGE.includes("onclick=\"_cmpPeek('rc')\"")
+     && /function _cmpPeek\(prefix\) \{/.test(PAGE) && /function _cmpPeekReset\(prefix\) \{/.test(PAGE)
+     && /function _rcOff\(\) \{[\s\S]*?_cmpPeekReset\('rc'\)/.test(PAGE));
   ok('the layer stack keeps the strips just above the radar',
      /function _stackApply\(\)\{[\s\S]*?_rcSyncPaneZ/.test(PAGE));
   ok('the playback decoder takes the tilt a strip needs',
@@ -398,6 +402,46 @@ console.log('\n8. with nothing on screen yet, Compare makes the tapped site stri
      r.on && r.n === 0 && r.main === 'kama' && r.ref === 'kama' && /Tap another radar pill/.test(r.toasts),
      JSON.stringify(r));
   ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
+}
+
+console.log('\n9. peeking hides the divider for ten seconds, and cleans up if compare ends mid-peek');
+{
+  const r = await p.evaluate(async () => {
+    // A station must already be on screen for this tap to add a real
+    // comparison SLOT rather than adopting kfws itself as strip A (that
+    // no-station case is section 8's own scenario, not this one's).
+    if (!_refStation) { _loadSingleSiteRef('ktlx'); }
+    _nexradSiteMarkers['kfws'].label.fire('click');
+    document.querySelector('#site-pop .site-pop-compare').click();
+    await new Promise(res => setTimeout(res, 300));
+    const btn = document.getElementById('rc-peek-btn');
+    const before = { shown: btn.style.display, opacity: getComputedStyle(_rcSlots[0].dividerEl).opacity };
+    btn.click();
+    await new Promise(res => setTimeout(res, 300));   // the CSS fade takes 0.2s
+    const during = {
+      peeking: document.getElementById('rc-dividers').classList.contains('cmp-peeking'),
+      active: btn.classList.contains('active'),
+      opacity: getComputedStyle(_rcSlots[0].dividerEl).opacity,
+    };
+    // Ending the comparison mid-peek must not leave the NEXT one stuck invisible.
+    _rcOff();
+    const stuckCheck = document.getElementById('rc-dividers').classList.contains('cmp-peeking');
+    _nexradSiteMarkers['kfws'].label.fire('click');
+    document.querySelector('#site-pop .site-pop-compare').click();
+    await new Promise(res => setTimeout(res, 300));
+    const after = { opacity: getComputedStyle(_rcSlots[0].dividerEl).opacity,
+                     shown: document.getElementById('rc-peek-btn').style.display };
+    _rcOff();
+    return { before, during, stuckCheck, after };
+  });
+  ok('the peek button appears the moment a comparison is running, divider fully visible',
+     r.before.shown === 'flex' && r.before.opacity === '1', JSON.stringify(r.before));
+  ok('clicking it hides the divider and lights the button',
+     r.during.peeking && r.during.active && r.during.opacity === '0', JSON.stringify(r.during));
+  ok('ending the comparison mid-peek clears the peeking state, nothing left stuck',
+     r.stuckCheck === false, String(r.stuckCheck));
+  ok('a brand new comparison afterward starts fully visible, not stuck invisible from before',
+     r.after.opacity === '1' && r.after.shown === 'flex', JSON.stringify(r.after));
 }
 
 await b.close();
