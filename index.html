@@ -4690,8 +4690,7 @@ body.lite-mode #export-modal { display: none !important; }
    legend's swatches are children with their own backgrounds, so they keep
    their real colours; the words beside them go gold. */
 #r3d-panel .xs-title, #r3d-panel .xs-where, #r3d-panel #r3d-status,
-#r3d-panel .r3d-slider-row > span, #r3d-panel .xs-note, #r3d-panel .xs-legend,
-#r3d-panel .r3d-timebar span, #r3d-panel .r3d-speed b, #r3d-panel #r3d-time-label {
+#r3d-panel .r3d-slider-row > span, #r3d-panel .xs-note, #r3d-panel .xs-legend {
   background-image: linear-gradient(180deg, #ffe680 0%, #e8b800 48%, #b8860b 100%);
   -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent; color: #e8b800;
@@ -4722,7 +4721,7 @@ body.lite-mode #export-modal { display: none !important; }
   z-index: 99999;
   overflow: auto;
 }
-#r3d-panel.fullscreen canvas { height: calc(100vh - 260px); }
+#r3d-panel.fullscreen canvas { height: calc(100vh - 230px); }
 /* The two camera bars: a vertical one to zoom, a horizontal one to orbit
    around, sitting over the canvas the way a map's own zoom control does.
    Dragging the canvas itself and pinching/scrolling still work exactly as
@@ -4747,30 +4746,6 @@ body.lite-mode #export-modal { display: none !important; }
   width: 6px; height: 100%;
 }
 .r3d-cam-move input[type=range] { width: 100%; height: 6px; }
-.r3d-timebar {
-  display: flex; align-items: center; gap: 8px; margin-top: 6px;
-}
-.r3d-timebar button {
-  width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0;
-  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18);
-  color: #e8edf5; cursor: pointer; font-size: 11px;
-  display: flex; align-items: center; justify-content: center;
-}
-.r3d-timebar button:hover { background: rgba(255,255,255,0.16); }
-.r3d-timebar input[type=range] { flex: 1 1 auto; }
-.r3d-timebar input[type=range]:disabled { opacity: 0.35; }
-.r3d-speed { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
-#r3d-speed {
-  width: 40px; height: 24px; border-radius: 7px; text-align: center;
-  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18);
-  color: #ffe680; font-size: 10.5px; -moz-appearance: textfield;
-}
-#r3d-speed::-webkit-inner-spin-button, #r3d-speed::-webkit-outer-spin-button { -webkit-appearance: none; }
-#r3d-speed:focus { outline: none; border-color: rgba(232,184,0,0.6); }
-#r3d-time-label {
-  font-family: var(--mono); font-size: 9.5px; opacity: 0.65;
-  min-width: 46px; text-align: right; flex-shrink: 0;
-}
 @media (max-width: 640px) {
   #r3d-panel { left: 8px; right: 8px; width: auto; bottom: 72px; }
   #r3d-panel canvas { height: 220px; }
@@ -11934,15 +11909,6 @@ body.clean-mode #clean-hint { opacity: 1; }
     </div>
     <div class="r3d-cam-move" title="Move around">
       <input type="range" id="r3d-yaw" min="-180" max="180" value="0" step="1">
-    </div>
-    <div class="r3d-timebar">
-      <button id="r3d-play" title="Play recent volumes">&#9654;</button>
-      <span class="r3d-speed" title="Playback speed: type any number of volumes per second">
-        <input type="number" id="r3d-speed" value="1" min="0.05" step="any"
-               oninput="_r3dSetSpeed(this.value)" onkeydown="if(event.key==='Enter')this.blur()"><b>×</b>
-      </span>
-      <input type="range" id="r3d-slider" min="0" max="0" value="0" step="1" title="Scrub through recent volumes">
-      <span id="r3d-time-label"></span>
     </div>
   </div>
 </div>
@@ -44730,6 +44696,7 @@ function _stopRAF() {
 // In composite mode we check radar frames; in single-site/vel/sat modes those have their own
 // ready state and we just allow play (their loaders handle the wait).
 function _animationReady() {
+  if (typeof _r3dOn !== 'undefined' && _r3dOn) return _r3dFrames.length > 1;
   if (_l2LoopActive()) return true;
   if (_prLoopActive()) return true;
   if (typeof _mrmsLoopActive === 'function' && _mrmsLoopActive()) return true;
@@ -44765,6 +44732,10 @@ function _animSource() {
     first: first || 0,
   });
   try {
+    // An open Radar 3D panel owns the bar outright: it is the thing being
+    // watched, and its own bottom timebar is gone - the bar IS its playback.
+    if (typeof _r3dOn !== 'undefined' && _r3dOn)
+      return mk('r3d', _r3dFrames.map(f => new Date(f.time)), Math.max(0, _r3dFrameIdx));
     if (typeof _l2LoopActive === 'function' && _l2LoopActive())
       return mk('l2', _l2Loop.frames.map(f => new Date(f.time)), _l2Loop.idx);
     if (typeof _prLoopActive === 'function' && _prLoopActive())
@@ -45130,7 +45101,23 @@ function setAnimSpeed(val) {
 function cycleSpeed() {} // kept for compat
 
 function stepFrame(dir, quiet) {
-  if (_l2LoopActive()) {
+  if (typeof _r3dOn !== 'undefined' && _r3dOn) {
+    if (_r3dFrames.length > 1) {
+      // While PLAYING (quiet steps), warm the frame cache first, the way
+      // the panel's own loop used to: a step onto an unmarched frame
+      // would otherwise stall the loop a few hundred ms per step. A
+      // manual step button takes the single march without complaint.
+      if (quiet && typeof _r3dWarmNeeded === 'function' && _r3dWarmNeeded()) {
+        if (!_r3dRendering && !_r3dWarmBusy) {
+          _r3dWarmBusy = true;
+          _r3dWarmOne().then(() => { _r3dWarmBusy = false; });
+        }
+      } else {
+        const n = _r3dFrames.length;
+        _r3dSetFrame((_r3dFrameIdx + dir + n) % n);
+      }
+    }
+  } else if (_l2LoopActive()) {
     const n = _l2Loop.frames.length;
     _l2LoopShow((_l2Loop.idx + dir + n) % n);
   } else if (_prLoopActive()) {
@@ -45171,7 +45158,8 @@ function stepFrame(dir, quiet) {
   if (!quiet) { try { _syncAnimbarTrack(); } catch (e) {} }
 }
 function seekFrame(idx) {
-  if (_l2LoopActive()) _l2LoopShow(idx);
+  if (typeof _r3dOn !== 'undefined' && _r3dOn) { if (_r3dFrames.length) _r3dSetFrame(idx); }
+  else if (_l2LoopActive()) _l2LoopShow(idx);
   else if (_prLoopActive()) _prLoopShow(idx);
   else if (typeof _mrmsLoopActive === 'function' && _mrmsLoopActive()) _mrmsLoopShow(idx);
   else if (activeLayers.satellite) { if (goesFrames.length) showGoesFrame(idx); }
@@ -67299,6 +67287,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-z', date: 'Sep 22, 2026',
+    text: 'Radar 3D playback moved to the main animation bar. The little play button, speed box and slider along the bottom of the 3D panel are gone: while the panel is open, the map\'s own play, step and scrub controls drive the volume through its recent scans, with the times printed on the bar, exactly like every other layer. Closing the panel hands the bar back to whatever is underneath.' },
   { id: '2026-09-22-y', date: 'Sep 22, 2026',
     text: 'Radar 3D upgrades. A new Raw pixels look in the Look picker draws the exact gates the radar measured, crisp and unshaded, next to the existing Lit cloud and Solid surface. In Lit cloud, the strongest returns now glow: a hail core or debris ball radiates out of the shading instead of sitting matte inside the storm. And the panel has a true fullscreen button, with Esc to leave it.' },
   { id: '2026-09-22-x', date: 'Sep 22, 2026',
@@ -71771,7 +71761,6 @@ let _r3dStationKm = 0;           // how far the zone centre is from that station
 let _r3dStationBrg = NaN;        // which way the station lies from the zone centre
 let _r3dFrames = [];             // oldest first, same convention as _l2Loop
 let _r3dFrameIdx = -1;
-let _r3dPlayTimer = null;
 let _r3dDirty = true;
 let _r3dLoopStarted = false;
 let _r3dCam = { yaw: 0.6, pitch: 0.5, dist: 150 };
@@ -72134,6 +72123,8 @@ function _r3dOpen(stationId) {
   _r3dStation = String(stationId || '').toLowerCase();
   _r3dFillSites();
   _r3dLoad();
+  // The animation bar is the 3D playback control now; hand it the bar.
+  _r3dUpdateSlider();
 }
 
 // Wired to the panel's own close (X) button. Deliberately does not disable
@@ -72143,7 +72134,6 @@ function _r3dOpen(stationId) {
 function _r3dClose() {
   _r3dOn = false;
   _r3dToken++;
-  _r3dPlayStop();
   const panel = _r3dEl('r3d-panel');
   if (panel) { panel.classList.remove('open'); panel.classList.remove('big'); }
   _r3dZoneRectRemove();
@@ -72153,6 +72143,8 @@ function _r3dClose() {
   _r3dStation = null;
   _r3dLutCache = null;
   _r3dPaintSeq++;
+  // The bar goes back to whatever source is underneath.
+  _r3dUpdateSlider();
 }
 
 // ── Colour: the app's own radar palette ──────────────────────────────────
@@ -73149,76 +73141,30 @@ function _r3dTmSync() {
   try { _r3dLoad(); } catch (e) {}
 }
 
+// The panel used to carry its own play button, speed box and slider along
+// the bottom. Playback now belongs to the map's ONE animation bar, like
+// every other source: _animSource / stepFrame / seekFrame know about the
+// 3D frames, so play, the step buttons, the scrub track and the labels
+// all drive the volume. This just tells the bar the frame list changed.
 function _r3dUpdateSlider() {
-  const s = _r3dEl('r3d-slider');
-  if (!s) return;
-  s.max = String(Math.max(0, _r3dFrames.length - 1));
-  s.value = String(_r3dFrameIdx);
-  s.disabled = _r3dFrames.length < 2;
-  _r3dUpdateTimeLabel();
-}
-function _r3dUpdateTimeLabel() {
-  const t = _r3dEl('r3d-time-label');
-  if (!t) return;
-  const f = _r3dFrames[_r3dFrameIdx];
-  if (!f || !f.time) { t.textContent = ''; return; }
-  try {
-    const d = new Date(f.time);
-    t.textContent = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}Z`;
-  } catch (e) { t.textContent = ''; }
+  if (typeof _refreshPlayButtonsEnabled === 'function') _refreshPlayButtonsEnabled();
+  try { _syncAnimbarTrack(); } catch (e) {}
 }
 function _r3dSetFrame(idx) {
   if (!_r3dFrames.length) return;
   _r3dFrameIdx = Math.max(0, Math.min(_r3dFrames.length - 1, idx));
-  _r3dUpdateTimeLabel();
-  const s = _r3dEl('r3d-slider');
-  if (s) s.value = String(_r3dFrameIdx);
+  const tl = document.getElementById('timeline');
+  if (tl) tl.value = String(_r3dFrameIdx);
+  const at = document.getElementById('anim-time');
+  if (at) {
+    try {
+      const f = _r3dFrames[_r3dFrameIdx];
+      if (f && f.time) { at.textContent = _fmtHHMM(new Date(f.time)); at.style.visibility = 'visible'; }
+    } catch (e) {}
+  }
   _r3dDirty = true;
 }
-// Playback speed, in volumes per second, typed as any number. One a
-// second reads as a storm evolving; ten a second is a flip-book.
-let _r3dPlaySpeed = 1;
-let _r3dPlayLast = 0;
 let _r3dWarmBusy = false;
-function _r3dSetSpeed(v) {
-  const sp = parseFloat(v);
-  if (!(sp > 0)) return;
-  _r3dPlaySpeed = Math.min(60, sp);
-  const el = _r3dEl('r3d-speed');
-  if (el && document.activeElement !== el && el.value !== String(_r3dPlaySpeed)) el.value = String(_r3dPlaySpeed);
-}
-function _r3dPlayStop() {
-  if (_r3dPlayTimer) { cancelAnimationFrame(_r3dPlayTimer); _r3dPlayTimer = null; }
-  const btn = _r3dEl('r3d-play');
-  if (btn) btn.textContent = '▶';
-}
-// Driven by the display's own clock (requestAnimationFrame) rather than a
-// timer, so a step lands on a screen refresh and the pace does not drift.
-// Before the first step every frame is drawn once into the cache, so the
-// loop itself is a copy per step and never waits on a ray march.
-function _r3dPlayToggle() {
-  if (_r3dPlayTimer) { _r3dPlayStop(); return; }
-  if (_r3dFrames.length < 2) return;
-  const btn = _r3dEl('r3d-play');
-  if (btn) btn.textContent = '⏸';
-  _r3dPlayLast = 0;
-  const tick = (ts) => {
-    if (!_r3dPlayTimer) return;
-    _r3dPlayTimer = requestAnimationFrame(tick);
-    if (_r3dWarmBusy) { _r3dPlayLast = ts; return; }
-    if (_r3dWarmNeeded()) {
-      if (!_r3dRendering) { _r3dWarmBusy = true; _r3dWarmOne().then(() => { _r3dWarmBusy = false; }); }
-      _r3dPlayLast = ts; return;
-    }
-    if (!_r3dPlayLast) { _r3dPlayLast = ts; return; }
-    const interval = Math.max(16, 1000 / _r3dPlaySpeed);
-    if (ts - _r3dPlayLast < interval) return;
-    // Advance by whole intervals so a slow frame is caught up, not stacked.
-    _r3dPlayLast += interval * Math.floor((ts - _r3dPlayLast) / interval);
-    _r3dSetFrame(_r3dFrameIdx + 1 >= _r3dFrames.length ? 0 : _r3dFrameIdx + 1);
-  };
-  _r3dPlayTimer = requestAnimationFrame(tick);
-}
 
 // ── The frame cache ──────────────────────────────────────────────────────
 // A ray march is a few hundred milliseconds, and playback would stutter on
@@ -73690,10 +73636,6 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   if (zoomBar) zoomBar.oninput = () => _r3dZoomFromBar(zoomBar.value);
   const yawBar = _r3dEl('r3d-yaw');
   if (yawBar) yawBar.oninput = () => _r3dYawFromBar(yawBar.value);
-  const slider = _r3dEl('r3d-slider');
-  if (slider) slider.oninput = () => _r3dSetFrame(Number(slider.value));
-  const play = _r3dEl('r3d-play');
-  if (play) play.onclick = () => _r3dPlayToggle();
   const ps = _r3dEl('r3d-product');
   if (ps) ps.onchange = () => {
     // Each product starts its Show above slider where its own noise ends:

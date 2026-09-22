@@ -42,9 +42,10 @@ console.log('\n1. the panel: a zone picker and volumetric controls, no toolbar b
      PAGE.includes('id="r3d-site"'));
   ok('it keeps the two sliders: Show above and Up to',
      PAGE.includes('id="r3d-filter"') && PAGE.includes('id="r3d-height"'));
-  ok('it has a time control: play, a slider, a time label',
-     PAGE.includes('id="r3d-play"') && PAGE.includes('id="r3d-slider"')
-     && PAGE.includes('id="r3d-time-label"'));
+  ok('the panel has NO timebar of its own: the map\'s one animation bar drives 3D playback',
+     !PAGE.includes('id="r3d-play"') && !PAGE.includes('id="r3d-slider"')
+     && !PAGE.includes('id="r3d-time-label"')
+     && /return mk\('r3d', _r3dFrames\.map\(f => new Date\(f\.time\)\), Math\.max\(0, _r3dFrameIdx\)\);/.test(PAGE));
   ok('the double-click/long-press map menu has a row that starts drawing a zone',
      /_cmRadar3DDraw\(\)/.test(PAGE) && /Draw a 3D zone/.test(PAGE));
   ok('the renderer marches the radar\'s own polar volume, in workers',
@@ -1317,27 +1318,29 @@ console.log('\n11c. a black gradient panel with gold gradient text, inside the b
      r.labels > 0 && r.allGradient, JSON.stringify({ labels: r.labels, allGradient: r.allGradient }));
 }
 
-console.log('\n13. playback: a typed speed, a frame cache, and a loop that copies rather than marches');
+console.log('\n13. playback: the map\'s animation bar drives it, over a frame cache that copies rather than marches');
 {
   const r = await p.evaluate(async () => {
     _r3dOpen('kfws');
     _r3dToken++;
-    const out = { hasInput: !!document.getElementById('r3d-speed') };
-    _r3dSetSpeed('4');
-    out.speed = _r3dPlaySpeed;
-    out.shown = document.getElementById('r3d-speed').value;
-    _r3dSetSpeed('0'); _r3dSetSpeed('abc');
-    out.speedAfterBad = _r3dPlaySpeed;
+    const out = {};
     // Two hand-built frames, then count real paints against renders.
     const mk = (v, zTop) => {
       const g = [], rs = [];
       for (let x = -3; x <= 3; x += 0.5) for (let y = -3; y <= 3; y += 0.5) for (let z = 0.4; z <= zTop; z += 0.3) { g.push(x, y, z, v); rs.push(0.5, 0.3); }
       return { gates: new Float32Array(g), radii: new Float32Array(rs), count: g.length / 4,
-               segs: [{ start: 0, end: g.length / 4, angle: 0.5 }], time: null, cuts: 1, zMax: zTop, _grids: {} };
+               segs: [{ start: 0, end: g.length / 4, angle: 0.5 }], time: Date.UTC(2026, 8, 22, 12), cuts: 1, zMax: zTop, _grids: {} };
     };
     _r3dFrames = [mk(35, 3), mk(50, 6)];
     _r3dFrameIdx = 0;
     _r3dQuality = 'fine';
+    _r3dUpdateSlider();
+    // With the panel open, the ONE animation bar belongs to the volume.
+    out.srcId = _animSource().id;
+    out.srcN = _animSource().times.length;
+    out.ready = _animationReady();
+    out.playEnabled = !document.getElementById('play-btn').disabled;
+    out.tlMax = document.getElementById('timeline').max;
     let paints = 0;
     const orig = _r3dPaint;
     _r3dPaint = function () { paints++; return orig.apply(this, arguments); };
@@ -1360,19 +1363,31 @@ console.log('\n13. playback: a typed speed, a frame cache, and a loop that copie
     await R();
     out.paintsAfterMove = paints;
     _r3dPaint = orig;
-    // The loop rides requestAnimationFrame and stops cleanly.
-    _r3dPlayToggle();
-    out.playing = !!_r3dPlayTimer && document.getElementById('r3d-play').textContent === '⏸';
-    await new Promise(res => setTimeout(res, 600));
-    out.advanced = _r3dFrameIdx;
-    _r3dPlayToggle();
-    out.stopped = !_r3dPlayTimer;
+    // The bar's own step button moves the volume one frame.
+    _r3dSetFrame(0);
+    document.getElementById('step-fwd-btn').click();
+    out.stepped = _r3dFrameIdx;
+    // And its play button runs the loop (warming the moved view first).
+    const play = document.getElementById('play-btn');
+    play.click();
+    out.playing = playing;
+    const seen = new Set();
+    const t0 = Date.now();
+    while (Date.now() - t0 < 3000) { seen.add(_r3dFrameIdx); await new Promise(res => setTimeout(res, 50)); }
+    out.seenBoth = seen.has(0) && seen.has(1);
+    play.click();
+    out.stopped = !playing;
+    // Scrubbing the bar seeks the volume.
+    seekFrame(0);
+    out.sought = _r3dFrameIdx;
     _r3dClose();
+    out.srcAfterClose = _animSource().id;
     return out;
   });
-  ok('there is a speed box in the time bar', r.hasInput);
-  ok('typing 4 plays four volumes a second, and the box shows it', r.speed === 4 && r.shown === '4', JSON.stringify([r.speed, r.shown]));
-  ok('zero and nonsense are ignored', r.speedAfterBad === 4, String(r.speedAfterBad));
+  ok('with the panel open, the animation bar\'s source IS the volume, both frames on it',
+     r.srcId === 'r3d' && r.srcN === 2 && r.ready === true, JSON.stringify(r));
+  ok('the bar\'s play button is enabled and the track spans the frames',
+     r.playEnabled === true && r.tlMax === '1', JSON.stringify([r.playEnabled, r.tlMax]));
   ok('the first render marches', r.firstPaints === 1, String(r.firstPaints));
   ok('the same view again is a copy from the cache, not a march', r.secondPaints === 1, String(r.secondPaints));
   ok('the box top is the tallest frame, so it stands still through playback',
@@ -1381,7 +1396,12 @@ console.log('\n13. playback: a typed speed, a frame cache, and a loop that copie
      JSON.stringify([r.warm1, r.warm2, r.paintsAfterWarm]));
   ok('so stepping to it is a copy too', r.paintsAfterBlit === 2, String(r.paintsAfterBlit));
   ok('moving the camera misses the cache and marches again', r.paintsAfterMove === 3, String(r.paintsAfterMove));
-  ok('play runs on the frame clock, steps at the typed speed, and stops', r.playing && r.advanced >= 0 && r.stopped, JSON.stringify(r));
+  ok('the bar\'s step button moves the volume one frame', r.stepped === 1, String(r.stepped));
+  ok('the bar\'s play button starts the loop, it genuinely cycles the frames, and stops',
+     r.playing === true && r.seenBoth === true && r.stopped === true,
+     JSON.stringify([r.playing, r.seenBoth, r.stopped]));
+  ok('scrubbing the bar seeks the volume', r.sought === 0, String(r.sought));
+  ok('closing the panel hands the bar back', r.srcAfterClose !== 'r3d', String(r.srcAfterClose));
 }
 
 console.log('\n14. the Time Machine: a travelled radar loads its 3D volume from the tape archive');
