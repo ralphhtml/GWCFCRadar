@@ -46,6 +46,15 @@ console.log('\n1. the pieces are in the page');
      PAGE.includes('id="rc-peek-btn"') && PAGE.includes("onclick=\"_cmpPeek('rc')\"")
      && /function _cmpPeek\(prefix\) \{/.test(PAGE) && /function _cmpPeekReset\(prefix\) \{/.test(PAGE)
      && /function _rcOff\(\) \{[\s\S]*?_cmpPeekReset\('rc'\)/.test(PAGE));
+  ok('the rotate/peek buttons sit clear of the search bar (top:18px, z-index:1150) '
+     + 'and the tool rail (top:175px), not the old spot that collided with the search bar',
+     /#rc-rotate-btn \{ top: 85px; right: 8px; \}/.test(PAGE)
+     && /#sc-rotate-btn \{ top: 123px; right: 8px; \}/.test(PAGE)
+     && !/#rc-rotate-btn \{ top: 8px;/.test(PAGE));
+  ok('the divider\'s own handle can rotate too, a tap distinguished from a drag by how far it moved',
+     PAGE.includes('title="Drag to resize, tap to rotate"')
+     && /let _rcHandleDown = null;/.test(PAGE)
+     && /Math\.hypot\(e\.clientX - _rcHandleDown\.x, e\.clientY - _rcHandleDown\.y\) < 6\) \{\s*\n\s*_rcToggleOrientation\(\);/.test(PAGE));
   ok('the layer stack keeps the strips just above the radar',
      /function _stackApply\(\)\{[\s\S]*?_rcSyncPaneZ/.test(PAGE));
   ok('the playback decoder takes the tilt a strip needs',
@@ -87,6 +96,11 @@ const errs = [];
 p.on('pageerror', e => errs.push(String(e).slice(0, 180)));
 await p.addInitScript(() => {
   try { localStorage.setItem('gwcfc_tutorial_seen', '1'); } catch (e) {}
+  // Otherwise the Lite/Expert mode picker sits over the whole map on
+  // first load - invisible to every other test here since they all
+  // click elements directly rather than at real screen coordinates, but
+  // it silently eats a real mouse click aimed at anything underneath it.
+  try { localStorage.setItem('gwcfc_mode', 'expert'); } catch (e) {}
 });
 await p.route('**://**', route => {
   const url = route.request().url();
@@ -102,6 +116,16 @@ await p.route('**://**', route => {
 await p.goto('file://' + join(ROOT, 'index.html'), { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(4200);
 ok('the page boots clean', errs.length === 0, errs[0]);
+// Marking the tutorial seen (above) makes this a "returning visitor" as
+// far as the What Changed modal is concerned, so it auto-opens over the
+// whole map - invisible to every click in this file since they all call
+// .click() on an element directly rather than at a real screen point, but
+// section 10 below does the latter, and a real click there would land on
+// this instead of the divider handle underneath it.
+await p.evaluate(() => {
+  const m = document.getElementById('changelog-modal');
+  if (m) m.classList.remove('open');
+});
 
 // Toasts are caught rather than shown, and the map is parked over Oklahoma
 // so the pills used below are on screen.
@@ -442,6 +466,45 @@ console.log('\n9. peeking hides the divider for ten seconds, and cleans up if co
      r.stuckCheck === false, String(r.stuckCheck));
   ok('a brand new comparison afterward starts fully visible, not stuck invisible from before',
      r.after.opacity === '1' && r.after.shown === 'flex', JSON.stringify(r.after));
+}
+
+console.log('\n10. tapping the handle rotates it, dragging it resizes instead');
+{
+  await p.evaluate(() => {
+    if (!_refStation) { _loadSingleSiteRef('ktlx'); }
+    _nexradSiteMarkers['kfws'].label.fire('click');
+    document.querySelector('#site-pop .site-pop-compare').click();
+  });
+  await p.waitForTimeout(300);
+
+  const before = await p.evaluate(() => _rcOrientation);
+  const handleBox = async () => p.evaluate(() => {
+    const r = _rcSlots[0].dividerEl.querySelector('.sev-cmp-handle').getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  });
+  const box1 = await handleBox();
+  await p.mouse.click(box1.x, box1.y);
+  await p.waitForTimeout(150);
+  const afterTap = await p.evaluate(() => _rcOrientation);
+  ok('a plain tap on the handle (press and release, no real movement) rotates the comparison',
+     afterTap !== before, JSON.stringify({ before, afterTap }));
+
+  const splitBefore = await p.evaluate(() => _rcSplits[0]);
+  const box2 = await handleBox();   // orientation changed, so the handle moved
+  await p.mouse.move(box2.x, box2.y);
+  await p.mouse.down();
+  // Drag along whichever axis this orientation actually uses.
+  if (afterTap === 'h') await p.mouse.move(box2.x, box2.y + 120, { steps: 6 });
+  else await p.mouse.move(box2.x + 120, box2.y, { steps: 6 });
+  await p.mouse.up();
+  await p.waitForTimeout(150);
+  const afterDrag = await p.evaluate(() => ({ orientation: _rcOrientation, split: _rcSplits[0] }));
+  ok('dragging it a real distance resizes the split instead, orientation stays put',
+     afterDrag.orientation === afterTap && afterDrag.split !== splitBefore,
+     JSON.stringify({ splitBefore, afterDrag }));
+
+  await p.evaluate(() => _rcOff());
+  ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
 }
 
 await b.close();

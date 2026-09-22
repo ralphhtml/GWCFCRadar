@@ -85,6 +85,10 @@ const errs = [];
 p.on('pageerror', e => errs.push(String(e).slice(0, 180)));
 await p.addInitScript(() => {
   try { localStorage.setItem('gwcfc_tutorial_seen', '1'); } catch (e) {}
+  // Otherwise the Lite/Expert mode picker sits over the whole map on
+  // first load - invisible to clicks that call .click() on an element
+  // directly, but not to a real screen-coordinate mouse click.
+  try { localStorage.setItem('gwcfc_mode', 'expert'); } catch (e) {}
 });
 // A 1x1 PNG stands in for every tile, so WMS layers "load" instantly.
 const PNG = Buffer.from(
@@ -104,6 +108,14 @@ await p.route('**://**', route => {
 });
 await p.goto('file://' + join(ROOT, 'index.html'), { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(4500);
+// Marking the tutorial seen (above) makes this a "returning visitor" as
+// far as the What Changed modal is concerned, so it auto-opens over the
+// whole map - invisible to every .click() call in this file since none
+// of them read a real screen coordinate, but section 4/5 below do.
+await p.evaluate(() => {
+  const m = document.getElementById('changelog-modal');
+  if (m) m.classList.remove('open');
+});
 
 console.log('\n2. strips are added, planned, clipped and labelled');
 {
@@ -250,6 +262,39 @@ console.log('\n5. peeking hides the divider, shared with radar compare, cleans u
      r.during.peeking && r.during.active && r.during.opacity === '0', JSON.stringify(r.during));
   ok('ending the comparison mid-peek clears the state, nothing left stuck for next time',
      r.stuckCheck === false, String(r.stuckCheck));
+  ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
+}
+
+console.log('\n6. tapping the handle rotates it, dragging it resizes instead, same as radar\'s');
+{
+  await p.evaluate(() => { _scToggle(); _scAddSlot('ch08'); });
+  await p.waitForTimeout(200);
+
+  const before = await p.evaluate(() => _scOrientation);
+  const handleBox = async () => p.evaluate(() => {
+    const r = _scSlots[0].dividerEl.querySelector('.sev-cmp-handle').getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  });
+  const box1 = await handleBox();
+  await p.mouse.click(box1.x, box1.y);
+  await p.waitForTimeout(150);
+  const afterTap = await p.evaluate(() => _scOrientation);
+  ok('a plain tap on the handle rotates the comparison', afterTap !== before, JSON.stringify({ before, afterTap }));
+
+  const splitBefore = await p.evaluate(() => _scSplits[0]);
+  const box2 = await handleBox();
+  await p.mouse.move(box2.x, box2.y);
+  await p.mouse.down();
+  if (afterTap === 'h') await p.mouse.move(box2.x, box2.y + 120, { steps: 6 });
+  else await p.mouse.move(box2.x + 120, box2.y, { steps: 6 });
+  await p.mouse.up();
+  await p.waitForTimeout(150);
+  const afterDrag = await p.evaluate(() => ({ orientation: _scOrientation, split: _scSplits[0] }));
+  ok('dragging it a real distance resizes the split instead, orientation stays put',
+     afterDrag.orientation === afterTap && afterDrag.split !== splitBefore,
+     JSON.stringify({ splitBefore, afterDrag }));
+
+  await p.evaluate(() => _scOff());
   ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
 }
 

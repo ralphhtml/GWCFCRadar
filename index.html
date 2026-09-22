@@ -6495,19 +6495,25 @@ body.lite-mode #export-modal { display: none !important; }
    outright). The plain model comparison keeps its own .sev-cmp- classes
    with no .rc- of its own, so it is untouched by any of it. */
 #rc-rotate-btn, #sc-rotate-btn, #rc-peek-btn, #sc-peek-btn {
-  position: absolute; z-index: 660;
+  position: absolute; z-index: 900;
   width: 30px; height: 30px; border-radius: 8px;
   background: rgba(20,20,24,0.85); border: 1px solid rgba(255,255,255,0.25);
   color: #fff; font-size: 14px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
 }
-/* Satellite's buttons sit a row below radar's, so both can be on screen
-   at once (radar and satellite pictures can share the map) without ever
-   landing on top of each other. */
-#rc-rotate-btn { top: 8px; right: 8px; }
-#rc-peek-btn   { top: 8px; right: 44px; }
-#sc-rotate-btn { top: 46px; right: 8px; }
-#sc-peek-btn   { top: 46px; right: 44px; }
+/* top:8/46px used to sit directly under #top-search-bar (top:18px,
+   z-index:1150), which drew right over these at the same corner - "gets
+   covered up" was these buttons losing to a higher stacking element
+   sharing their footprint, not merely visual clutter. 85/123px lands in
+   the one genuinely open strip of screen here: below the search bar
+   (bottom edge ~58px) and above #right-menu's tool rail (top:175px).
+   Satellite's row still sits below radar's, so both can be on screen at
+   once (radar and satellite pictures can share the map) without landing
+   on top of each other. */
+#rc-rotate-btn { top: 85px; right: 8px; }
+#rc-peek-btn   { top: 85px; right: 44px; }
+#sc-rotate-btn { top: 123px; right: 8px; }
+#sc-peek-btn   { top: 123px; right: 44px; }
 #rc-rotate-btn:hover, #sc-rotate-btn:hover,
 #rc-peek-btn:hover, #sc-peek-btn:hover { background: rgba(40,40,46,0.92); }
 #rc-peek-btn.active, #sc-peek-btn.active {
@@ -48910,6 +48916,7 @@ let _rcSlots = [];     // [{id, site, kind, plan, layer, frames, frameIso, stamp
 let _rcSplits = [];    // ascending %, one per slot: the slot's left edge
 let _rcSeq = 0;
 let _rcDragIdx = -1;
+let _rcHandleDown = null;   // {x,y} at pointerdown - a tap-not-drag on the handle rotates
 let _rcTimer = null;
 let _rcKey = '';
 let _rcTimeMs = 0;
@@ -49383,8 +49390,8 @@ function _rcRefreshDOM() {
   _rcSlots.forEach((slot, i) => {
     const d = document.createElement('div');
     d.className = 'sev-cmp-divider active rc-divider' + (horiz ? ' horizontal' : '');
-    d.innerHTML = '<div class="sev-cmp-handle"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></div>';
-    d.addEventListener('pointerdown', e => { e.preventDefault(); _rcDragIdx = i; });
+    d.innerHTML = '<div class="sev-cmp-handle" title="Drag to resize, tap to rotate"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></div>';
+    d.addEventListener('pointerdown', e => { e.preventDefault(); _rcDragIdx = i; _rcHandleDown = { x: e.clientX, y: e.clientY }; });
     dc.appendChild(d);
     slot.dividerEl = d;
     const l = document.createElement('div');
@@ -49456,8 +49463,17 @@ function _rcToggleOrientation() {
   _rcUpdateClips();
 }
 window.addEventListener('pointermove', e => { if (_rcDragIdx >= 0) _rcSetSplit(_rcDragIdx, e.clientX, e.clientY); });
-window.addEventListener('pointerup', () => { _rcDragIdx = -1; });
-window.addEventListener('pointercancel', () => { _rcDragIdx = -1; });
+window.addEventListener('pointerup', e => {
+  // A press-and-release with barely any movement is a tap, not a drag:
+  // the handle already wears the rotate icon, so tapping it (rather than
+  // dragging it) rotates instead of nudging the split by a stray pixel.
+  if (_rcDragIdx >= 0 && _rcHandleDown
+      && Math.hypot(e.clientX - _rcHandleDown.x, e.clientY - _rcHandleDown.y) < 6) {
+    _rcToggleOrientation();
+  }
+  _rcDragIdx = -1; _rcHandleDown = null;
+});
+window.addEventListener('pointercancel', () => { _rcDragIdx = -1; _rcHandleDown = null; });
 
 // Everything down: the strips, their panes' contents, the dividers, the
 // labels, the panel and the pill rings. Strip A is left exactly as it was,
@@ -49495,6 +49511,7 @@ let _scSlots = [];     // [{id, productId, regionId, kind, layer, frames, frameI
 let _scSplits = [];    // ascending %, one per slot: the slot's left edge
 let _scSeq = 0;
 let _scDragIdx = -1;
+let _scHandleDown = null;   // {x,y} at pointerdown - a tap-not-drag on the handle rotates
 let _scOrientation = 'v';   // 'v' side by side, 'h' stacked - see _scToggleOrientation
 let _scTimer = null;
 let _scKey = '';
@@ -49759,8 +49776,8 @@ function _scRefreshDOM() {
   _scSlots.forEach((slot, i) => {
     const d = document.createElement('div');
     d.className = 'sev-cmp-divider active rc-divider' + (horiz ? ' horizontal' : '');
-    d.innerHTML = '<div class="sev-cmp-handle"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></div>';
-    d.addEventListener('pointerdown', e => { e.preventDefault(); _scDragIdx = i; });
+    d.innerHTML = '<div class="sev-cmp-handle" title="Drag to resize, tap to rotate"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></div>';
+    d.addEventListener('pointerdown', e => { e.preventDefault(); _scDragIdx = i; _scHandleDown = { x: e.clientX, y: e.clientY }; });
     dc.appendChild(d);
     slot.dividerEl = d;
     const l = document.createElement('div');
@@ -49818,8 +49835,15 @@ function _scToggleOrientation() {
   _scUpdateClips();
 }
 window.addEventListener('pointermove', e => { if (_scDragIdx >= 0) _scSetSplit(_scDragIdx, e.clientX, e.clientY); });
-window.addEventListener('pointerup', () => { _scDragIdx = -1; });
-window.addEventListener('pointercancel', () => { _scDragIdx = -1; });
+window.addEventListener('pointerup', e => {
+  // Same tap-vs-drag distinction radar compare's handle makes.
+  if (_scDragIdx >= 0 && _scHandleDown
+      && Math.hypot(e.clientX - _scHandleDown.x, e.clientY - _scHandleDown.y) < 6) {
+    _scToggleOrientation();
+  }
+  _scDragIdx = -1; _scHandleDown = null;
+});
+window.addEventListener('pointercancel', () => { _scDragIdx = -1; _scHandleDown = null; });
 
 // ── BROADCAST SWEEP ────────────────────────────────────────────────────────
 // The TV radar beam: a wedge rotating over whichever single-site radar owns
@@ -60155,16 +60179,20 @@ function _presenceSummary() {
 
   // The same overlay ids _aiLiveState already lists for the AI, just with a
   // human name attached instead of the raw internal id.
+  // tornado/tstm/flood/watch/meso are category filters WITHIN the alerts
+  // layer (which warning types to draw), not pills of their own - the
+  // pill a person actually sees and taps is "Alert Polygons", governed by
+  // the separate alertsLayerVisible switch, so that is what gets named
+  // here instead of the filter flags underneath it.
   const OVERLAY_LABELS = {
-    tornado: 'Tornado Warnings', tstm: 'Severe T-Storm Warnings', flood: 'Flood Warnings',
-    watch: 'Watches', meso: 'Mesoscale Discussions', spc1: 'Day 1 Outlook',
-    spc2: 'Day 2 Outlook', spc3: 'Day 3 Outlook', spcrpts: 'Storm Reports',
+    spc1: 'Day 1 Outlook', spc2: 'Day 2 Outlook', spc3: 'Day 3 Outlook', spcrpts: 'Storm Reports',
     nhc: 'Hurricane Center', invest: 'Invests', sst: 'Sea Surface Temp',
     models: 'Model Layer', lightning: 'Lightning', ltg30: 'Lightning (30m)',
     forecasts: 'City Temps', radio: 'NOAA Radio', cloudcam: 'Cloud Cam',
   };
   const overlays = [];
   try {
+    if (typeof alertsLayerVisible !== 'undefined' && alertsLayerVisible) overlays.push('Alert Polygons');
     Object.keys(OVERLAY_LABELS).forEach(k => { if (activeLayers[k]) overlays.push(OVERLAY_LABELS[k]); });
     if (typeof _metarActive !== 'undefined' && _metarActive) overlays.push('METAR Stations');
   } catch (e) {}
@@ -66838,6 +66866,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-r', date: 'Sep 22, 2026',
+    text: 'Fixed the new rotate/peek buttons on radar and satellite compare sitting right under the search bar, where they were easy to miss. You can also just tap the divider\'s own handle to rotate now, no need to reach for the button. Also fixed the Discord Rich Presence overlay line to say "Alert Polygons" instead of the warning types underneath it.' },
   { id: '2026-09-22-q', date: 'Sep 22, 2026',
     text: 'Satellite compare now matches radar compare: rotate the divider between side-by-side and stacked, and fixed a strip that could briefly draw full width before its own picture actually landed. Both comparisons also got a new eye button that hides the divider line for ten seconds, so nothing is drawn across the two pictures while checking they line up.' },
   { id: '2026-09-22-p', date: 'Sep 22, 2026',
