@@ -6488,19 +6488,31 @@ body.lite-mode #export-modal { display: none !important; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
-/* Radar compare, rotated: the divider runs left-right instead of top-bottom,
-   and the strips stack instead of standing side by side. Everything here
-   only ever applies to .rc-divider/.rc-label, so the model and satellite
-   comparisons (which share the plain .sev-cmp- classes with no .rc- of
-   their own) are untouched by any of it. */
-#rc-rotate-btn {
-  position: absolute; top: 8px; right: 8px; z-index: 660;
+/* Radar AND satellite compare, rotated: the divider runs left-right
+   instead of top-bottom, and the strips stack instead of standing side by
+   side. Both share this whole block, since both draw their dividers as
+   .rc-divider/.rc-label (satellite compare borrows the radar markup
+   outright). The plain model comparison keeps its own .sev-cmp- classes
+   with no .rc- of its own, so it is untouched by any of it. */
+#rc-rotate-btn, #sc-rotate-btn, #rc-peek-btn, #sc-peek-btn {
+  position: absolute; z-index: 660;
   width: 30px; height: 30px; border-radius: 8px;
   background: rgba(20,20,24,0.85); border: 1px solid rgba(255,255,255,0.25);
   color: #fff; font-size: 14px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
 }
-#rc-rotate-btn:hover { background: rgba(40,40,46,0.92); }
+/* Satellite's buttons sit a row below radar's, so both can be on screen
+   at once (radar and satellite pictures can share the map) without ever
+   landing on top of each other. */
+#rc-rotate-btn { top: 8px; right: 8px; }
+#rc-peek-btn   { top: 8px; right: 44px; }
+#sc-rotate-btn { top: 46px; right: 8px; }
+#sc-peek-btn   { top: 46px; right: 44px; }
+#rc-rotate-btn:hover, #sc-rotate-btn:hover,
+#rc-peek-btn:hover, #sc-peek-btn:hover { background: rgba(40,40,46,0.92); }
+#rc-peek-btn.active, #sc-peek-btn.active {
+  background: rgba(232,184,0,0.35); border-color: rgba(232,184,0,0.7);
+}
 .rc-divider.horizontal {
   top: auto; left: 0; right: 0; bottom: auto; width: auto; height: 0;
 }
@@ -6509,6 +6521,14 @@ body.lite-mode #export-modal { display: none !important; }
 }
 .rc-divider.horizontal .sev-cmp-handle { cursor: ns-resize; }
 .rc-label.horizontal { max-width: none; }
+/* Peeking: the seam itself goes invisible for ten seconds so nothing is
+   drawn across the two pictures while checking they line up. Scoped to
+   whichever container actually got the class, so peeking one comparison
+   never touches the other's line. */
+#rc-dividers.cmp-peeking .rc-divider,
+#sc-dividers.cmp-peeking .rc-divider {
+  opacity: 0; pointer-events: none; transition: opacity .2s;
+}
 
 /* ── FORECAST MODAL ── */
 #forecast-modal {
@@ -10964,11 +10984,23 @@ body.clean-mode #clean-hint { opacity: 1; }
             onclick="_rcToggleOrientation()" style="display:none;">
       <svg class=svgi width=1em height=1em><use href=#ic-swap></use></svg>
     </button>
+    <button type="button" id="rc-peek-btn" title="Hide the divider for 10 seconds"
+            onclick="_cmpPeek('rc')" style="display:none;">
+      <svg class=svgi width=1em height=1em><use href=#ic-eye></use></svg>
+    </button>
 
     <!-- Satellite comparison: the same strips a third time, satellite
          picture against satellite picture -->
     <div id="sc-dividers"></div>
     <div id="sc-labels"></div>
+    <button type="button" id="sc-rotate-btn" title="Rotate the divider: side by side, or stacked"
+            onclick="_scToggleOrientation()" style="display:none;">
+      <svg class=svgi width=1em height=1em><use href=#ic-swap></use></svg>
+    </button>
+    <button type="button" id="sc-peek-btn" title="Hide the divider for 10 seconds"
+            onclick="_cmpPeek('sc')" style="display:none;">
+      <svg class=svgi width=1em height=1em><use href=#ic-eye></use></svg>
+    </button>
 
     <!-- Cam Panel injected at body level via position:fixed --!>
     <div id="model-info">
@@ -33350,6 +33382,38 @@ function _stripPctFromClientX(clientX, splits, idx, axis, clientY) {
   return Math.max(minBound, Math.min(maxBound, pct));
 }
 
+// Hides a comparison's divider line and handle for ten seconds, so the
+// seam itself stops sitting on top of the two pictures while checking
+// they actually line up. Shared between radar and satellite compare
+// since both draw their dividers as .rc-divider inside a container named
+// "<prefix>-dividers"; prefix is 'rc' or 'sc'. A second press while
+// already peeking just restarts the ten seconds rather than stacking
+// timers.
+const _cmpPeekTimers = {};
+function _cmpPeek(prefix) {
+  const dc = document.getElementById(prefix + '-dividers');
+  const btn = document.getElementById(prefix + '-peek-btn');
+  if (!dc) return;
+  dc.classList.add('cmp-peeking');
+  if (btn) btn.classList.add('active');
+  clearTimeout(_cmpPeekTimers[prefix]);
+  _cmpPeekTimers[prefix] = setTimeout(() => {
+    dc.classList.remove('cmp-peeking');
+    if (btn) btn.classList.remove('active');
+  }, 10000);
+}
+// Called when a comparison ends. cmp-peeking lives on the container
+// itself, not on the divider elements _xxOff() already clears out, so
+// without this a comparison ended mid-peek would hand the NEXT one a
+// container that's already invisible before its first divider is drawn.
+function _cmpPeekReset(prefix) {
+  clearTimeout(_cmpPeekTimers[prefix]);
+  const dc = document.getElementById(prefix + '-dividers');
+  if (dc) dc.classList.remove('cmp-peeking');
+  const btn = document.getElementById(prefix + '-peek-btn');
+  if (btn) btn.classList.remove('active');
+}
+
 (function _sevCompareInitDrag() {
   window.addEventListener('pointermove', e => { if (_sevDraggingIdx >= 0) _sevSetSplit(_sevDraggingIdx, e.clientX); });
   window.addEventListener('pointerup',   () => { _sevDraggingIdx = -1; });
@@ -49342,6 +49406,8 @@ function _rcRefreshDOM() {
   _rcRefreshLabels();
   const btn = document.getElementById('rc-rotate-btn');
   if (btn) btn.style.display = _rcSlots.length ? 'flex' : 'none';
+  const peekBtn = document.getElementById('rc-peek-btn');
+  if (peekBtn) peekBtn.style.display = _rcSlots.length ? 'flex' : 'none';
 }
 // Reapplies every slot's clip from the current splits. Called after any
 // splits or orientation change, and - critically - a second time from
@@ -49406,6 +49472,9 @@ function _rcOff() {
   ['rc-dividers', 'rc-labels'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
   const btn = document.getElementById('rc-rotate-btn');
   if (btn) btn.style.display = 'none';
+  const rpBtn = document.getElementById('rc-peek-btn');
+  if (rpBtn) rpBtn.style.display = 'none';
+  _cmpPeekReset('rc');
   try { _refreshNexradSiteStyles(); } catch (e) {}
 }
 
@@ -49426,6 +49495,7 @@ let _scSlots = [];     // [{id, productId, regionId, kind, layer, frames, frameI
 let _scSplits = [];    // ascending %, one per slot: the slot's left edge
 let _scSeq = 0;
 let _scDragIdx = -1;
+let _scOrientation = 'v';   // 'v' side by side, 'h' stacked - see _scToggleOrientation
 let _scTimer = null;
 let _scKey = '';
 let _scTimeMs = 0;
@@ -49625,6 +49695,12 @@ function _scSyncSlotTime(slot, ms, force) {
       slot.layer = L.imageOverlay(f.url, f.bounds,
         { opacity: 0.85, interactive: false, pane: _scPaneName(slot),
           crossOrigin: 'anonymous' }).addTo(map);
+      // The pane's own clip was already set when the slot was created, but
+      // that was before this image existed to be clipped: without this,
+      // a Pi strip could draw full map width for a moment the instant its
+      // own frame actually lands. Same fix radar compare needed for the
+      // same reason.
+      _scUpdateClips();
     } else {
       slot.layer.setUrl(f.url);
       slot.layer.setBounds(f.bounds);
@@ -49679,15 +49755,16 @@ function _scRefreshDOM() {
   const lc = document.getElementById('sc-labels');
   if (!dc || !lc) return;
   dc.innerHTML = ''; lc.innerHTML = '';
+  const horiz = _scOrientation === 'h';
   _scSlots.forEach((slot, i) => {
     const d = document.createElement('div');
-    d.className = 'sev-cmp-divider active rc-divider';
+    d.className = 'sev-cmp-divider active rc-divider' + (horiz ? ' horizontal' : '');
     d.innerHTML = '<div class="sev-cmp-handle"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></div>';
     d.addEventListener('pointerdown', e => { e.preventDefault(); _scDragIdx = i; });
     dc.appendChild(d);
     slot.dividerEl = d;
     const l = document.createElement('div');
-    l.className = 'sev-cmp-label rc-label';
+    l.className = 'sev-cmp-label rc-label' + (horiz ? ' horizontal' : '');
     const t = document.createElement('span');
     t.className = 'rc-label-text';
     const x = document.createElement('button');
@@ -49703,26 +49780,44 @@ function _scRefreshDOM() {
     slot.labelEl = l;
   });
   _scRefreshLabels();
+  const rotBtn = document.getElementById('sc-rotate-btn');
+  if (rotBtn) rotBtn.style.display = _scSlots.length ? 'flex' : 'none';
+  const peekBtn = document.getElementById('sc-peek-btn');
+  if (peekBtn) peekBtn.style.display = _scSlots.length ? 'flex' : 'none';
 }
 function _scUpdateClips() {
   if (!_scOn) return;
+  const axis = _scOrientation === 'h' ? 'y' : 'x';
   _scSlots.forEach((slot, i) => {
     const leftPct = _scSplits[i];
     const rightPct = (i + 1 < _scSplits.length) ? _scSplits[i + 1] : 100;
-    const g = _stripGeometry(leftPct, rightPct);
+    const g = _stripGeometry(leftPct, rightPct, axis);
     const pane = map.getPane(_scPaneName(slot));
     if (pane) pane.style.clipPath = g.polygon;
-    if (slot.dividerEl) slot.dividerEl.style.left = g.leftView + 'px';
-    if (slot.labelEl) slot.labelEl.style.left = (g.leftView + 8) + 'px';
+    if (slot.dividerEl) {
+      if (axis === 'y') slot.dividerEl.style.top = g.leftView + 'px';
+      else slot.dividerEl.style.left = g.leftView + 'px';
+    }
+    if (slot.labelEl) {
+      if (axis === 'y') slot.labelEl.style.top = (g.leftView + 8) + 'px';
+      else slot.labelEl.style.left = (g.leftView + 8) + 'px';
+    }
   });
 }
-function _scSetSplit(idx, clientX) {
-  const pct = _stripPctFromClientX(clientX, _scSplits, idx);
+function _scSetSplit(idx, clientX, clientY) {
+  const axis = _scOrientation === 'h' ? 'y' : 'x';
+  const pct = _stripPctFromClientX(clientX, _scSplits, idx, axis, clientY);
   if (pct == null) return;
   _scSplits[idx] = pct;
   _scUpdateClips();
 }
-window.addEventListener('pointermove', e => { if (_scDragIdx >= 0) _scSetSplit(_scDragIdx, e.clientX); });
+function _scToggleOrientation() {
+  if (!_scOn) return;
+  _scOrientation = _scOrientation === 'h' ? 'v' : 'h';
+  _scRefreshDOM();
+  _scUpdateClips();
+}
+window.addEventListener('pointermove', e => { if (_scDragIdx >= 0) _scSetSplit(_scDragIdx, e.clientX, e.clientY); });
 window.addEventListener('pointerup', () => { _scDragIdx = -1; });
 window.addEventListener('pointercancel', () => { _scDragIdx = -1; });
 
@@ -49807,8 +49902,13 @@ function _scOff() {
   if (_scTimer) { clearInterval(_scTimer); _scTimer = null; }
   try { map.off('move zoom resize', _scUpdateClips); } catch (e) {}
   _scSlots.forEach(_scClearSlot);
-  _scSlots = []; _scSplits = []; _scDragIdx = -1;
+  _scSlots = []; _scSplits = []; _scDragIdx = -1; _scOrientation = 'v';
   ['sc-dividers', 'sc-labels'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+  const rotBtn = document.getElementById('sc-rotate-btn');
+  if (rotBtn) rotBtn.style.display = 'none';
+  const peekBtn = document.getElementById('sc-peek-btn');
+  if (peekBtn) peekBtn.style.display = 'none';
+  _cmpPeekReset('sc');
   _scSyncBubble();
   document.querySelectorAll('#sub-bubbles .in-compare')
     .forEach(el => el.classList.remove('in-compare'));
@@ -66738,6 +66838,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-22-q', date: 'Sep 22, 2026',
+    text: 'Satellite compare now matches radar compare: rotate the divider between side-by-side and stacked, and fixed a strip that could briefly draw full width before its own picture actually landed. Both comparisons also got a new eye button that hides the divider line for ten seconds, so nothing is drawn across the two pictures while checking they line up.' },
   { id: '2026-09-22-p', date: 'Sep 22, 2026',
     text: 'New Settings toggle: Discord Rich Presence. Turn it on with the presence bridge (services/presence/) running on your computer and your Discord profile shows what radar or satellite product and overlays you are currently viewing here, off by default.' },
   { id: '2026-09-22-o', date: 'Sep 22, 2026',
