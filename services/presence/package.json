@@ -1,0 +1,12 @@
+{
+  "name": "gwcfc-presence-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local bridge turning what you're viewing on GWCFCRadar into your own Discord Rich Presence",
+  "engines": { "node": ">=20.6" },
+  "scripts": {
+    "start": "node --env-file=.env presence-bridge.mjs",
+    "test": "node test-presence-bridge.mjs"
+  }
+}
