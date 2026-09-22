@@ -655,5 +655,44 @@ console.log('\n13. a pane can pick its OWN product, and its own Level 2/Level 3 
   ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
 }
 
+console.log('\n14. a corner label slides out from under the page furniture instead of hiding');
+{
+  ok('the dodge is shared and checks the real on-screen rectangles',
+     /const _CMP_LABEL_BLOCKERS = \['logo-wrap', 'top-search-bar', 'load-status'\];/.test(PAGE)
+     && /function _cmpDodgeLabel\(el\) \{/.test(PAGE)
+     && (PAGE.match(/_cmpDodgeLabel\(slot\.labelEl\);/g) || []).length === 2);
+  const r = await p.evaluate(async () => {
+    const out = {};
+    _loadSingleSiteRef('ktlx');
+    _rcOn = true;
+    _rcAddSite('kfws');
+    await new Promise(res => setTimeout(res, 200));
+    const label = _rcSlots[0].labelEl;
+    // Park the status banner exactly where this label stands, the way the
+    // logo covered a real pane label: the label must step below it.
+    _rcUpdateClips();
+    const lr = label.getBoundingClientRect();
+    const banner = document.getElementById('load-status');
+    const oldCss = banner.style.cssText;
+    banner.style.cssText = `display:block;position:fixed;left:${lr.left - 10}px;`
+      + `top:${lr.top - 10}px;width:${lr.width + 40}px;height:40px;z-index:1;`;
+    const br = banner.getBoundingClientRect();
+    _rcUpdateClips();
+    const after = label.getBoundingClientRect();
+    out.movedBelow = after.top >= br.bottom;
+    out.stillOverlapsX = after.left < br.right && after.right > br.left;
+    banner.style.cssText = oldCss;
+    _rcUpdateClips();
+    const restored = label.getBoundingClientRect();
+    out.backToCorner = Math.abs(restored.top - lr.top) < 2;
+    _rcOff();
+    return out;
+  });
+  ok('a label covered by a floating element steps below it, same column',
+     r.movedBelow && r.stillOverlapsX, JSON.stringify(r));
+  ok('and returns to its corner once nothing covers it', r.backToCorner === true);
+  ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
+}
+
 console.log(fail ? `\n${fail} FAILED, ${pass} passed` : `\nall ${pass} passed`);
 process.exit(fail ? 1 : 0);
