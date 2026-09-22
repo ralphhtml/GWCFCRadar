@@ -42,22 +42,29 @@ console.log('\n1. the pieces are in the page');
      /function _goesConfigFor\(product, regionId\)/.test(PAGE)
      && /function _goesPiTargetFor\(product, regionId\)/.test(PAGE)
      && /async function _goesPiFramesFor\(product, regionId\)/.test(PAGE));
-  ok('the clip geometry is shared with the other two comparisons',
+  ok('the geometry helpers are shared with the radar comparison',
      PAGE.includes('function _stripGeometry(leftPct, rightPct, axis)')
-     // Model comparison never passes axis, radar and satellite compare
-     // both do now - so exactly one bare 2-arg call site should remain.
-     && (PAGE.match(/_stripGeometry\(leftPct, rightPct\)/g) || []).length === 1
-     && (PAGE.match(/_stripGeometry\(leftPct, rightPct, axis\)/g) || []).length >= 2);
+     && PAGE.includes('function _gridGeometry(leftPct, rightPct, topPct, bottomPct)')
+     // Both split systems position their shared lines through the same
+     // one-axis geometry: two calls each (columns and rows).
+     && (PAGE.match(/_stripGeometry\(pct, pct, 'x'\)/g) || []).length === 2
+     && (PAGE.match(/_stripGeometry\(pct, pct, 'y'\)/g) || []).length === 2);
   ok('a bubble in a running comparison wears the strip ring',
      /\.sub-bubble\.in-compare \{/.test(PAGE));
   ok('and the info description says what it does',
-     /'sat-compare': 'Cuts the map into vertical strips/.test(PAGE));
+     /'sat-compare': 'Splits the map/.test(PAGE));
+  ok('a comparison IS a split, growing double to quad to octo exactly as the radars',
+     /if \(!_scGrid\) _scSetGrid\(1, 2\);/.test(PAGE)
+     && /function _scGridGrow\(\) \{/.test(PAGE)
+     && /if \(_scSlots\.length >= _scMaxStrips\(\) && !_scGridGrow\(\)\) \{/.test(PAGE));
+  ok('no knob rides a split line on the satellite side either',
+     !/function _scRefreshGridDOM[\s\S]{0,900}sev-cmp-handle/.test(PAGE));
   ok('a Pi strip reclips the instant its own image lands, not just on the next pan/zoom '
      + '(the same race radar compare had to fix)',
      /if \(!slot\.layer\) \{\s*\n\s*slot\.layer = L\.imageOverlay\(f\.url, f\.bounds,[\s\S]{0,600}_scUpdateClips\(\);\s*\n\s*\} else \{/.test(PAGE));
-  ok('the rotate button, the orientation state, and its toggle function all exist, same shape as radar\'s',
-     PAGE.includes('id="sc-rotate-btn"') && /let _scOrientation = 'v';/.test(PAGE)
-     && /function _scToggleOrientation\(\) \{\s*\n\s*if \(!_scOn \|\| _scGrid\) return;\s*\n\s*_scOrientation = _scOrientation === 'h' \? 'v' : 'h';\s*\n\s*_scRefreshDOM\(\);\s*\n\s*_scUpdateClips\(\);/.test(PAGE));
+  ok('the rotate button transposes the split, same shape as radar\'s',
+     PAGE.includes('id="sc-rotate-btn"')
+     && /function _scToggleOrientation\(\) \{\s*\n\s*if \(!_scOn \|\| !_scGrid\) return;\s*\n\s*if \(!_scSetGrid\(_scGrid\.cols, _scGrid\.rows\)\) return;/.test(PAGE));
   ok('a peek button reuses the shared hide-for-ten-seconds function, and satellite off cleans it up',
      PAGE.includes('id="sc-peek-btn"') && PAGE.includes("onclick=\"_cmpPeek('sc')\"")
      && /function _scOff\(\) \{[\s\S]*?_cmpPeekReset\('sc'\)/.test(PAGE));
@@ -166,10 +173,12 @@ console.log('\n2. strips are added, planned, clipped and labelled');
      JSON.stringify(r.wmsLayers));
   ok('the strip pane is clipped to its band, in photo rendering',
      r.clipped && r.photo, JSON.stringify({ c: r.clipped, p: r.photo }));
-  ok('one divider and one label per strip, lettered from B',
+  // Three pictures on screen is a quad split: one column line, one row
+  // line, and a corner label per pane lettered from B.
+  ok('shared split lines only, and a corner label per pane, lettered from B',
      r.dividers === 2 && r.labels.length === 2 && /^B {2}Upper Water Vapor/.test(r.labels[0])
      && /^C {2}Clean IR · West CONUS/.test(r.labels[1]), JSON.stringify(r.labels));
-  ok('strip A cannot be added to itself', r.afterDup === 2, String(r.afterDup));
+  ok('pane A cannot be added to itself', r.afterDup === 2, String(r.afterDup));
 }
 
 console.log('\n3. the strips follow the playbar and leave cleanly');
@@ -206,40 +215,43 @@ console.log('\n3. the strips follow the playbar and leave cleanly');
   ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
 }
 
-console.log('\n4. the rotate button flips side-by-side to stacked, same as radar\'s');
+console.log('\n4. the rotate button transposes the split, same as radar\'s');
 {
   const r = await p.evaluate(async () => {
     _scToggle();
     _scAddSlot('ch08');
     const btn = document.getElementById('sc-rotate-btn');
+    const line = () => _scGridDividerEls.cols[0] || _scGridDividerEls.rows[0];
     const before = {
       shown: btn.style.display,
-      cls: _scSlots[0].dividerEl.className,
-      left: _scSlots[0].dividerEl.style.left, top: _scSlots[0].dividerEl.style.top,
+      grid: { ..._scGrid },
+      cls: line().className,
       clip: map.getPane('sc-' + _scSlots[0].id).style.clipPath,
     };
     btn.click();
     const after = {
-      cls: _scSlots[0].dividerEl.className,
-      left: _scSlots[0].dividerEl.style.left, top: _scSlots[0].dividerEl.style.top,
+      grid: { ..._scGrid },
+      cls: line().className,
+      rowSplits: _scRowSplits.slice(),
       clip: map.getPane('sc-' + _scSlots[0].id).style.clipPath,
-      split: _scSplits[0],
     };
     btn.click();   // and back
-    const back = { cls: _scSlots[0].dividerEl.className, split: _scSplits[0] };
+    const back = { grid: { ..._scGrid }, cls: line().className };
     _scOff();
     return { before, after, back };
   });
-  ok('vertical to start: a left-positioned divider, an x-clipped pane',
-     r.before.shown === 'flex' && !r.before.cls.includes('horizontal')
-     && r.before.left !== '' && r.before.top === ''
-     && /^polygon\(-?[\d.]+px -99999px,/.test(r.before.clip), JSON.stringify(r.before));
-  ok('one click rotates it: a top-positioned divider, a y-clipped pane, same split percent',
-     r.after.cls.includes('horizontal') && r.after.left === '' && r.after.top !== ''
-     && /^polygon\(-99999px -?[\d.]+px,/.test(r.after.clip) && r.after.split === 50,
+  ok('side by side to start: a 1x2 double with one vertical line, a rectangle-clipped pane',
+     r.before.shown === 'flex' && r.before.grid.rows === 1 && r.before.grid.cols === 2
+     && !r.before.cls.includes('horizontal') && !/99999/.test(r.before.clip),
+     JSON.stringify(r.before));
+  ok('one click transposes it: a stacked 2x1 with one horizontal line at the halfway mark',
+     r.after.grid.rows === 2 && r.after.grid.cols === 1
+     && r.after.cls.includes('horizontal') && r.after.rowSplits.join(',') === '50'
+     && r.after.clip !== r.before.clip,
      JSON.stringify(r.after));
-  ok('a second click rotates it straight back',
-     !r.back.cls.includes('horizontal') && r.back.split === 50, JSON.stringify(r.back));
+  ok('a second click transposes it straight back',
+     r.back.grid.rows === 1 && r.back.grid.cols === 2 && !r.back.cls.includes('horizontal'),
+     JSON.stringify(r.back));
 }
 
 console.log('\n5. peeking hides the divider, shared with radar compare, cleans up on satellite off');
@@ -248,13 +260,14 @@ console.log('\n5. peeking hides the divider, shared with radar compare, cleans u
     _scToggle();
     _scAddSlot('ch08');
     const btn = document.getElementById('sc-peek-btn');
-    const before = { shown: btn.style.display, opacity: getComputedStyle(_scSlots[0].dividerEl).opacity };
+    const line = () => _scGridDividerEls.cols[0] || _scGridDividerEls.rows[0];
+    const before = { shown: btn.style.display, opacity: getComputedStyle(line()).opacity };
     btn.click();
     await new Promise(res => setTimeout(res, 300));
     const during = {
       peeking: document.getElementById('sc-dividers').classList.contains('cmp-peeking'),
       active: btn.classList.contains('active'),
-      opacity: getComputedStyle(_scSlots[0].dividerEl).opacity,
+      opacity: getComputedStyle(line()).opacity,
     };
     _scOff();
     const stuckCheck = document.getElementById('sc-dividers').classList.contains('cmp-peeking');
@@ -269,34 +282,49 @@ console.log('\n5. peeking hides the divider, shared with radar compare, cleans u
   ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
 }
 
-console.log('\n6. tapping the handle rotates it, dragging it resizes instead, same as radar\'s');
+console.log('\n6. the split grows as pictures arrive, the button cycles it, and a real drag moves the shared line');
 {
-  await p.evaluate(() => { _scToggle(); _scAddSlot('ch08'); });
-  await p.waitForTimeout(200);
-
-  const before = await p.evaluate(() => _scOrientation);
-  const handleBox = async () => p.evaluate(() => {
-    const r = _scSlots[0].dividerEl.querySelector('.sev-cmp-handle').getBoundingClientRect();
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  const r = await p.evaluate(async () => {
+    const out = {};
+    _scToggle();
+    _scAddSlot('ch08');                    // 2 pictures: double
+    out.double = { ..._scGrid };
+    _scAddSlot('ch13', 'west');            // 3rd picture: grows to quad
+    out.quad = { ..._scGrid };
+    const btn = document.getElementById('sc-grid-btn');
+    out.btnAtQuad = btn.textContent;
+    btn.click();                           // quad -> octo
+    out.octo = { ..._scGrid, btn: btn.textContent,
+                 lines: document.querySelectorAll('#sc-dividers .rc-divider').length };
+    window.__noop = 0;
+    btn.click();                           // octo -> double: refused, 3 pictures
+    out.refusedShrink = _scGrid.rows === 2 && _scGrid.cols === 4;
+    return out;
   });
-  const box1 = await handleBox();
-  await p.mouse.click(box1.x, box1.y);
-  await p.waitForTimeout(150);
-  const afterTap = await p.evaluate(() => _scOrientation);
-  ok('a plain tap on the handle rotates the comparison', afterTap !== before, JSON.stringify({ before, afterTap }));
+  ok('a second picture is a double, a third grows it to quad',
+     r.double.rows === 1 && r.double.cols === 2 && r.quad.rows === 2 && r.quad.cols === 2
+     && r.btnAtQuad === 'Quad', JSON.stringify(r));
+  ok('the button grows quad to octo: 2x4, four shared lines',
+     r.octo.rows === 2 && r.octo.cols === 4 && r.octo.lines === 4 && r.octo.btn === 'Octo',
+     JSON.stringify(r.octo));
+  ok('and refuses to shrink past what the pictures fit', r.refusedShrink === true);
 
-  const splitBefore = await p.evaluate(() => _scSplits[0]);
-  const box2 = await handleBox();
-  await p.mouse.move(box2.x, box2.y);
+  // A real mouse drag on the shared column line moves it, and only it.
+  const lineBox = await p.evaluate(() => {
+    const el = _scGridDividerEls.cols[0];
+    const b = el.getBoundingClientRect();
+    return { x: b.left + b.width / 2, y: b.top + b.height * 0.35 };
+  });
+  const before = await p.evaluate(() => ({ col: _scColSplits[0], row: _scRowSplits[0] }));
+  await p.mouse.move(lineBox.x, lineBox.y);
   await p.mouse.down();
-  if (afterTap === 'h') await p.mouse.move(box2.x, box2.y + 120, { steps: 6 });
-  else await p.mouse.move(box2.x + 120, box2.y, { steps: 6 });
+  await p.mouse.move(lineBox.x + 100, lineBox.y, { steps: 5 });
   await p.mouse.up();
-  await p.waitForTimeout(150);
-  const afterDrag = await p.evaluate(() => ({ orientation: _scOrientation, split: _scSplits[0] }));
-  ok('dragging it a real distance resizes the split instead, orientation stays put',
-     afterDrag.orientation === afterTap && afterDrag.split !== splitBefore,
-     JSON.stringify({ splitBefore, afterDrag }));
+  await p.waitForTimeout(100);
+  const after = await p.evaluate(() => ({ col: _scColSplits[0], row: _scRowSplits[0] }));
+  ok('a real mouse drag moves the shared column line, leaving the row line alone',
+     after.col !== before.col && after.row === before.row,
+     JSON.stringify({ before, after }));
 
   await p.evaluate(() => _scOff());
   ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));

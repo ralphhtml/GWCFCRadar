@@ -51,19 +51,22 @@ console.log('\n1. the pieces are in the page');
      /#rc-rotate-btn \{ top: 85px; right: 8px; \}/.test(PAGE)
      && /#sc-rotate-btn \{ top: 123px; right: 8px; \}/.test(PAGE)
      && !/#rc-rotate-btn \{ top: 8px;/.test(PAGE));
-  ok('the divider\'s own handle can rotate too, a tap distinguished from a drag by how far it moved',
-     PAGE.includes('title="Drag to resize, tap to rotate"')
-     && /let _rcHandleDown = null;/.test(PAGE)
-     && /Math\.hypot\(e\.clientX - _rcHandleDown\.x, e\.clientY - _rcHandleDown\.y\) < 6\) \{\s*\n\s*_rcToggleOrientation\(\);/.test(PAGE));
-  ok('a real 2x2/2x4 grid exists: shared column/row splits, a rectangle-bounded '
-     + 'geometry helper distinct from the strip-band one, and a button that cycles the shape',
+  ok('a comparison IS a split: the first added site opens the double, one more than it holds grows it',
+     /if \(!_rcGrid\) _rcSetGrid\(1, 2\);/.test(PAGE)
+     && /function _rcGridGrow\(\) \{/.test(PAGE)
+     && /if \(_rcSlots\.length >= _rcMaxStrips\(\) && !_rcGridGrow\(\)\) \{/.test(PAGE));
+  ok('the splits are double, quad and octo, on shared lines with a rectangle-bounded geometry',
      /let _rcGrid = null;/.test(PAGE) && /let _rcColSplits = \[\];/.test(PAGE) && /let _rcRowSplits = \[\];/.test(PAGE)
      && /function _gridGeometry\(leftPct, rightPct, topPct, bottomPct\) \{/.test(PAGE)
-     && /function _rcGridCycle\(\) \{/.test(PAGE) && PAGE.includes('id="rc-grid-btn"'));
-  ok('cycling to a grid too small for the strips already on screen is refused, not silently trimmed',
+     && /function _rcGridCycle\(\) \{/.test(PAGE) && PAGE.includes('id="rc-grid-btn"')
+     && /cells === 2 \? \[2, 2\] : cells === 4 \? \[2, 4\] : \[1, 2\];/.test(PAGE));
+  ok('cycling to a split too small for the pictures already on screen is refused, not silently trimmed',
      /function _rcSetGrid\(rows, cols\) \{[\s\S]*?if \(_rcSlots\.length > need\) \{[\s\S]{0,200}return false;/.test(PAGE));
-  ok('the rotate button steps aside while a grid is active - there is no single axis left to flip',
-     /if \(btn\) btn\.style\.display = \(_rcSlots\.length && !_rcGrid\) \? 'flex' : 'none';/.test(PAGE));
+  ok('no knob rides a split line: the line itself is the whole control, no separate separator',
+     !/function _rcRefreshGridDOM[\s\S]{0,900}sev-cmp-handle/.test(PAGE)
+     && /d\.title = 'Drag to resize the split';/.test(PAGE));
+  ok('rotate transposes the split, so a side-by-side double becomes a stacked one',
+     /function _rcToggleOrientation\(\) \{\s*\n\s*if \(!_rcOn \|\| !_rcGrid\) return;\s*\n\s*if \(!_rcSetGrid\(_rcGrid\.cols, _rcGrid\.rows\)\) return;/.test(PAGE));
   ok('the layer stack keeps the strips just above the radar',
      /function _stackApply\(\)\{[\s\S]*?_rcSyncPaneZ/.test(PAGE));
   ok('the playback decoder takes the tilt a strip needs',
@@ -77,9 +80,6 @@ console.log('\n1. the pieces are in the page');
      && /slot\.layer = L\.imageOverlay\(slot\.blob, img\.leafletBounds,[\s\S]{0,600}_rcUpdateClips\(\);\s*\n\s*_rcRefreshLabels\(\);\s*\n\s*\} catch \(e\) \{/.test(PAGE));
   ok('the rotate button exists, hidden until a comparison is running',
      /<button type="button" id="rc-rotate-btn"[\s\S]{0,120}onclick="_rcToggleOrientation\(\)"[\s\S]{0,40}style="display:none;">/.test(PAGE));
-  ok('toggling orientation flips the state and re-renders, without touching whether compare is even on '
-     + '(and steps aside while a grid is active, which has no axis of its own to flip)',
-     /function _rcToggleOrientation\(\) \{\s*\n\s*if \(!_rcOn \|\| _rcGrid\) return;\s*\n\s*_rcOrientation = _rcOrientation === 'h' \? 'v' : 'h';\s*\n\s*_rcRefreshDOM\(\);\s*\n\s*_rcUpdateClips\(\);/.test(PAGE));
   ok('the horizontal CSS is scoped to radar compare\'s own classes, not the shared .sev-cmp- ones',
      /\.rc-divider\.horizontal \{/.test(PAGE) && /\.rc-divider\.horizontal::before \{/.test(PAGE));
   const EM = String.fromCharCode(0x2014);
@@ -191,7 +191,7 @@ console.log('\n2. a tap on a pill asks, rather than acting');
   ok('Escape closes it', esc.was && !esc.now, JSON.stringify(esc));
 }
 
-console.log('\n3. Compare radar sites cuts the map into strips');
+console.log('\n3. Compare radar sites opens the double split');
 {
   const r = await p.evaluate(async () => {
     _nexradSiteMarkers['kfws'].label.fire('click');
@@ -202,6 +202,7 @@ console.log('\n3. Compare radar sites cuts the map into strips');
     const rp = map.getPane('radarPane');
     return {
       on: _rcOn, n: _rcSlots.length, site: slot && slot.site, kind: slot && slot.kind,
+      grid: { ..._rcGrid },
       layerName: slot && slot.layer && slot.layer.wmsParams && slot.layer.wmsParams.layers,
       time: slot && slot.layer && slot.layer.wmsParams && slot.layer.wmsParams.TIME,
       url: slot && slot.layer && slot.layer._url,
@@ -211,115 +212,122 @@ console.log('\n3. Compare radar sites cuts the map into strips');
       labels: [...document.querySelectorAll('#rc-labels .sev-cmp-label')].map(e => e.textContent),
       noPanel: !document.getElementById('rc-panel'),
       x: !!document.querySelector('#rc-labels .rc-label .rc-x'),
-      split: _rcSplits.slice(),
+      colSplit: _rcColSplits.slice(),
+      btnText: document.getElementById('rc-grid-btn').textContent,
       ring: document.getElementById('nxlbl-kfws').classList.contains('in-compare'),
       main: _rcMainSite(),
     };
   });
-  ok('compare is on with KTLX as strip A and KFWS as strip B',
-     r.on && r.n === 1 && r.site === 'kfws' && r.main === 'ktlx', JSON.stringify(r));
-  ok('strip B draws KFWS reflectivity from the same per-site service, newest scan first',
+  ok('compare is on as a DOUBLE split (1x2): KTLX pane A, KFWS pane B',
+     r.on && r.n === 1 && r.site === 'kfws' && r.main === 'ktlx'
+     && r.grid.rows === 1 && r.grid.cols === 2 && r.btnText === 'Double', JSON.stringify(r));
+  ok('pane B draws KFWS reflectivity from the same per-site service, newest scan first',
      r.kind === 'wms' && r.layerName === 'kfws_sr_bref' && !r.time
      && /opengeo\.ncep\.noaa\.gov\/geoserver\/kfws\/ows/.test(r.url || ''),
      JSON.stringify({ k: r.kind, l: r.layerName, t: r.time, u: r.url }));
-  ok('in its own clipped pane just above the radar',
-     /^polygon\(/.test(r.clip || '') && r.z > r.radarZ && r.z < r.radarZ + 10,
+  ok('in its own clipped rectangular pane just above the radar',
+     /^polygon\(/.test(r.clip || '') && !/99999/.test(r.clip || '')
+     && r.z > r.radarZ && r.z < r.radarZ + 10,
      JSON.stringify({ clip: r.clip, z: r.z, radarZ: r.radarZ }));
-  ok('one divider and one label, at the halfway split',
-     r.dividers === 1 && r.labels.length === 1 && /^B  KFWS · Reflectivity/.test(r.labels[0]) && r.split[0] === 50,
-     JSON.stringify({ d: r.dividers, l: r.labels, s: r.split }));
+  ok('exactly one shared split line at the halfway mark, and one corner label',
+     r.dividers === 1 && r.labels.length === 1 && /^B  KFWS · Reflectivity/.test(r.labels[0])
+     && r.colSplit.join(',') === '50',
+     JSON.stringify({ d: r.dividers, l: r.labels, s: r.colSplit }));
   ok('no panel: the label on the map carries the ×, and the pill wears the compare ring',
      r.noPanel && r.x && r.ring, JSON.stringify({ noPanel: r.noPanel, x: r.x, ring: r.ring }));
 }
 
-console.log('\n4. while comparing, a pill tap adds a strip, and a second tap takes it out');
+console.log('\n4. while comparing, a pill tap adds a pane (growing the split), a second tap takes it out');
 {
   const r = await p.evaluate(async () => {
     window.__toasts.length = 0;
-    _nexradSiteMarkers['kdyx'].label.fire('click');
+    _nexradSiteMarkers['kdyx'].label.fire('click');   // 3rd picture: double grows to quad
     await new Promise(res => setTimeout(res, 200));
     const afterAdd = {
-      n: _rcSlots.length, sites: _rcSlots.map(s => s.site), splits: _rcSplits.slice(),
+      n: _rcSlots.length, sites: _rcSlots.map(s => s.site), grid: { ..._rcGrid },
       pop: document.getElementById('site-pop').classList.contains('open'),
       dividers: document.querySelectorAll('#rc-dividers .sev-cmp-divider').length,
       letters: [...document.querySelectorAll('#rc-labels .sev-cmp-label')].map(e => e.textContent.slice(0, 1)),
+      btnText: document.getElementById('rc-grid-btn').textContent,
     };
-    _nexradSiteMarkers['ktlx'].label.fire('click');   // strip A itself
+    _nexradSiteMarkers['ktlx'].label.fire('click');   // pane A itself
     const aToast = window.__toasts.join(' | ');
-    _nexradSiteMarkers['kfws'].label.fire('click');   // already strip B: out it goes
+    _nexradSiteMarkers['kfws'].label.fire('click');   // already pane B: out it goes
     await new Promise(res => setTimeout(res, 200));
     const afterRemove = {
-      n: _rcSlots.length, sites: _rcSlots.map(s => s.site), splits: _rcSplits.slice(),
+      n: _rcSlots.length, sites: _rcSlots.map(s => s.site), grid: { ..._rcGrid },
       letters: [...document.querySelectorAll('#rc-labels .sev-cmp-label')].map(e => e.textContent.slice(0, 1)),
       ring: document.getElementById('nxlbl-kfws').classList.contains('in-compare'),
     };
     return { afterAdd, afterRemove, aToast };
   });
   const a = r.afterAdd, d = r.afterRemove;
-  ok('KDYX becomes strip C with no popup, thirds all round',
-     a.n === 2 && a.sites.join(',') === 'kfws,kdyx' && !a.pop && a.dividers === 2
-     && a.splits.join(',') === '33.33,66.67' && a.letters.join('') === 'BC', JSON.stringify(a));
-  ok('tapping strip A only says so', /already strip A/.test(r.aToast), r.aToast);
-  ok('tapping B again removes it, and C becomes B',
-     d.n === 1 && d.sites.join(',') === 'kdyx' && d.letters.join('') === 'B' && d.splits.join(',') === '50' && !d.ring,
+  ok('a third picture grows the double into a QUAD split, no popup: one column line, one row line',
+     a.n === 2 && a.sites.join(',') === 'kfws,kdyx' && !a.pop
+     && a.grid.rows === 2 && a.grid.cols === 2 && a.dividers === 2
+     && a.letters.join('') === 'BC' && a.btnText === 'Quad', JSON.stringify(a));
+  ok('tapping pane A only says so', /already pane A/.test(r.aToast), r.aToast);
+  ok('tapping B again removes it, C becomes B, and the split shape stays put',
+     d.n === 1 && d.sites.join(',') === 'kdyx' && d.letters.join('') === 'B'
+     && d.grid.rows === 2 && d.grid.cols === 2 && !d.ring,
      JSON.stringify(d));
 }
 
-console.log('\n4b. the rotate button flips side-by-side to stacked, and back');
+console.log('\n4b. the rotate button transposes the split, and back');
 {
   const r = await p.evaluate(async () => {
+    // Down to a clean double for this section: side by side first.
+    _rcGridCycle();   // quad -> octo
+    _rcGridCycle();   // octo -> double (1 slot fits)
     const btn = document.getElementById('rc-rotate-btn');
     const shownWhileComparing = getComputedStyle(btn).display !== 'none';
     const slot = _rcSlots[0];
     const pane = map.getPane('rc-' + slot.id);
     const before = {
-      orientation: _rcOrientation,
-      dividerClass: slot.dividerEl.className,
-      dividerLeft: slot.dividerEl.style.left,
-      dividerTop: slot.dividerEl.style.top,
+      grid: { ..._rcGrid },
+      cols: document.querySelectorAll('#rc-dividers .rc-divider:not(.horizontal)').length,
+      rows: document.querySelectorAll('#rc-dividers .rc-divider.horizontal').length,
       clip: pane.style.clipPath,
     };
     btn.click();
     await new Promise(res => setTimeout(res, 50));
     const after = {
-      orientation: _rcOrientation,
-      dividerClass: slot.dividerEl.className,
-      dividerLeft: slot.dividerEl.style.left,
-      dividerTop: slot.dividerEl.style.top,
+      grid: { ..._rcGrid },
+      cols: document.querySelectorAll('#rc-dividers .rc-divider:not(.horizontal)').length,
+      rows: document.querySelectorAll('#rc-dividers .rc-divider.horizontal').length,
       clip: pane.style.clipPath,
-      split: _rcSplits.slice(),
+      colSplits: _rcColSplits.slice(), rowSplits: _rcRowSplits.slice(),
     };
-    btn.click();   // back to vertical, for the tests after this one
+    btn.click();   // back to side by side, for the tests after this one
     await new Promise(res => setTimeout(res, 50));
-    const restored = { orientation: _rcOrientation, dividerClass: slot.dividerEl.className };
+    const restored = { grid: { ..._rcGrid } };
     return { shownWhileComparing, before, after, restored };
   });
   ok('the rotate button is on screen once a comparison is running',
      r.shownWhileComparing, JSON.stringify(r.shownWhileComparing));
-  ok('vertical to start: a left-positioned divider, an x-clipped pane',
-     r.before.orientation === 'v' && !r.before.dividerClass.includes('horizontal')
-     && r.before.dividerLeft && !r.before.dividerTop
-     && /^polygon\(-?[\d.]+px -99999px,/.test(r.before.clip), JSON.stringify(r.before));
-  ok('one click rotates it: a top-positioned divider, a y-clipped pane, same split percent',
-     r.after.orientation === 'h' && r.after.dividerClass.includes('horizontal')
-     && r.after.dividerTop && !r.after.dividerLeft
-     && /^polygon\(-99999px -?[\d.]+px,/.test(r.after.clip)
-     && r.after.split.join(',') === '50', JSON.stringify(r.after));
-  ok('a second click rotates it straight back',
-     r.restored.orientation === 'v' && !r.restored.dividerClass.includes('horizontal'),
-     JSON.stringify(r.restored));
+  ok('side by side to start: a 1x2 with one vertical line',
+     r.before.grid.rows === 1 && r.before.grid.cols === 2
+     && r.before.cols === 1 && r.before.rows === 0, JSON.stringify(r.before));
+  ok('one click transposes it: a stacked 2x1 with one horizontal line at the halfway mark',
+     r.after.grid.rows === 2 && r.after.grid.cols === 1
+     && r.after.cols === 0 && r.after.rows === 1
+     && r.after.rowSplits.join(',') === '50' && r.after.colSplits.length === 0,
+     JSON.stringify(r.after));
+  ok('a second click transposes it straight back',
+     r.restored.grid.rows === 1 && r.restored.grid.cols === 2, JSON.stringify(r.restored));
 }
 
-console.log('\n5. the divider follows the pointer, and stays put when the map is dragged');
+console.log('\n5. the split line follows the pointer, and stays put when the map is dragged');
 {
   const r = await p.evaluate(async () => {
     const rect = document.getElementById('map').getBoundingClientRect();
-    _rcSetSplit(0, rect.left + rect.width * 0.7);
-    const dv = _rcSlots[0].dividerEl;
-    const at70 = { pct: _rcSplits[0], left: parseFloat(dv.style.left), want: rect.width * 0.7 };
-    _rcSetSplit(0, rect.left + rect.width * 0.01);   // past the edge: clamped
-    const clamped = _rcSplits[0];
-    _rcSetSplit(0, rect.left + rect.width * 0.7);
+    const drag = (x) => { _rcGridDrag = { axis: 'col', idx: 0 }; _rcSetGridSplit(x, 300); _rcGridDrag = null; };
+    drag(rect.left + rect.width * 0.7);
+    const dv = _rcGridDividerEls.cols[0];
+    const at70 = { pct: _rcColSplits[0], left: parseFloat(dv.style.left), want: rect.width * 0.7 };
+    drag(rect.left + rect.width * 0.01);   // past the edge: clamped
+    const clamped = _rcColSplits[0];
+    drag(rect.left + rect.width * 0.7);
     map.panBy([150, 0], { animate: false });
     await new Promise(res => setTimeout(res, 100));
     const pos = L.DomUtil.getPosition(map._mapPane);
@@ -329,10 +337,10 @@ console.log('\n5. the divider follows the pointer, and stays put when the map is
              afterPan: { left: parseFloat(dv.style.left), posX: pos.x,
                          clipLeft: m && parseFloat(m[1]), want: rect.width * 0.7 } };
   });
-  ok('dragging to 70% puts the divider at 70%',
+  ok('dragging to 70% puts the split line at 70%',
      Math.abs(r.at70.pct - 70) < 0.6 && Math.abs(r.at70.left - r.at70.want) < 2, JSON.stringify(r.at70));
   ok('and it cannot be dragged off the map', r.clamped === 4, String(r.clamped));
-  ok('after a pan the divider stays at 70% of the view while the clip subtracts the slide',
+  ok('after a pan the line stays at 70% of the view while the clip subtracts the slide',
      Math.abs(r.afterPan.left - r.afterPan.want) < 2 && r.afterPan.posX !== 0
      && Math.abs(r.afterPan.clipLeft - (r.afterPan.want - r.afterPan.posX)) < 2, JSON.stringify(r.afterPan));
 }
@@ -455,13 +463,14 @@ console.log('\n9. peeking hides the divider for ten seconds, and cleans up if co
     document.querySelector('#site-pop .site-pop-compare').click();
     await new Promise(res => setTimeout(res, 300));
     const btn = document.getElementById('rc-peek-btn');
-    const before = { shown: btn.style.display, opacity: getComputedStyle(_rcSlots[0].dividerEl).opacity };
+    const line = () => _rcGridDividerEls.cols[0] || _rcGridDividerEls.rows[0];
+    const before = { shown: btn.style.display, opacity: getComputedStyle(line()).opacity };
     btn.click();
     await new Promise(res => setTimeout(res, 300));   // the CSS fade takes 0.2s
     const during = {
       peeking: document.getElementById('rc-dividers').classList.contains('cmp-peeking'),
       active: btn.classList.contains('active'),
-      opacity: getComputedStyle(_rcSlots[0].dividerEl).opacity,
+      opacity: getComputedStyle(line()).opacity,
     };
     // Ending the comparison mid-peek must not leave the NEXT one stuck invisible.
     _rcOff();
@@ -469,14 +478,14 @@ console.log('\n9. peeking hides the divider for ten seconds, and cleans up if co
     _nexradSiteMarkers['kfws'].label.fire('click');
     document.querySelector('#site-pop .site-pop-compare').click();
     await new Promise(res => setTimeout(res, 300));
-    const after = { opacity: getComputedStyle(_rcSlots[0].dividerEl).opacity,
+    const after = { opacity: getComputedStyle(line()).opacity,
                      shown: document.getElementById('rc-peek-btn').style.display };
     _rcOff();
     return { before, during, stuckCheck, after };
   });
-  ok('the peek button appears the moment a comparison is running, divider fully visible',
+  ok('the peek button appears the moment a comparison is running, split line fully visible',
      r.before.shown === 'flex' && r.before.opacity === '1', JSON.stringify(r.before));
-  ok('clicking it hides the divider and lights the button',
+  ok('clicking it hides the split line and lights the button',
      r.during.peeking && r.during.active && r.during.opacity === '0', JSON.stringify(r.during));
   ok('ending the comparison mid-peek clears the peeking state, nothing left stuck',
      r.stuckCheck === false, String(r.stuckCheck));
@@ -484,130 +493,82 @@ console.log('\n9. peeking hides the divider for ten seconds, and cleans up if co
      r.after.opacity === '1' && r.after.shown === 'flex', JSON.stringify(r.after));
 }
 
-console.log('\n10. tapping the handle rotates it, dragging it resizes instead');
-{
-  await p.evaluate(() => {
-    if (!_refStation) { _loadSingleSiteRef('ktlx'); }
-    _nexradSiteMarkers['kfws'].label.fire('click');
-    document.querySelector('#site-pop .site-pop-compare').click();
-  });
-  // A fixed wait here was occasionally shorter than however long this
-  // sandbox's own CPU scheduling took to actually lay the divider out,
-  // which made a real screen-coordinate click land on nothing and read
-  // as "did not rotate" - not a bug in the rotate logic itself, every
-  // other check of it always passed. Wait for a real, painted handle
-  // instead of a guessed number of milliseconds.
-  await p.waitForFunction(() => {
-    const d = _rcSlots[0] && _rcSlots[0].dividerEl;
-    const h = d && d.querySelector('.sev-cmp-handle');
-    return h && h.getBoundingClientRect().width > 0;
-  }, { timeout: 5000 });
-
-  const before = await p.evaluate(() => _rcOrientation);
-  const handleBox = async () => p.evaluate(() => {
-    const r = _rcSlots[0].dividerEl.querySelector('.sev-cmp-handle').getBoundingClientRect();
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-  });
-  const box1 = await handleBox();
-  await p.mouse.click(box1.x, box1.y);
-  try { await p.waitForFunction((b) => _rcOrientation !== b, before, { timeout: 2000 }); } catch (e) {}
-  const afterTap = await p.evaluate(() => _rcOrientation);
-  ok('a plain tap on the handle (press and release, no real movement) rotates the comparison',
-     afterTap !== before, JSON.stringify({ before, afterTap }));
-
-  const splitBefore = await p.evaluate(() => _rcSplits[0]);
-  const box2 = await handleBox();   // orientation changed, so the handle moved
-  await p.mouse.move(box2.x, box2.y);
-  await p.mouse.down();
-  // Drag along whichever axis this orientation actually uses.
-  if (afterTap === 'h') await p.mouse.move(box2.x, box2.y + 120, { steps: 6 });
-  else await p.mouse.move(box2.x + 120, box2.y, { steps: 6 });
-  await p.mouse.up();
-  try { await p.waitForFunction((s) => _rcSplits[0] !== s, splitBefore, { timeout: 2000 }); } catch (e) {}
-  const afterDrag = await p.evaluate(() => ({ orientation: _rcOrientation, split: _rcSplits[0] }));
-  ok('dragging it a real distance resizes the split instead, orientation stays put',
-     afterDrag.orientation === afterTap && afterDrag.split !== splitBefore,
-     JSON.stringify({ splitBefore, afterDrag }));
-
-  await p.evaluate(() => _rcOff());
-  ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
-}
-
-console.log('\n11. splitting into a real grid: 2x2, then 2x4, a rectangle per cell');
+console.log('\n10. the split grows as pictures arrive: double, quad, octo, then genuinely full');
 {
   const r = await p.evaluate(async () => {
     const out = {};
-    // Unconditional, not "if no station yet": a leftover station from an
-    // earlier section (section 8 deliberately leaves one behind) would
-    // otherwise make one of the three adds below a same-as-strip-A no-op,
-    // and this section needs exactly three real additions to reason about.
     _loadSingleSiteRef('ktlx');
     _rcOn = true;
-    ['kfws', 'kdyx', 'kama'].forEach(id => _rcAddSite(id));
-    await new Promise(res => setTimeout(res, 300));
-    out.slotsBefore = _rcSlots.length;   // 3 strips + strip A = 4, exactly a 2x2
-
-    const btn = document.getElementById('rc-grid-btn');
-    btn.click();   // 1x1 -> 2x2
-    out.gridAfterFirstClick = { ..._rcGrid };
-    out.dividerCount = document.querySelectorAll('#rc-dividers .rc-divider').length;
-    out.btnText = btn.textContent;
-    out.rotateHiddenInGrid = document.getElementById('rc-rotate-btn').style.display;
+    // Eight distinct real stations straight off the site list, so the
+    // ladder below can climb to a full octo and then one past it.
+    const ids = NEXRAD_STATIONS.filter(s => s.id !== 'ktlx').slice(0, 8).map(s => s.id);
+    out.ladder = [];
+    for (let i = 0; i < 7; i++) {
+      _rcAddSite(ids[i]);
+      out.ladder.push({ slots: _rcSlots.length, cells: _rcGrid.rows * _rcGrid.cols });
+    }
+    window.__toasts.length = 0;
+    _rcAddSite(ids[7]);   // a ninth picture: refused
+    out.ninthRefused = _rcSlots.length === 7 && window.__toasts.some(t => /octo split.*most it can hold/.test(t));
+    out.btnText = document.getElementById('rc-grid-btn').textContent;
+    out.octoLines = document.querySelectorAll('#rc-dividers .rc-divider').length;
     const clips = _rcSlots.map(s => map.getPane('rc-' + s.id).style.clipPath);
-    out.allBounded = clips.every(c => !/-99999|99999/.test(c) && /^polygon\(/.test(c));
-
-    btn.click();   // 2x2 -> 2x4
-    out.gridAfterSecondClick = { ..._rcGrid };
-    out.dividerCountAt2x4 = document.querySelectorAll('#rc-dividers .rc-divider').length;
-
-    btn.click();   // 2x4 -> 1x1
-    out.gridAfterThirdClick = _rcGrid;
-    out.dividerCountBackToLinear = document.querySelectorAll('#rc-dividers .rc-divider').length;
-    out.rotateBackInLinear = document.getElementById('rc-rotate-btn').style.display;
-
+    out.allBounded = clips.every(c => !/99999/.test(c) && /^polygon\(/.test(c));
     _rcOff();
     return out;
   });
-  ok('four pictures on screen fits a 2x2 grid exactly', r.slotsBefore === 3, String(r.slotsBefore));
-  ok('one click makes it a real 2x2 grid: one column line, one row line, two dividers total',
-     r.gridAfterFirstClick.rows === 2 && r.gridAfterFirstClick.cols === 2 && r.dividerCount === 2,
-     JSON.stringify(r));
-  ok('the button label reflects the shape, and the rotate button steps aside',
-     r.btnText === '2×2' && r.rotateHiddenInGrid === 'none', JSON.stringify(r));
-  ok('every cell is a real rectangle - bounded on both axes, not the old full-length band',
-     r.allBounded === true);
-  ok('a second click grows it to 2x4: three column lines plus one row line, four dividers',
-     r.gridAfterSecondClick.rows === 2 && r.gridAfterSecondClick.cols === 4 && r.dividerCountAt2x4 === 4,
-     JSON.stringify(r));
-  ok('a third click cycles all the way back to the ordinary single-divider row',
-     r.gridAfterThirdClick === null && r.dividerCountBackToLinear === 3 && r.rotateBackInLinear === 'flex',
-     JSON.stringify(r));
+  ok('one picture is a double, a third grows it to quad, a fifth to octo, never dropping anything',
+     r.ladder.map(x => x.cells).join(',') === '2,4,4,8,8,8,8'
+     && r.ladder.map(x => x.slots).join(',') === '1,2,3,4,5,6,7',
+     JSON.stringify(r.ladder));
+  ok('a ninth picture is refused with the octo message', r.ninthRefused === true);
+  ok('a full octo is 2x4: three column lines plus one row line, every cell a real rectangle',
+     r.btnText === 'Octo' && r.octoLines === 4 && r.allBounded === true,
+     JSON.stringify({ btn: r.btnText, lines: r.octoLines, bounded: r.allBounded }));
+  ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
 }
 
-console.log('\n12. a grid too small for the strips on screen is refused, and shared lines move every cell they touch');
+console.log('\n11. the split button cycles double, quad, octo, refusing any size the pictures no longer fit');
 {
   const r = await p.evaluate(async () => {
     const out = {};
-    _loadSingleSiteRef('ktlx');   // unconditional, same reason as section 11's own
-    _rcOn = true;   // _rcAddSite itself only ever adds, real UI entry is exercised elsewhere
-    // Four strips, plus strip A, is five pictures - one more than a 2x2's
-    // four cells can hold. A fifth real, distinct station id, not one of
-    // the three the rest of this file already uses, straight out of the
-    // site list rather than typed by hand so it is never a made-up id.
-    const fifth = NEXRAD_STATIONS.find(s => !['ktlx', 'kfws', 'kdyx', 'kama'].includes(s.id)).id;
-    ['kfws', 'kdyx', 'kama', fifth].forEach(id => _rcAddSite(id));
+    _loadSingleSiteRef('ktlx');
+    _rcOn = true;
+    ['kfws', 'kdyx', 'kama'].forEach(id => _rcAddSite(id));   // 4 pictures: a quad
+    await new Promise(res => setTimeout(res, 300));
+    out.start = { ..._rcGrid };
+    const btn = document.getElementById('rc-grid-btn');
+    btn.click();   // quad -> octo
+    out.afterFirst = { grid: { ..._rcGrid }, btn: btn.textContent,
+                       lines: document.querySelectorAll('#rc-dividers .rc-divider').length };
     window.__toasts.length = 0;
-    out.slots = _rcSlots.length;
-    const ok2x2 = _rcSetGrid(2, 2);
-    out.refused = ok2x2 === false;
-    out.stillLinear = _rcGrid === null;
-    out.toastSaid = window.__toasts.some(t => /2.2/.test(t));
+    btn.click();   // octo -> double: refused, four pictures do not fit two cells
+    out.refused = { grid: { ..._rcGrid }, toast: window.__toasts.some(t => /only holds 2 pictures/.test(t)) };
+    // Down to one picture and the full cycle opens up again.
+    while (_rcSlots.length > 1) _rcRemoveSlot(_rcSlots[_rcSlots.length - 1].id);
+    btn.click();   // octo -> double
+    out.backToDouble = { grid: { ..._rcGrid }, btn: btn.textContent };
+    _rcOff();
+    return out;
+  });
+  ok('four pictures arrive as a quad', r.start.rows === 2 && r.start.cols === 2, JSON.stringify(r.start));
+  ok('one click grows it to octo: 2x4, four shared lines, the button saying so',
+     r.afterFirst.grid.rows === 2 && r.afterFirst.grid.cols === 4
+     && r.afterFirst.lines === 4 && r.afterFirst.btn === 'Octo', JSON.stringify(r.afterFirst));
+  ok('cycling on to double is refused while four pictures are up, nothing dropped',
+     r.refused.grid.rows === 2 && r.refused.grid.cols === 4 && r.refused.toast, JSON.stringify(r.refused));
+  ok('with one picture left the cycle reaches double again',
+     r.backToDouble.grid.rows === 1 && r.backToDouble.grid.cols === 2 && r.backToDouble.btn === 'Double',
+     JSON.stringify(r.backToDouble));
+}
 
-    // Shrink back to three strips (fits a 2x2 exactly), then actually
-    // build the grid and check a shared column line moves every cell in
-    // the columns on either side of it, not just one.
-    _rcRemoveSlot(_rcSlots[_rcSlots.length - 1].id);
-    _rcGridCycle();   // 1x1 -> 2x2
+console.log('\n12. shared lines move every cell they touch');
+{
+  const r = await p.evaluate(async () => {
+    const out = {};
+    _loadSingleSiteRef('ktlx');
+    _rcOn = true;
+    ['kfws', 'kdyx', 'kama'].forEach(id => _rcAddSite(id));   // a quad
     out.gridBuilt = { ..._rcGrid };
     const rowSplitBefore = _rcRowSplits[0];
     const clipsBefore = _rcSlots.map(s => map.getPane('rc-' + s.id).style.clipPath);
@@ -623,13 +584,75 @@ console.log('\n12. a grid too small for the strips on screen is refused, and sha
     _rcOff();
     return out;
   });
-  ok('four strips already fills a 2x2 grid, five is one too many', r.slots === 4, String(r.slots));
-  ok('shrinking to 2x2 is refused rather than silently dropping a strip',
-     r.refused && r.stillLinear && r.toastSaid, JSON.stringify(r));
-  ok('with room again, the grid actually builds', r.gridBuilt.rows === 2 && r.gridBuilt.cols === 2, JSON.stringify(r.gridBuilt));
+  ok('four pictures build the quad', r.gridBuilt.rows === 2 && r.gridBuilt.cols === 2, JSON.stringify(r.gridBuilt));
   ok('dragging the shared column line reclips every cell, and leaves the row line untouched',
      r.colSplitAfter !== undefined && r.rowSplitUnchangedByColumnDrag && r.everyCellReclipped,
      JSON.stringify(r));
+}
+
+console.log('\n13. a pane can pick its OWN product, and its own Level 2/Level 3 source');
+{
+  ok('the plan takes the pane, and the pane carries its choices',
+     /function _rcPlan\(site, slot\) \{/.test(PAGE)
+     && /prodSel: null, srcSel: null/.test(PAGE)
+     && /const plan = _rcPlan\(slot\.site, slot\);/.test(PAGE));
+  ok('the label wears a ≡ that opens the picker, and compare-off closes it',
+     /className = 'rc-gear';/.test(PAGE)
+     && /function _rcCfgOpen\(slot, labelEl\) \{/.test(PAGE)
+     && /function _rcOff\(\) \{[\s\S]*?_rcCfgClose\(\);/.test(PAGE));
+  const r = await p.evaluate(async () => {
+    const out = {};
+    _loadSingleSiteRef('ktlx');
+    _rcOn = true;
+    _rcAddSite('kfws');
+    await new Promise(res => setTimeout(res, 200));
+    const slot = _rcSlots[0];
+    // Its own product on the standard per-site service.
+    slot.prodSel = 'vel';
+    out.velPlan = _rcPlan(slot.site, slot);
+    // Its own source: the same product as Level 2.
+    slot.srcSel = 'l2';
+    _rcRenderSlot(slot);
+    out.l2Plan = { ...slot.plan };
+    // Level 3 with a dual-pol product resolves to a real bucket code.
+    slot.prodSel = 'cc'; slot.srcSel = 'l3';
+    out.l3Plan = _rcPlan(slot.site, slot);
+    // The label says what the pane chose, not what pane A shows.
+    _rcRenderSlot(slot);
+    _rcRefreshLabels();
+    out.label = slot.labelEl.querySelector('.rc-label-text').textContent;
+    // Same as A hands the choice back to the globals.
+    slot.prodSel = null; slot.srcSel = null;
+    out.followPlan = _rcPlan(slot.site, slot);
+    // The picker itself: the ≡ opens it beside the label, a choice
+    // applies to this pane and closes it.
+    slot.labelEl.querySelector('.rc-gear').click();
+    const box = document.getElementById('rc-slot-cfg');
+    out.boxOpen = !!box;
+    out.rows = box ? box.querySelectorAll('.rc-cfg-row').length : 0;
+    const velBtn = box && [...box.querySelectorAll('button')].find(b => b.textContent === 'Vel');
+    if (velBtn) velBtn.click();
+    out.picked = slot.prodSel;
+    out.boxClosed = !document.getElementById('rc-slot-cfg');
+    out.labelAfterPick = slot.labelEl.querySelector('.rc-label-text').textContent;
+    _rcOff();
+    return out;
+  });
+  ok('a pane set to velocity plans the velocity layer of ITS site',
+     r.velPlan.kind === 'wms' && r.velPlan.layer === 'kfws_sr_bvel', JSON.stringify(r.velPlan));
+  ok('a pane set to Level 2 plans the Level 2 decode of that product',
+     r.l2Plan.kind === 'mesh-l2' && r.l2Plan.product === 'vel', JSON.stringify(r.l2Plan));
+  ok('a pane set to Level 3 CC resolves the real bucket code',
+     r.l3Plan.kind === 'mesh-l3' && r.l3Plan.code === 'N0C', JSON.stringify(r.l3Plan));
+  ok('its label says what it chose: the product and the source',
+     /KFWS · Corr\. Coeff\. · L3/.test(r.label), r.label);
+  ok('Same as A hands the pane back to the main picture\'s own switches',
+     r.followPlan.kind === 'wms' && r.followPlan.layer === 'kfws_sr_bref', JSON.stringify(r.followPlan));
+  ok('the ≡ opens a two-row picker, and picking Vel applies it and closes',
+     r.boxOpen && r.rows === 2 && r.picked === 'vel' && r.boxClosed
+     && /KFWS · Velocity/.test(r.labelAfterPick),
+     JSON.stringify({ open: r.boxOpen, rows: r.rows, picked: r.picked, closed: r.boxClosed, label: r.labelAfterPick }));
+  ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
 }
 
 console.log(fail ? `\n${fail} FAILED, ${pass} passed` : `\nall ${pass} passed`);
