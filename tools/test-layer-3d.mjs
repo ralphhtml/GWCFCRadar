@@ -39,6 +39,10 @@ console.log('\n1. the pieces are in the page');
   ok('an info text', /'tool-l3d': +'Any weather layer on the real ground/.test(PAGE));
   ok('Radar 3D has a Terrain button', PAGE.includes('id="r3d-terrain-btn"'));
   ok('Satellite 3D has a Terrain button', PAGE.includes('id="s3d-terrain-btn"'));
+  ok('Radar 3D and Satellite 3D have a snapshot button and a Quality picker',
+     ['r3d-snap-btn', 's3d-snap-btn', 'r3d-quality', 's3d-quality'].every(id => PAGE.includes(`id="${id}"`)));
+  ok('Satellite 3D has a Raw pixels look', /id="s3d-mode"[\s\S]{0,900}value="pixels"/.test(PAGE));
+  ok('both wear the black top block', /<div id="r3d-panel">\s*<div class="p3d-top">/.test(PAGE) && /<div id="s3d-panel">\s*<div class="p3d-top">/.test(PAGE));
   ok('no em dashes in the new code or this test',
      !PAGE.slice(PAGE.indexOf('// -- Layer 3D: every layer'), PAGE.indexOf('// -- COMPARING LAYERS: THE CROSS-LAYER SPLIT'))
        .includes(String.fromCharCode(0x2014))
@@ -305,6 +309,90 @@ console.log('\n6. the controls');
   ok('Walk puts you above the ground with the pad showing', r.walking && r.aboveGround, JSON.stringify(r));
   ok('fullscreen, and Esc leaves it', r.full && r.unfull);
   ok('only the MRMS panel carries a Time Machine button', !r.tm && r.mrmsTm === 'mosaic');
+}
+
+console.log('\n6b. the Radar 3D toolkit, and the look');
+{
+  const r = await p.evaluate(async () => {
+    const P = _l3dPanels.waves;
+    const out = {};
+    // The automatic stretch is capped, so flat ground no longer spikes.
+    out.autoCap = P.exagAuto <= 30;
+    // Show above / Up to: the layer only on ground in that band.
+    P.water = false; P.colours = null;
+    const midL = Math.floor(P.ny / 2) * P.nx, midR = midL + P.nx - 1;       // sea, land
+    const drapedR = P.cellColours().floor.slice(midR * 3, midR * 3 + 3).join();
+    const ab = P.el('above'); ab.value = '9000'; ab.dispatchEvent(new Event('input'));
+    const bareR = P.cellColours().floor.slice(midR * 3, midR * 3 + 3).join();
+    out.aboveLabel = P.el('above-label').textContent;
+    ab.value = '0'; ab.dispatchEvent(new Event('input'));
+    out.aboveBack = P.el('above-label').textContent;
+    out.bandHides = drapedR !== bareR;
+    // Layer opacity 0 is the bare relief map.
+    const al = P.el('alpha'); al.value = '0'; al.dispatchEvent(new Event('input'));
+    out.alpha0 = P.cellColours().floor.slice(midR * 3, midR * 3 + 3).join() === bareR;
+    al.value = '100'; al.dispatchEvent(new Event('input'));
+    // Smoothing changes the ground's shape.
+    const f0 = Array.from(P.floorKm().slice(midL, midR + 1));
+    const sm = P.el('smooth'); sm.value = '100'; sm.dispatchEvent(new Event('input'));
+    const f1 = Array.from(P.floorKm().slice(midL, midR + 1));
+    out.smoothed = f0.some((v, i) => Math.abs(v - f1[i]) > 1e-4) && P.el('smooth-label').textContent === '100%';
+    sm.value = '0'; sm.dispatchEvent(new Event('input'));
+    // Raw pixels look and the Quality picker.
+    const mode = P.el('mode');
+    out.hasPixels = [...mode.options].some(o => o.value === 'pixels');
+    mode.value = 'pixels'; mode.dispatchEvent(new Event('change'));
+    P.dirty = true; await P.renderIdle();
+    out.pixelsMode = P.mode === 'pixels';
+    mode.value = 'lit'; mode.dispatchEvent(new Event('change'));
+    const q = P.el('quality'); q.value = 'fine'; q.dispatchEvent(new Event('change'));
+    out.quality = P.quality;
+    q.value = 'auto'; q.dispatchEvent(new Event('change'));
+    // Walk keeps the two bars, which then steer altitude and heading.
+    P.el('walk').click();
+    const zoomShown = P.panel.querySelector('.r3d-cam-zoom').style.display !== 'none';
+    const zb = P.el('zoom'); zb.value = '900'; zb.dispatchEvent(new Event('input'));
+    const hi = P.walk.z;
+    zb.value = '300'; zb.dispatchEvent(new Event('input'));
+    const lo = P.walk.z;
+    const yb = P.el('yaw'); yb.value = '90'; yb.dispatchEvent(new Event('input'));
+    out.walkBars = zoomShown && hi > lo && Math.abs(P.walk.yaw - Math.PI / 2) < 1e-6;
+    P.el('walk').click();
+    // Snapshot saves the picture.
+    let saved = null;
+    const realClick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () { saved = this.download; };
+    P.el('snap').click();
+    for (let i = 0; i < 40 && !saved; i++) await new Promise(res => setTimeout(res, 50));
+    HTMLAnchorElement.prototype.click = realClick;
+    out.saved = saved;
+    // The playback hook: a new moment on the animation bar re-reads the layer.
+    let reads = 0;
+    const real = P.resample.bind(P);
+    P.resample = (f) => { reads++; return real(f); };
+    await new Promise(res => setTimeout(res, 200));
+    document.getElementById('anim-time').textContent = '12:34';
+    await new Promise(res => setTimeout(res, 50));
+    P.resample = real;
+    out.followsBar = reads >= 1;
+    // The look: black gradient on top, frost below.
+    const top = P.panel.querySelector('.p3d-top');
+    out.topWraps = !!top && top.contains(P.el('mode')) && !top.contains(P.el('canvas'));
+    out.topBg = getComputedStyle(top).backgroundImage;
+    out.panelBg = getComputedStyle(P.panel).backgroundImage;
+    return out;
+  });
+  ok('the automatic stretch is capped at 30x (no more 300x spikes)', r.autoCap, JSON.stringify(r));
+  ok('Show above hides the layer on ground below it', r.bandHides && /ft$/.test(r.aboveLabel) && r.aboveBack === 'all', JSON.stringify(r));
+  ok('Layer at 0% leaves the bare relief', r.alpha0);
+  ok('Smoothing smooths the ground', r.smoothed);
+  ok('a Raw pixels look', r.hasPixels && r.pixelsMode);
+  ok('a Quality picker', r.quality === 'fine');
+  ok('Walk keeps the zoom and turn bars, as altitude and heading', r.walkBars, JSON.stringify(r));
+  ok('the camera button saves the view as a PNG', /^layer3d-waves-\d+\.png$/.test(r.saved || ''), r.saved);
+  ok('each new moment on the animation bar re-reads the layer', r.followsBar);
+  ok('the controls sit in a black gradient top', r.topWraps && /rgb\(28, 28, 34\)/.test(r.topBg), r.topBg);
+  ok('and the panel below is frosted glass', /rgba\(24, 28, 34, 0\.36\)/.test(r.panelBg), r.panelBg);
 }
 
 console.log('\n7. another source answers when one cannot be reached');
