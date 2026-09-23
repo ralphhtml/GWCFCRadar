@@ -148,6 +148,26 @@ async function run(withBackdrop) {
   return out;
 }
 
+console.log('\n1b. never on iOS or small-memory devices');
+{
+  const ctxI = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3,
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/129.0 Mobile/15E148 Safari/604.1' });
+  const pi = await ctxI.newPage();
+  await pi.addInitScript(() => { try { localStorage.setItem('gwcfc_tutorial_seen', '1'); } catch (e) {} });
+  await pi.route('**://**', r => {
+    const u = r.request().url();
+    if (u.startsWith('file://')) return r.continue();
+    if (u.includes('leaflet') && u.endsWith('.js')) return r.fulfill({ contentType: 'application/javascript', body: readFileSync(join(LEAFLET, 'leaflet.js'), 'utf8') });
+    if (u.includes('leaflet') && u.endsWith('.css')) return r.fulfill({ contentType: 'text/css', body: readFileSync(join(LEAFLET, 'leaflet.css'), 'utf8') });
+    return r.abort();
+  });
+  await pi.goto('file://' + join(ROOT, 'index.html'), { waitUntil: 'domcontentloaded' });
+  await pi.waitForTimeout(4000);
+  const r = await pi.evaluate(() => ({ ios: _isIOS, bd: !!_basemapBackdrop, pane: !!map.getPane('backdropPane') }));
+  ok('an iPhone gets no backdrop at all (no layer, no pane)', r.ios && !r.bd && !r.pane, JSON.stringify(r));
+  await ctxI.close();
+}
+
 console.log('\n2. without the backdrop (the old behaviour), for comparison');
 const before = await run(false);
 ok('mid-pinch the edges of the screen are empty', before.edges.slice(0, 5).every(e => e === 'empty'), before.edges.join(','));
