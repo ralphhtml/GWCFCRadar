@@ -270,6 +270,12 @@ class CORSHandler(SimpleHTTPRequestHandler):
         if head == "/sat/archive/frame":
             self._sat_archive_frame()
             return
+        if head == "/sat/cth/index":
+            self._sat_cth_index()
+            return
+        if head == "/sat/cth/frame":
+            self._sat_cth_frame()
+            return
         if head == "/sounding/sources":
             self._sounding_sources()
             return
@@ -441,6 +447,84 @@ class CORSHandler(SimpleHTTPRequestHandler):
         finally:
             _sat_gate.release()
         self._reply_bytes(200, body, "image/png")
+
+    # ── The cloud-top height doors (Satellite 3D) ──────────────────────────
+    # GET /sat/cth/index and /sat/cth/frame, backed by sat_cth.py beside this
+    # file. Same shape of guard as the archive doors above: a zone is four
+    # checked numbers, a key must be one of NOAA's band 13 scan names, and
+    # the heavy work queues behind the same gate.
+    def _sat_cth_cache_dir(self):
+        return os.path.join(getattr(self, "directory", None)
+                            or os.path.expanduser("~/wxdata"), "satellite", "cth")
+
+    def _sat_cth_index(self):
+        """GET /sat/cth/index?south=&west=&north=&east=&n=6[&at=<ms>]"""
+        try:
+            import sat_cth
+        except Exception as e:
+            self._reply_json(501, {"error": f"sat_cth.py is not beside serve.py ({e})"})
+            return
+        one = self._sat_query()
+        try:
+            bbox = sat_cth.parse_bbox(one)
+        except ValueError as e:
+            self._reply_json(400, {"error": str(e)})
+            return
+        now_ms = int(time.time() * 1000)
+        try:
+            at = int(one("at") or now_ms)
+            n = max(1, min(12, int(one("n") or "6")))
+        except ValueError:
+            self._reply_json(400, {"error": "at and n must be numbers"})
+            return
+        if not 1483228800000 <= at <= now_ms + 3600000:
+            self._reply_json(400, {"error": "at must be a moment since 2017"})
+            return
+        got = sat_cth.index(bbox, at, n)
+        if got is None:
+            self._reply_json(404, {"error": "no satellite stood over that zone then"})
+            return
+        if not got["frames"]:
+            self._reply_json(404, {"error": "NOAA has no scan for that moment"})
+            return
+        self._reply_json(200, got)
+
+    def _sat_cth_frame(self):
+        """GET /sat/cth/frame?bucket=&key=&sector=&south=&west=&north=&east= -> JSON"""
+        try:
+            import sat_archive
+            import sat_cth
+        except Exception as e:
+            self._reply_json(501, {"error": f"sat_cth.py is not beside serve.py ({e})"})
+            return
+        one = self._sat_query()
+        bucket, key, sector = one("bucket"), one("key"), one("sector")
+        if bucket not in sat_archive.BUCKETS:
+            self._reply_json(400, {"error": "unknown bucket"})
+            return
+        m = sat_archive.KEY_RE.match(key)
+        if not m or int(m.group(1)) != 13:
+            self._reply_json(400, {"error": "key is not a band 13 GOES scan"})
+            return
+        if sector not in sat_archive.SECTOR_PRODUCT:
+            self._reply_json(400, {"error": "sector must be conus or fulldisk"})
+            return
+        try:
+            bbox = sat_cth.parse_bbox(one)
+        except ValueError as e:
+            self._reply_json(400, {"error": str(e)})
+            return
+        if not _sat_gate.acquire(timeout=SAT_QUEUE_WAIT_S):
+            self._reply_json(503, {"error": "the satellite service is busy, try again shortly"})
+            return
+        try:
+            out = sat_cth.build_frame(bucket, key, sector, bbox, self._sat_cth_cache_dir())
+        except Exception as e:
+            self._reply_json(502, {"error": f"could not build heights for that scan ({e})"})
+            return
+        finally:
+            _sat_gate.release()
+        self._reply_json(200, out)
 
     def _reply_bytes(self, code, body, ctype):
         self.send_response(code)
