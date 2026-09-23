@@ -14,7 +14,7 @@ hardcoded, that is said explicitly.
 1. WHAT IT IS
 ================================================================================
 
-A browser weather application. One HTML page, 85,846 lines, no build step, no
+A browser weather application. One HTML page, 86,240 lines, no build step, no
 framework. It runs from GitHub Pages and talks to a parsing server that does the
 heavy decoding and model rendering. Free, no accounts required for the map, no
 paid tier, no advertising.
@@ -466,6 +466,10 @@ the app.
   TEMPERATURE   Air Temp, Feels Like, Dew Point
   PRESSURE  Sea-Level, Surface
 
+All five are drawn in the browser from Open-Meteo's live numbers, and every
+product's colour scale can be changed in Settings > Open-Meteo Colors (see
+section 12).
+
 Sea surface temperature has its own subsystem with four sources (Open-Meteo,
 OISST, Coral Reef Watch, AOML), a 1991-2020 climatology, records back to 1982,
 anomaly and record variants, and land masking.
@@ -493,6 +497,11 @@ LAYER 3D
   it. Each panel has a height stretch (auto, or a slider), lit / flat /
   relief looks, a cutaway, Walk, VR, fullscreen and your location; MRMS has
   its own Time Machine button. Several panels can be open at once.
+  The ground heights are tried from four places in turn (two addresses for
+  the public Terrarium tiles, Mapterhorn, then the parsing server) and the
+  one that answers is remembered; with none reachable the layer still goes
+  up on flat ground. A layer picture the page may not read back (MRMS, some
+  model charts) is draped from a readable copy fetched in the background.
 
 
 ================================================================================
@@ -589,21 +598,32 @@ A broadcast overlay mode for streaming.
 12. SETTINGS
 ================================================================================
 
-19 categories, 53 toggles:
+17 tabs, 31 on/off switches:
 
-  Display                 Map Borders and Boundaries
-  Radar                   Radar Colors
+  Map                     Radar (with Radar Colors)
   Model Colors            Satellite Colors
-  Layer Opacity           Wind Particles
-  Wave Particles          Units and Formats
+  Open-Meteo Colors       Layer Opacity
+  Particles (wind, wave)  Units
   GPS                     Alerts
-  Ocean Colours           Layer Order
-  StormStream Mode        Per-Warning Setup
-  Custom Graphics         AI Chat
-  Forecaster Desk
+  Keyboard                Ocean Colours
+  Layer Order             StormStream (with Per-Warning Setup)
+  App Colors              AI Chat
+  Discord Rich Presence
 
 The colour editors take variable-length gradient stops, invert, presets and a
-live preview, and work identically for radar and model fields. Custom radar
+live preview, and work identically for radar, model fields and the Open-Meteo
+layers.
+
+OPEN-METEO COLORS
+  Waves, Air, Wind, Temperature and Pressure each get their own colour table
+  per product (wave height, swell, period, sea temperature, US AQI, PM2.5,
+  PM10, ozone, air temperature, feels like, dew point, wind speed,
+  pressure): 13 in all. Each colour starts at a value you can type, colours
+  can be added, removed, inverted or taken from a preset, and the layer on
+  the map repaints the moment you edit, from the numbers it already has.
+  Because these layers are painted from numbers in the browser, the
+  recolouring is exact, and the Inspector and Layer 3D follow it. Saved on
+  the device, with Back to Normal for one product or all of them. Custom radar
 colours, the filter and model colours sync to the account and follow you to
 any device; an uploaded .pal file always outranks the cloud copy.
 
@@ -707,7 +727,7 @@ ASSISTANT (assistant.html)
 16. ENGINEERING
 ================================================================================
 
-  - 182 test files in tools/, mixed Node and Python
+  - 183 test files in tools/, mixed Node and Python
   - Service worker: network-first app shell with a timeout fallback,
     cache-first for CDN assets and fonts
   - Installable as a PWA
@@ -720,6 +740,12 @@ ASSISTANT (assistant.html)
     always available from the Updates button in the account panel
   - Hidden radar animation frames step off the map during a zoom and return
     in quiet batches after, so zooming with radar on stays smooth
+  - Preloaded playback frames that are not on screen skip tile updates while
+    a pan is under way and catch up when it ends, and are not composited by
+    the browser at all; satellite refills its playback window nearest frame
+    first in idle time after a zoom instead of in one burst
+  - The animation bar's time labels are measured by a ResizeObserver rather
+    than on every frame, and only rewritten when they change
   - The mouse wheel zooms like a pinch: the map glides, and tiles load once
     for the level you stop on instead of for every notch along the way
   - Offline mode: every layer replays its last good copy, a banner says since
