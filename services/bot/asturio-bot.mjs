@@ -670,19 +670,33 @@ const ASTURIO_EMBED_COLOR = 0xe8b800;  // the app's own gold accent
 const ASTURIO_ERROR_COLOR = 0xff4d4d;
 const ASK_CHUNK_LIMIT = 4000;          // a little headroom under the 4096 cap
 
-function askEmbed(text, iconURL, part, total) {
+// The foot of every embed Asturio sends: the bot's own picture and name, who
+// asked, and (Discord adds it from setTimestamp) when. These used to sit at
+// the TOP as the embed's author line, a name and picture above the answer,
+// which read as the person speaking rather than the bot answering them; the
+// footer is where a bot's signature and "requested by" belong.
+const ASTURIO_NAME = 'Asturio AI';
+function botFooter(user, extra) {
+  const who = user ? (user.globalName || user.username) : null;
+  const text = [ASTURIO_NAME, who ? `requested by ${who}` : null, extra].filter(Boolean).join(' \u00b7 ');
+  let iconURL;
+  try { iconURL = client.user?.displayAvatarURL() || undefined; } catch { iconURL = undefined; }
+  return { text, iconURL };
+}
+function signEmbed(embed, user, extra) {
+  return embed.setFooter(botFooter(user, extra)).setTimestamp();
+}
+
+function askEmbed(text, user, part, total) {
   const embed = new EmbedBuilder()
     .setColor(ASTURIO_EMBED_COLOR)
-    .setAuthor({ name: 'Asturio AI', iconURL: iconURL || undefined })
     .setDescription(text);
-  if (total > 1) embed.setFooter({ text: `Part ${part} of ${total}` });
-  return embed;
+  return signEmbed(embed, user, total > 1 ? `Part ${part} of ${total}` : null);
 }
-function askErrorEmbed(text, iconURL) {
-  return new EmbedBuilder()
+function askErrorEmbed(text, user) {
+  return signEmbed(new EmbedBuilder()
     .setColor(ASTURIO_ERROR_COLOR)
-    .setAuthor({ name: 'Asturio AI', iconURL: iconURL || undefined })
-    .setDescription(text);
+    .setDescription(text), user);
 }
 
 // -- Linked-account chat history -------------------------------------------
@@ -751,7 +765,6 @@ function petLine(eco) {
 async function handleEconomyProfile(i, eco) {
   const embed = new EmbedBuilder()
     .setColor(economySidebarColor())
-    .setAuthor({ name: i.user.username, iconURL: i.user.displayAvatarURL() })
     .setDescription(`# ${i.user.username}'s storm chasing profile\n${petLine(eco)}`)
     .addFields(
       { name: 'Balance', value: `${eco.cape} ${CURRENCY_EMOJI} ${CURRENCY_NAME}`, inline: true },
@@ -760,6 +773,7 @@ async function handleEconomyProfile(i, eco) {
     );
   const wait = msUntilNextChase(eco.lastChase, Date.now());
   embed.addFields({ name: 'Next chase', value: wait > 0 ? `Ready in ${formatDuration(wait)}` : 'Ready now, run `/economy chase`' });
+  signEmbed(embed, i.user);
   await i.reply({ embeds: [embed] });
 }
 
@@ -769,6 +783,7 @@ async function handleEconomyChase(i, eco) {
     const embed = new EmbedBuilder()
       .setColor(ECONOMY_ERROR_COLOR)
       .setDescription(`Still capped in. You can chase again in ${formatDuration(msUntilNextChase(eco.lastChase, now))}.`);
+    signEmbed(embed, i.user);
     await i.reply({ embeds: [embed], ephemeral: true });
     return;
   }
@@ -786,13 +801,13 @@ async function handleEconomyChase(i, eco) {
   await patchEconomy(i.user.id, update);
   const embed = new EmbedBuilder()
     .setColor(TIER_COLORS[roll.tier] || ECONOMY_COLOR)
-    .setAuthor({ name: i.user.username, iconURL: i.user.displayAvatarURL() })
     .setDescription(`# ${i.user.username} went storm chasing\n${roll.line}`)
     .addFields(
       { name: 'Result', value: payout > 0 ? `+${payout} ${CURRENCY_EMOJI}` : 'Nothing this time', inline: true },
       { name: 'Streak', value: `${newStreak} day${newStreak === 1 ? '' : 's'}${bonusPct > 0 ? ` (+${bonusPct}%)` : ''}`, inline: true },
       { name: 'Balance', value: `${update.cape} ${CURRENCY_EMOJI}`, inline: true },
     );
+  signEmbed(embed, i.user);
   await i.reply({ embeds: [embed] });
 }
 
@@ -806,6 +821,7 @@ async function handleEconomyAdopt(i, eco) {
     const embed = new EmbedBuilder()
       .setColor(ECONOMY_ERROR_COLOR)
       .setDescription(`You already have ${PET_TYPES[eco.petType].emoji} **${eco.petName || PET_TYPES[eco.petType].label}**. One storm at a time.`);
+    signEmbed(embed, i.user);
     await i.reply({ embeds: [embed], ephemeral: true });
     return;
   }
@@ -813,10 +829,10 @@ async function handleEconomyAdopt(i, eco) {
   const t = PET_TYPES[type];
   const embed = new EmbedBuilder()
     .setColor(economySidebarColor())
-    .setAuthor({ name: i.user.username, iconURL: i.user.displayAvatarURL() })
     .setDescription(`# ${i.user.username} adopted a pet\n${t.emoji} A **${t.label}** touches down and decides to stick around. `
       + `It starts at **${t.stages[0]}** on the ${t.scaleName}. `
       + 'Name it with `/economy name`, grow it with `/economy feed`.');
+  signEmbed(embed, i.user);
   await i.reply({ embeds: [embed] });
 }
 
@@ -835,6 +851,7 @@ async function handleEconomyName(i, eco) {
   const embed = new EmbedBuilder()
     .setColor(economySidebarColor())
     .setDescription(`${t.emoji} Your ${t.label} is now named **${nickname}**.`);
+  signEmbed(embed, i.user);
   await i.reply({ embeds: [embed] });
 }
 
@@ -859,9 +876,9 @@ async function handleEconomyFeed(i, eco) {
   const t = PET_TYPES[eco.petType];
   const embed = new EmbedBuilder()
     .setColor(economySidebarColor())
-    .setAuthor({ name: i.user.username, iconURL: i.user.displayAvatarURL() })
     .setDescription(`# ${eco.petName || t.label} grew\n${t.emoji} Fed for ${cost} ${CURRENCY_EMOJI}. **${eco.petName || t.label}** is now **${petStageLabel(eco.petType, newStage)}** on the ${t.scaleName}.`)
     .addFields({ name: 'Balance', value: `${eco.cape - cost} ${CURRENCY_EMOJI}` });
+  signEmbed(embed, i.user);
   await i.reply({ embeds: [embed] });
 }
 
@@ -875,6 +892,7 @@ async function handleEconomyLeaderboard(i) {
   const embed = new EmbedBuilder()
     .setColor(economySidebarColor())
     .setDescription(`# Top storm chasers\n${lines.join('\n')}`);
+  signEmbed(embed, i.user);
   await i.reply({ embeds: [embed] });
 }
 
@@ -1514,9 +1532,8 @@ client.on(Events.InteractionCreate, async (i) => {
       const answer = await askAsturio(q, { user, server: serverContextOf(i.guild), recent }, prior.history, images);
       saveHistory(i.user.id, q, answer).catch(() => {});
       const parts = chunk(answer, ASK_CHUNK_LIMIT);
-      const icon = client.user?.displayAvatarURL();
       for (const [n, part] of parts.entries()) {
-        const embed = askEmbed(part, icon, n + 1, parts.length);
+        const embed = askEmbed(part, i.user, n + 1, parts.length);
         n === 0 ? await i.editReply({ embeds: [embed] }) : await i.followUp({ embeds: [embed] });
       }
     }
@@ -1635,8 +1652,7 @@ client.on(Events.MessageCreate, async (m) => {
     } catch {}
   }
 
-  const icon = client.user?.displayAvatarURL();
-  const promptEmbed = () => askEmbed(`Ask me something, or use /ask. Live map: ${SITE_URL}`, icon, 1, 1);
+  const promptEmbed = () => askEmbed(`Ask me something, or use /ask. Live map: ${SITE_URL}`, m.author, 1, 1);
   if (!q && !sources.length) { await m.reply({ embeds: [promptEmbed()] }); return; }
   try {
     await m.channel.sendTyping();
@@ -1652,12 +1668,12 @@ client.on(Events.MessageCreate, async (m) => {
     const answer = await askAsturio(q, { user, server: serverContextOf(m.guild), recent }, prior.history, images);
     saveHistory(m.author.id, q, answer).catch(() => {});
     const parts = chunk(answer, ASK_CHUNK_LIMIT);
-    for (const [n, part] of parts.entries()) await m.reply({ embeds: [askEmbed(part, icon, n + 1, parts.length)] });
+    for (const [n, part] of parts.entries()) await m.reply({ embeds: [askEmbed(part, m.author, n + 1, parts.length)] });
   } catch (e) {
     // One line. A stack trace per mention buries everything else in the log
     // and tells nobody anything the message does not already say.
     console.error('mention:', e.message || e);
-    await m.reply({ embeds: [askErrorEmbed(`Could not answer that: ${e.message}`, icon)] }).catch(() => {});
+    await m.reply({ embeds: [askErrorEmbed(`Could not answer that: ${e.message}`, m.author)] }).catch(() => {});
   }
 });
 
