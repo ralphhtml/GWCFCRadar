@@ -6612,6 +6612,12 @@ body.lite-mode #export-modal { display: none !important; }
 .rc-divider.horizontal .cmp-drag-h { top: 50%; left: calc(50% - 22px); }
 .rc-divider.horizontal .cmp-rot-h { top: 50%; left: calc(50% + 22px); cursor: pointer; }
 .rc-label.horizontal { max-width: none; }
+/* A line turned with its own rotate handle: long enough to cross the whole
+   map at any angle, still centred on its pivot, so it turns about its
+   handles. The containers clip it to the map. */
+.rc-divider.angled { top: -150vmax; bottom: -150vmax; }
+.rc-divider.horizontal.angled { top: auto; bottom: auto; left: -150vmax; right: -150vmax; }
+#rc-dividers, #sc-dividers { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 650; }
 /* Peeking: the seam itself goes invisible for ten seconds so nothing is
    drawn across the two pictures while checking they line up. Scoped to
    whichever container actually got the class, so peeking one comparison
@@ -25185,8 +25191,10 @@ async function _prShowFrame(base, lvl, meta, stamp, live) {
     if (token !== _prShowToken) return false;  // scrubbed elsewhere while this was recoloring
   }
   if (!_prOverlay) {
+    // crossOrigin so the Inspector can read the pixels; the parsing server
+    // sends CORS headers on everything it serves.
     _prOverlay = L.imageOverlay(src, man.bounds,
-      { opacity: 0.78, interactive: false, pane: 'radarPane' });
+      { opacity: 0.78, interactive: false, pane: 'radarPane', crossOrigin: 'anonymous' });
     _prOverlay.addTo(map);
     _prLayers = [_prOverlay];
   } else {
@@ -41543,15 +41551,28 @@ function _inspQuadContains(mesh, k, lon, lat) {
 }
 
 function _inspFindMeshValue(lon, lat) {
-  if (!_lastMeshData || !_lastMeshBounds) return null;
-  const minLon = _lastMeshBounds[0], minLat = _lastMeshBounds[1];
-  const maxLon = _lastMeshBounds[2], maxLat = _lastMeshBounds[3];
-  if (lon < minLon || lon > maxLon || lat < minLat || lat > maxLat) return null;
-  const mesh = _lastMeshData;
+  return _inspMeshValueIn(_lastMeshData, _lastMeshBounds, lon, lat);
+}
+// The same lookup for any decoded mesh (a radar comparison pane has its
+// own). box is [minLon, minLat, maxLon, maxLat].
+function _inspMeshValueIn(mesh, box, lon, lat) {
+  if (!mesh || !box) return null;
+  if (lon < box[0] || lon > box[2] || lat < box[1] || lat > box[3]) return null;
   for (let i = 0; i < mesh.length; i += 9) {
     if (_inspQuadContains(mesh, i, lon, lat)) return mesh[i + 8];
   }
   return null;
+}
+function _inspMeshBox(mesh) {
+  if (!mesh || !mesh.length) return null;
+  let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
+  for (let i = 0; i < mesh.length; i += 9) {
+    for (let k = 0; k < 8; k += 2) {
+      const x = mesh[i + k], y = mesh[i + k + 1];
+      if (x < a) a = x; if (x > c) c = x; if (y < b) b = y; if (y > d) d = y;
+    }
+  }
+  return [a, b, c, d];
 }
 
 function _inspFormatValue(product, value) {
@@ -41708,6 +41729,44 @@ function _inspNwsRow(cx, cy) {
 }
 
 function _inspRadarRow(center, cx, cy) {
+  // In a radar comparison the picture under the crosshair may be another
+  // pane entirely: another radar, product or source. Read that one.
+  const pane = _cmpPaneAt('rc', cx, cy);
+  if (pane) return _inspRadarPaneRow(pane, center, cx, cy);
+  const row = _inspRadarMainRow(center, cx, cy);
+  if (row && typeof _rcOn !== 'undefined' && _rcOn && _rcGrid) row.label = 'Radar A';
+  return row;
+}
+function _inspRadarPaneRow(pane, center, cx, cy) {
+  const slot = pane.slot;
+  const label = 'Radar ' + pane.letter;
+  const site = String(slot.site || '').toUpperCase();
+  if (slot.mesh && slot.meshProduct) {
+    const value = _inspMeshValueIn(slot.mesh, slot.meshBox, center.lng, center.lat);
+    if (value == null || value !== value) return { label, value: 'No data', unit: site, color: 'rgba(120,120,120,0.5)' };
+    const fam = typeof _meshFamily === 'function' ? _meshFamily(slot.meshProduct) : slot.meshProduct;
+    const color = _meshColorFn(slot.meshProduct)(value) || 'rgba(120,120,120,0.5)';
+    if (fam === 'vel') {
+      const vc = _inspConvUnit(value, 'kt', 0);
+      if (vc) return { label, value: vc.value, unit: vc.unit + ' · ' + site, color };
+    }
+    return { label, value: _inspFormatValue(slot.meshProduct, value),
+             unit: ((INSP_UNITS[fam] || '') + ' · ' + site).replace(/^ · /, ''), color };
+  }
+  const s = _inspSampleColorFrom(map.getPane(_rcPaneName(slot)), cx, cy);
+  if (s && s.tainted) return { label, value: 'reading…', unit: site, color: 'rgba(120,120,120,0.5)' };
+  if (!s) return { label, value: 'No data', unit: site, color: 'rgba(120,120,120,0.5)' };
+  if (s.transparent) return { label, value: 'No echo', unit: site, color: 'rgba(120,120,120,0.35)' };
+  const prod = slot.prodSel || currentProduct || 'ref';
+  if (prod === 'ref') {
+    const meta = _inspColorToDbz(s.r, s.g, s.b);
+    if (meta) return { label, value: meta.dbz + ' dBZ', unit: '· ' + meta.label + ' · ' + site, color: meta.hex };
+    return { label, value: 'No echo', unit: site, color: `rgb(${s.r},${s.g},${s.b})` };
+  }
+  return { label, value: '~ color', unit: (RC_PANE_PRODUCTS[prod] || prod) + ' · ' + site,
+           color: `rgb(${s.r},${s.g},${s.b})` };
+}
+function _inspRadarMainRow(center, cx, cy) {
   // 1) Exact values from the raw mesh: every product this page decodes
   // itself, Level 2 or Level 3, whatever code delivered it. If the mesh
   // overlay is on the map, the mesh IS the radar picture being looked at.
@@ -41817,18 +41876,34 @@ function _inspCloudClass(tempC) {
 }
 
 function _inspSatelliteRow(cx, cy) {
-  const container = _goesLayer && _goesLayer.getContainer ? _goesLayer.getContainer() : null;
-  const s = _inspSampleColorFrom(container, cx, cy);
-  if (s && s.tainted) return { label: 'Satellite', value: '(no CORS)', color: 'rgba(120,120,120,0.5)' };
-  if (!s) return { label: 'Satellite', value: 'No data', color: 'rgba(120,120,120,0.5)' };
-  if (s.transparent) return { label: 'Satellite', value: 'No image', color: 'rgba(120,120,120,0.35)' };
-  const color = `rgb(${s.r},${s.g},${s.b})`;
-
-  if (GOES_THERMAL_CHANNELS.has(_goesProductId)) {
-    const tempC = _inspIrTempC(s.r, s.g, s.b);
-    return { label: 'Satellite', value: `≈${fmtTemp(tempC * 9 / 5 + 32)}`, unit: _inspCloudClass(tempC), color };
+  // In a satellite comparison, the pane under the crosshair: its own
+  // picture and its own product, so a water vapour pane beside a Clean IR
+  // one reads as water vapour.
+  const pane = _cmpPaneAt('sc', cx, cy);
+  if (pane) {
+    const p = typeof _scProductOf === 'function' ? _scProductOf(pane.slot.productId) : null;
+    return _inspSatReading('Satellite ' + pane.letter,
+      _inspSampleColorFrom(map.getPane(_scPaneName(pane.slot)), cx, cy),
+      pane.slot.productId, p && p.label);
   }
-  return _inspPixelRow('Satellite', s);
+  const container = _goesLayer && _goesLayer.getContainer ? _goesLayer.getContainer() : null;
+  const comparing = typeof _scOn !== 'undefined' && _scOn && _scGrid;
+  return _inspSatReading(comparing ? 'Satellite A' : 'Satellite',
+    _inspSampleColorFrom(container, cx, cy), _goesProductId, comparing ? (_goesProduct() || {}).label : '');
+}
+function _inspSatReading(label, s, productId, productLabel) {
+  if (s && s.tainted) return { label, value: '(no CORS)', color: 'rgba(120,120,120,0.5)' };
+  if (!s) return { label, value: 'No data', color: 'rgba(120,120,120,0.5)' };
+  if (s.transparent) return { label, value: 'No image', color: 'rgba(120,120,120,0.35)' };
+  const color = `rgb(${s.r},${s.g},${s.b})`;
+  if (GOES_THERMAL_CHANNELS.has(productId)) {
+    const tempC = _inspIrTempC(s.r, s.g, s.b);
+    return { label, value: `≈${fmtTemp(tempC * 9 / 5 + 32)}`,
+             unit: _inspCloudClass(tempC) + (productLabel ? ' · ' + productLabel : ''), color };
+  }
+  const row = _inspPixelRow(label, s);
+  if (productLabel && row) row.unit = (row.unit ? row.unit + ' · ' : '') + productLabel;
+  return row;
 }
 
 function _inspModelsRow(cx, cy) {
@@ -49344,6 +49419,11 @@ let _rcGrid = null;    // {rows, cols} while comparing, null otherwise
 let _rcColSplits = [];   // ascending %, length cols-1
 let _rcRowSplits = [];   // ascending %, length rows-1
 let _rcGridDrag = null;  // {axis: 'col'|'row', idx} while dragging a grid line
+// How far each line is turned from straight, in degrees (0 = a column line
+// standing vertical, a row line lying flat). Turned with the line's own
+// rotate handle; only that one line turns.
+let _rcColRots = [];
+let _rcRowRots = [];
 let _rcGridDividerEls = { cols: [], rows: [] };
 
 // The site strip A is showing, read from whichever single-site machinery
@@ -49528,7 +49608,7 @@ function _rcMaxStrips() {
 // Refuses to shrink onto a split too small for the pictures already on
 // screen rather than silently dropping any of them.
 function _rcSetGrid(rows, cols) {
-  if (!rows) { _rcGrid = null; _rcColSplits = []; _rcRowSplits = []; return true; }
+  if (!rows) { _rcGrid = null; _rcColSplits = []; _rcRowSplits = []; _rcColRots = []; _rcRowRots = []; return true; }
   const need = rows * cols - 1;
   if (_rcSlots.length > need) {
     if (typeof showToast === 'function') {
@@ -49539,6 +49619,8 @@ function _rcSetGrid(rows, cols) {
   _rcGrid = { rows, cols };
   _rcColSplits = Array.from({ length: cols - 1 }, (_, i) => Math.round(10000 * (i + 1) / cols) / 100);
   _rcRowSplits = Array.from({ length: rows - 1 }, (_, i) => Math.round(10000 * (i + 1) / rows) / 100);
+  _rcColRots = _rcColSplits.map(() => 0);
+  _rcRowRots = _rcRowSplits.map(() => 0);
   return true;
 }
 
@@ -49573,6 +49655,7 @@ function _rcClearSlot(slot) {
   if (slot.layer) { try { map.removeLayer(slot.layer); } catch (e) {} slot.layer = null; }
   if (slot.blob) { try { _pbFree(slot.blob); } catch (e) {} slot.blob = null; }
   slot.frames = null; slot.frameIso = ''; slot.stamp = ''; slot.timeIso = ''; slot.kind = null;
+  slot.mesh = null; slot.meshProduct = null; slot.meshBox = null;
 }
 
 function _rcPaneName(slot) { return 'rc-' + slot.id; }
@@ -49714,9 +49797,12 @@ async function _rcPiShow(slot, stamp) {
   if (!field) return;
   const url = `${_hdBase}/radar/${lvl}/${sid}/${stamp}/${field}.png`;
   slot.stamp = stamp;
+  // crossOrigin so the Inspector can read this pane's pixels; the parsing
+  // server answers with CORS headers, as every other picture of it does.
   if (!slot.layer) {
     slot.layer = L.imageOverlay(url, man.bounds,
-      { opacity: 0.78, interactive: false, pane: _rcPaneName(slot) }).addTo(map);
+      { opacity: 0.78, interactive: false, pane: _rcPaneName(slot),
+        crossOrigin: 'anonymous' }).addTo(map);
     // The pane was created empty back in _rcRenderSlot and clipped then, so
     // in the common case this is a no-op - but a slow parsing server answering well
     // after that first clip, or a splits change that landed mid-fetch,
@@ -49770,6 +49856,11 @@ async function _rcMeshSlot(slot, plan, alive) {
     if (!img || !alive()) return;
     slot.blob = _pbBlob(img.url);
     slot.timeIso = img.timeIso || '';
+    // The raw quads too, so the Inspector reads this pane's exact values
+    // the way it reads the main picture's, not a colour guessed back.
+    slot.mesh = result.meshData;
+    slot.meshProduct = product;
+    slot.meshBox = _inspMeshBox(result.meshData);
     slot.layer = L.imageOverlay(slot.blob, img.leafletBounds,
       { opacity: typeof radarOpacity === 'number' ? radarOpacity : 0.85,
         interactive: false, pane: _rcPaneName(slot) }).addTo(map);
@@ -49980,64 +50071,172 @@ document.addEventListener('pointerdown', e => {
 // touches. The whole line drags, and it carries two small handles: a
 // grip that says so, and a rotate handle that transposes the split.
 // Shared by both comparisons through the prefix-free helpers below.
-function _cmpLineHandles(d, onRotate) {
+function _cmpLineHandles(d, line) {
   d.innerHTML =
     '<div class="sev-cmp-handle cmp-drag-h" title="Drag to resize the split">'
     + '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></div>'
-    + '<div class="sev-cmp-handle cmp-rot-h" title="Drag around the handle to rotate the split, or tap it">'
+    + '<div class="sev-cmp-handle cmp-rot-h" title="Drag around to turn this line to any angle, or tap to turn it a quarter">'
     + '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-refresh-cw></use></svg></div>';
-  _cmpWireRotateHandle(d.querySelector('.cmp-rot-h'), onRotate);
+  _cmpWireRotateHandle(d.querySelector('.cmp-rot-h'), line);
 }
-// The rotate handle turns like a real dial: press it and drag around its
-// own centre, and the icon follows the pointer's angle live. Letting go
-// past 45 degrees either way commits the rotation (which is always just
-// a transpose - side by side to stacked, or back - there is no third
-// orientation to land on); short of that it springs back undone. A press
-// and release with no real movement rotates immediately, the way tapping
-// always has, so a quick tap is never slower than the old click was.
-function _cmpWireRotateHandle(el, onRotate) {
-  const icon = el.querySelector('svg');
-  let drag = null;      // { cx, cy, startAngle, delta, moved }
+// The rotate handle turns ITS OWN LINE, and nothing else: the other lines
+// and the split's shape stay exactly as they are. Press it and drag, and the
+// line swings round its middle to follow the pointer, like turning the hand
+// of a clock, with the pictures on either side following the cut live. It
+// stays at whatever angle it is let go at, snapping to straight, diagonal
+// and the other straight when it is within a few degrees of one. A tap with
+// no real movement turns the line a quarter.
+//
+// line = { get() -> degrees, set(degrees), pivot() -> {x, y} in client px }
+const CMP_ROT_SNAP = 4;          // degrees either side of a multiple of 45
+function _cmpNormDeg(deg) { return ((deg + 180) % 360 + 360) % 360 - 180; }
+function _cmpSnapDeg(deg) {
+  const k = Math.round(deg / 45) * 45;
+  return Math.abs(deg - k) <= CMP_ROT_SNAP ? _cmpNormDeg(k) : deg;
+}
+function _cmpWireRotateHandle(el, line) {
+  let drag = null;      // { cx, cy, startAngle, startRot, moved }
   const angleAt = (x, y, cx, cy) => Math.atan2(y - cy, x - cx) * 180 / Math.PI;
-  const norm = (deg) => ((deg + 180) % 360 + 360) % 360 - 180;
   el.addEventListener('pointerdown', e => {
     e.preventDefault();
     e.stopPropagation();   // never also starts the line's own resize drag
-    const r = el.getBoundingClientRect();
-    drag = { cx: r.left + r.width / 2, cy: r.top + r.height / 2,
-             startAngle: angleAt(e.clientX, e.clientY, r.left + r.width / 2, r.top + r.height / 2),
-             delta: 0, moved: false };
+    const c = line.pivot();
+    drag = { cx: c.x, cy: c.y, startAngle: angleAt(e.clientX, e.clientY, c.x, c.y),
+             startRot: line.get(), moved: false, sx: e.clientX, sy: e.clientY };
     try { el.setPointerCapture(e.pointerId); } catch (err) {}
   });
   el.addEventListener('pointermove', e => {
     if (!drag) return;
+    if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 4) return;
+    drag.moved = true;
     const cur = angleAt(e.clientX, e.clientY, drag.cx, drag.cy);
-    drag.delta = norm(cur - drag.startAngle);
-    if (Math.abs(drag.delta) > 4) drag.moved = true;
-    if (icon) icon.style.transform = `rotate(${drag.delta}deg)`;
+    line.set(_cmpSnapDeg(_cmpNormDeg(drag.startRot + _cmpNormDeg(cur - drag.startAngle))));
   });
   const end = () => {
     if (!drag) return;
-    const { delta, moved } = drag;
+    const { moved, startRot } = drag;
     drag = null;
-    if (icon) icon.style.transform = '';
-    if (!moved || Math.abs(delta) >= 45) onRotate();
+    if (!moved) line.set(_cmpNormDeg(startRot + 90));
   };
   el.addEventListener('pointerup', end);
-  el.addEventListener('pointercancel', () => { drag = null; if (icon) icon.style.transform = ''; });
+  el.addEventListener('pointercancel', () => { drag = null; });
   // A real mouse/touch interaction always fires pointerup first, which
-  // end() above has already acted on - and when it commits, that call
-  // can rebuild the DOM out from under this very gesture, leaving the
-  // browser's trailing native click to land on a freshly built element
-  // sitting in the same spot and fire the SAME rotation a second time.
-  // e.isTrusted tells the two apart: a real click is never acted on
-  // here, only a synthetic one (e.isTrusted === false), which is exactly
-  // what a screen reader or an automated test invoking .click() sends,
-  // with no pointer sequence of its own to have already been handled.
+  // end() above has already acted on, so the browser's trailing native
+  // click must not turn the line a second time. e.isTrusted tells the two
+  // apart: only a synthetic click (a screen reader, or a test calling
+  // .click()) with no pointer sequence of its own is acted on here.
   el.addEventListener('click', e => {
     e.stopPropagation();
-    if (!e.isTrusted) onRotate();
+    if (!e.isTrusted) line.set(_cmpNormDeg(line.get() + 90));
   });
+}
+
+// -- Angled split lines: the shared geometry ------------------------------
+// A line is a point it turns about (its pivot, where its handles sit) and a
+// direction. A column line's pivot is at its position across the map and
+// half way down; a row line's is at its position down the map and half way
+// across. The side a point is on is the sign of its distance along the
+// line's normal: for an unturned line, positive is right of a column line
+// and below a row line, which is exactly the old rectangle arithmetic.
+function _cmpLineGeom(axis, pct, rot, size) {
+  const col = axis === 'col';
+  const px = col ? size.x * pct / 100 : size.x / 2;
+  const py = col ? size.y / 2 : size.y * pct / 100;
+  const t = ((col ? 90 : 0) + (rot || 0)) * Math.PI / 180;
+  return { px, py, nx: col ? Math.sin(t) : -Math.sin(t), ny: col ? -Math.cos(t) : Math.cos(t) };
+}
+// Keep the part of a convex polygon on one side of a line (sign +1 or -1).
+function _cmpClipHalf(poly, g, sign) {
+  const side = (p) => sign * ((p[0] - g.px) * g.nx + (p[1] - g.py) * g.ny);
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const sa = side(a), sb = side(b);
+    if (sa >= 0) out.push(a);
+    if ((sa >= 0) !== (sb >= 0)) {
+      const t = sa / (sa - sb);
+      out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+    }
+  }
+  return out;
+}
+// One cell of an angled grid: the map, cut down by every line to the side
+// this cell sits on. Returns the pane's clip-path (in the pane's own layer
+// pixels, which ride the pan) and where its label belongs (view pixels).
+function _cmpCellGeometry(row, col, colSplits, rowSplits, colRots, rowRots) {
+  const pos = (map._mapPane && L.DomUtil.getPosition(map._mapPane)) || { x: 0, y: 0 };
+  const size = map.getSize();
+  const cut = (poly) => {
+    colSplits.forEach((pct, j) => { poly = _cmpClipHalf(poly, _cmpLineGeom('col', pct, colRots[j], size), col > j ? 1 : -1); });
+    rowSplits.forEach((pct, j) => { poly = _cmpClipHalf(poly, _cmpLineGeom('row', pct, rowRots[j], size), row > j ? 1 : -1); });
+    return poly;
+  };
+  // Far past the edges for the clip, so a pan that is a frame ahead of the
+  // next redraw never shows a sliver of the wrong picture at the border.
+  const W = size.x, H = size.y;
+  const big = cut([[-5 * W, -5 * H], [6 * W, -5 * H], [6 * W, 6 * H], [-5 * W, 6 * H]]);
+  const seen = cut([[0, 0], [W, 0], [W, H], [0, H]]);
+  let lx = 0, ly = 0, best = Infinity;
+  seen.forEach(([x, y]) => { if (x + y < best) { best = x + y; lx = x; ly = y; } });
+  const polygon = big.length >= 3
+    ? 'polygon(' + big.map(([x, y]) => `${(x - pos.x).toFixed(1)}px ${(y - pos.y).toFixed(1)}px`).join(', ') + ')'
+    : 'polygon(0px 0px, 0px 0px, 0px 0px)';
+  return { polygon, leftView: lx, topView: ly, visible: seen.length >= 3 };
+}
+// Where one line's element sits and how it is turned. An unturned line is
+// exactly as before; a turned one is made long enough to cross the whole
+// map at any angle, still centred on its pivot.
+function _cmpPlaceLine(el, axis, pct, rot) {
+  if (!el) return;
+  const g = _cmpLineGeom(axis, pct, 0, map.getSize());
+  if (axis === 'col') el.style.left = g.px + 'px';
+  else el.style.top = g.py + 'px';
+  el.classList.toggle('angled', !!rot);
+  el.style.transform = rot ? `rotate(${rot}deg)` : '';
+}
+// Which cell of a split a point (view pixels) sits in: past how many column
+// lines, and past how many row lines, it is. Angled lines included, so the
+// answer always matches the cut the panes are actually drawn with.
+function _cmpCellAt(vx, vy, colSplits, rowSplits, colRots, rowRots) {
+  const size = map.getSize();
+  const past = (g) => (vx - g.px) * g.nx + (vy - g.py) * g.ny > 0;
+  let col = 0, row = 0;
+  colSplits.forEach((pct, j) => { if (past(_cmpLineGeom('col', pct, colRots[j], size))) col++; });
+  rowSplits.forEach((pct, j) => { if (past(_cmpLineGeom('row', pct, rowRots[j], size))) row++; });
+  return { row: Math.min(row, rowSplits.length), col: Math.min(col, colSplits.length) };
+}
+// The comparison pane under a client point: { slot, letter } for an added
+// pane, or null for pane A (the main picture) or when nothing is compared.
+// which is 'rc' (radar) or 'sc' (satellite). A cell with no picture of its
+// own shows pane A through it, so it counts as pane A.
+function _cmpPaneAt(which, cx, cy) {
+  try {
+    const rc = which === 'rc';
+    const on = rc ? (typeof _rcOn !== 'undefined' && _rcOn && _rcGrid)
+                  : (typeof _scOn !== 'undefined' && _scOn && _scGrid);
+    if (!on) return null;
+    const grid = rc ? _rcGrid : _scGrid, slots = rc ? _rcSlots : _scSlots;
+    const r = map.getContainer().getBoundingClientRect();
+    const c = rc
+      ? _cmpCellAt(cx - r.left, cy - r.top, _rcColSplits, _rcRowSplits, _rcColRots, _rcRowRots)
+      : _cmpCellAt(cx - r.left, cy - r.top, _scColSplits, _scRowSplits, _scColRots, _scRowRots);
+    const cell = c.row * grid.cols + c.col;
+    const slot = cell > 0 ? slots[cell - 1] : null;
+    return slot ? { slot, letter: String.fromCharCode(65 + cell) } : null;
+  } catch (e) { return null; }
+}
+// The line API a rotate handle drives: read and write this line's angle,
+// and where its pivot is on screen.
+function _cmpLineApi(rots, idx, axis, splits, after) {
+  return {
+    get: () => rots()[idx] || 0,
+    set: (deg) => { rots()[idx] = deg; after(); },
+    pivot: () => {
+      const r = map.getContainer().getBoundingClientRect();
+      const g = _cmpLineGeom(axis, splits()[idx], 0, map.getSize());
+      return { x: r.left + g.px, y: r.top + g.py };
+    },
+  };
 }
 function _rcRefreshGridDOM(dc, lc) {
   const { rows, cols } = _rcGrid;
@@ -50046,7 +50245,7 @@ function _rcRefreshGridDOM(dc, lc) {
     const d = document.createElement('div');
     d.className = 'sev-cmp-divider active rc-divider';
     d.title = 'Drag to resize the split';
-    _cmpLineHandles(d, _rcToggleOrientation);
+    _cmpLineHandles(d, _cmpLineApi(() => _rcColRots, i, 'col', () => _rcColSplits, _rcUpdateClips));
     d.addEventListener('pointerdown', e => { e.preventDefault(); _rcGridDrag = { axis: 'col', idx: i }; });
     dc.appendChild(d);
     _rcGridDividerEls.cols.push(d);
@@ -50055,7 +50254,7 @@ function _rcRefreshGridDOM(dc, lc) {
     const d = document.createElement('div');
     d.className = 'sev-cmp-divider active rc-divider horizontal';
     d.title = 'Drag to resize the split';
-    _cmpLineHandles(d, _rcToggleOrientation);
+    _cmpLineHandles(d, _cmpLineApi(() => _rcRowRots, i, 'row', () => _rcRowSplits, _rcUpdateClips));
     d.addEventListener('pointerdown', e => { e.preventDefault(); _rcGridDrag = { axis: 'row', idx: i }; });
     dc.appendChild(d);
     _rcGridDividerEls.rows.push(d);
@@ -50101,15 +50300,11 @@ function _rcRefreshDOM() {
 // else covers it, exactly as the single-row mode already relies on),
 // slot i sits at cell i+1 in reading order.
 function _rcUpdateGridClips() {
-  const { rows, cols } = _rcGrid;
+  const { cols } = _rcGrid;
   _rcSlots.forEach((slot, i) => {
     const cell = i + 1;
     const row = Math.floor(cell / cols), col = cell % cols;
-    const leftPct = col === 0 ? 0 : _rcColSplits[col - 1];
-    const rightPct = col === cols - 1 ? 100 : _rcColSplits[col];
-    const topPct = row === 0 ? 0 : _rcRowSplits[row - 1];
-    const bottomPct = row === rows - 1 ? 100 : _rcRowSplits[row];
-    const g = _gridGeometry(leftPct, rightPct, topPct, bottomPct);
+    const g = _cmpCellGeometry(row, col, _rcColSplits, _rcRowSplits, _rcColRots, _rcRowRots);
     const pane = map.getPane(_rcPaneName(slot));
     if (pane) pane.style.clipPath = g.polygon;
     // View coordinates, not layer ones: the lines and labels live in
@@ -50120,14 +50315,8 @@ function _rcUpdateGridClips() {
       _cmpDodgeLabel(slot.labelEl);
     }
   });
-  _rcColSplits.forEach((pct, i) => {
-    const el = _rcGridDividerEls.cols[i];
-    if (el) el.style.left = _stripGeometry(pct, pct, 'x').leftView + 'px';
-  });
-  _rcRowSplits.forEach((pct, i) => {
-    const el = _rcGridDividerEls.rows[i];
-    if (el) el.style.top = _stripGeometry(pct, pct, 'y').leftView + 'px';
-  });
+  _rcColSplits.forEach((pct, i) => _cmpPlaceLine(_rcGridDividerEls.cols[i], 'col', pct, _rcColRots[i]));
+  _rcRowSplits.forEach((pct, i) => _cmpPlaceLine(_rcGridDividerEls.rows[i], 'row', pct, _rcRowRots[i]));
 }
 function _rcUpdateClips() {
   if (!_rcOn || !_rcGrid) return;
@@ -50210,6 +50399,8 @@ let _scColSplits = [];
 let _scRowSplits = [];
 let _scGridDrag = null;
 let _scGridDividerEls = { cols: [], rows: [] };
+let _scColRots = [];     // see _rcColRots
+let _scRowRots = [];
 let _scTimer = null;
 let _scKey = '';
 let _scTimeMs = 0;
@@ -50303,7 +50494,7 @@ function _scMaxStrips() {
 }
 
 function _scSetGrid(rows, cols) {
-  if (!rows) { _scGrid = null; _scColSplits = []; _scRowSplits = []; return true; }
+  if (!rows) { _scGrid = null; _scColSplits = []; _scRowSplits = []; _scColRots = []; _scRowRots = []; return true; }
   const need = rows * cols - 1;
   if (_scSlots.length > need) {
     if (typeof showToast === 'function') {
@@ -50314,6 +50505,8 @@ function _scSetGrid(rows, cols) {
   _scGrid = { rows, cols };
   _scColSplits = Array.from({ length: cols - 1 }, (_, i) => Math.round(10000 * (i + 1) / cols) / 100);
   _scRowSplits = Array.from({ length: rows - 1 }, (_, i) => Math.round(10000 * (i + 1) / rows) / 100);
+  _scColRots = _scColSplits.map(() => 0);
+  _scRowRots = _scRowSplits.map(() => 0);
   return true;
 }
 
@@ -50532,7 +50725,7 @@ function _scRefreshGridDOM(dc, lc) {
     const d = document.createElement('div');
     d.className = 'sev-cmp-divider active rc-divider';
     d.title = 'Drag to resize the split';
-    _cmpLineHandles(d, _scToggleOrientation);
+    _cmpLineHandles(d, _cmpLineApi(() => _scColRots, i, 'col', () => _scColSplits, _scUpdateClips));
     d.addEventListener('pointerdown', e => { e.preventDefault(); _scGridDrag = { axis: 'col', idx: i }; });
     dc.appendChild(d);
     _scGridDividerEls.cols.push(d);
@@ -50541,7 +50734,7 @@ function _scRefreshGridDOM(dc, lc) {
     const d = document.createElement('div');
     d.className = 'sev-cmp-divider active rc-divider horizontal';
     d.title = 'Drag to resize the split';
-    _cmpLineHandles(d, _scToggleOrientation);
+    _cmpLineHandles(d, _cmpLineApi(() => _scRowRots, i, 'row', () => _scRowSplits, _scUpdateClips));
     d.addEventListener('pointerdown', e => { e.preventDefault(); _scGridDrag = { axis: 'row', idx: i }; });
     dc.appendChild(d);
     _scGridDividerEls.rows.push(d);
@@ -50568,32 +50761,23 @@ function _scRefreshDOM() {
   }
 }
 function _scUpdateGridClips() {
-  const { rows, cols } = _scGrid;
+  const { cols } = _scGrid;
   _scSlots.forEach((slot, i) => {
     const cell = i + 1;
     const row = Math.floor(cell / cols), col = cell % cols;
-    const leftPct = col === 0 ? 0 : _scColSplits[col - 1];
-    const rightPct = col === cols - 1 ? 100 : _scColSplits[col];
-    const topPct = row === 0 ? 0 : _scRowSplits[row - 1];
-    const bottomPct = row === rows - 1 ? 100 : _scRowSplits[row];
-    const g = _gridGeometry(leftPct, rightPct, topPct, bottomPct);
+    const g = _cmpCellGeometry(row, col, _scColSplits, _scRowSplits, _scColRots, _scRowRots);
     const pane = map.getPane(_scPaneName(slot));
     if (pane) pane.style.clipPath = g.polygon;
-    // View coordinates, same reasoning as the radar grid's own.
+    // View coordinates, not layer ones: the lines and labels live in
+    // fixed overlays that do not ride the map's pan the way a pane does.
     if (slot.labelEl) {
       slot.labelEl.style.left = (g.leftView + 8) + 'px';
       slot.labelEl.style.top = (g.topView + 8) + 'px';
       _cmpDodgeLabel(slot.labelEl);
     }
   });
-  _scColSplits.forEach((pct, i) => {
-    const el = _scGridDividerEls.cols[i];
-    if (el) el.style.left = _stripGeometry(pct, pct, 'x').leftView + 'px';
-  });
-  _scRowSplits.forEach((pct, i) => {
-    const el = _scGridDividerEls.rows[i];
-    if (el) el.style.top = _stripGeometry(pct, pct, 'y').leftView + 'px';
-  });
+  _scColSplits.forEach((pct, i) => _cmpPlaceLine(_scGridDividerEls.cols[i], 'col', pct, _scColRots[i]));
+  _scRowSplits.forEach((pct, i) => _cmpPlaceLine(_scGridDividerEls.rows[i], 'row', pct, _scRowRots[i]));
 }
 function _scUpdateClips() {
   if (!_scOn || !_scGrid) return;
@@ -67675,6 +67859,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-e', date: 'Sep 23, 2026',
+    text: 'Two comparison fixes. The rotate handle on a split line now turns only that one line, to whatever angle you drag it to (it snaps to straight and diagonal when you get close), and the pictures on either side follow the angled cut. Tap it to turn the line a quarter. The rotate button in the corner still flips the whole split. And the Inspector now reads the picture actually under the crosshair: in a radar or satellite comparison each pane reports its own radar, product and value, labelled A, B, C and so on, instead of every pane reading the main picture.' },
   { id: '2026-09-23-d', date: 'Sep 23, 2026',
     text: 'Zooming in with the scroll wheel or a trackpad is much smoother, and the map sharpens faster once you stop. It used to fully redraw the whole map on every frame of a scroll and throw away almost every map tile it had just asked for. Now it zooms like a pinch: the picture scales smoothly while you scroll, catches up once per zoom level, and loads just the tiles for where you stop.' },
   { id: '2026-09-23-c', date: 'Sep 23, 2026',
