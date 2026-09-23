@@ -10858,6 +10858,12 @@ body.gwcfc-crosshair #map::after {
    the inline style. */
 .leaflet-pane .leaflet-layer[style*="opacity: 0;"],
 .leaflet-pane .leaflet-image-layer[style*="opacity: 0;"] { visibility: hidden; }
+/* On iOS the hidden frames go further: out of rendering altogether. A hidden
+   (visibility) element still has its boxes and, on WebKit, can keep its GPU
+   surfaces; a radar loop holds a dozen frames of tiles like that. display:none
+   drops them. The images stay loaded, so showing a frame is still quick. */
+html.ios-lite .leaflet-pane .leaflet-layer[style*="opacity: 0;"],
+html.ios-lite .leaflet-pane .leaflet-image-layer[style*="opacity: 0;"] { display: none; }
 
 /* The offline banner: says when the connection went, so the age of what is
    on screen is never a mystery. Vanishes the moment the network returns. */
@@ -12895,6 +12901,42 @@ function _wireBasemapBackdrop() {
   sync();
 }
 
+// -- iOS: tiles and markers placed flat ------------------------------------------
+// Leaflet places every tile and every marker icon with translate3d. On WebKit
+// a 3D transform makes an element its own GPU surface, so each 256 px tile
+// becomes a 768 px texture on a 3x iPhone (2.4 MB apiece), for every tile of
+// every visible tile layer, plus one per marker. That count, not the pictures
+// themselves, is most of what iOS measures when it closes the tab ("Can't open
+// this page"), and it is the Layerize cost the DevTools traces showed.
+//
+// On iOS each tile and marker is re-placed with a plain 2D translate right
+// after Leaflet positions it. They then paint into their layer's one surface
+// instead of each getting their own. The map pane and tile containers keep
+// their 3D transforms, so a pan still just slides one composited picture.
+function _iosFlatTransform(el) {
+  if (!el || !el.style) return;
+  const t = el.style.transform;
+  if (t && t.indexOf('translate3d(') === 0) {
+    el.style.transform = t.replace(/^translate3d\(([^,]+),\s*([^,]+),\s*[^)]*\)/, 'translate($1, $2)');
+  }
+}
+function _iosFlatTiles() {
+  if (typeof L === 'undefined' || L.__iosFlat) return;
+  L.__iosFlat = true;
+  const addTile = L.GridLayer.prototype._addTile;
+  L.GridLayer.prototype._addTile = function (coords, container) {
+    addTile.call(this, coords, container);
+    const t = this._tiles[this._tileCoordsToKey(coords)];
+    if (t) _iosFlatTransform(t.el);
+  };
+  const setPos = L.Marker.prototype._setPos;
+  L.Marker.prototype._setPos = function (pos) {
+    setPos.call(this, pos);
+    _iosFlatTransform(this._icon);
+    _iosFlatTransform(this._shadow);
+  };
+}
+
 // -- INIT MAP --
 function initMap() {
   // iOS: Leaflet draws every canvas renderer at two device pixels per CSS
@@ -12904,6 +12946,7 @@ function initMap() {
   // animations go too: each promotes elements to their own compositing layer
   // for the length of the animation, which is exactly when memory peaks.
   if (_isIOS) { try { L.Browser.retina = false; } catch (e) {} }
+  if (_isIOS) _iosFlatTiles();
   map = L.map('map', {
     center: [37.5, -96],
     zoom: 5,
@@ -69180,6 +69223,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-a', date: 'Sep 24, 2026',
+    text: 'More memory relief for iPhones and iPads. Map tiles and markers used to each get their own chunk of graphics memory on Apple devices (about 2.4 MB per tile on a modern iPhone screen, for every tile of every layer), which is a big part of why iOS closed the page. They now share their layer\'s memory instead, and the hidden frames of a radar loop are taken out of the picture entirely until they are shown. Panning still slides smoothly.' },
   { id: '2026-09-23-z', date: 'Sep 23, 2026',
     text: 'Fix for iPhones and iPads showing "Can\'t open this page". The soft backdrop map added under the basemap for pinch zooming is now switched off on Apple devices and on low-memory machines: on those screens it could ask the graphics chip for far more memory than iOS allows a tab, and iOS closed the page. Everywhere else it now reaches a little less far off screen, which uses less memory too.' },
   { id: '2026-09-23-y', date: 'Sep 23, 2026',
