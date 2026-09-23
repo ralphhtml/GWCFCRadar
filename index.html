@@ -4820,6 +4820,7 @@ body.lite-mode #export-modal { display: none !important; }
   background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18);
   cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px;
 }
+#r3d-terrain-btn.on, #s3d-terrain-btn.on { background: rgba(232,184,0,0.25); border-color: var(--accent); }
 #s3d-walk-btn.on, #s3d-vr-btn.on, #s3d-tm-btn.on { background: rgba(232,184,0,0.25); border-color: var(--accent); }
 #s3d-panel .s3d-radar-row { padding-top: 4px; }
 #s3d-panel .s3d-radar-row select { max-width: 150px; }
@@ -4838,6 +4839,73 @@ body.lite-mode #export-modal { display: none !important; }
 @media (max-width: 640px) {
   #s3d-panel { left: 8px; right: 8px; width: auto; bottom: 72px; }
   #s3d-panel canvas { height: 220px; }
+}
+
+/* -- Layer 3D panels: one per layer, the same look as Satellite 3D -- */
+.l3d-panel {
+  position: fixed; right: 12px; bottom: 96px; z-index: 1150; display: none;
+  width: min(560px, calc(100vw - 24px));
+  background: linear-gradient(180deg, rgba(30,30,36,0.98) 0%, rgba(12,12,15,0.99) 45%, #000 100%);
+  border: 1px solid rgba(232,184,0,0.35); border-radius: 14px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.7);
+  color: #e8b800; overflow: hidden;
+}
+.l3d-panel.open { display: block; }
+.l3d-panel, .l3d-panel * { font-family: 'Comfortaa', sans-serif; }
+.l3d-panel .xs-head { cursor: grab; }
+.l3d-panel .xs-head:active { cursor: grabbing; }
+.l3d-panel .dtb-drag { margin-right: 6px; }
+.l3d-panel .xs-title, .l3d-panel .xs-where, .l3d-panel .l3d-status,
+.l3d-panel .r3d-slider-row > span {
+  background-image: linear-gradient(180deg, #ffe680 0%, #e8b800 48%, #b8860b 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: #e8b800;
+}
+.l3d-panel .l3d-status {
+  font-size: 9px; letter-spacing: 0.5px; white-space: nowrap;
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis;
+}
+.l3d-panel .l3d-status.bad { background-image: linear-gradient(180deg, #ffc9b8 0%, #ff8a65 100%); }
+.l3d-panel .r3d-controls { display: flex; align-items: center; gap: 8px; padding: 7px 10px 0; flex-wrap: wrap; }
+.l3d-panel select, .l3d-panel button, .l3d-panel option { color: #e8b800; }
+.l3d-panel option { background: #0c0c0f; }
+.l3d-panel input[type=range] { accent-color: #e8b800; }
+.l3d-panel.big { width: min(1100px, calc(100vw - 24px)); }
+.l3d-panel .xs-plot { padding: 8px 10px 4px; position: relative; }
+.l3d-panel canvas {
+  display: block; width: 100%; height: 300px; border-radius: 8px;
+  background: #000; cursor: grab; touch-action: none;
+}
+.l3d-panel canvas.r3d-dragging { cursor: grabbing; }
+.l3d-panel.big canvas { height: min(60vh, 560px); }
+.l3d-panel.fullscreen {
+  position: fixed;
+  left: 0 !important; top: 0 !important; right: 0 !important; bottom: 0 !important;
+  transform: none !important; width: 100vw !important; max-width: 100vw !important;
+  height: 100vh; max-height: 100vh; border-radius: 0; border: none; z-index: 99999; overflow: auto;
+}
+.l3d-panel.fullscreen canvas { height: calc(100vh - 230px); }
+.l3d-panel .dtb-btn {
+  height: 26px; min-width: 26px; padding: 0 7px; border-radius: 7px; flex-shrink: 0;
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18);
+  cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px;
+}
+.l3d-panel .dtb-btn.on { background: rgba(232,184,0,0.25); border-color: var(--accent); }
+.l3d-walk-pad {
+  position: absolute; left: 16px; top: 14px; z-index: 3;
+  display: grid; grid-template-columns: repeat(3, 32px); gap: 4px;
+}
+.l3d-walk-pad button {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: rgba(10,10,14,0.72); border: 1px solid rgba(232,184,0,0.45);
+  color: #e8b800; font-size: 13px; cursor: pointer;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.l3d-walk-pad button:active { background: rgba(232,184,0,0.3); }
+@media (max-width: 640px) {
+  .l3d-panel { left: 8px !important; right: 8px !important; width: auto; bottom: 72px; }
+  .l3d-panel canvas { height: 220px; }
 }
 
 /* -- HD Models panel -- */
@@ -10943,7 +11011,7 @@ if (window._glassLevel && _glassAllowed()) {
 </head>
 <body>
 
-<svg id="icon-sprite-defs" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden"><defs><symbol id="ic-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.6 9.6 0 0 1-2.9-.4L3 21l1.6-4.6A8.2 8.2 0 0 1 3 11.5 8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z"/></symbol><symbol id="ic-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></symbol><symbol id="ic-refresh-ccw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 3v4.3h4.3"/></symbol><symbol id="ic-refresh-cw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 3v4.3h-4.3"/></symbol><symbol id="ic-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h14M13 4l4 4-4 4"/><path d="M21 16H7M11 20l-4-4 4-4"/></symbol><symbol id="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol><symbol id="ic-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4.5 4.5 0 0 1-1-8.9A5.5 5.5 0 0 1 16.7 7 4 4 0 0 1 17 15H7z"/></symbol><symbol id="ic-cloud-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="7" r="3"/><path d="M16 2v1.4M20.6 7h-1.4M12.6 3.8l1 1M19.4 10.2l1 1"/><path d="M6 19a4 4 0 0 1-.7-7.9A5 5 0 0 1 15 9.4 3.6 3.6 0 0 1 14.6 16H6z"/></symbol><symbol id="ic-cloud-rain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15a4 4 0 0 1-.6-7.9A5 5 0 0 1 15 9.2 3.6 3.6 0 0 1 14.6 16H6z"/><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3"/></symbol><symbol id="ic-storm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 13a4 4 0 0 1-.6-7.9A5 5 0 0 1 15 7.2 3.6 3.6 0 0 1 14.6 14H6z"/><path d="M13 14l-3 5h3l-2 4"/></symbol><symbol id="ic-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></symbol><symbol id="ic-snow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M4.5 7l15 10M19.5 7l-15 10"/></symbol><symbol id="ic-cloud-snow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12a4 4 0 0 1-.6-7.9A5 5 0 0 1 15 6.2 3.6 3.6 0 0 1 14.6 13H6z"/><path d="M9 17v4M7 18l4 2M13 18l-4 2M15 17v4"/></symbol><symbol id="ic-fog" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h18M3 12h18M3 16h12"/></symbol><symbol id="ic-wind" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h15a3 3 0 1 0-2.5-4.6"/><path d="M2 12h18a3 3 0 1 1-2.5 4.6"/><path d="M2 17h12"/></symbol><symbol id="ic-tornado" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18M5 8h14M7 12h10M9 16h6M10.5 20h3"/></symbol><symbol id="ic-rainbow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18a10 10 0 0 1 20 0"/><path d="M6 18a6 6 0 0 1 12 0"/></symbol><symbol id="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></symbol><symbol id="ic-drop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 7 6 11a6 6 0 1 1-12 0c0-4 6-11 6-11z"/></symbol><symbol id="ic-ice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="1"/><path d="M5 12h14M12 5v14M7 7l10 10M17 7L7 17"/></symbol><symbol id="ic-temp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a2 2 0 0 0-2 2v9.5a4 4 0 1 0 4 0V5a2 2 0 0 0-2-2z"/><circle cx="12" cy="17.5" r="2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-cyclone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h14a2 2 0 1 1-2 3H6M4 12h10a2 2 0 1 1-2 3H8M4 18h6"/></symbol><symbol id="ic-antenna" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15a9 9 0 0 1 9-9"/><path d="M4 15l7 7"/><path d="M11 15a4 4 0 0 0 4-4"/><circle cx="11" cy="15" r="1.3" fill="currentColor" stroke="none"/><path d="M18 4l2 2-9 9-2-2z"/></symbol><symbol id="ic-satellite" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="6" height="6" rx="1"/><line x1="2" y1="6" x2="7" y2="11"/><line x1="2" y1="12" x2="7" y2="7"/><line x1="22" y1="6" x2="17" y2="11"/><line x1="22" y1="12" x2="17" y2="7"/><line x1="12" y1="15" x2="12" y2="21"/><path d="M9 21h6"/></symbol><symbol id="ic-siren" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 21v-4"/><path d="M5 17a7 7 0 0 1 14 0z"/><path d="M12 6V3M6.5 8L4.5 6M17.5 8l2-2"/></symbol><symbol id="ic-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"/><path d="M12 10v4"/><circle cx="12" cy="17.3" r="0.9" fill="currentColor" stroke="none"/></symbol><symbol id="ic-fire" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a7 7 0 0 0 7-7c0-3-2-5-3-7 0 2-1 3-2 3 0-3-1-5-3-8-1 4-5 6-5 12a6 6 0 0 0 6 7z"/></symbol><symbol id="ic-wave" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8c1.5 1.5 3 1.5 4.5 0S9 6.5 10.5 8s3 1.5 4.5 0 3-1.5 4.5 0 3 1.5 4.5 0"/><path d="M2 14c1.5 1.5 3 1.5 4.5 0S9 12.5 10.5 14s3 1.5 4.5 0 3-1.5 4.5 0 3 1.5 4.5 0"/><path d="M2 20c1.5 1.5 3 1.5 4.5 0S9 18.5 10.5 20s3 1.5 4.5 0 3-1.5 4.5 0 3 1.5 4.5 0"/></symbol><symbol id="ic-target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-compass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 9l-2 6-6 2 2-6z" fill="currentColor" stroke="none"/></symbol><symbol id="ic-map" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></symbol><symbol id="ic-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-7.6 7-12.5A7 7 0 1 0 5 9.5C5 14.4 12 22 12 22z"/><circle cx="12" cy="9.5" r="2.3" fill="currentColor" stroke="none"/></symbol><symbol id="ic-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></symbol><symbol id="ic-car" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16l1.5-5A2 2 0 0 1 7.4 9.5h9.2A2 2 0 0 1 18.5 11L20 16"/><rect x="3" y="16" width="18" height="3" rx="1"/><circle cx="7.5" cy="19" r="1.3" fill="currentColor" stroke="none"/><circle cx="16.5" cy="19" r="1.3" fill="currentColor" stroke="none"/></symbol><symbol id="ic-building" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10 21v-3h4v3"/></symbol><symbol id="ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="1.5"/><path d="M8 11V7a4 4 0 1 1 8 0v4"/></symbol><symbol id="ic-unlock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 7.5-1.9"/></symbol><symbol id="ic-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.5M12 18.5V21M4.4 7.5l2.2 1.3M17.4 15.2l2.2 1.3M4.4 16.5l2.2-1.3M17.4 8.8l2.2-1.3M3 12h2.5M18.5 12H21"/></symbol><symbol id="ic-palette" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 8 0 1 0 0 16c1.2 0 1.6-.7 1.2-1.6-.4-.9 0-1.9 1-1.9H16a5 5 0 0 0 5-5c0-4.1-4-7.5-9-7.5z"/><circle cx="7.5" cy="10.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="11" cy="7.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.1" fill="currentColor" stroke="none"/></symbol><symbol id="ic-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M10.5 19h3"/></symbol><symbol id="ic-desktop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="1"/><path d="M8 20h8M12 16v4"/></symbol><symbol id="ic-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-5-5"/></symbol><symbol id="ic-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol><symbol id="ic-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></symbol><symbol id="ic-speaker" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9v6h4l5 4V5L7 9z"/><path d="M17 9a4 4 0 0 1 0 6M19.5 6.5a8 8 0 0 1 0 11"/></symbol><symbol id="ic-dice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="8.5" cy="15.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><rect x="8" y="3" width="6" height="5"/><rect x="7" y="14" width="10" height="6"/></symbol><symbol id="ic-chart-bar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="20" x2="5" y2="13"/><line x1="12" y1="20" x2="12" y2="8"/><line x1="19" y1="20" x2="19" y2="4"/><line x1="2" y1="20" x2="22" y2="20"/></symbol><symbol id="ic-chart-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-9"/><path d="M15 6h6v6"/></symbol><symbol id="ic-chart-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l6 6 4-4 8 9"/><path d="M15 18h6v-6"/></symbol><symbol id="ic-radio" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="11" rx="2"/><circle cx="8" cy="14.5" r="2"/><path d="M13 14h5M13 17h3"/><path d="M7 9l3-5 3 5"/></symbol><symbol id="ic-robot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="9" width="14" height="10" rx="2"/><circle cx="9.5" cy="14" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="14" r="1.2" fill="currentColor" stroke="none"/><path d="M12 9V5M9 5h6"/></symbol><symbol id="ic-dot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7" fill="currentColor" stroke="none"/></symbol><symbol id="ic-radar3d" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z"/><path d="M4.2 7.5L12 12l7.8-4.5M12 12v9"/><path d="M12 12l-4.3-2.5" stroke-width="1.4"/><path d="M6.6 10.9a6 6 0 0 1 .4-4.6" stroke-width="1.4"/></symbol><symbol id="ic-hex" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z"/></symbol><symbol id="ic-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5l14 14M19 5L5 19"/></symbol><symbol id="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6"/></symbol><symbol id="ic-blocked" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.5 5.5l13 13"/></symbol><symbol id="ic-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></symbol><symbol id="ic-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></symbol><symbol id="ic-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17H6z"/><path d="M15 2v3h3"/><path d="M9 11h6M9 15h6"/></symbol><symbol id="ic-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="18" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M8 11h8M8 15h8"/></symbol><symbol id="ic-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></symbol><symbol id="ic-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1-5L16 4l4 4L9 19z"/><path d="M13 7l4 4"/></symbol><symbol id="ic-tools" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 1 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4l-3-3-1.4 1.4z"/></symbol><symbol id="ic-ruler" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="6" rx="1"/><path d="M7 9v3M11 9v3M15 9v3M19 9v3"/></symbol><symbol id="ic-paperclip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12V6a4 4 0 0 1 8 0v10a3 3 0 1 1-6 0V9"/></symbol><symbol id="ic-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M4 17l5-5 3 3 4-5 4 5"/></symbol><symbol id="ic-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M4 6l8 7 8-7"/></symbol><symbol id="ic-megaphone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10v4h3l6 4V6l-6 4z"/><path d="M14 9a4 4 0 0 1 0 6"/></symbol><symbol id="ic-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 0-2 2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 1 2 2z"/></symbol><symbol id="ic-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></symbol><symbol id="ic-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol><symbol id="ic-sparkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/></symbol><symbol id="ic-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 6.5 7 .8-5.2 4.8 1.4 6.9L12 17.7l-6.2 3.3 1.4-6.9L2 9.3l7-.8z"/></symbol><symbol id="ic-microscope" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20h8M12 20v-4M8 16h6a3 3 0 0 0 0-6H8"/><path d="M8 10V4l3 2 3-2v6"/><circle cx="8" cy="12" r="1" fill="currentColor" stroke="none"/></symbol><symbol id="ic-telescope" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15l14-6 2 4-14 6z"/><path d="M12 12l2 6-4 1.5"/><circle cx="6" cy="18" r="1.5"/></symbol><symbol id="ic-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M17 6h3M4 12h4M11 12h9M4 18h13M20 18h0"/><circle cx="14" cy="6" r="2" fill="currentColor" stroke="none"/><circle cx="8" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="17" cy="18" r="2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-signal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20v-3M9 20v-6M14 20v-9M19 20V4"/></symbol><symbol id="ic-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a13 13 0 0 1 0 18M12 3a13 13 0 0 0 0 18"/></symbol><symbol id="ic-trophy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10v6a5 5 0 0 1-10 0z"/><path d="M7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3"/><path d="M10 19h4M12 15v4M9 21h6"/></symbol><symbol id="ic-mountain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20l6-11 4 6 3-4 7 9z"/></symbol><symbol id="ic-leaf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20C4 10 12 4 20 4c0 8-6 16-16 16z"/><path d="M6 18C9 13 12 10 18 6"/></symbol><symbol id="ic-flag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v18"/><path d="M5 4h13l-3 4 3 4H5"/></symbol><symbol id="ic-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="18" r="2.2" fill="currentColor" stroke="none"/><circle cx="17" cy="16" r="2.2" fill="currentColor" stroke="none"/><path d="M9.2 18V5l10-2v13"/></symbol><symbol id="ic-fullscreen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol><symbol id="ic-gauge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4-5"/><circle cx="12" cy="16" r="1.2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-sunrise" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18h20"/><path d="M6 18a6 6 0 0 1 12 0"/><path d="M12 8v3M6.5 11.5l1.8 1.8M17.5 11.5l-1.8 1.8"/></symbol><symbol id="ic-noodles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7c2 2 4-2 6 0s4-2 6 0 4-2 6 0"/><path d="M3 12c2 2 4-2 6 0s4-2 6 0 4-2 6 0"/><path d="M3 17c2 2 4-2 6 0s4-2 6 0 4-2 6 0"/></symbol><symbol id="ic-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/></symbol><symbol id="ic-bulb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3 11c1 .6 1 1 1 2h4c0-1 0-1.4 1-2a6 6 0 0 0-3-11z"/></symbol><symbol id="ic-numbers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9h14M5 15h14M9 4L7 20M17 4l-2 16"/></symbol><symbol id="ic-plane" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13l20-6-7 7 2 7-4-4-4 4-1-7z"/></symbol><symbol id="ic-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l14 8-14 8z" fill="currentColor" stroke="none"/></symbol><symbol id="ic-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/></symbol><symbol id="ic-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-stopwatch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 13V9"/><path d="M9 2h6"/><path d="M12 2v2"/></symbol><symbol id="ic-hourglass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12M6 21h12M7 3c0 5 3 6 5 8-2 2-5 3-5 8M17 3c0 5-3 6-5 8 2 2 5 3 5 8"/></symbol><symbol id="ic-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="7.5" r="0.9" fill="currentColor" stroke="none"/><path d="M12 11v6"/></symbol><symbol id="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="1.5"/><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></symbol><symbol id="ic-grip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="18" r="1.4" fill="currentColor" stroke="none"/></symbol><symbol id="ic-external" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-8 8"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol><pattern id="eccc-extreme-dots" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="#d9534f"/><circle cx="4" cy="4" r="1.3" fill="#ffffff" fill-opacity="0.9"/></pattern></defs></svg>
+<svg id="icon-sprite-defs" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden"><defs><symbol id="ic-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.6 9.6 0 0 1-2.9-.4L3 21l1.6-4.6A8.2 8.2 0 0 1 3 11.5 8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z"/></symbol><symbol id="ic-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></symbol><symbol id="ic-refresh-ccw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 3v4.3h4.3"/></symbol><symbol id="ic-refresh-cw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 3v4.3h-4.3"/></symbol><symbol id="ic-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h14M13 4l4 4-4 4"/><path d="M21 16H7M11 20l-4-4 4-4"/></symbol><symbol id="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol><symbol id="ic-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4.5 4.5 0 0 1-1-8.9A5.5 5.5 0 0 1 16.7 7 4 4 0 0 1 17 15H7z"/></symbol><symbol id="ic-cloud-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="7" r="3"/><path d="M16 2v1.4M20.6 7h-1.4M12.6 3.8l1 1M19.4 10.2l1 1"/><path d="M6 19a4 4 0 0 1-.7-7.9A5 5 0 0 1 15 9.4 3.6 3.6 0 0 1 14.6 16H6z"/></symbol><symbol id="ic-cloud-rain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15a4 4 0 0 1-.6-7.9A5 5 0 0 1 15 9.2 3.6 3.6 0 0 1 14.6 16H6z"/><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3"/></symbol><symbol id="ic-storm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 13a4 4 0 0 1-.6-7.9A5 5 0 0 1 15 7.2 3.6 3.6 0 0 1 14.6 14H6z"/><path d="M13 14l-3 5h3l-2 4"/></symbol><symbol id="ic-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></symbol><symbol id="ic-snow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M4.5 7l15 10M19.5 7l-15 10"/></symbol><symbol id="ic-cloud-snow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12a4 4 0 0 1-.6-7.9A5 5 0 0 1 15 6.2 3.6 3.6 0 0 1 14.6 13H6z"/><path d="M9 17v4M7 18l4 2M13 18l-4 2M15 17v4"/></symbol><symbol id="ic-fog" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h18M3 12h18M3 16h12"/></symbol><symbol id="ic-wind" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h15a3 3 0 1 0-2.5-4.6"/><path d="M2 12h18a3 3 0 1 1-2.5 4.6"/><path d="M2 17h12"/></symbol><symbol id="ic-tornado" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18M5 8h14M7 12h10M9 16h6M10.5 20h3"/></symbol><symbol id="ic-rainbow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18a10 10 0 0 1 20 0"/><path d="M6 18a6 6 0 0 1 12 0"/></symbol><symbol id="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></symbol><symbol id="ic-drop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 7 6 11a6 6 0 1 1-12 0c0-4 6-11 6-11z"/></symbol><symbol id="ic-ice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="1"/><path d="M5 12h14M12 5v14M7 7l10 10M17 7L7 17"/></symbol><symbol id="ic-temp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a2 2 0 0 0-2 2v9.5a4 4 0 1 0 4 0V5a2 2 0 0 0-2-2z"/><circle cx="12" cy="17.5" r="2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-cyclone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h14a2 2 0 1 1-2 3H6M4 12h10a2 2 0 1 1-2 3H8M4 18h6"/></symbol><symbol id="ic-antenna" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15a9 9 0 0 1 9-9"/><path d="M4 15l7 7"/><path d="M11 15a4 4 0 0 0 4-4"/><circle cx="11" cy="15" r="1.3" fill="currentColor" stroke="none"/><path d="M18 4l2 2-9 9-2-2z"/></symbol><symbol id="ic-satellite" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="6" height="6" rx="1"/><line x1="2" y1="6" x2="7" y2="11"/><line x1="2" y1="12" x2="7" y2="7"/><line x1="22" y1="6" x2="17" y2="11"/><line x1="22" y1="12" x2="17" y2="7"/><line x1="12" y1="15" x2="12" y2="21"/><path d="M9 21h6"/></symbol><symbol id="ic-siren" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 21v-4"/><path d="M5 17a7 7 0 0 1 14 0z"/><path d="M12 6V3M6.5 8L4.5 6M17.5 8l2-2"/></symbol><symbol id="ic-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"/><path d="M12 10v4"/><circle cx="12" cy="17.3" r="0.9" fill="currentColor" stroke="none"/></symbol><symbol id="ic-fire" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a7 7 0 0 0 7-7c0-3-2-5-3-7 0 2-1 3-2 3 0-3-1-5-3-8-1 4-5 6-5 12a6 6 0 0 0 6 7z"/></symbol><symbol id="ic-wave" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8c1.5 1.5 3 1.5 4.5 0S9 6.5 10.5 8s3 1.5 4.5 0 3-1.5 4.5 0 3 1.5 4.5 0"/><path d="M2 14c1.5 1.5 3 1.5 4.5 0S9 12.5 10.5 14s3 1.5 4.5 0 3-1.5 4.5 0 3 1.5 4.5 0"/><path d="M2 20c1.5 1.5 3 1.5 4.5 0S9 18.5 10.5 20s3 1.5 4.5 0 3-1.5 4.5 0 3 1.5 4.5 0"/></symbol><symbol id="ic-target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-compass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 9l-2 6-6 2 2-6z" fill="currentColor" stroke="none"/></symbol><symbol id="ic-map" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></symbol><symbol id="ic-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-7.6 7-12.5A7 7 0 1 0 5 9.5C5 14.4 12 22 12 22z"/><circle cx="12" cy="9.5" r="2.3" fill="currentColor" stroke="none"/></symbol><symbol id="ic-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></symbol><symbol id="ic-car" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16l1.5-5A2 2 0 0 1 7.4 9.5h9.2A2 2 0 0 1 18.5 11L20 16"/><rect x="3" y="16" width="18" height="3" rx="1"/><circle cx="7.5" cy="19" r="1.3" fill="currentColor" stroke="none"/><circle cx="16.5" cy="19" r="1.3" fill="currentColor" stroke="none"/></symbol><symbol id="ic-building" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10 21v-3h4v3"/></symbol><symbol id="ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="1.5"/><path d="M8 11V7a4 4 0 1 1 8 0v4"/></symbol><symbol id="ic-unlock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 7.5-1.9"/></symbol><symbol id="ic-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.5M12 18.5V21M4.4 7.5l2.2 1.3M17.4 15.2l2.2 1.3M4.4 16.5l2.2-1.3M17.4 8.8l2.2-1.3M3 12h2.5M18.5 12H21"/></symbol><symbol id="ic-palette" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 8 0 1 0 0 16c1.2 0 1.6-.7 1.2-1.6-.4-.9 0-1.9 1-1.9H16a5 5 0 0 0 5-5c0-4.1-4-7.5-9-7.5z"/><circle cx="7.5" cy="10.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="11" cy="7.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.1" fill="currentColor" stroke="none"/></symbol><symbol id="ic-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M10.5 19h3"/></symbol><symbol id="ic-desktop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="1"/><path d="M8 20h8M12 16v4"/></symbol><symbol id="ic-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-5-5"/></symbol><symbol id="ic-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol><symbol id="ic-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></symbol><symbol id="ic-speaker" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9v6h4l5 4V5L7 9z"/><path d="M17 9a4 4 0 0 1 0 6M19.5 6.5a8 8 0 0 1 0 11"/></symbol><symbol id="ic-dice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="8.5" cy="15.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><rect x="8" y="3" width="6" height="5"/><rect x="7" y="14" width="10" height="6"/></symbol><symbol id="ic-chart-bar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="20" x2="5" y2="13"/><line x1="12" y1="20" x2="12" y2="8"/><line x1="19" y1="20" x2="19" y2="4"/><line x1="2" y1="20" x2="22" y2="20"/></symbol><symbol id="ic-chart-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-9"/><path d="M15 6h6v6"/></symbol><symbol id="ic-chart-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l6 6 4-4 8 9"/><path d="M15 18h6v-6"/></symbol><symbol id="ic-radio" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="11" rx="2"/><circle cx="8" cy="14.5" r="2"/><path d="M13 14h5M13 17h3"/><path d="M7 9l3-5 3 5"/></symbol><symbol id="ic-robot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="9" width="14" height="10" rx="2"/><circle cx="9.5" cy="14" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="14" r="1.2" fill="currentColor" stroke="none"/><path d="M12 9V5M9 5h6"/></symbol><symbol id="ic-dot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7" fill="currentColor" stroke="none"/></symbol><symbol id="ic-radar3d" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z"/><path d="M4.2 7.5L12 12l7.8-4.5M12 12v9"/><path d="M12 12l-4.3-2.5" stroke-width="1.4"/><path d="M6.6 10.9a6 6 0 0 1 .4-4.6" stroke-width="1.4"/></symbol><symbol id="ic-terrain3d" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 19l6-9.5 3.6 5.2 2.7-3.9 6.7 8.2z"/><path d="M8.5 9.5l1.6 2.3M6.2 13.2l1.4-.9" stroke-width="1.4"/><path d="M15 5.5l1.5-1.5 1.5 1.5" stroke-width="1.4"/></symbol><symbol id="ic-hex" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z"/></symbol><symbol id="ic-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5l14 14M19 5L5 19"/></symbol><symbol id="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6"/></symbol><symbol id="ic-blocked" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.5 5.5l13 13"/></symbol><symbol id="ic-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></symbol><symbol id="ic-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></symbol><symbol id="ic-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17H6z"/><path d="M15 2v3h3"/><path d="M9 11h6M9 15h6"/></symbol><symbol id="ic-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="18" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M8 11h8M8 15h8"/></symbol><symbol id="ic-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></symbol><symbol id="ic-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1-5L16 4l4 4L9 19z"/><path d="M13 7l4 4"/></symbol><symbol id="ic-tools" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 1 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4l-3-3-1.4 1.4z"/></symbol><symbol id="ic-ruler" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="6" rx="1"/><path d="M7 9v3M11 9v3M15 9v3M19 9v3"/></symbol><symbol id="ic-paperclip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12V6a4 4 0 0 1 8 0v10a3 3 0 1 1-6 0V9"/></symbol><symbol id="ic-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M4 17l5-5 3 3 4-5 4 5"/></symbol><symbol id="ic-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M4 6l8 7 8-7"/></symbol><symbol id="ic-megaphone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10v4h3l6 4V6l-6 4z"/><path d="M14 9a4 4 0 0 1 0 6"/></symbol><symbol id="ic-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 0-2 2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 1 2 2z"/></symbol><symbol id="ic-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></symbol><symbol id="ic-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol><symbol id="ic-sparkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/></symbol><symbol id="ic-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 6.5 7 .8-5.2 4.8 1.4 6.9L12 17.7l-6.2 3.3 1.4-6.9L2 9.3l7-.8z"/></symbol><symbol id="ic-microscope" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20h8M12 20v-4M8 16h6a3 3 0 0 0 0-6H8"/><path d="M8 10V4l3 2 3-2v6"/><circle cx="8" cy="12" r="1" fill="currentColor" stroke="none"/></symbol><symbol id="ic-telescope" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15l14-6 2 4-14 6z"/><path d="M12 12l2 6-4 1.5"/><circle cx="6" cy="18" r="1.5"/></symbol><symbol id="ic-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M17 6h3M4 12h4M11 12h9M4 18h13M20 18h0"/><circle cx="14" cy="6" r="2" fill="currentColor" stroke="none"/><circle cx="8" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="17" cy="18" r="2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-signal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20v-3M9 20v-6M14 20v-9M19 20V4"/></symbol><symbol id="ic-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a13 13 0 0 1 0 18M12 3a13 13 0 0 0 0 18"/></symbol><symbol id="ic-trophy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10v6a5 5 0 0 1-10 0z"/><path d="M7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3"/><path d="M10 19h4M12 15v4M9 21h6"/></symbol><symbol id="ic-mountain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20l6-11 4 6 3-4 7 9z"/></symbol><symbol id="ic-leaf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20C4 10 12 4 20 4c0 8-6 16-16 16z"/><path d="M6 18C9 13 12 10 18 6"/></symbol><symbol id="ic-flag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v18"/><path d="M5 4h13l-3 4 3 4H5"/></symbol><symbol id="ic-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="18" r="2.2" fill="currentColor" stroke="none"/><circle cx="17" cy="16" r="2.2" fill="currentColor" stroke="none"/><path d="M9.2 18V5l10-2v13"/></symbol><symbol id="ic-fullscreen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol><symbol id="ic-gauge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4-5"/><circle cx="12" cy="16" r="1.2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-sunrise" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18h20"/><path d="M6 18a6 6 0 0 1 12 0"/><path d="M12 8v3M6.5 11.5l1.8 1.8M17.5 11.5l-1.8 1.8"/></symbol><symbol id="ic-noodles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7c2 2 4-2 6 0s4-2 6 0 4-2 6 0"/><path d="M3 12c2 2 4-2 6 0s4-2 6 0 4-2 6 0"/><path d="M3 17c2 2 4-2 6 0s4-2 6 0 4-2 6 0"/></symbol><symbol id="ic-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/></symbol><symbol id="ic-bulb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3 11c1 .6 1 1 1 2h4c0-1 0-1.4 1-2a6 6 0 0 0-3-11z"/></symbol><symbol id="ic-numbers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9h14M5 15h14M9 4L7 20M17 4l-2 16"/></symbol><symbol id="ic-plane" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13l20-6-7 7 2 7-4-4-4 4-1-7z"/></symbol><symbol id="ic-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l14 8-14 8z" fill="currentColor" stroke="none"/></symbol><symbol id="ic-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/></symbol><symbol id="ic-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-stopwatch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 13V9"/><path d="M9 2h6"/><path d="M12 2v2"/></symbol><symbol id="ic-hourglass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12M6 21h12M7 3c0 5 3 6 5 8-2 2-5 3-5 8M17 3c0 5-3 6-5 8 2 2 5 3 5 8"/></symbol><symbol id="ic-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="7.5" r="0.9" fill="currentColor" stroke="none"/><path d="M12 11v6"/></symbol><symbol id="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="1.5"/><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></symbol><symbol id="ic-grip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="18" r="1.4" fill="currentColor" stroke="none"/></symbol><symbol id="ic-external" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-8 8"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol><pattern id="eccc-extreme-dots" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="#d9534f"/><circle cx="4" cy="4" r="1.3" fill="#ffffff" fill-opacity="0.9"/></pattern></defs></svg>
 <script>
 // Every emoji used as a visual icon in the app maps to a hand-drawn SVG
 // symbol above (defined once, referenced everywhere via <use>) so nothing
@@ -12105,6 +12173,7 @@ body.clean-mode #clean-hint { opacity: 1; }
     <select class="xsec-sel" id="r3d-site" title="Which radar the zone is seen from (nearest first)"></select>
     <span id="r3d-status"></span>
     <div class="xs-spacer"></div>
+    <button class="dtb-btn" id="r3d-terrain-btn" type="button" title="Terrain: the real ground under the storm, from public elevation tiles">Terrain</button>
     <button class="dtb-btn" id="r3d-walk-btn" type="button" title="Walk inside the box: drag to look around, WASD/arrows or the on-screen pad to move, wheel to walk forward">Walk</button>
     <button class="dtb-btn" id="r3d-vr-btn" type="button" title="VR: fullscreen side-by-side stereo for a phone in a headset viewer, turning as you turn">VR</button>
     <button class="dtb-btn" id="r3d-info-btn" title="What this does" type="button"></button>
@@ -12195,6 +12264,7 @@ body.clean-mode #clean-hint { opacity: 1; }
   <div class="r3d-controls">
     <span id="s3d-status"></span>
     <div class="xs-spacer"></div>
+    <button class="dtb-btn" id="s3d-terrain-btn" type="button" title="Terrain: the real ground under the clouds, so clear sky shows the hills and mountains instead of a flat floor">Terrain</button>
     <button class="dtb-btn" id="s3d-walk-btn" type="button" title="Walk over the cloud tops: drag to look around, WASD/arrows or the on-screen pad to move, E and Q to rise and sink, wheel to walk forward">Walk</button>
     <button class="dtb-btn" id="s3d-vr-btn" type="button" title="VR: fullscreen side-by-side stereo for a phone in a headset viewer, turning as you turn">VR</button>
     <button class="dtb-btn" id="s3d-tm-btn" type="button" title="Time Machine: see these cloud tops at any moment since 2017"></button>
@@ -43695,6 +43765,7 @@ function _cmOpen(e) {
     <div class="cm-item" onclick="_cmCrossSectionHere()">${ic('ruler')} Cross section here</div>
     <div class="cm-item" onclick="_cmRadar3DDraw()">${ic('radar3d')} Draw a 3D radar zone</div>
     <div class="cm-item" onclick="_cmSat3DDraw()">${ic('satellite')} Draw a 3D satellite zone</div>
+    ${typeof _l3dMenuItems === 'function' ? _l3dMenuItems(ic, e.originalEvent && e.originalEvent.clientX, e.originalEvent && e.originalEvent.clientY) : ''}
     <div class="cm-item" onclick="_cmRadiusHere()">${ic('target')} 50 mi radius here</div>
     <div class="cm-item" onclick="_cmSetRecenter()">${ic('compass')} Set as recenter</div>
     <div class="cm-item" onclick="_cmSetLoadSpot()">${ic('flag')} Set as load spot</div>
@@ -68339,6 +68410,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-l', date: 'Sep 23, 2026',
+    text: 'Every weather layer has a 3D mode now. Turn a layer on (model charts, waves, air, wind, temperature, pressure, sea temperature or MRMS), long-press the map, pick Draw a 3D (layer) zone and drag a box: the real ground inside it rises to its true height, and the layer is draped over it in your own colours. Each layer gets its own panel, and you can have several open at once. Press play on the animation bar and the 3D view plays along. The ocean layers stand on the real seafloor, so you can see the shallow shelf and the deep water: the Water button switches between a see-through sea over the seafloor and the layer painted straight onto the seafloor. Every panel has a Height stretch (automatic to start, a slider to change it), lit, flat and relief looks, a cutaway, Walk, VR, fullscreen, and your location marked. The MRMS panel has its own Time Machine button, and in a cross-layer comparison the menu offers the layer of the pane you pressed. Radar 3D and Satellite 3D gained a Terrain button that puts the real hills and mountains under the storm or the clouds. The ground comes from free public elevation tiles, and the home server keeps its own copy in case those cannot be reached.' },
   { id: '2026-09-23-k', date: 'Sep 23, 2026',
     text: 'Radar Compass reads every layer now, not just radar. The wedge you point paints whatever is on screen: radar first, then satellite, model charts, the waves, air, wind, temperature and pressure grids, ocean temperature, outlooks and warnings. The phone\'s tilt is no longer tracked: type a tilt into the box under the dial instead (90 is level, higher looks closer) and the range ring only changes when you change it. A small popup in the corner lists every weather layer with something within a radius you type in, like the strongest radar echo and where it is, the nearest warning, or how many lightning strikes landed nearby.' },
   { id: '2026-09-23-j', date: 'Sep 23, 2026',
@@ -73134,6 +73207,8 @@ function _r3dDrawStart() {
   document.addEventListener('keydown', _r3dDrawKey, true);
   if (typeof _showHint === 'function') _showHint(_r3dDrawFor === 's3d'
     ? '&#9635;  Drag a box on the map to see its cloud tops in 3D. Esc cancels.'
+    : String(_r3dDrawFor).startsWith('l3d:')
+    ? '&#9635;  Drag a box on the map to see it on the real ground in 3D. Esc cancels.'
     : '&#9635;  Drag a box on the map to view it in 3D. Esc cancels.');
 }
 function _r3dDrawStop() {
@@ -73177,7 +73252,9 @@ function _r3dDrawUp(e) {
   const target = _r3dDrawFor;
   _r3dDrawStop();
   const bounds = L.latLngBounds(a, b);
-  const open = target === 's3d' ? _s3dOpenBounds : _r3dOpenBounds;
+  const open = target === 's3d' ? _s3dOpenBounds
+    : String(target).startsWith('l3d:') ? (s, w, n, e2) => _l3dOpenBounds(String(target).slice(4), s, w, n, e2)
+    : _r3dOpenBounds;
   if (!open(bounds.getSouth(), bounds.getWest(), bounds.getNorth(), bounds.getEast())) {
     _r3dDrawFor = target;                              // too small: try again, same panel
     _r3dDrawStart();
@@ -74606,6 +74683,48 @@ function _r3dLutFor(product, stepKm) {
 
 // -- Rendering ------------------------------------------------------------
 let _r3dOffCv = null, _r3dImg = null, _r3dPaintSeq = 0;
+
+// -- Terrain under the storm -------------------------------------------------
+// The real ground in the box, from the same tiles Layer 3D uses, drawn by
+// Satellite 3D's rasterizer before the storm is marched over it. Loaded the
+// first time it is wanted for a zone, and again when the zone moves.
+let _r3dTerrainOn = false, _r3dGround = null, _r3dGroundLoading = '', _r3dGroundCv = null;
+function _r3dZoneKey(z) { return z ? [z.lat, z.lng, z.wKm, z.hKm].map(v => (+v).toFixed(4)).join('|') : ''; }
+function _r3dGroundNow() {
+  if (!_r3dTerrainOn || !_r3dZone) return null;
+  const key = _r3dZoneKey(_r3dZone);
+  if (_r3dGround && _r3dGround.key === key) return _r3dGround;
+  if (_r3dGroundLoading !== key) _r3dGroundLoad(key);
+  return null;
+}
+async function _r3dGroundLoad(key) {
+  if (typeof _l3dTerrain !== 'function') return;
+  _r3dGroundLoading = key;
+  const z = _r3dZone;
+  const kmLng = 111.32 * Math.max(0.2, Math.cos(z.lat * Math.PI / 180));
+  const zb = { s: z.lat - z.hKm / 2 / 111.32, n: z.lat + z.hKm / 2 / 111.32,
+               w: z.lng - z.wKm / 2 / kmLng, e: z.lng + z.wKm / 2 / kmLng,
+               lat: z.lat, lng: z.lng, wKm: z.wKm, hKm: z.hKm };
+  const long = Math.max(z.wKm, z.hKm);
+  const nx = Math.max(16, Math.round(160 * z.wKm / long)), ny = Math.max(16, Math.round(160 * z.hKm / long));
+  let g = null;
+  try { g = await _l3dTerrain(zb, nx, ny); } catch (e) { g = null; }
+  if (_r3dGroundLoading !== key) return;
+  _r3dGroundLoading = '';
+  if (!g || g.missing >= g.tiles) {
+    if (typeof showToast === 'function') showToast('Could not reach the elevation tiles for the terrain.', 2800);
+    return;
+  }
+  const n = nx * ny, hm = new Float32Array(n), rgb = new Uint8Array(n * 3);
+  for (let k = 0; k < n; k++) {
+    const m = g.m[k];
+    hm[k] = Math.max(0, m) / 1000;
+    const c = m < 0 ? [34, 78, 132] : _l3dReliefRgb(m);
+    rgb[k * 3] = c[0]; rgb[k * 3 + 1] = c[1]; rgb[k * 3 + 2] = c[2];
+  }
+  _r3dGround = { key, d: { w: nx, h: ny, hm, rgb }, zone: { wKm: z.wKm, hKm: z.hKm } };
+  _r3dDirty = true;
+}
 // The box actually marched: the zone, less whatever the cutaway removes.
 function _r3dMarchBox(halfX, halfY) {
   const box = { minX: -halfX, maxX: halfX, minY: -halfY, maxY: halfY };
@@ -74735,9 +74854,23 @@ async function _r3dPaint(ctx, w, h, dpr, frame) {
   const bg = ctx.createLinearGradient(0, 0, 0, h);
   bg.addColorStop(0, '#08080b'); bg.addColorStop(1, '#000');
   ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+  const ground = _r3dGroundNow();
   views.forEach((v, i) => {
     const ex = i * eyeW;
     const volume = volumes[i];
+    // The ground first, then the storm over it.
+    if (ground) {
+      const cap = _r3dQuality === 'fine' ? Math.min(1, 900 / eyeW) : 0.45;
+      const rw = Math.max(80, Math.round(eyeW * cap)), rh = Math.max(50, Math.round(h * cap));
+      const px = _s3dRaster(ground.d, ground.zone, v, rw, rh, exag, 1, 1, { mode: 'lit', box });
+      if (!_r3dGroundCv) _r3dGroundCv = document.createElement('canvas');
+      if (_r3dGroundCv.width !== rw || _r3dGroundCv.height !== rh) { _r3dGroundCv.width = rw; _r3dGroundCv.height = rh; }
+      const gctx = _r3dGroundCv.getContext('2d');
+      const gim = gctx.createImageData(rw, rh);
+      gim.data.set(px);
+      gctx.putImageData(gim, 0, 0);
+      ctx.drawImage(_r3dGroundCv, ex, 0, eyeW, h);
+    }
     if (volume) {
       if (!_r3dOffCv) _r3dOffCv = document.createElement('canvas');
       if (_r3dOffCv.width !== volume.iw || _r3dOffCv.height !== volume.ih) {
@@ -75040,6 +75173,12 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
       _r3dDirty = true;
     }
   });
+  const terrBtn = _r3dEl('r3d-terrain-btn');
+  if (terrBtn) terrBtn.onclick = () => {
+    _r3dTerrainOn = !_r3dTerrainOn;
+    terrBtn.classList.toggle('on', _r3dTerrainOn);
+    _r3dDirty = true;
+  };
   const walkBtn = _r3dEl('r3d-walk-btn');
   if (walkBtn) walkBtn.onclick = () => _r3dWalkToggle();
   const vrBtn = _r3dEl('r3d-vr-btn');
@@ -75172,6 +75311,7 @@ const TOOL_DESCRIPTIONS = {
   'tool-export':    'Saves the map exactly as you see it: a picture of the whole view, or every frame of the playing loop as a video.',
   'tool-xsec':      'Cuts a vertical slice through a storm. A radar picture is one thin cone and says nothing about how tall the weather is, but a volume scan sweeps the same circle at rising angles, so sampling every one of them along a line on the ground stacks them into a side-on view. Drag the two ends of the line, press the arrow, and it shows where the core sits, whether it leans, and whether there is an overhang. Uses the volume already downloaded for the radar picture, so it costs no extra download.',
   'tool-s3d':       'Cloud tops in three dimensions. Long-press the map, choose Draw a 3D satellite zone, and drag out a box: every spot is lifted to the height of the cloud top above it, worked out on the parsing server from NOAA\'s cloud-top height product and the infrared scan (colder tops stand higher), and the satellite picture you choose is draped over it. Orbit with a drag, zoom with the wheel or a pinch, or press Walk to move over the clouds (VR splits it for a phone headset). Tops above hides the low clouds, Up to shaves the tall ones, Smoothing turns pixels into hills, Look swaps the shading, and the cutaway opens a side. Radar inside draws the radar\'s own storm volume under see-through clouds. Satellites have no tilts, so this is the surface of the cloud tops, not the inside of a storm.',
+  'tool-l3d':       'Any weather layer on the real ground in three dimensions. Turn a layer on, long-press the map, choose Draw a 3D (layer) zone, and drag out a box: the ground and seafloor inside it rise to their real heights, from public elevation tiles (or the parsing server’s copy of them), and the layer is draped over it in your own colours, read straight off the map. Each layer gets its own panel, and several can be open at once. The drape keeps following the map, so pressing play on the animation bar plays the 3D view too. Height stretches the ground (auto suits the box), Look swaps the shading or shows plain relief colours, and the cutaway opens a side. The ocean layers show the real sea depth: Water on is a see-through sea over the seafloor, Water off paints the layer straight onto the seafloor. Walk steps onto the ground, VR splits it for a phone headset, and the MRMS panel has its own Time Machine button.',
   'tool-r3d':       'A storm’s real shape in three dimensions, rendered as a solid volume rather than a flat picture. Double-click or long-press the map, choose Draw a 3D zone, and drag out any box you like, the way a screenshot is taken; or press the 3D button on the Radius or Polygon toolbar to use that shape\'s area. The panel ray-marches everything inside the box from the nearest radar, tilt by tilt, resampled into a 3D grid so it reads as one continuous cloud with a solid core and a hazy edge. The Show above slider hides weak returns, the Up to slider caps the height, and it draws coarse while you drag then sharpens the moment you stop. A site with no Level 2 archive, like a terminal TDWR at an airport, builds from its separate Level 3 tilt files instead, as a single frame with no time slider.',
 };
 
@@ -83503,10 +83643,14 @@ async function _s3dRadarLoad() {
 // pixel nearest the eye. Clear sky sits at height 0 and is the ground.
 //
 // opts (all optional): hm (the heights to draw, after the sliders), mode
-// ('lit' | 'flat' | 'height'), box (the cutaway: only what is inside it).
+// ('lit' | 'flat' | 'height'), box (the cutaway: only what is inside it),
+// heightRgb (the colours for the height look, by km), alphaArr (a see-
+// through amount per cell, 0 to 1, in place of alpha / clearAlpha), and
+// wantZ (hand back each pixel's depth as .zb, for layering two surfaces).
 function _s3dRaster(d, zone, v, W, H, exag, alpha, clearAlpha, opts) {
   const o = opts || {};
   const hm = o.hm || d.hm, mode = o.mode || 'lit', box = o.box || null;
+  const heightRgb = o.heightRgb || _s3dHeightRgb, alphaArr = o.alphaArr || null;
   const nx = d.w, ny = d.h, N = nx * ny;
   const hx = zone.wKm / 2, hy = zone.hKm / 2;
   const cx = 2 * hx / nx, cy = 2 * hy / ny;
@@ -83544,12 +83688,12 @@ function _s3dRaster(d, zone, v, W, H, exag, alpha, clearAlpha, opts) {
         shade = 0.38 + 0.62 * lam;
       }
       if (mode === 'height') {
-        const c = _s3dHeightRgb(hm[k]);
+        const c = heightRgb(hm[k]);
         CR[k] = c[0] * shade; CG[k] = c[1] * shade; CB[k] = c[2] * shade;
       } else {
         CR[k] = rgb[k * 3] * shade; CG[k] = rgb[k * 3 + 1] * shade; CB[k] = rgb[k * 3 + 2] * shade;
       }
-      CA[k] = (hm[k] > 0 ? alpha : clearAlpha) * 255;
+      CA[k] = (alphaArr ? alphaArr[k] : hm[k] > 0 ? alpha : clearAlpha) * 255;
     }
   }
   const out = new Uint8ClampedArray(W * H * 4);
@@ -83595,6 +83739,7 @@ function _s3dRaster(d, zone, v, W, H, exag, alpha, clearAlpha, opts) {
       tri(k + 1, k + nx + 1, k + nx);
     }
   }
+  if (o.wantZ) out.zb = zb;
   return out;
 }
 
@@ -83618,7 +83763,8 @@ function _s3dHeightRgb(km) {
 // "Tops above" dropped to the ground and tops above "Up to" shaved off.
 // Kept on the frame per slider setting, so playing the loop never redoes it.
 function _s3dShownHeights(d) {
-  const key = _s3dSmooth + '|' + _s3dTopsAbove + '|' + _s3dUpTo;
+  const ground = _s3dTerrainOn && _s3dZone ? _s3dGroundFor(d) : null;
+  const key = _s3dSmooth + '|' + _s3dTopsAbove + '|' + _s3dUpTo + '|' + (ground ? 'g' : '');
   if (d._hk === key && d._hp) return d._hp;
   const nx = d.w, ny = d.h, n = nx * ny;
   let hm = d.hm;
@@ -83648,10 +83794,37 @@ function _s3dShownHeights(d) {
     let v = hm[k];
     if (lo > 0 && v < lo) v = 0;
     if (v > hi) v = hi;
+    // Terrain on: the ground rises under clear sky, and a cloud never sits
+    // below the hill it is on.
+    if (ground && ground[k] > v) v = ground[k];
     out[k] = v;
   }
   d._hk = key; d._hp = out;
   return out;
+}
+
+// -- Terrain under the clouds ----------------------------------------------
+// The same ground Layer 3D stands on (_l3dTerrain), on the frame's own grid.
+// Land only: the sea stays at sea level, where clear sky already sits.
+let _s3dTerrainOn = false;
+const _s3dGroundMemo = new Map();   // zone|w x h -> Float32Array of km, or 'loading'
+function _s3dGroundFor(d) {
+  const z = _s3dZone;
+  const key = [z.s, z.w, z.n, z.e, d.w, d.h].join('|');
+  const hit = _s3dGroundMemo.get(key);
+  if (hit instanceof Float32Array) return hit;
+  if (!hit && typeof _l3dTerrain === 'function') {
+    _s3dGroundMemo.set(key, 'loading');
+    _l3dTerrain(z, d.w, d.h).then(g => {
+      if (!g || g.missing >= g.tiles) { _s3dGroundMemo.delete(key); _s3dSay('could not reach the elevation tiles', 'bad'); return; }
+      const km = new Float32Array(g.m.length);
+      for (let k = 0; k < km.length; k++) km[k] = Math.max(0, g.m[k]) / 1000;
+      _s3dGroundMemo.set(key, km);
+      while (_s3dGroundMemo.size > 8) _s3dGroundMemo.delete(_s3dGroundMemo.keys().next().value);
+      _s3dDirty = true;
+    }).catch(() => _s3dGroundMemo.delete(key));
+  }
+  return null;
 }
 
 // The part of the box the cutaway leaves standing (the whole box with no cut).
@@ -84146,6 +84319,12 @@ function _s3dInteract() {
   window.addEventListener('resize', () => { if (_s3dOn) _s3dDirty = true; });
   const walkBtn = _s3dEl('s3d-walk-btn');
   if (walkBtn) walkBtn.onclick = () => _s3dWalkToggle();
+  const terrBtn = _s3dEl('s3d-terrain-btn');
+  if (terrBtn) terrBtn.onclick = () => {
+    _s3dTerrainOn = !_s3dTerrainOn;
+    terrBtn.classList.toggle('on', _s3dTerrainOn);
+    _s3dDirty = true;
+  };
   const vrBtn = _s3dEl('s3d-vr-btn');
   if (vrBtn) vrBtn.onclick = () => _s3dVrToggle();
   // The satellite's own Time Machine, one tap from the panel: a jump (or a
@@ -84232,6 +84411,1075 @@ function _s3dSyncLabels() {
   if (u) u.textContent = fmt(_s3dUpTo);
   const s = _s3dEl('s3d-smooth-label');
   if (s) s.textContent = _s3dSmooth > 0 ? _s3dSmooth + '%' : 'Off';
+}
+
+// -- Layer 3D: every layer on the real ground -------------------------------
+// Each weather layer gets its own 3D panel: the real ground under a box drawn
+// on the map, with that layer's picture draped over it like a blanket. The
+// ground comes from the public Terrarium elevation tiles (AWS Open Data),
+// read straight in the browser, with the parsing server's /terrain door
+// (pi/terrain.py) as the backup when they cannot be reached. Those tiles
+// carry the seafloor too, so the ocean layers (waves, sea temperature) show
+// how deep the water is: a see-through sea over the real shelf and trenches,
+// or, with Water off, the layer painted straight onto the seafloor.
+//
+// The drape is read off the screen, the way the Inspector reads a value: the
+// layer's own pixels inside the box, in your colours. It is read again every
+// moment the panel is open, so the 3D view plays along with the animation
+// bar (forecast hours, loops) without any layer needing its own hook.
+//
+// Drawn by Satellite 3D's software rasterizer (_s3dRaster), so it needs no
+// WebGL and works on every device.
+const L3D_TERRAIN_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/';
+const L3D_CELLS = 200;            // cells along the box's longer side, on every device
+const L3D_MIN_KM = 5;
+const L3D_MAX_DEG = 40;
+const L3D_TILE_MAX = 36;          // elevation tiles per box, at most
+const L3D_PITCH_MIN = 0.05, L3D_PITCH_MAX = 1.45;
+const L3D_RESAMPLE_MS = 800;
+const L3D_EXAG_MAX = 300;
+
+// Which layers get a panel, where each one draws on the map, and how to tell
+// it is on. Ocean layers get the seafloor and the Water button; MRMS reads
+// only its own pictures out of the shared radar pane, and has its own Time
+// Machine (the Composite one).
+function _l3dGridOn(id) {
+  if (typeof _xcIsOn === 'function' && _xcIsOn(id)) return true;
+  return typeof _nwsOn !== 'undefined' && !!_nwsOn && _nwsOn.bubble === id;
+}
+const L3D_LAYERS = [
+  { id: 'models', label: 'Model charts', noun: 'model chart', panes: ['modelPane'],
+    on: () => typeof _xcIsOn === 'function' && _xcIsOn('models') },
+  { id: 'waves', label: 'Waves', noun: 'waves', panes: ['wavesPane'], ocean: true, on: () => _l3dGridOn('waves') },
+  { id: 'air', label: 'Air', noun: 'air', panes: ['airPane'], on: () => _l3dGridOn('air') },
+  { id: 'wind', label: 'Wind', noun: 'wind', panes: ['windPane'], on: () => _l3dGridOn('wind') },
+  { id: 'temperature', label: 'Temperature', noun: 'temperature', panes: ['temperaturePane'],
+    on: () => _l3dGridOn('temperature') },
+  { id: 'pressure', label: 'Pressure', noun: 'pressure', panes: ['pressurePane'], on: () => _l3dGridOn('pressure') },
+  { id: 'ocean', label: 'Sea temperature', noun: 'sea temperature', panes: ['sstPane'], ocean: true,
+    on: () => typeof _sstOn !== 'undefined' && !!_sstOn },
+  { id: 'mrms', label: 'MRMS composite', noun: 'MRMS', tm: 'mosaic',
+    els: () => Object.values((typeof _mrmsOv !== 'undefined' && _mrmsOv) || {})
+      .map(l => l && l.getElement && l.getElement()).filter(Boolean),
+    on: () => typeof _mrmsAnyOn === 'function' && _mrmsAnyOn() },
+];
+function _l3dSpec(id) { return L3D_LAYERS.find(l => l.id === id) || null; }
+function _l3dIsOn(id) { const s = _l3dSpec(id); try { return !!(s && s.on()); } catch (e) { return false; } }
+
+// -- The ground ---------------------------------------------------------------
+// A Terrarium tile's colour IS its height: (r * 256 + g + b / 256) - 32768
+// metres, the seafloor negative. Decoded once per tile and kept.
+const _l3dTileMemo = new Map();   // 'z/x/y' -> Promise<{ h, server } | null>
+function _l3dDecodeTile(img) {
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 256;
+  const cx = cv.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(img, 0, 0, 256, 256);
+  const px = cx.getImageData(0, 0, 256, 256).data;
+  const h = new Float32Array(65536);
+  for (let k = 0; k < 65536; k++) h[k] = px[k * 4] * 256 + px[k * 4 + 1] + px[k * 4 + 2] / 256 - 32768;
+  return h;
+}
+function _l3dTile(z, x, y) {
+  const key = z + '/' + x + '/' + y;
+  if (_l3dTileMemo.has(key)) {
+    const hit = _l3dTileMemo.get(key);
+    _l3dTileMemo.delete(key); _l3dTileMemo.set(key, hit);
+    return hit;
+  }
+  const p = (async () => {
+    try { return { h: _l3dDecodeTile(await _s3dLoadImg(L3D_TERRAIN_URL + key + '.png')), server: false }; } catch (e) {}
+    // The public tiles are out of reach: the parsing server keeps its own copy.
+    try {
+      const base = await _s3dBase();
+      if (base) return { h: _l3dDecodeTile(await _s3dLoadImg(`${base}/terrain/${key}.png`)), server: true };
+    } catch (e) {}
+    return null;
+  })();
+  _l3dTileMemo.set(key, p);
+  p.then(v => { if (!v) _l3dTileMemo.delete(key); });   // a miss is tried again next time
+  while (_l3dTileMemo.size > 300) _l3dTileMemo.delete(_l3dTileMemo.keys().next().value);
+  return p;
+}
+function _l3dMercX(lng, z) { return (lng + 180) / 360 * (1 << z); }
+function _l3dMercY(lat, z) {
+  const r = Math.max(-85.05, Math.min(85.05, lat)) * Math.PI / 180;
+  return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * (1 << z);
+}
+// Ground heights in metres for an nx by ny grid over the box, row 0 north.
+async function _l3dTerrain(zone, nx, ny) {
+  const cellKm = Math.max(zone.wKm / nx, zone.hKm / ny, 0.01);
+  const cosl = Math.max(0.05, Math.cos(zone.lat * Math.PI / 180));
+  let z = Math.max(0, Math.min(12, Math.ceil(Math.log2(40075 * cosl / (256 * cellKm)))));
+  const span = (zz) => {
+    const x0 = Math.floor(_l3dMercX(zone.w, zz)), x1 = Math.floor(_l3dMercX(zone.e, zz));
+    const y0 = Math.floor(_l3dMercY(zone.n, zz)), y1 = Math.floor(_l3dMercY(zone.s, zz));
+    return { x0, x1, y0, y1, n: (x1 - x0 + 1) * (y1 - y0 + 1) };
+  };
+  while (z > 0 && span(z).n > L3D_TILE_MAX) z--;
+  const sp = span(z), lim = 1 << z;
+  const tiles = new Map();
+  const jobs = [];
+  for (let ty = sp.y0; ty <= sp.y1; ty++) {
+    for (let tx = sp.x0; tx <= sp.x1; tx++) {
+      if (ty < 0 || ty >= lim) continue;
+      const wx = ((tx % lim) + lim) % lim;
+      jobs.push(_l3dTile(z, wx, ty).then(t => { tiles.set(tx + ',' + ty, t); }));
+    }
+  }
+  await Promise.all(jobs);
+  let server = false, missing = 0;
+  tiles.forEach(t => { if (!t) missing++; else if (t.server) server = true; });
+  const at = (gx, gy) => {
+    const tx = Math.floor(gx / 256), ty = Math.floor(gy / 256);
+    const t = tiles.get(tx + ',' + ty);
+    if (!t) return NaN;
+    const px = Math.max(0, Math.min(255, Math.floor(gx - tx * 256)));
+    const py = Math.max(0, Math.min(255, Math.floor(gy - ty * 256)));
+    return t.h[py * 256 + px];
+  };
+  const m = new Float32Array(nx * ny);
+  let minM = Infinity, maxM = -Infinity, holes = 0;
+  for (let j = 0; j < ny; j++) {
+    const lat = zone.n - (j + 0.5) / ny * (zone.n - zone.s);
+    const gy = _l3dMercY(lat, z) * 256 - 0.5;
+    for (let i = 0; i < nx; i++) {
+      const lng = zone.w + (i + 0.5) / nx * (zone.e - zone.w);
+      const gx = _l3dMercX(lng, z) * 256 - 0.5;
+      // Bilinear between the four nearest height pixels.
+      const x0 = Math.floor(gx), y0 = Math.floor(gy), fx = gx - x0, fy = gy - y0;
+      const a = at(x0, y0), b = at(x0 + 1, y0), c = at(x0, y0 + 1), d = at(x0 + 1, y0 + 1);
+      let v = (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
+      if (!isFinite(v)) { v = isFinite(a) ? a : 0; if (!isFinite(a)) holes++; }
+      m[j * nx + i] = v;
+      if (v < minM) minM = v;
+      if (v > maxM) maxM = v;
+    }
+  }
+  return { m, z, server, missing, holes, minM, maxM, tiles: tiles.size };
+}
+
+// A relief map's colours, by true height in metres: deep water navy through
+// the shelf's pale blue, green lowlands, tan and brown hills, grey rock and
+// snow on the highest peaks.
+const L3D_RELIEF = [[-8000, [8, 18, 58]], [-4000, [18, 48, 118]], [-1000, [36, 88, 168]], [-150, [78, 148, 208]],
+                    [-1, [128, 192, 222]], [0, [74, 128, 68]], [300, [104, 152, 76]], [1000, [176, 164, 96]],
+                    [2000, [150, 110, 72]], [3000, [140, 132, 126]], [4500, [242, 242, 246]]];
+function _l3dReliefRgb(metres) {
+  const r = L3D_RELIEF;
+  if (metres <= r[0][0]) return r[0][1];
+  for (let i = 1; i < r.length; i++) {
+    if (metres <= r[i][0]) {
+      const t = (metres - r[i - 1][0]) / (r[i][0] - r[i - 1][0]), a = r[i - 1][1], b = r[i][1];
+      return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+    }
+  }
+  return r[r.length - 1][1];
+}
+
+// -- The drape: the layer's own pixels, read off the screen -------------------
+// Every picture and canvas the layer has on the map, top one first. A picture
+// that is hidden (a parked playback frame at opacity 0) is skipped.
+function _l3dLayerEls(spec) {
+  let els = [];
+  if (spec.els) { try { els = spec.els() || []; } catch (e) { els = []; } }
+  else {
+    (spec.panes || []).forEach(p => {
+      const pe = typeof map !== 'undefined' && map ? map.getPane(p) : null;
+      if (pe) els.push(...pe.querySelectorAll('img, canvas'));
+    });
+  }
+  const stop = typeof map !== 'undefined' && map ? map.getContainer() : null;
+  return els.filter(el => {
+    if (!el || !el.isConnected) return false;
+    let op = 1;
+    for (let n = el; n && n !== stop; n = n.parentElement) {
+      const cs = getComputedStyle(n);
+      if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+      op *= parseFloat(cs.opacity || '1');
+    }
+    el._l3dOp = op;
+    return op >= 0.05;
+  });
+}
+// The screen point of every cell centre: x by column, y by row (Mercator
+// keeps both straight), then each picture read once for the part the box
+// covers. Returns rgba per cell (alpha 0 where the layer shows nothing),
+// which cells were on screen at all, and whether a picture could not be read.
+function _l3dSampleDrape(spec, zone, nx, ny) {
+  const n = nx * ny;
+  const rgba = new Uint8ClampedArray(n * 4);
+  const seen = new Uint8Array(n);
+  const done = new Uint8Array(n);
+  const out = { rgba, seen, tainted: false, visible: 0, painted: 0 };
+  if (typeof map === 'undefined' || !map) return out;
+  const mr = map.getContainer().getBoundingClientRect();
+  const colX = new Float32Array(nx), rowY = new Float32Array(ny);
+  for (let i = 0; i < nx; i++) {
+    const lng = zone.w + (i + 0.5) / nx * (zone.e - zone.w);
+    colX[i] = mr.left + map.latLngToContainerPoint([zone.lat, lng]).x;
+  }
+  for (let j = 0; j < ny; j++) {
+    const lat = zone.n - (j + 0.5) / ny * (zone.n - zone.s);
+    rowY[j] = mr.top + map.latLngToContainerPoint([lat, zone.lng]).y;
+  }
+  for (let j = 0; j < ny; j++) {
+    const onY = rowY[j] >= mr.top && rowY[j] < mr.bottom;
+    for (let i = 0; i < nx; i++) {
+      if (onY && colX[i] >= mr.left && colX[i] < mr.right) { seen[j * nx + i] = 1; out.visible++; }
+    }
+  }
+  const els = _l3dLayerEls(spec);
+  for (let q = els.length - 1; q >= 0; q--) {
+    const el = els[q];
+    const r = el.getBoundingClientRect();
+    if (!(r.width > 0) || !(r.height > 0)) continue;
+    const isImg = el.tagName === 'IMG';
+    const W = isImg ? el.naturalWidth : el.width, H = isImg ? el.naturalHeight : el.height;
+    if (!W || !H || (isImg && !el.complete)) continue;
+    // The columns and rows of the box this picture covers.
+    let i0 = nx, i1 = -1, j0 = ny, j1 = -1;
+    for (let i = 0; i < nx; i++) if (colX[i] >= r.left && colX[i] < r.right) { if (i < i0) i0 = i; i1 = i; }
+    for (let j = 0; j < ny; j++) if (rowY[j] >= r.top && rowY[j] < r.bottom) { if (j < j0) j0 = j; j1 = j; }
+    if (i1 < i0 || j1 < j0) continue;
+    const sxOf = (X) => Math.max(0, Math.min(W - 1, Math.floor((X - r.left) / r.width * W)));
+    const syOf = (Y) => Math.max(0, Math.min(H - 1, Math.floor((Y - r.top) / r.height * H)));
+    const px0 = sxOf(colX[i0]), px1 = sxOf(colX[i1]), py0 = syOf(rowY[j0]), py1 = syOf(rowY[j1]);
+    let data;
+    try {
+      const ctx = isImg ? _inspPixelCanvas(el).ctx : el.getContext('2d', { willReadFrequently: true });
+      if (!ctx) continue;
+      data = ctx.getImageData(px0, py0, px1 - px0 + 1, py1 - py0 + 1).data;
+    } catch (e) {
+      out.tainted = true;
+      if (isImg && typeof _inspPxForget === 'function') { try { _inspPxForget(el); } catch (err) {} }
+      continue;
+    }
+    const dw = px1 - px0 + 1;
+    const op = el._l3dOp == null ? 1 : el._l3dOp;
+    for (let j = j0; j <= j1; j++) {
+      const sy = syOf(rowY[j]) - py0;
+      for (let i = i0; i <= i1; i++) {
+        const k = j * nx + i;
+        if (done[k]) continue;
+        const o = (sy * dw + (sxOf(colX[i]) - px0)) * 4;
+        const a = data[o + 3];
+        if (a < 8) continue;
+        done[k] = 1;
+        rgba[k * 4] = data[o]; rgba[k * 4 + 1] = data[o + 1]; rgba[k * 4 + 2] = data[o + 2];
+        rgba[k * 4 + 3] = Math.round(a * op);
+        out.painted++;
+      }
+    }
+  }
+  return out;
+}
+
+// -- One panel per layer ------------------------------------------------------
+const _l3dPanels = {};           // layer id -> panel
+function _l3dPanelHtml(spec) {
+  const id = 'l3d-' + spec.id;
+  return `
+  <div class="xs-head">
+    <div class="dtb-drag" title="Drag to move">&#10303;</div>
+    <span class="xs-title">${spec.label} 3D</span>
+    <span class="xs-where" data-r="where"></span>
+    <div class="xs-spacer"></div>
+    <button class="xs-big" data-r="big" title="Expand">&#11036;</button>
+    <button class="xs-big" data-r="full" title="Fullscreen">&#9974;</button>
+    <button class="xs-x" data-r="x" title="Close">&#10005;</button>
+  </div>
+  <div class="r3d-controls">
+    <span class="l3d-status" data-r="status"></span>
+    <div class="xs-spacer"></div>
+    ${spec.ocean ? '<button class="dtb-btn on" data-r="water" type="button" title="Water: a see-through sea over the real seafloor. Off: the layer painted straight onto the seafloor.">Water</button>' : ''}
+    <button class="dtb-btn" data-r="walk" type="button" title="Walk over the ground: drag to look around, WASD/arrows or the on-screen pad to move, E and Q to rise and sink, wheel to walk forward">Walk</button>
+    <button class="dtb-btn" data-r="vr" type="button" title="VR: fullscreen side-by-side stereo for a phone in a headset viewer, turning as you turn">VR</button>
+    ${spec.tm ? '<button class="dtb-btn" data-r="tm" type="button" title="Time Machine: this layer at a past moment"></button>' : ''}
+    <button class="dtb-btn" data-r="info" title="What this does" type="button"></button>
+  </div>
+  <div class="r3d-sliders">
+    <label class="r3d-slider-row">
+      <span>Height</span>
+      <input type="range" data-r="exag" min="0" max="1000" value="500" step="1" title="Stretch the ground upward. Starts at a stretch that suits this box: more for flat ground, less for mountains. Labels stay in true height.">
+      <span data-r="exag-label">auto</span>
+      <button class="dtb-btn" data-r="exag-auto" type="button" title="Back to the automatic stretch">Auto</button>
+    </label>
+    <label class="r3d-slider-row">
+      <span>Look</span>
+      <select class="xsec-sel" data-r="mode" title="Lit: the layer on the ground, shaded by a light. Flat: the layer exactly, unshaded. Relief colours: the ground coloured by height and depth, like a relief map, with no layer.">
+        <option value="lit" selected>Lit surface</option>
+        <option value="flat">Flat picture</option>
+        <option value="height">Relief colours</option>
+      </select>
+      <select class="xsec-sel" data-r="cut" title="Cut the box open from one side to look along a slice of the ground">
+        <option value="off" selected>No cutaway</option>
+        <option value="n">Cut from north</option>
+        <option value="s">Cut from south</option>
+        <option value="e">Cut from east</option>
+        <option value="w">Cut from west</option>
+      </select>
+      <input type="range" data-r="cutpct" min="0" max="95" value="50" step="1" title="How far in the cutaway reaches">
+      <select class="xsec-sel" data-r="unit" title="Which unit the heights are printed in">
+        <option value="ft" selected>ft</option>
+        <option value="m">m</option>
+      </select>
+    </label>
+  </div>
+  <div class="xs-plot">
+    <canvas data-r="canvas"></canvas>
+    <div class="l3d-walk-pad" data-r="pad" style="display:none;" title="Move around">
+      <button type="button" data-mv="up" title="Rise">&#8613;</button>
+      <button type="button" data-mv="fwd" title="Forward">&#9650;</button>
+      <button type="button" data-mv="down" title="Sink">&#8615;</button>
+      <button type="button" data-mv="left" title="Left">&#9664;</button>
+      <button type="button" data-mv="back" title="Back">&#9660;</button>
+      <button type="button" data-mv="right" title="Right">&#9654;</button>
+    </div>
+    <div class="r3d-cam-zoom" title="Zoom"><input type="range" data-r="zoom" min="0" max="1000" value="500" step="1"></div>
+    <div class="r3d-cam-move" title="Move around"><input type="range" data-r="yaw" min="-180" max="180" value="0" step="1"></div>
+  </div>`.replace(/data-r="([a-z-]+)"/g, (m, r) => `data-r="${r}" id="${id}-${r}"`);
+}
+
+class Layer3DPanel {
+  constructor(spec) {
+    this.spec = spec;
+    this.on = false;
+    this.zone = null;
+    this.gen = 0;
+    this.ground = null;           // { m, minM, maxM, ... } from _l3dTerrain
+    this.nx = 0; this.ny = 0;
+    this.drape = null;            // the last read of the layer, rgba per cell
+    this.drapeKey = '';
+    this.cam = { yaw: 0.6, pitch: 0.7, dist: 300 };
+    this.exagAuto = 1; this.exagSel = null;   // null: the automatic stretch
+    this.mode = 'lit'; this.cutSide = 'off'; this.cutPct = 50; this.unit = 'ft';
+    this.water = !!spec.ocean;
+    this.walk = null; this.vr = false; this.walkLastTs = 0; this.moveKeys = new Set(); this.gyroBase = null;
+    this.dirty = false; this.rendering = false; this.ticking = false;
+    this.fast = false; this.fastTimer = null;
+    this.rect = null; this.resampleTimer = null; this.paintSeq = 0; this.offCv = null;
+    this.say = this.say.bind(this);
+    this.onGyro = this.onGyro.bind(this);
+    this.tick = this.tick.bind(this);
+    this.build();
+  }
+  el(r) { return this.panel ? this.panel.querySelector(`[data-r="${r}"]`) : null; }
+  say(msg, kind) {
+    const el = this.el('status');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.className = 'l3d-status' + (kind ? ' ' + kind : '');
+  }
+  exag() { return this.exagSel == null ? this.exagAuto : this.exagSel; }
+  span() { return this.zone ? Math.max(this.zone.wKm, this.zone.hKm) : 300; }
+  // The ground as drawn, in km: the seafloor for the ocean layers, a flat sea
+  // at sea level for everything else.
+  floorKm() {
+    if (!this.ground) return null;
+    const key = this.spec.ocean ? 'o' : 'l';
+    if (this._fk && this._fkKey === key) return this._fk;
+    const m = this.ground.m, out = new Float32Array(m.length);
+    for (let k = 0; k < m.length; k++) out[k] = (this.spec.ocean ? m[k] : Math.max(0, m[k])) / 1000;
+    this._fk = out; this._fkKey = key;
+    return out;
+  }
+  lowKm() { return this.ground ? Math.min(0, this.spec.ocean ? this.ground.minM : 0) / 1000 : 0; }
+  highKm() { return this.ground ? Math.max(0.05, this.ground.maxM) / 1000 : 1; }
+
+  build() {
+    const p = document.createElement('div');
+    p.className = 'l3d-panel';
+    p.id = 'l3d-' + this.spec.id + '-panel';
+    p.innerHTML = _l3dPanelHtml(this.spec);
+    document.body.appendChild(p);
+    this.panel = p;
+    this.wire();
+  }
+
+  openBounds(south, west, north, east) {
+    const lat = (south + north) / 2, lng = (west + east) / 2;
+    const kmLng = 111.32 * Math.max(0.2, Math.cos(lat * Math.PI / 180));
+    const wKm = Math.abs(east - west) * kmLng, hKm = Math.abs(north - south) * 111.32;
+    if (wKm < L3D_MIN_KM || hKm < L3D_MIN_KM) {
+      if (typeof showToast === 'function') showToast('Drag out a box at least ' + L3D_MIN_KM + ' km each way.', 2600);
+      return false;
+    }
+    if (north - south > L3D_MAX_DEG || east - west > L3D_MAX_DEG) {
+      if (typeof showToast === 'function') showToast('Draw a box under ' + L3D_MAX_DEG + ' degrees each way.', 3000);
+      return false;
+    }
+    const r3 = v => Math.round(v * 1000) / 1000;
+    this.zone = { s: r3(south), w: r3(west), n: r3(north), e: r3(east), lat, lng,
+                  wKm: Math.round(wKm * 10) / 10, hKm: Math.round(hKm * 10) / 10 };
+    const long = Math.max(wKm, hKm);
+    this.nx = Math.max(16, Math.round(L3D_CELLS * wKm / long));
+    this.ny = Math.max(16, Math.round(L3D_CELLS * hKm / long));
+    this.open();
+    return true;
+  }
+  open() {
+    this.on = true;
+    // Each new panel steps in a little from the last, so two never sit
+    // exactly on top of each other.
+    const open = Object.values(_l3dPanels).filter(q => q.on && q !== this).length;
+    this.panel.style.right = (12 + open * 24) + 'px';
+    this.panel.style.bottom = (96 + open * 24) + 'px';
+    this.panel.classList.add('open');
+    this.rectSync();
+    this.cam = { yaw: 0.6, pitch: 0.7, dist: this.span() * 1.6 };
+    this.exagSel = null;
+    this.ground = null; this._fk = null; this.drape = null; this.drapeKey = '';
+    this.dirty = true;
+    if (!this.ticking) { this.ticking = true; requestAnimationFrame(this.tick); }
+    this.load();
+    clearInterval(this.resampleTimer);
+    this.resampleTimer = setInterval(() => this.resample(false), L3D_RESAMPLE_MS);
+    this.syncCamBars();
+  }
+  close() {
+    this.on = false;
+    this.gen++;
+    clearInterval(this.resampleTimer); this.resampleTimer = null;
+    this.panel.classList.remove('open', 'big', 'fullscreen');
+    this.rectRemove();
+    if (this.vr) this.vrOff();
+    if (this.walk) this.walkToggle(false);
+    this.zone = null; this.ground = null; this._fk = null; this.drape = null;
+  }
+  rectSync() {
+    if (typeof map === 'undefined' || !map || !this.zone || typeof L === 'undefined') return;
+    const b = [[this.zone.s, this.zone.w], [this.zone.n, this.zone.e]];
+    if (this.rect) { this.rect.setBounds(b); return; }
+    this.rect = L.rectangle(b, { color: '#e8b800', weight: 2, dashArray: '6 4', fillOpacity: 0.03,
+                                 fillColor: '#e8b800', interactive: false }).addTo(map);
+  }
+  rectRemove() { if (this.rect) { try { map.removeLayer(this.rect); } catch (e) {} this.rect = null; } }
+
+  async load() {
+    const gen = ++this.gen;
+    const z = this.zone;
+    if (!z) return;
+    this.say('reading the ground and seafloor', 'busy');
+    this.resample(true);
+    let g = null;
+    try { g = await _l3dTerrain(z, this.nx, this.ny); } catch (e) { g = null; }
+    if (gen !== this.gen || !this.on) return;
+    if (!g || g.missing >= g.tiles) {
+      this.say('could not reach the elevation tiles or the parsing server', 'bad');
+      return;
+    }
+    this.ground = g; this._fk = null;
+    const relief = (this.highKm() - this.lowKm());
+    this.exagAuto = Math.max(1, Math.min(L3D_EXAG_MAX, this.span() * 0.15 / Math.max(0.02, relief)));
+    this.syncExag();
+    this.sayWhere();
+    this.sayState();
+    this.dirty = true;
+  }
+  // Read the layer off the map again. Only redrawn when the picture changed,
+  // so a still layer costs one read and nothing more.
+  resample(force) {
+    if (!this.on || !this.zone) return;
+    if (this.fast && !force) return;
+    let d;
+    try { d = _l3dSampleDrape(this.spec, this.zone, this.nx, this.ny); } catch (e) { return; }
+    // A part of the box scrolled off screen keeps what it last showed.
+    if (this.drape && this.drape.length === d.rgba.length) {
+      for (let k = 0; k < d.seen.length; k++) {
+        if (!d.seen[k]) for (let c = 0; c < 4; c++) d.rgba[k * 4 + c] = this.drape[k * 4 + c];
+      }
+    }
+    let h = 0;
+    for (let k = 0; k < d.rgba.length; k += 7) h = (h * 31 + d.rgba[k]) | 0;
+    const key = h + '|' + d.painted;
+    this.visible = d.visible / (this.nx * this.ny);
+    this.tainted = d.tainted;
+    if (key === this.drapeKey && !force) return;
+    this.drapeKey = key;
+    this.drape = d.rgba;
+    this.painted = d.painted;
+    this.colours = null;
+    this.sayState();
+    this.dirty = true;
+  }
+  sayWhere() {
+    const el = this.el('where');
+    if (!el || !this.zone) return;
+    const g = this.ground;
+    const u = this.unit === 'm' ? { per: 1, l: 'm' } : { per: 3.28084, l: 'ft' };
+    const fmt = (m) => Math.round(m * u.per).toLocaleString() + ' ' + u.l;
+    const parts = [Math.round(this.zone.wKm) + '×' + Math.round(this.zone.hKm) + ' km'];
+    if (g) {
+      parts.push('ground ' + fmt(Math.max(0, g.minM)) + ' to ' + fmt(Math.max(0, g.maxM)));
+      if (this.spec.ocean && g.minM < 0) parts.push('deepest ' + fmt(-g.minM));
+    }
+    el.textContent = parts.join(' · ');
+  }
+  sayState() {
+    if (!this.on) return;
+    if (!this.ground) return;
+    const on = _l3dIsOn(this.spec.id);
+    const src = this.ground.server ? 'ground from the parsing server' : 'ground from Terrarium tiles';
+    if (!on) { this.say('turn ' + this.spec.label + ' on to drape it · ' + src, 'bad'); return; }
+    if (this.tainted && !this.painted) { this.say('this layer’s pictures cannot be read here · ' + src, 'bad'); return; }
+    if (this.visible < 0.5) { this.say('move the map back over the box to follow playback · ' + src); return; }
+    this.say(this.spec.label + ' draped · ' + src);
+  }
+
+  // The colour of every cell: the relief map under the layer, the layer on top
+  // by its own opacity. For an ocean layer with Water on, the seafloor keeps
+  // its relief colours and the layer rides on the sea's surface instead.
+  cellColours() {
+    if (this.colours && this.coloursKey === this.water + '|' + this.drapeKey) return this.colours;
+    const g = this.ground, n = this.nx * this.ny;
+    const floor = new Uint8Array(n * 3), sea = new Uint8Array(n * 3), seaA = new Float32Array(n);
+    const dr = this.drape;
+    let anySea = false;
+    for (let k = 0; k < n; k++) {
+      const m = g.m[k];
+      const isSea = m < 0;
+      const base = this.spec.ocean || !isSea ? _l3dReliefRgb(m) : [34, 78, 132];
+      const a = dr ? dr[k * 4 + 3] / 255 : 0;
+      const lr = dr ? dr[k * 4] : 0, lg = dr ? dr[k * 4 + 1] : 0, lb = dr ? dr[k * 4 + 2] : 0;
+      if (this.spec.ocean && this.water && isSea) {
+        floor[k * 3] = base[0]; floor[k * 3 + 1] = base[1]; floor[k * 3 + 2] = base[2];
+        sea[k * 3] = a ? lr : 60; sea[k * 3 + 1] = a ? lg : 140; sea[k * 3 + 2] = a ? lb : 200;
+        seaA[k] = 0.35 + 0.4 * a;
+        anySea = true;
+      } else {
+        floor[k * 3] = base[0] * (1 - a) + lr * a;
+        floor[k * 3 + 1] = base[1] * (1 - a) + lg * a;
+        floor[k * 3 + 2] = base[2] * (1 - a) + lb * a;
+      }
+    }
+    this.colours = { floor, sea, seaA, anySea };
+    this.coloursKey = this.water + '|' + this.drapeKey;
+    return this.colours;
+  }
+
+  // The orbit camera, the same model as Satellite 3D's, aimed at the middle
+  // of the ground's own height range.
+  camBasis(eye) {
+    let camX, camY, camZ, fx, fy, fz;
+    const exag = this.exag();
+    if (this.walk) {
+      const cp = Math.cos(this.walk.pitch);
+      camX = this.walk.x; camY = this.walk.y; camZ = this.walk.z;
+      fx = Math.sin(this.walk.yaw) * cp; fy = Math.cos(this.walk.yaw) * cp; fz = Math.sin(this.walk.pitch);
+    } else {
+      const { yaw, pitch, dist } = this.cam;
+      const targetZ = (this.lowKm() + this.highKm()) / 2 * exag;
+      const horiz = dist * Math.cos(pitch);
+      camX = horiz * Math.sin(yaw); camY = horiz * Math.cos(yaw); camZ = targetZ + dist * Math.sin(pitch);
+      fx = -camX; fy = -camY; fz = targetZ - camZ;
+      const fl = Math.hypot(fx, fy, fz) || 1; fx /= fl; fy /= fl; fz /= fl;
+    }
+    let rx = fy, ry = -fx;
+    const rl = Math.hypot(rx, ry) || 1; rx /= rl; ry /= rl;
+    const rz = 0;
+    const ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
+    if (eye) {
+      const sep = Math.max(0.04, this.span() * 0.012) * eye / 2;
+      camX += rx * sep; camY += ry * sep;
+    }
+    return { camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz };
+  }
+  cutBox(hx, hy) {
+    const box = { minX: -hx, maxX: hx, minY: -hy, maxY: hy };
+    if (this.cutSide === 'off') return box;
+    const pct = Math.max(0, Math.min(95, this.cutPct)) / 100;
+    if (this.cutSide === 'e') box.maxX = hx - 2 * hx * pct;
+    else if (this.cutSide === 'w') box.minX = -hx + 2 * hx * pct;
+    else if (this.cutSide === 'n') box.maxY = hy - 2 * hy * pct;
+    else if (this.cutSide === 's') box.minY = -hy + 2 * hy * pct;
+    return box;
+  }
+
+  tick(ts) {
+    if (!this.on) { this.ticking = false; return; }
+    this.walkStep(ts || performance.now());
+    if (this.dirty && !this.rendering) { this.dirty = false; this.render(); }
+    requestAnimationFrame(this.tick);
+  }
+  render() {
+    const cv = this.el('canvas');
+    if (!cv || !cv.getContext) return;
+    const rect = cv.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.max(1, Math.round(rect.width * dpr)), h = Math.max(1, Math.round(rect.height * dpr));
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    this.rendering = true;
+    try { this.paint(cv.getContext('2d'), w, h, dpr); }
+    catch (e) { console.warn('[l3d] render:', e); }
+    this.rendering = false;
+  }
+  // Resolves once the picture is up to date: for the tests.
+  renderIdle(timeoutMs) {
+    const until = Date.now() + (timeoutMs || 15000);
+    return new Promise((resolve) => {
+      const poll = () => {
+        if ((!this.rendering && !this.dirty) || Date.now() > until) resolve(!this.rendering && !this.dirty);
+        else setTimeout(poll, 16);
+      };
+      poll();
+    });
+  }
+  paint(ctx, w, h, dpr) {
+    const zone = this.zone, g = this.ground;
+    const exag = this.exag();
+    const hx = zone ? zone.wKm / 2 : 150, hy = zone ? zone.hKm / 2 : 150;
+    const box = this.cutBox(hx, hy);
+    const eyes = this.vr ? [-1, 1] : [0];
+    const eyeW = this.vr ? Math.floor(w / 2) : w;
+    const views = eyes.map(e => this.camBasis(e));
+    const cap = this.fast ? 0.45 : Math.min(1, 1300 / eyeW);
+    const rw = Math.max(80, Math.round(eyeW * cap)), rh = Math.max(50, Math.round(h * cap));
+    const bg = ctx.createLinearGradient(0, 0, 0, h);
+    bg.addColorStop(0, '#08080b'); bg.addColorStop(1, '#000');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+    ctx.imageSmoothingEnabled = true;
+    try { ctx.imageSmoothingQuality = 'high'; } catch (e) {}
+    const fk = this.floorKm();
+    const heightRgb = (km) => _l3dReliefRgb(km * 1000);
+    views.forEach((v, i) => {
+      const ex = i * eyeW;
+      if (g && zone && fk) {
+        const col = this.cellColours();
+        const water = this.spec.ocean && this.water && col.anySea;
+        const dF = { w: this.nx, h: this.ny, hm: fk, rgb: col.floor };
+        const px = _s3dRaster(dF, zone, v, rw, rh, exag, 1, 1,
+          { hm: fk, mode: this.mode, box, heightRgb, wantZ: water });
+        if (water && this.mode !== 'height') {
+          if (!this._seaHm || this._seaHm.length !== fk.length) this._seaHm = new Float32Array(fk.length);
+          const dW = { w: this.nx, h: this.ny, hm: this._seaHm, rgb: col.sea };
+          const wp = _s3dRaster(dW, zone, v, rw, rh, exag, 1, 1,
+            { hm: this._seaHm, mode: 'flat', box, alphaArr: col.seaA, wantZ: true });
+          // The sea over the seafloor wherever the sea is nearer the eye.
+          const fz = px.zb, wz = wp.zb;
+          for (let p = 0, o = 0; p < fz.length; p++, o += 4) {
+            const wa = wp[o + 3] / 255;
+            if (wa <= 0 || !(wz[p] < fz[p])) continue;
+            px[o] = px[o] * (1 - wa) + wp[o] * wa;
+            px[o + 1] = px[o + 1] * (1 - wa) + wp[o + 1] * wa;
+            px[o + 2] = px[o + 2] * (1 - wa) + wp[o + 2] * wa;
+            px[o + 3] = Math.max(px[o + 3], wp[o + 3]);
+          }
+        }
+        if (!this.offCv) this.offCv = document.createElement('canvas');
+        if (this.offCv.width !== rw || this.offCv.height !== rh) { this.offCv.width = rw; this.offCv.height = rh; }
+        const octx = this.offCv.getContext('2d');
+        const im = octx.createImageData(rw, rh);
+        im.data.set(px);
+        octx.putImageData(im, 0, 0);
+        ctx.drawImage(this.offCv, ex, 0, eyeW, h);
+      }
+      if (zone) {
+        ctx.save();
+        ctx.beginPath(); ctx.rect(ex, 0, eyeW, h); ctx.clip();
+        ctx.translate(ex, 0);
+        this.drawBox(ctx, eyeW, h, v, hx, hy, exag, dpr, box);
+        ctx.restore();
+      }
+    });
+    if (this.vr) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      ctx.lineWidth = Math.max(1, dpr);
+      ctx.beginPath(); ctx.moveTo(eyeW, 0); ctx.lineTo(eyeW, h); ctx.stroke();
+    }
+    if (!g) {
+      ctx.fillStyle = typeof _r3dGoldFill === 'function' ? _r3dGoldFill(ctx, h) : '#e8b800';
+      ctx.font = `${Math.round(12 * dpr)}px 'Comfortaa', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(zone ? 'Reading the ground…' : 'Long-press the map and pick Draw a 3D ' + this.spec.noun + ' zone',
+        w / 2, h / 2);
+    }
+  }
+  // The box: its edges from the deepest point to the highest, height lines on
+  // the far corner in true height, N on the north rim, and You where you are.
+  drawBox(ctx, w, h, v, hx, hy, exag, dpr, box) {
+    const focal = h * 1.15;
+    const proj = (X, Y, Z) => {
+      const dx = X - v.camX, dy = Y - v.camY, dz = Z - v.camZ;
+      const depth = dx * v.fx + dy * v.fy + dz * v.fz;
+      if (depth < 0.05) return null;
+      return [w / 2 + (dx * v.rx + dy * v.ry + dz * v.rz) / depth * focal,
+              h / 2 - (dx * v.ux + dy * v.uy + dz * v.uz) / depth * focal];
+    };
+    const lo = this.lowKm() * exag, hi = this.highKm() * exag;
+    const cs = [[box.minX, box.minY], [box.maxX, box.minY], [box.maxX, box.maxY], [box.minX, box.maxY]];
+    const line = (a, b) => { if (a && b) { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); } };
+    ctx.save();
+    ctx.lineWidth = Math.max(1, dpr);
+    ctx.strokeStyle = 'rgba(232,184,0,0.45)';
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++) {
+      const [x0, y0] = cs[i], [x1, y1] = cs[(i + 1) % 4];
+      line(proj(x0, y0, lo), proj(x1, y1, lo));
+      line(proj(x0, y0, hi), proj(x1, y1, hi));
+      line(proj(x0, y0, lo), proj(x0, y0, hi));
+    }
+    ctx.stroke();
+    // Height labels on the corner farthest from the eye, a sensible step apart.
+    const perKm = this.unit === 'm' ? 1000 : 3280.84, label = this.unit === 'm' ? 'm' : 'ft';
+    const loU = this.lowKm() * perKm, hiU = this.highKm() * perKm;
+    const rough = Math.max(1, (hiU - loU) / 5);
+    const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+    const step = [1, 2, 5, 10].map(s => s * mag).find(s => s >= rough) || rough;
+    let far = cs[0], best = -Infinity;
+    cs.forEach(c => { const dd = Math.hypot(c[0] - v.camX, c[1] - v.camY); if (dd > best) { best = dd; far = c; } });
+    ctx.fillStyle = typeof _r3dGoldFill === 'function' ? _r3dGoldFill(ctx, h) : '#e8b800';
+    ctx.font = `${Math.round(9 * dpr)}px 'Comfortaa', sans-serif`;
+    ctx.textAlign = 'right';
+    for (let val = Math.ceil(loU / step) * step; val <= hiU + 1e-6; val += step) {
+      const p = proj(far[0], far[1], val / perKm * exag);
+      if (!p) continue;
+      ctx.fillText((Math.abs(val) < 1e-6 ? 'sea level' : Math.round(val).toLocaleString() + ' ' + label),
+        p[0] - 4 * dpr, p[1] + 3 * dpr);
+    }
+    const nn = proj(0, box.maxY, lo);
+    if (nn) { ctx.textAlign = 'center'; ctx.font = `bold ${Math.round(11 * dpr)}px 'Comfortaa', sans-serif`; ctx.fillText('N', nn[0], nn[1] - 5 * dpr); }
+    const me = this.you();
+    if (me && me.x >= box.minX && me.x <= box.maxX && me.y >= box.minY && me.y <= box.maxY) {
+      const gk = this.groundKmAt(me.x, me.y);
+      const gp = proj(me.x, me.y, gk * exag), tp = proj(me.x, me.y, hi + (hi - lo) * 0.15);
+      if (gp) {
+        if (tp) {
+          ctx.strokeStyle = 'rgba(78,162,218,0.8)'; ctx.setLineDash([3 * dpr, 3 * dpr]);
+          ctx.beginPath(); ctx.moveTo(gp[0], gp[1]); ctx.lineTo(tp[0], tp[1]); ctx.stroke(); ctx.setLineDash([]);
+        }
+        ctx.fillStyle = '#4ea2da'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5 * dpr;
+        ctx.beginPath(); ctx.arc(gp[0], gp[1], 5 * dpr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.font = `bold ${Math.round(9 * dpr)}px 'Comfortaa', sans-serif`;
+        ctx.fillText('You', gp[0] + 8 * dpr, gp[1] + 3 * dpr);
+      }
+    }
+    ctx.restore();
+  }
+  groundKmAt(x, y) {
+    const fk = this.floorKm();
+    if (!fk || !this.zone) return 0;
+    const hx = this.zone.wKm / 2, hy = this.zone.hKm / 2;
+    const i = Math.floor((x + hx) / (2 * hx) * this.nx), j = Math.floor((hy - y) / (2 * hy) * this.ny);
+    if (i < 0 || i >= this.nx || j < 0 || j >= this.ny) return 0;
+    return fk[j * this.nx + i];
+  }
+  you() {
+    if (!this.zone || typeof _r3dUserLatLng !== 'function') return null;
+    const f = _r3dUserLatLng();
+    if (!f) return null;
+    return { x: (f.lng - this.zone.lng) * 111.32 * Math.cos(this.zone.lat * Math.PI / 180),
+             y: (f.lat - this.zone.lat) * 111.32 };
+  }
+
+  // -- Walking and VR: the same walker as the other 3D panels ----------------
+  walkStep(ts) {
+    const dt = Math.min(0.1, Math.max(0, (ts - this.walkLastTs) / 1000));
+    this.walkLastTs = ts;
+    if (!this.walk || !this.moveKeys.size) return;
+    const sp = this.span() * 0.25 * dt;
+    const wlk = this.walk, sy = Math.sin(wlk.yaw), cy = Math.cos(wlk.yaw);
+    let mx = 0, my = 0, mz = 0;
+    if (this.moveKeys.has('fwd')) { mx += sy; my += cy; }
+    if (this.moveKeys.has('back')) { mx -= sy; my -= cy; }
+    if (this.moveKeys.has('left')) { mx -= cy; my += sy; }
+    if (this.moveKeys.has('right')) { mx += cy; my -= sy; }
+    if (this.moveKeys.has('up')) mz += 0.3;
+    if (this.moveKeys.has('down')) mz -= 0.3;
+    const hx = this.zone.wKm / 2 * 1.8, hy = this.zone.hKm / 2 * 1.8;
+    wlk.x = Math.max(-hx, Math.min(hx, wlk.x + mx * sp));
+    wlk.y = Math.max(-hy, Math.min(hy, wlk.y + my * sp));
+    // Never below the ground (or the sea) under your feet.
+    const floor = Math.max(this.groundKmAt(wlk.x, wlk.y), this.spec.ocean && this.water ? 0 : -Infinity) * this.exag();
+    wlk.z = Math.max(floor + 0.05, Math.min(this.highKm() * this.exag() * 4 + 5, wlk.z + mz * sp));
+    this.interact();
+  }
+  walkToggle(force) {
+    const on = force !== undefined ? !!force : !this.walk;
+    const exag = this.exag();
+    if (on && !this.walk && this.zone) {
+      const halfX = this.zone.wKm / 2, halfY = this.zone.hKm / 2;
+      const me = this.you();
+      const lift = Math.max(0.3, (this.highKm() - this.lowKm()) * exag * 0.25);
+      if (me && Math.abs(me.x) <= halfX && Math.abs(me.y) <= halfY) {
+        const yaw = (Math.abs(me.x) + Math.abs(me.y) > 0.05) ? Math.atan2(-me.x, -me.y) : this.cam.yaw + Math.PI;
+        this.walk = { x: me.x, y: me.y, z: Math.max(0, this.groundKmAt(me.x, me.y)) * exag + lift, yaw, pitch: -0.15 };
+      } else {
+        const dd = Math.max(halfX, halfY) * 1.1;
+        const x = dd * Math.sin(this.cam.yaw), y = dd * Math.cos(this.cam.yaw);
+        this.walk = { x, y, z: this.highKm() * exag + lift, yaw: Math.atan2(-x, -y), pitch: -0.2 };
+      }
+    } else if (!on) {
+      this.walk = null;
+      this.moveKeys.clear();
+      if (this.vr) this.vrOff();
+    }
+    const btn = this.el('walk');
+    if (btn) btn.classList.toggle('on', !!this.walk);
+    const pad = this.el('pad');
+    if (pad) pad.style.display = this.walk ? '' : 'none';
+    this.panel.querySelectorAll('.r3d-cam-zoom, .r3d-cam-move')
+      .forEach(el => { el.style.display = this.walk ? 'none' : ''; });
+    this.interact();
+  }
+  onGyro(e) {
+    if (!this.walk || e.alpha == null || e.beta == null) return;
+    const rad = Math.PI / 180;
+    if (!this.gyroBase) this.gyroBase = { a: e.alpha, yaw0: this.walk.yaw };
+    let da = e.alpha - this.gyroBase.a;
+    if (da > 180) da -= 360; else if (da < -180) da += 360;
+    this.walk.yaw = this.gyroBase.yaw0 - da * rad;
+    this.walk.pitch = Math.max(-1.45, Math.min(1.45, (e.beta - 70) * rad));
+    this.interact();
+  }
+  vrOn() {
+    if (!this.walk) this.walkToggle(true);
+    this.vr = true;
+    this.panel.classList.add('fullscreen');
+    const btn = this.el('vr');
+    if (btn) btn.classList.add('on');
+    this.gyroBase = null;
+    const wire = () => window.addEventListener('deviceorientation', this.onGyro);
+    try {
+      if (typeof DeviceOrientationEvent !== 'undefined'
+          && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission().then(s => { if (s === 'granted') wire(); }).catch(() => {});
+      } else wire();
+    } catch (e) {}
+    this.dirty = true;
+  }
+  vrOff() {
+    this.vr = false;
+    try { window.removeEventListener('deviceorientation', this.onGyro); } catch (e) {}
+    this.gyroBase = null;
+    const btn = this.el('vr');
+    if (btn) btn.classList.remove('on');
+    this.dirty = true;
+  }
+
+  // -- The camera bars and the stretch ----------------------------------------
+  distMin() { return 0.5; }
+  distMax() { return Math.max(this.span(), (this.highKm() - this.lowKm()) * this.exag()) * 5; }
+  syncCamBars() {
+    const zoom = this.el('zoom');
+    if (zoom && document.activeElement !== zoom) {
+      const lo = this.distMin(), hi = Math.max(lo + 1, this.distMax());
+      zoom.value = String(Math.round(Math.max(0, Math.min(1, (hi - this.cam.dist) / (hi - lo))) * 1000));
+    }
+    const yaw = this.el('yaw');
+    if (yaw && document.activeElement !== yaw) {
+      let deg = (this.cam.yaw * 180 / Math.PI) % 360;
+      if (deg > 180) deg -= 360; else if (deg < -180) deg += 360;
+      yaw.value = String(Math.round(deg));
+    }
+  }
+  // The Height slider is a log scale from true scale to L3D_EXAG_MAX.
+  syncExag() {
+    const s = this.el('exag'), l = this.el('exag-label');
+    const e = this.exag();
+    if (s && document.activeElement !== s) s.value = String(Math.round(Math.log(e) / Math.log(L3D_EXAG_MAX) * 1000));
+    if (l) l.textContent = (e < 10 ? e.toFixed(1) : Math.round(e)) + '×' + (this.exagSel == null ? ' auto' : '');
+  }
+  interact() {
+    this.fast = true;
+    this.dirty = true;
+    clearTimeout(this.fastTimer);
+    this.fastTimer = setTimeout(() => { this.fast = false; this.dirty = true; }, 180);
+    this.syncCamBars();
+  }
+
+  wire() {
+    const panel = this.panel, cv = this.el('canvas');
+    const pointers = new Map();
+    let drag = null, pinch = null;
+    const pinchDist = () => { const p = [...pointers.values()]; return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y); };
+    cv.addEventListener('pointerdown', (e) => {
+      try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 1) {
+        drag = this.walk
+          ? { walk: true, yaw: this.walk.yaw, pitch: this.walk.pitch, x: e.clientX, y: e.clientY }
+          : { yaw: this.cam.yaw, pitch: this.cam.pitch, x: e.clientX, y: e.clientY };
+        cv.classList.add('r3d-dragging');
+      } else if (pointers.size === 2) { drag = null; pinch = { dist: pinchDist(), cam: this.cam.dist }; }
+    });
+    cv.addEventListener('pointermove', (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 1 && drag) {
+        const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+        if (drag.walk && this.walk) {
+          this.walk.yaw = drag.yaw + dx * 0.004;
+          this.walk.pitch = Math.max(-1.45, Math.min(1.45, drag.pitch + dy * 0.004));
+          this.interact();
+          return;
+        }
+        if (this.walk) return;
+        this.cam.yaw = drag.yaw + dx * 0.008;
+        this.cam.pitch = Math.max(L3D_PITCH_MIN, Math.min(L3D_PITCH_MAX, drag.pitch - dy * 0.008));
+        this.interact();
+      } else if (pointers.size === 2 && pinch && !this.walk) {
+        this.cam.dist = Math.max(this.distMin(), Math.min(this.distMax(), pinch.cam * pinch.dist / Math.max(1, pinchDist())));
+        this.interact();
+      }
+    });
+    const end = (e) => {
+      pointers.delete(e.pointerId);
+      if (!pointers.size) { drag = null; cv.classList.remove('r3d-dragging'); }
+      if (pointers.size < 2) pinch = null;
+    };
+    cv.addEventListener('pointerup', end);
+    cv.addEventListener('pointercancel', end);
+    cv.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (this.walk) {
+        const sp = -e.deltaY * this.span() * 0.0003;
+        const cp = Math.cos(this.walk.pitch);
+        this.walk.x += Math.sin(this.walk.yaw) * cp * sp;
+        this.walk.y += Math.cos(this.walk.yaw) * cp * sp;
+        this.walk.z = Math.max(0.05, this.walk.z + Math.sin(this.walk.pitch) * sp);
+        this.interact();
+        return;
+      }
+      this.cam.dist = Math.max(this.distMin(), Math.min(this.distMax(), this.cam.dist * (1 + e.deltaY * 0.0015)));
+      this.interact();
+    }, { passive: false });
+
+    const KEYS = { w: 'fwd', s: 'back', a: 'left', d: 'right', e: 'up', q: 'down',
+                   ArrowUp: 'fwd', ArrowDown: 'back', ArrowLeft: 'left', ArrowRight: 'right' };
+    document.addEventListener('keydown', (e) => {
+      if (!this.on || !this.walk) return;
+      const t = e.target;
+      if (t && /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) return;
+      const mv = KEYS[e.key] || KEYS[String(e.key).toLowerCase()];
+      if (!mv) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.moveKeys.add(mv);
+    }, true);
+    document.addEventListener('keyup', (e) => {
+      const mv = KEYS[e.key] || KEYS[String(e.key).toLowerCase()];
+      if (mv) this.moveKeys.delete(mv);
+    }, true);
+    const pad = this.el('pad');
+    if (pad) pad.querySelectorAll('button').forEach(b => {
+      const mv = b.dataset.mv;
+      b.addEventListener('pointerdown', (e) => { e.preventDefault(); this.moveKeys.add(mv); try { b.setPointerCapture(e.pointerId); } catch (err) {} });
+      const release = () => this.moveKeys.delete(mv);
+      b.addEventListener('pointerup', release);
+      b.addEventListener('pointercancel', release);
+    });
+
+    const full = this.el('full');
+    const fullOff = () => { panel.classList.remove('fullscreen'); if (full) full.title = 'Fullscreen'; };
+    if (full) full.onclick = () => {
+      const on = panel.classList.toggle('fullscreen');
+      full.title = on ? 'Exit fullscreen (Esc)' : 'Fullscreen';
+      this.dirty = true;
+    };
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && panel.classList.contains('fullscreen')) {
+        fullOff();
+        if (this.vr) this.vrOff();
+        this.dirty = true;
+      }
+    });
+    const x = this.el('x');
+    if (x) x.onclick = () => { fullOff(); this.close(); };
+    const big = this.el('big');
+    if (big) big.onclick = () => {
+      panel.classList.toggle('big');
+      big.title = panel.classList.contains('big') ? 'Shrink' : 'Expand';
+      this.dirty = true;
+    };
+    if (typeof _makeDraggable === 'function') {
+      try { _makeDraggable(panel, panel.querySelector('.xs-head')); } catch (e) {}
+    }
+    window.addEventListener('resize', () => { if (this.on) this.dirty = true; });
+    const walkBtn = this.el('walk');
+    if (walkBtn) walkBtn.onclick = () => this.walkToggle();
+    const vrBtn = this.el('vr');
+    if (vrBtn) vrBtn.onclick = () => { if (this.vr) this.vrOff(); else this.vrOn(); };
+    const waterBtn = this.el('water');
+    if (waterBtn) waterBtn.onclick = () => {
+      this.water = !this.water;
+      waterBtn.classList.toggle('on', this.water);
+      this.colours = null;
+      this.dirty = true;
+    };
+    const tmb = this.el('tm');
+    if (tmb) {
+      tmb.innerHTML = '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-clock></use></svg>';
+      tmb.onclick = (ev) => {
+        ev.stopPropagation();
+        if (this.vr) this.vrOff();
+        panel.classList.remove('fullscreen');
+        if (typeof _tmOpen === 'function') _tmOpen(this.spec.tm);
+      };
+    }
+    const info = this.el('info');
+    if (info) {
+      info.innerHTML = '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-info></use></svg>';
+      info.onclick = (ev) => {
+        ev.stopPropagation();
+        const text = (typeof TOOL_DESCRIPTIONS === 'object' && TOOL_DESCRIPTIONS['tool-l3d']) || 'Layer 3D.';
+        if (typeof _ovShowInfo === 'function') _ovShowInfo(text, info);
+      };
+    }
+    const zoomBar = this.el('zoom');
+    if (zoomBar) zoomBar.oninput = () => {
+      const lo = this.distMin(), hi = Math.max(lo + 1, this.distMax());
+      this.cam.dist = lo + (1 - Math.max(0, Math.min(1000, +zoomBar.value || 0)) / 1000) * (hi - lo);
+      this.interact();
+    };
+    const yawBar = this.el('yaw');
+    if (yawBar) yawBar.oninput = () => { this.cam.yaw = (+yawBar.value || 0) * Math.PI / 180; this.interact(); };
+    const ex = this.el('exag');
+    if (ex) ex.oninput = () => {
+      this.exagSel = Math.max(1, Math.min(L3D_EXAG_MAX, Math.pow(L3D_EXAG_MAX, (+ex.value || 0) / 1000)));
+      this.syncExag();
+      this.interact();
+    };
+    const exA = this.el('exag-auto');
+    if (exA) exA.onclick = (ev) => { ev.preventDefault(); this.exagSel = null; this.syncExag(); this.interact(); };
+    const mode = this.el('mode');
+    if (mode) mode.onchange = () => { this.mode = mode.value; this.dirty = true; };
+    const cut = this.el('cut');
+    if (cut) cut.onchange = () => { this.cutSide = cut.value; this.dirty = true; };
+    const cutPct = this.el('cutpct');
+    if (cutPct) cutPct.oninput = () => { this.cutPct = +cutPct.value || 0; this.interact(); };
+    const unit = this.el('unit');
+    if (unit) unit.onchange = () => { this.unit = unit.value; this.sayWhere(); this.dirty = true; };
+  }
+}
+
+function _l3dPanel(id) {
+  const spec = _l3dSpec(id);
+  if (!spec) return null;
+  if (!_l3dPanels[id]) _l3dPanels[id] = new Layer3DPanel(spec);
+  return _l3dPanels[id];
+}
+function _l3dOpenBounds(id, south, west, north, east) {
+  const p = _l3dPanel(id);
+  return p ? p.openBounds(south, west, north, east) : false;
+}
+// From the map menu: draw the box, then that layer's panel opens on it.
+function _cmLayer3DDraw(id) {
+  _cmClose();
+  _r3dDrawFor = 'l3d:' + id;
+  _r3dDrawStart();
+}
+// The map menu's rows: one per layer that is on. In a cross-layer split,
+// only the layer of the pane that was pressed, so the 3D view is of what
+// is actually showing there.
+function _l3dMenuItems(ic, cx, cy) {
+  let ids = L3D_LAYERS.filter(s => _l3dIsOn(s.id)).map(s => s.id);
+  const pane = (typeof _xcLayerAt === 'function' && cx != null) ? _xcLayerAt(cx, cy) : null;
+  if (pane) ids = ids.filter(id => id === pane);
+  return ids.map(id => {
+    const s = _l3dSpec(id);
+    return `<div class="cm-item" onclick="_cmLayer3DDraw('${id}')">${ic('terrain3d')} Draw a 3D ${s.noun} zone</div>`;
+  }).join('');
 }
 
 // -- COMPARING LAYERS: THE CROSS-LAYER SPLIT --------------------------------
