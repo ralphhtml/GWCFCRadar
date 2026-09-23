@@ -52,6 +52,7 @@ import calendar
 import datetime as dt
 import json
 import os
+import re
 import sys
 import time
 
@@ -138,7 +139,46 @@ SOURCES = {
         "variants": ["tchp", "d26"],
         "lag_days": 1,
     },
+    "hycom": {
+        "label": "Ocean depth (HYCOM)",
+        "note": "Water temperature below the surface, from the US Navy's HYCOM "
+                "global ocean analysis, at seven depths down to 1,000 m.",
+        "variants": [],                      # filled in below from HYCOM_DEPTHS
+        # The analysis for today is out by early morning UTC; asking for today
+        # and taking the time step nearest now is what "the latest" means.
+        "lag_days": 0,
+    },
 }
+
+# -- Below the surface: HYCOM ---------------------------------------------------
+#
+# Every product above is the SKIN of the ocean. A hurricane, a marine heatwave
+# or a cold eddy is a column, and what is under the surface decides whether a
+# storm that stirs the water up keeps finding warm water or churns up cold.
+# HYCOM (the US Navy's global ocean model, run daily with satellite and float
+# data folded in) carries temperature at forty depths; seven are enough to see
+# the structure, and the site's depth slider walks down them.
+#
+# The model grid is 1/12 of a degree, about 76 MB per depth for the globe.
+# It is read over OPeNDAP with a stride so only a quarter degree grid crosses
+# the network (about 4 MB a depth), which matches OISST's own resolution.
+HYCOM_URLS = [
+    "https://tds.hycom.org/thredds/dodsC/FMRC_ESPC-D-V02_t3z/FMRC_ESPC-D-V02_t3z_best.ncd",
+    "https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/t3z",
+]
+HYCOM_DEPTHS = [0, 50, 100, 200, 300, 500, 1000]
+HYCOM_STEP_DEG = 0.25
+# The span each depth is SHADED across, which is not the encode range. Water
+# at 1,000 m is 3 to 8 C nearly everywhere, and painted on the surface scale
+# it is one flat dark blue; stretched across its own span the structure shows.
+HYCOM_SHADE = {0: (-2.0, 32.0), 50: (-2.0, 31.0), 100: (-2.0, 30.0), 200: (-2.0, 28.0),
+               300: (-2.0, 24.0), 500: (-2.0, 18.0), 1000: (-2.0, 12.0)}
+HYCOM_VARIANTS = {
+    f"t{d}": {"label": "Surface" if d == 0 else f"{d} m deep", "unit": "C",
+              "range": (-4.0, 36.0), "depth": d, "shade": HYCOM_SHADE[d]}
+    for d in HYCOM_DEPTHS
+}
+SOURCES["hycom"]["variants"] = list(HYCOM_VARIANTS)
 AOML_VARIANTS = {
     # TCHP is the heat available to a hurricane above the 26 C isotherm, the
     # single most useful ocean number for intensity. 50 kJ/cm2 is roughly
@@ -157,6 +197,8 @@ AOML_URL = "https://cwcgom.aoml.noaa.gov/thredds/dodsC/TCHP/TCHP.nc"
 def variant_spec(source, variant):
     if source == "aoml":
         return AOML_VARIANTS.get(variant)
+    if source == "hycom":
+        return HYCOM_VARIANTS.get(variant)
     return VARIANTS.get(variant)
 
 
@@ -476,6 +518,97 @@ def build_aoml(variant):
     return arr, lats, lons
 
 
+def _time_index_nearest(tvar, now=None):
+    """The time step closest to now, from a CF time axis.
+
+    HYCOM's "best" series runs from the analysis days back to a week of
+    forecast ahead, so the LAST step is next week, not today. The units line
+    ("hours since 2000-01-01 00:00:00") is parsed here rather than through
+    cftime, which is one dependency fewer on the parsing server.
+    """
+    vals = np.asarray(tvar[:], dtype=np.float64).ravel()
+    if vals.size == 0:
+        raise RuntimeError("HYCOM time axis is empty")
+    units = str(getattr(tvar, "units", "hours since 2000-01-01 00:00:00"))
+    m = re.match(r"\s*(\w+)\s+since\s+(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?", units)
+    if not m:
+        return int(vals.size - 1)
+    unit = m.group(1).lower()
+    epoch = dt.datetime(int(m.group(2)), int(m.group(3)), int(m.group(4)),
+                        int(m.group(5) or 0), int(m.group(6) or 0), int(m.group(7) or 0))
+    now = now or dt.datetime.utcnow()
+    secs = (now - epoch).total_seconds()
+    per = {"seconds": 1, "second": 1, "minutes": 60, "minute": 60, "hours": 3600,
+           "hour": 3600, "days": 86400, "day": 86400}.get(unit, 3600)
+    return int(np.argmin(np.abs(vals - secs / per)))
+
+
+def read_hycom(nc, depth, now=None):
+    """One depth's temperature, nearest to now, on a quarter degree grid.
+
+    Variables are found by name rather than assumed, so a renamed axis on the
+    server is a lookup, not a crash.
+    """
+    names = {k.lower(): k for k in nc.variables}
+    vk = names.get("water_temp")
+    if vk is None:
+        cands = [k for lk, k in names.items() if "temp" in lk and getattr(nc.variables[k], "ndim", 0) == 4]
+        if not cands:
+            raise RuntimeError("HYCOM has no 4-D temperature variable")
+        vk = cands[0]
+    latk = names.get("lat", names.get("latitude"))
+    lonk = names.get("lon", names.get("longitude"))
+    dk = names.get("depth")
+    tk = names.get("time")
+    if not (latk and lonk and dk and tk):
+        raise RuntimeError("HYCOM is missing a lat, lon, depth or time axis")
+    lats = np.asarray(nc.variables[latk][:], dtype=np.float64)
+    lons = np.asarray(nc.variables[lonk][:], dtype=np.float64)
+    depths = np.asarray(nc.variables[dk][:], dtype=np.float64)
+    di = int(np.argmin(np.abs(depths - depth)))
+    ti = _time_index_nearest(nc.variables[tk], now)
+    sy = max(1, int(round(HYCOM_STEP_DEG / max(1e-6, abs(lats[1] - lats[0])))))
+    sx = max(1, int(round(HYCOM_STEP_DEG / max(1e-6, abs(lons[1] - lons[0])))))
+    var = nc.variables[vk]
+    arr = var[ti, di, ::sy, ::sx]
+    arr = np.ma.filled(np.ma.asarray(arr, dtype=np.float32), np.nan)
+    fill = getattr(var, "_FillValue", None)
+    if fill is not None:
+        arr = np.where(arr == np.float32(fill), np.nan, arr)
+    # Anything outside what sea water can be is a land or fill value that slipped
+    # through unmasked.
+    arr = np.where(np.isfinite(arr) & (arr > -5) & (arr < 40), arr, np.nan).astype(np.float32)
+    return arr, lats[::sy], lons[::sx], float(depths[di])
+
+
+def build_hycom(variant, open_ds=None, now=None):
+    spec = HYCOM_VARIANTS.get(variant)
+    if spec is None:
+        raise RuntimeError(f"no HYCOM variant {variant!r}")
+    if open_ds is None:
+        if Dataset is None:
+            raise RuntimeError("netCDF4 is not installed in this environment")
+        open_ds = Dataset
+    last = None
+    for url in HYCOM_URLS:
+        try:
+            nc = open_ds(url)
+        except Exception as e:                      # this address is down or gone
+            last = e
+            continue
+        try:
+            arr, lats, lons, got = read_hycom(nc, spec["depth"], now)
+        finally:
+            try:
+                nc.close()
+            except Exception:
+                pass
+        if abs(got - spec["depth"]) > max(5.0, spec["depth"] * 0.1):
+            raise RuntimeError(f"HYCOM's nearest depth to {spec['depth']} m is {got} m")
+        return arr, lats, lons
+    raise RuntimeError(f"HYCOM could not be reached: {last}")
+
+
 # -- Writing -----------------------------------------------------------------
 
 def out_path(source, variant, day):
@@ -687,6 +820,8 @@ def build_pass(only_source=None, only_variant=None, day=None, budget=None):
             try:
                 if source == "aoml":
                     vals, lats, lons = build_aoml(variant)
+                elif source == "hycom":
+                    vals, lats, lons = build_hycom(variant)
                 else:
                     vals, lats, lons = build_variant(source, variant, target, deadline)
             except Exception as e:
@@ -705,6 +840,10 @@ def build_pass(only_source=None, only_variant=None, day=None, budget=None):
             v.update({"label": spec["label"], "unit": spec["unit"],
                       "range": list(spec["range"]), "bounds": meta["bounds"],
                       "newest": meta["stamp"]})
+            # Depth products say which depth they are and the span to shade
+            # them across, so the browser needs no table of its own.
+            if "depth" in spec:
+                v.update({"depth": spec["depth"], "shade": list(spec["shade"])})
             built += 1
             log(f"sst: built {source}/{variant} {target} "
                 f"({meta['bytes'] // 1024} KB)")
@@ -730,7 +869,8 @@ def check():
     for source in SOURCES:
         d = newest_day(source)
         url = (oisst_urls(d)[0] if source == "oisst"
-               else crw_url(d) if source == "crw" else AOML_URL)
+               else crw_url(d) if source == "crw"
+               else HYCOM_URLS[0] + ".dds" if source == "hycom" else AOML_URL)
         try:
             r = HTTP.head(url, timeout=25, allow_redirects=True)
             state = f"HTTP {r.status_code}"

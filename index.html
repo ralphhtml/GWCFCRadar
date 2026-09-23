@@ -28314,7 +28314,23 @@ function _sstRampFor(source, variant) {
   return SST_RAMPS.anomaly;              // every anomaly and change variant
 }
 // A ramp the person has edited in Settings, if there is one.
+// Deep water sits in a narrow band (1,000 m is 3 to 8 C nearly everywhere),
+// so each depth stretches the temperature scale across its own span, which
+// the parsing server states in the manifest. The colours still mean warm and
+// cold; the Inspector keeps the real number.
+const SST_DEPTH_SHADE = { t0: [-2, 32], t50: [-2, 31], t100: [-2, 30], t200: [-2, 28],
+                          t300: [-2, 24], t500: [-2, 18], t1000: [-2, 12] };
+function _sstDepthRamp(variant) {
+  const base = _sstActiveRamp('oisst', 'actual');
+  const meta = _sstVariantMeta('hycom', variant);
+  const [lo, hi] = (meta && Array.isArray(meta.shade) && meta.shade.length === 2) ? meta.shade
+    : (SST_DEPTH_SHADE[variant] || [-2, 36]);
+  const b0 = base[0][0], b1 = base[base.length - 1][0];
+  const k = (hi - lo) / ((b1 - b0) || 1);
+  return base.map(([v, c]) => [lo + (v - b0) * k, c]);
+}
 function _sstActiveRamp(source, variant) {
+  if (source === 'hycom') return _sstDepthRamp(variant);
   const key = 'gwcfc_sst_ramp_' + (source === 'aoml' ? variant
     : variant === 'actual' ? 'actual' : 'anomaly');
   try {
@@ -28340,7 +28356,8 @@ function _sstToDisplay(v, source, variant) {
   // that is not explicitly Celsius means Fahrenheit is wanted, which is also
   // what makes the 'both' setting show a Fahrenheit number here.
   if (!_sstWantF()) return v;
-  return (variant === 'actual') ? (v * 9 / 5 + 32) : (v * 9 / 5);
+  // Every depth product is a real temperature, not a difference.
+  return (variant === 'actual' || source === 'hycom') ? (v * 9 / 5 + 32) : (v * 9 / 5);
 }
 function _sstWantF() {
   const t = (typeof _units !== 'undefined' && _units && _units.temp) || 'f';
@@ -28972,6 +28989,8 @@ const SST_SOURCE_ROW = [
     note: 'NOAA Coral Reef Watch, 5 km daily.' },
   { id: 'aoml', label: 'Ocean Heat', pi: true,
     note: 'AOML cyclone heat potential and 26 C isotherm depth.' },
+  { id: 'hycom', label: 'Ocean Depth', pi: true,
+    note: 'Water temperature below the surface (HYCOM), from the surface down to 1,000 m. The Ocean slider on the map picks the depth.' },
 ];
 const SST_VARIANT_ROW = {
   oisst: ['actual', 'anomaly', 'anomaly_gmr', 'anomaly_records',
@@ -28979,12 +28998,15 @@ const SST_VARIANT_ROW = {
   crw:   ['actual', 'anomaly', 'anomaly_gmr', 'anomaly_records',
           'change7d', 'change15d', 'change30d'],
   aoml:  ['tchp', 'd26'],
+  hycom: ['t0', 't50', 't100', 't200', 't300', 't500', 't1000'],
 };
 const SST_VARIANT_LABEL = {
   actual: 'Actual', anomaly: 'Anomaly', anomaly_gmr: 'Anom - Global',
   anomaly_records: 'Anomaly + Records', change7d: '7-Day Change',
   change15d: '15-Day Change', change30d: '30-Day Change',
   tchp: 'Cyclone Heat', d26: '26 °C Depth',
+  t0: 'Surface', t50: '50 m Deep', t100: '100 m Deep', t200: '200 m Deep',
+  t300: '300 m Deep', t500: '500 m Deep', t1000: '1,000 m Deep',
 };
 
 function toggleSstSourceSub() {
@@ -29264,21 +29286,40 @@ const LVL_STEPS = {
   temperature: ['sfc', 1000, 925, 850, 700, 500, 300, 250],
   wind: ['sfc', '80m', 925, 850, 700, 500, 300, 250],
   pressure: ['sfc', 850, 700, 500, 300, 250],
+  // Metres below the sea surface, from the parsing server's HYCOM depths.
+  // The only column that goes DOWN, so it is drawn surface at the top.
+  ocean: [0, 50, 100, 200, 300, 500, 1000],
 };
 const LVL_HEIGHT = { sfc: 'ground', '80m': '260 ft', 1000: '~360 ft', 925: '~2,500 ft', 850: '~5,000 ft',
   700: '~10,000 ft', 500: '~18,000 ft', 300: '~30,000 ft', 250: '~34,000 ft' };
-let _omLevel = { temperature: 'sfc', wind: 'sfc', pressure: 'sfc' };
+let _omLevel = { temperature: 'sfc', wind: 'sfc', pressure: 'sfc', ocean: 0 };
 (function _lvlRestore() {
   try {
     const v = JSON.parse(localStorage.getItem('gwcfc_om_level') || 'null') || {};
     Object.keys(LVL_STEPS).forEach(k => { if (LVL_STEPS[k].includes(v[k])) _omLevel[k] = v[k]; });
   } catch (e) {}
 })();
-function _lvlName(l) { return l === 'sfc' ? 'Surface' : l === '80m' ? '80 m' : l + ' mb'; }
+function _lvlName(l, layer) {
+  if (layer === 'ocean') return l === 0 ? 'the sea surface' : `${l} m deep`;
+  return l === 'sfc' ? 'Surface' : l === '80m' ? '80 m' : l + ' mb';
+}
+// The small line under a column, and each notch's own label.
+function _lvlHeight(l, layer) {
+  if (layer === 'ocean') return l === 0 ? 'sea surface' : `${Math.round(l * 3.281).toLocaleString('en-US')} ft down`;
+  return LVL_HEIGHT[l];
+}
+function _lvlNotch(l, layer) {
+  if (layer === 'ocean') return l === 0 ? 'Sfc' : `${l} m`;
+  return l === 'sfc' ? 'Sfc' : l === '80m' ? '80 m' : String(l);
+}
 function _lvlIsPl(l) { return typeof l === 'number'; }
 // The level a layer is really reading. Feels Like only exists at the ground
 // and the Jet Stream product is fixed at 250 mb, so those ignore the slider.
 function _lvlFor(layer) {
+  if (layer === 'ocean') {
+    const m = typeof _sstSource !== 'undefined' && _sstSource === 'hycom' && /^t(\d+)$/.exec(_sstVariant || '');
+    return m ? Number(m[1]) : (_omLevel.ocean || 0);
+  }
   if (layer === 'temperature' && _temperatureProduct === 'feels-like') return 'sfc';
   if (layer === 'wind' && _windProduct === 'wind-jet') return 250;
   if (layer === 'pressure' && _pressureProduct === 'surface') return 'sfc';
@@ -29299,6 +29340,8 @@ const LVL_LAYERS = [
   { id: 'temperature', title: 'Temp', on: () => temperatureActive, load: () => window._loadTemperatureLayer() },
   { id: 'wind', title: 'Wind', on: () => windActive, load: () => window._loadWindLayer() },
   { id: 'pressure', title: 'Heights', on: () => pressureActive, load: () => window._loadPressureLayer() },
+  { id: 'ocean', title: 'Ocean', on: () => typeof _sstOn !== 'undefined' && _sstOn && _sstSource === 'hycom',
+    load: () => _sstEnable('hycom', 't' + _omLevel.ocean) },
 ];
 let _lvlSig = '';
 function _lvlSignature() {
@@ -29322,10 +29365,12 @@ function _lvlRender(force) {
   }
   dock.innerHTML = on.map(l => {
     const cur = _lvlFor(l.id), locked = _lvlLocked(l.id);
-    const notches = LVL_STEPS[l.id].slice().reverse().map(v =>
+    // Up for the air (top is the jet stream), down for the sea (top is the surface).
+    const steps = l.id === 'ocean' ? LVL_STEPS[l.id] : LVL_STEPS[l.id].slice().reverse();
+    const notches = steps.map(v =>
       `<button type="button" class="lvl-notch${v === cur ? ' active' : ''}" data-layer="${l.id}" data-lvl="${v}"`
-      + ` title="${_lvlName(v)} (${LVL_HEIGHT[v]})">${v === 'sfc' ? 'Sfc' : v === '80m' ? '80 m' : v}</button>`).join('');
-    const why = locked ? (l.id === 'wind' ? 'Jet Stream is 250 mb' : l.id === 'pressure' ? 'Surface only' : 'Ground only') : LVL_HEIGHT[cur];
+      + ` title="${_lvlName(v, l.id)} (${_lvlHeight(v, l.id)})">${_lvlNotch(v, l.id)}</button>`).join('');
+    const why = locked ? (l.id === 'wind' ? 'Jet Stream is 250 mb' : l.id === 'pressure' ? 'Surface only' : 'Ground only') : _lvlHeight(cur, l.id);
     return `<div class="lvl-col${locked ? ' locked' : ''}" data-layer="${l.id}"><div class="lvl-title">${l.title}</div>`
       + `<div class="lvl-track">${notches}</div><div class="lvl-ft">${why}</div></div>`;
   }).join('');
@@ -29342,12 +29387,12 @@ function _lvlRender(force) {
 function _lvlSet(layer, v) {
   const def = LVL_LAYERS.find(l => l.id === layer);
   if (!def || !LVL_STEPS[layer].includes(v) || _lvlLocked(layer)) return;
-  if (_omLevel[layer] === v) return;
+  if (_lvlFor(layer) === v) return;
   _omLevel[layer] = v;
   try { localStorage.setItem('gwcfc_om_level', JSON.stringify(_omLevel)); } catch (e) {}
   _lvlRender(true);
   if (def.on()) {
-    if (typeof showToast === 'function') showToast(`${def.title} at ${_lvlName(v)} (${LVL_HEIGHT[v]})`, 1800);
+    if (typeof showToast === 'function') showToast(`${def.title} at ${_lvlName(v, layer)} (${_lvlHeight(v, layer)})`, 1800);
     def.load();
   }
 }
@@ -32544,6 +32589,7 @@ const LAYER_DESCRIPTIONS = {
   'sst-openmeteo': 'The live global sea-surface temperature grid from Open-Meteo. Needs nothing but the internet, so this is the source that still works when the parsing server is off, but it is today\'s temperature only: no anomaly, no records, no history to compare against.',
   'sst-oisst':     'NOAA\'s OISST v2.1: a quarter-degree daily analysis that blends satellite and ship and buoy measurements, running unbroken back to 1982. That length is the point. Because the parsing server holds the whole record it can tell you not just how warm the water is but how warm it is for the date, and whether it has ever been this warm here before.',
   'sst-crw':       'NOAA Coral Reef Watch at 5 km: the same idea as OISST but four times finer, built for watching individual reefs rather than ocean basins. Use this when you care about a specific patch of coast or a small sea, and OISST when you want the big picture.',
+  'sst-hycom':     'Water temperature below the surface, from the US Navy\'s HYCOM global ocean analysis, built on the parsing server once a day at seven depths. Pick one here, or walk down them with the Ocean column of the height slider on the map. Warm eddies, cold upwelling along coasts, and the depth of the warm layer a hurricane can draw on all show up here and nowhere on a surface map. Each depth is coloured across its own span, because water at 1,000 m barely changes; the Inspector reads the real temperature.',
   'sst-aoml':      'NOAA AOML\'s ocean heat fields, which measure depth rather than skin temperature. A hurricane stirs the ocean as it crosses, so warm water only a few metres deep gets churned away and the storm cools its own fuel supply. These two fields say how much warm water is actually down there.',
   // The variant row: what is being drawn from the chosen source.
   'sst-var-actual':          'The sea-surface temperature itself, in whatever unit the app is set to.',
@@ -32554,6 +32600,13 @@ const LAYER_DESCRIPTIONS = {
   'sst-var-change15d':       'The same 15 days back. A slower window, so it shows the ocean\'s general drift rather than the effect of one passing storm.',
   'sst-var-change30d':       'The same 30 days back, which is long enough to show a marine heatwave building or breaking down.',
   'sst-var-tchp':            'Tropical Cyclone Heat Potential, in kilojoules per square centimetre: the total heat stored between the surface and the 26 C depth, which is the layer a hurricane can actually reach. Above roughly 60 is enough to support a strong storm and above 100 is the kind of water rapid intensification happens over.',
+  'sst-var-t0':              'The top layer of the ocean in the HYCOM analysis. Close to what the satellite products show, but from the same model as the depths below it, so the column reads consistently.',
+  'sst-var-t50':             'Water temperature 50 m (about 160 ft) down. Still inside the mixed layer in most of the tropics: if it is as warm as the surface, a storm stirring the top of the ocean keeps finding warm water.',
+  'sst-var-t100':            'Water temperature 100 m (about 330 ft) down, near the bottom of the warm layer in much of the tropics. Where this is still above 26 C the ocean has deep heat for a hurricane to draw on.',
+  'sst-var-t200':            'Water temperature 200 m (about 660 ft) down, below the thermocline in most places. Warm-core eddies and the Loop Current stand out sharply here, because they carry warm water far deeper than the water around them.',
+  'sst-var-t300':            'Water temperature 300 m (about 1,000 ft) down. Currents and eddies that barely show at the surface are clear here.',
+  'sst-var-t500':            'Water temperature 500 m (about 1,640 ft) down, in the permanent thermocline. Changes slowly; the big current systems and the deep side of eddies are what move.',
+  'sst-var-t1000':           'Water temperature 1,000 m (about 3,280 ft) down, near the bottom of the thermocline. Only a few degrees across most of the world, so it is coloured across its own narrow span to show the structure.',
   'sst-var-d26':             'How deep you have to go before the water drops below 26 C, the temperature a tropical cyclone needs. A deep layer means the storm can churn the ocean and still find warm water underneath; a shallow one means it cools its own fuel and weakens.',
   'us-aqi':       'The overall US Air Quality Index (0-500), the worst score among all measured pollutants at that point. Green is Good, yellow/orange is Moderate/Unhealthy for sensitive groups, red and up is Unhealthy to Hazardous.',
   pm25:           'Fine particulate matter (PM2.5, µg/m³), particles small enough to get deep into lungs, colored using the EPA\'s PM2.5 health breakpoints. A major driver of wildfire smoke haze.',
@@ -43200,7 +43253,7 @@ function _inspSstRow(center) {
              color: 'rgba(255,255,255,0.95)' };
   }
   const v = _sstToDisplay(raw, _sstSource, _sstVariant);
-  const sign = (_sstSource !== 'aoml' && _sstVariant !== 'actual' && v > 0) ? '+' : '';
+  const sign = (_sstSource !== 'aoml' && _sstSource !== 'hycom' && _sstVariant !== 'actual' && v > 0) ? '+' : '';
   return {
     label: `${src.label || _sstSource} ${label}`,
     value: `${sign}${v.toFixed(1)}`,
@@ -69108,6 +69161,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-x', date: 'Sep 23, 2026',
+    text: 'New: Ocean Depth, under Waves > Sea Surf. Temp. It shows the water temperature below the surface, from the US Navy\'s HYCOM ocean analysis, built on the parsing server. An Ocean column appears on the height slider: step down from the surface through 50, 100, 200, 300 and 500 m to 1,000 m to see warm eddies, cold upwelling and how deep the warm water under a hurricane really goes. Each depth gets its own colour span, and the Inspector reads the real temperature.' },
   { id: '2026-09-23-w', date: 'Sep 23, 2026',
     text: 'Alerts are much lighter on the map, which should help iPhones that were freezing or crashing while panning and zooming on busy weather days. Advisories drawn from forecast zones used to carry the zone\'s full surveyed outline, thousands of points each, and every alert was built twice (once for its black edge, once for its colour). Zone outlines are now smoothed to within a few hundred metres, each alert is one shape with its black edge drawn underneath, and flashing warnings pause while you pan or zoom. In testing, a heavy advisory day draws about 30 times faster.' },
   { id: '2026-09-23-v', date: 'Sep 23, 2026',
