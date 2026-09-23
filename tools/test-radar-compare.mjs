@@ -287,7 +287,10 @@ console.log('\n4b. the rotate button transposes the split, and back');
     _rcGridCycle();   // quad -> octo
     _rcGridCycle();   // octo -> double (1 slot fits)
     const btn = document.getElementById('rc-rotate-btn');
-    const shownWhileComparing = getComputedStyle(btn).display !== 'none';
+    // The rotate control lives in the Compare tool's menu bar now: live
+    // (not greyed out) as soon as a split is running.
+    _cmpToolbarRefresh();
+    const shownWhileComparing = !document.getElementById('cmp-rotate').disabled;
     const slot = _rcSlots[0];
     const pane = map.getPane('rc-' + slot.id);
     const before = {
@@ -317,7 +320,7 @@ console.log('\n4b. the rotate button transposes the split, and back');
     await new Promise(res => setTimeout(res, 50));
     return { shownWhileComparing, before, after, restored, viaHandle };
   });
-  ok('the rotate button is on screen once a comparison is running',
+  ok('the rotate control in the Compare menu is live once a comparison is running',
      r.shownWhileComparing, JSON.stringify(r.shownWhileComparing));
   ok('side by side to start: a 1x2 with one vertical line',
      r.before.grid.rows === 1 && r.before.grid.cols === 2
@@ -739,7 +742,7 @@ console.log('\n13. a pane can pick its OWN product, and its own Level 2/Level 3 
 console.log('\n14. a corner label slides out from under the page furniture instead of hiding');
 {
   ok('the dodge is shared and checks the real on-screen rectangles',
-     /const _CMP_LABEL_BLOCKERS = \['logo-wrap', 'top-search-bar', 'load-status'\];/.test(PAGE)
+     /const _CMP_LABEL_BLOCKERS = \['logo-wrap', 'top-search-bar', 'load-status', 'lqm-profile-btn'\];/.test(PAGE)
      && /function _cmpDodgeLabel\(el\) \{/.test(PAGE)
      && (PAGE.match(/_cmpDodgeLabel\(slot\.labelEl\);/g) || []).length === 2);
   const r = await p.evaluate(async () => {

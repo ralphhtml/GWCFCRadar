@@ -6644,7 +6644,37 @@ body.lite-mode #export-modal { display: none !important; }
    handles. The containers clip it to the map. */
 .rc-divider.angled { top: -150vmax; bottom: -150vmax; }
 .rc-divider.horizontal.angled { top: auto; bottom: auto; left: -150vmax; right: -150vmax; }
-#rc-dividers, #sc-dividers { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 650; }
+#rc-dividers, #sc-dividers, #xc-dividers { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 650; }
+/* The rotate, peek and split-size buttons that used to float in the map's
+   corner beside each comparison live in the Compare tool's menu bar now. */
+#rc-rotate-btn, #sc-rotate-btn, #rc-peek-btn, #sc-peek-btn, .cmp-grid-btn { display: none !important; }
+#xc-dividers.cmp-peeking .rc-divider { opacity: 0; pointer-events: none; }
+#cmp-toolbar {
+  display: none; position: absolute;
+  bottom: calc(90px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%);
+  z-index: 1100; background: rgb(14,18,24); border: 1px solid rgba(255,204,0,0.35); border-radius: 12px;
+  padding: 6px 10px; align-items: center; gap: 6px; box-shadow: 0 4px 20px rgba(0,0,0,0.7);
+  white-space: nowrap; flex-wrap: nowrap; user-select: none;
+  max-width: calc(100vw - 16px); overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+#cmp-toolbar.visible { display: flex; }
+#cmp-toolbar .cmp-wide { width: auto; padding: 0 9px; font-size: 10px; letter-spacing: .02em; }
+#cmp-toolbar .ptb-btn.active { background: rgba(232,184,0,0.22); border-color: rgba(232,184,0,0.7); color: #fff; }
+#cmp-toolbar .ptb-btn:disabled { opacity: 0.35; cursor: default; }
+#cmp-toolbar .cmp-row { display: flex; align-items: center; gap: 6px; }
+#cmp-cells { display: flex; gap: 6px; }
+#cmp-cells select {
+  height: 30px; border-radius: 8px; background: rgba(255,255,255,0.06); color: #fff;
+  border: 1px solid rgba(255,255,255,0.18); font-size: 10px; padding: 0 6px;
+}
+#cmp-cells option { background: #0c0c0f; }
+#cmp-close {
+  width:30px; height:30px; border-radius:8px; background:transparent;
+  border:1px solid rgba(255,255,255,0.12); color:rgba(255,255,255,0.5); cursor:pointer;
+  font-size:16px; line-height:1; flex-shrink:0;
+}
+#cmp-close:hover { background:rgba(255,60,60,0.25); border-color:rgba(255,60,60,0.6); color:#fff; }
+body.clean-mode #cmp-toolbar { opacity: 0 !important; pointer-events: none !important; }
 /* Peeking: the seam itself goes invisible for ten seconds so nothing is
    drawn across the two pictures while checking they line up. Scoped to
    whichever container actually got the class, so peeking one comparison
@@ -11100,6 +11130,9 @@ body.clean-mode #clean-hint { opacity: 1; }
     <div id="sev-cmp-labels"></div>
 
     <!-- Radar site comparison: the same strips, a second set of them -->
+    <!-- Cross-layer comparison: a different map layer in each pane -->
+    <div id="xc-dividers"></div>
+    <div id="xc-labels"></div>
     <div id="rc-dividers"></div>
     <div id="rc-labels"></div>
     <button type="button" id="rc-rotate-btn" title="Rotate the split"
@@ -11672,6 +11705,38 @@ body.clean-mode #clean-hint { opacity: 1; }
 </div>
 <div id="ptb-stats"></div>
 
+<!-- The Compare tool's menu bar, built like the Polygon tool's. -->
+<div id="cmp-toolbar">
+  <div class="dtb-drag" id="cmp-drag" title="Drag to move">&#10303;</div>
+  <span class="dtb-label">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" width="13" height="13"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 2v20"/></svg>
+    COMPARE
+  </span>
+  <div class="dtb-sep"></div>
+  <button class="ptb-btn cmp-wide" id="cmp-mode-same" onclick="_cmpToolSame()" title="Same layer: more of one layer side by side, radars or satellite pictures">Same layer</button>
+  <button class="ptb-btn cmp-wide" id="cmp-mode-cross" onclick="_cmpToolCross()" title="Cross layer: a different layer in each pane, like radar beside satellite">Cross layer</button>
+  <div class="dtb-sep"></div>
+  <div id="cmp-same-row" class="cmp-row">
+    <button class="ptb-btn cmp-wide" id="cmp-radar" onclick="_cmpToolRadar()" title="Radar beside radar: starts from the radar on screen; tap more radar pills to add panes">Radar</button>
+    <button class="ptb-btn cmp-wide" id="cmp-sat" onclick="_cmpToolSat()" title="Satellite beside satellite: tap more products or sectors to add panes">Satellite</button>
+  </div>
+  <div id="cmp-cross-row" class="cmp-row" style="display:none;">
+    <div id="cmp-cells"></div>
+  </div>
+  <div class="dtb-sep"></div>
+  <button class="ptb-btn cmp-wide" id="cmp-grid" onclick="_cmpToolGrid()" title="Cycle the split: double, quad, octo">Double</button>
+  <button class="ptb-btn" id="cmp-rotate" onclick="_cmpToolRotate()" title="Rotate the whole split: side by side or stacked">
+    <svg class=svgi width=1em height=1em><use href=#ic-swap></use></svg>
+  </button>
+  <button class="ptb-btn" id="cmp-peek" onclick="_cmpToolPeek()" title="Hide the split lines for 10 seconds">
+    <svg class=svgi width=1em height=1em><use href=#ic-eye></use></svg>
+  </button>
+  <button class="ptb-btn" id="cmp-end" onclick="_cmpToolEnd()" title="End the comparison">
+    <svg class=svgi width=1em height=1em><use href=#ic-stop></use></svg>
+  </button>
+  <button id="cmp-close" onclick="deactivateTool()" title="Close the compare menu (the comparison stays)"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-close></use></svg></button>
+</div>
+
 <!-- RADAR COMPASS: a full-screen dial that turns with the phone's own
      compass sensor and paints a wedge of the real radar picture toward
      wherever it is pointed. Tilting the phone steps through range rings. -->
@@ -11858,6 +11923,16 @@ body.clean-mode #clean-hint { opacity: 1; }
       <line x1="12" y1="19" x2="12" y2="23"/>
       <line x1="1" y1="12" x2="5" y2="12"/>
       <line x1="19" y1="12" x2="23" y2="12"/>
+    </svg>
+  </button>
+
+  <!-- Compare , every comparison in one place: radar beside radar,
+       satellite beside satellite, or a different layer in each pane -->
+  <button class="tool-btn" id="tool-compare" onclick="toggleCompareTool()" title="Compare , split the map: radars side by side, satellite pictures side by side, or a different layer in each pane">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="4" width="18" height="16" rx="2"/>
+      <path d="M12 2v20"/>
+      <path d="M7.5 10l-2 2 2 2M16.5 10l2 2-2 2"/>
     </svg>
   </button>
 
@@ -33992,7 +34067,7 @@ function _stripPctFromClientX(clientX, splits, idx, axis, clientY) {
 // than teach the layout about every such element, the label is slid
 // straight down until it clears whatever it actually overlaps, checked
 // against the real on-screen rectangles. Shared by both comparisons.
-const _CMP_LABEL_BLOCKERS = ['logo-wrap', 'top-search-bar', 'load-status'];
+const _CMP_LABEL_BLOCKERS = ['logo-wrap', 'top-search-bar', 'load-status', 'lqm-profile-btn'];
 function _cmpDodgeLabel(el) {
   if (!el) return;
   for (let pass = 0; pass < 3; pass++) {
@@ -40081,6 +40156,7 @@ function deactivateTool() {
   _showHint('');
   map.dragging.enable();
   _polyShowToolbar(false);
+  if (typeof _cmpToolbarShow === 'function') _cmpToolbarShow(false);
   _polyEraseMode = false;
   map.getContainer().style.cursor = '';
   if (_polyPreview)  { map.removeLayer(_polyPreview);  _polyPreview  = null; }
@@ -42533,15 +42609,17 @@ function _inspRowsAt(center, cx, cy, light) {
   const _radarUp = (typeof activeLayers !== 'undefined' && activeLayers.nexrad)
     || (typeof _l3Overlay !== 'undefined' && _l3Overlay && map.hasLayer(_l3Overlay))
     || (typeof _prOn !== 'undefined' && _prOn);
-  if (_radarUp)                                                      rows.push(_inspRadarRow(center, cx, cy));
-  if (!light && typeof activeLayers !== 'undefined' && activeLayers.satellite) rows.push(_inspSatelliteRow(cx, cy));
+  // In a cross-layer split, a layer only reads where its own pane is.
+  const xcHides = (id) => typeof _xcHidesAt === 'function' && _xcHidesAt(id, cx, cy);
+  if (_radarUp && !xcHides('radar'))                                  rows.push(_inspRadarRow(center, cx, cy));
+  if (!light && typeof activeLayers !== 'undefined' && activeLayers.satellite && !xcHides('satellite')) rows.push(_inspSatelliteRow(cx, cy));
   if (typeof wavesActive !== 'undefined' && wavesActive)             rows.push(_inspWavesRow(center));
   if (typeof airActive !== 'undefined' && airActive)                 rows.push(_inspAirRow(center));
   if (typeof windActive !== 'undefined' && windActive)               rows.push(_inspWindRow(center));
   if (typeof temperatureActive !== 'undefined' && temperatureActive) rows.push(_inspTemperatureRow(center));
   if (typeof pressureActive !== 'undefined' && pressureActive)       rows.push(_inspPressureRow(center));
   if (_sevOverlayLayer)                                               rows.push(_inspSevEnsRow(center));
-  if (!light && _iemModelLayer)                                       rows.push(_inspModelsRow(cx, cy));
+  if (!light && _iemModelLayer && !xcHides('models'))                 rows.push(_inspModelsRow(cx, cy));
   // Kept in light mode: model charts are the reading people want on a city
   // name, and the pixel read behind it is cheap now the canvas is cached.
   if (typeof _hdOn !== 'undefined' && _hdOn && _hdLayer)              rows.push(_inspHdRow(cx, cy));
@@ -50357,7 +50435,8 @@ function _cmpCellGeometry(row, col, colSplits, rowSplits, colRots, rowRots) {
   const polygon = big.length >= 3
     ? 'polygon(' + big.map(([x, y]) => `${(x - pos.x).toFixed(1)}px ${(y - pos.y).toFixed(1)}px`).join(', ') + ')'
     : 'polygon(0px 0px, 0px 0px, 0px 0px)';
-  return { polygon, leftView: lx, topView: ly, visible: seen.length >= 3 };
+  const pts = big.map(([x, y]) => [x - pos.x, y - pos.y]);
+  return { polygon, pts, leftView: lx, topView: ly, visible: seen.length >= 3 };
 }
 // Where one line's element sits and how it is turned. An unturned line is
 // exactly as before; a turned one is made long enough to cross the whole
@@ -61319,6 +61398,9 @@ function _presenceSummary() {
       const st = (typeof _r3dStation === 'string' && _r3dStation)
         ? ' (' + _r3dStation.toUpperCase() + ')' : '';
       details = 'Radar 3D: orbiting a storm volume' + st;
+    } else if (typeof _xcOn !== 'undefined' && _xcOn) {
+      const names = [...new Set(_xcCells)].map(id => (_xcLayer(id) || {}).label).filter(Boolean);
+      details = 'Comparing layers: ' + names.join(' vs ');
     } else if (typeof _s3dOn !== 'undefined' && _s3dOn) {
       details = 'Satellite 3D: cloud tops in relief'
         + (_s3dRadarOn && _s3dRadar ? ' with radar ' + _s3dRadar.site.toUpperCase() : '');
@@ -68045,6 +68127,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-j', date: 'Sep 23, 2026',
+    text: 'Compare moved to the tool rail. The new Compare button opens a menu bar like the Polygon tool\'s, with every comparison in one place. Same layer is radar beside radar or satellite beside satellite, as before. Cross layer is new: a different layer in each pane, like radar on one side and satellite on the other, or a model chart beside the radar, split along the same draggable, turnable lines, up to eight panes, each with its own picker. Split size, rotate, peek and end live in the bar now instead of floating on the map, and the Inspector reads whichever layer the pane under it shows.' },
   { id: '2026-09-23-i', date: 'Sep 23, 2026',
     text: 'Fixed the satellite Time Machine drawing its pictures in the wrong place. Every satellite picture that comes from the parsing server (the Time Machine\'s archive scans, the composites like Air Mass and True Colour, and the global mosaic) was stretched the wrong way, so clouds sat about 2 degrees (over 200 km) south of where they really were over the US, and further off on the Full Disk. They now line up with the coastlines and borders. Satellite 3D follows the Time Machine too: a clock button in the panel opens it, a jump reloads the zone at that moment, going back to live brings it back, and a past moment\'s plain channel is taken from NOAA\'s own archive of that exact scan.' },
   { id: '2026-09-23-h', date: 'Sep 23, 2026',
@@ -83935,6 +84019,354 @@ function _s3dSyncLabels() {
   const s = _s3dEl('s3d-smooth-label');
   if (s) s.textContent = _s3dSmooth > 0 ? _s3dSmooth + '%' : 'Off';
 }
+
+// -- COMPARING LAYERS: THE CROSS-LAYER SPLIT --------------------------------
+// The radar and satellite comparisons put more of ONE layer beside itself:
+// another radar, another satellite picture. This puts DIFFERENT layers side
+// by side instead: radar in one pane, satellite in the next, a model chart
+// in a third. Nothing is fetched again. Every layer is already drawing into
+// its own pane of the map (MAP_STACK_LAYERS), so each one is simply cut
+// down to the panes it was given, along the same shared, draggable,
+// turnable split lines the other comparisons use. A layer nobody gave a
+// pane to is left exactly as it was.
+const XC_LAYERS = [
+  { id: 'radar', label: 'Radar', panes: ['radarPane'],
+    on: () => !!(activeLayers.nexrad || (typeof _prOn !== 'undefined' && _prOn)
+      || (typeof _l3Overlay !== 'undefined' && _l3Overlay && map.hasLayer(_l3Overlay))) },
+  { id: 'satellite', label: 'Satellite', panes: ['satPhotoPane'], sat: true,
+    on: () => !!activeLayers.satellite },
+  { id: 'models', label: 'Model charts', panes: ['modelPane'],
+    on: () => !!((typeof _iemModelLayer !== 'undefined' && _iemModelLayer)
+      || (typeof _hdOn !== 'undefined' && _hdOn)) },
+  { id: 'waves', label: 'Waves', panes: ['wavesPane'], on: () => typeof wavesActive !== 'undefined' && !!wavesActive },
+  { id: 'air', label: 'Air', panes: ['airPane'], on: () => typeof airActive !== 'undefined' && !!airActive },
+  { id: 'wind', label: 'Wind', panes: ['windPane'], on: () => typeof windActive !== 'undefined' && !!windActive },
+  { id: 'temperature', label: 'Temperature', panes: ['temperaturePane'],
+    on: () => typeof temperatureActive !== 'undefined' && !!temperatureActive },
+  { id: 'pressure', label: 'Pressure', panes: ['pressurePane'],
+    on: () => typeof pressureActive !== 'undefined' && !!pressureActive },
+  { id: 'ocean', label: 'Sea temperature', panes: ['sstPane'], on: () => typeof _sstOn !== 'undefined' && !!_sstOn },
+];
+let _xcOn = false;
+let _xcGrid = null;                     // {rows, cols}
+let _xcColSplits = [], _xcRowSplits = [], _xcColRots = [], _xcRowRots = [];
+let _xcCells = [];                      // a layer id per cell, cell 0 top-left
+let _xcGridDrag = null;
+let _xcDividerEls = { cols: [], rows: [] };
+let _xcLabelEls = [];
+let _xcTimer = null;
+const _xcClipped = new Set();           // every element this has clipped, to put back
+
+function _xcLayer(id) { return XC_LAYERS.find(l => l.id === id) || null; }
+function _xcIsOn(id) { const l = _xcLayer(id); try { return !!(l && l.on()); } catch (e) { return false; } }
+// The layers a new split starts with: whatever is on, then radar and
+// satellite (the pairing people want most), then the rest, no repeats.
+function _xcDefaults(n, keep) {
+  const on = XC_LAYERS.filter(l => _xcIsOn(l.id)).map(l => l.id);
+  const order = [...(keep || []), ...on, 'radar', 'satellite', 'models', ...XC_LAYERS.map(l => l.id)];
+  const out = [];
+  order.forEach(id => { if (id && !out.includes(id) && out.length < n) out.push(id); });
+  while (out.length < n) out.push(XC_LAYERS[out.length % XC_LAYERS.length].id);
+  return out;
+}
+function _xcSetGrid(rows, cols) {
+  _xcGrid = { rows, cols };
+  _xcColSplits = Array.from({ length: cols - 1 }, (_, i) => Math.round(10000 * (i + 1) / cols) / 100);
+  _xcRowSplits = Array.from({ length: rows - 1 }, (_, i) => Math.round(10000 * (i + 1) / rows) / 100);
+  _xcColRots = _xcColSplits.map(() => 0);
+  _xcRowRots = _xcRowSplits.map(() => 0);
+  _xcCells = _xcDefaults(rows * cols, _xcCells.slice(0, rows * cols));
+}
+function _xcStart() {
+  if (_xcOn) return;
+  // One comparison family on the map at a time: they would clip each other.
+  if (typeof _rcOn !== 'undefined' && _rcOn) _rcOff();
+  if (typeof _scOn !== 'undefined' && _scOn) _scOff();
+  _xcOn = true;
+  _xcCells = [];
+  _xcSetGrid(1, 2);
+  map.on('move zoom resize zoomend viewreset', _xcUpdateClips);
+  map.on('layeradd', _xcSoon);
+  // Layers rebuild their own tiles and pictures (a new satellite frame, a
+  // playback step), and each new one must be cut too: a light sweep.
+  _xcTimer = setInterval(_xcUpdateClips, 700);
+  _xcRefreshDOM();
+  _xcUpdateClips();
+  _cmpToolbarRefresh();
+}
+let _xcSoonT = 0;
+function _xcSoon() { clearTimeout(_xcSoonT); _xcSoonT = setTimeout(_xcUpdateClips, 30); }
+function _xcOff() {
+  if (!_xcOn) return;
+  _xcOn = false;
+  clearInterval(_xcTimer); _xcTimer = null;
+  try { map.off('move zoom resize zoomend viewreset', _xcUpdateClips); map.off('layeradd', _xcSoon); } catch (e) {}
+  _xcClipped.forEach(el => { try { el.style.clipPath = ''; } catch (e) {} });
+  _xcClipped.clear();
+  _xcGrid = null; _xcColSplits = []; _xcRowSplits = []; _xcColRots = []; _xcRowRots = []; _xcCells = [];
+  _xcGridDrag = null; _xcDividerEls = { cols: [], rows: [] }; _xcLabelEls = [];
+  ['xc-dividers', 'xc-labels'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+  _cmpPeekReset('xc');
+  _cmpToolbarRefresh();
+}
+function _xcGridCycle() {
+  if (!_xcOn || !_xcGrid) return;
+  const cells = _xcGrid.rows * _xcGrid.cols, tall = _xcGrid.rows > _xcGrid.cols;
+  let next = cells === 2 ? [2, 2] : cells === 4 ? [2, 4] : [1, 2];
+  if (tall) next = [next[1], next[0]];
+  _xcSetGrid(next[0], next[1]);
+  _xcRefreshDOM(); _xcUpdateClips(); _cmpToolbarRefresh();
+}
+function _xcToggleOrientation() {
+  if (!_xcOn || !_xcGrid) return;
+  _xcSetGrid(_xcGrid.cols, _xcGrid.rows);
+  _xcRefreshDOM(); _xcUpdateClips(); _cmpToolbarRefresh();
+}
+function _xcSetCell(i, id) {
+  if (!_xcOn || !_xcLayer(id)) return;
+  _xcCells[i] = id;
+  _xcUpdateClips();
+  _cmpToolbarRefresh();
+}
+function _xcRefreshDOM() {
+  const dc = document.getElementById('xc-dividers'), lc = document.getElementById('xc-labels');
+  if (!dc || !lc || !_xcGrid) return;
+  dc.innerHTML = ''; lc.innerHTML = '';
+  _xcDividerEls = { cols: [], rows: [] };
+  const { rows, cols } = _xcGrid;
+  for (let i = 0; i < cols - 1; i++) {
+    const d = document.createElement('div');
+    d.className = 'sev-cmp-divider active rc-divider';
+    d.title = 'Drag to resize the split';
+    _cmpLineHandles(d, _cmpLineApi(() => _xcColRots, i, 'col', () => _xcColSplits, _xcUpdateClips));
+    d.addEventListener('pointerdown', e => { e.preventDefault(); _xcGridDrag = { axis: 'col', idx: i }; });
+    dc.appendChild(d); _xcDividerEls.cols.push(d);
+  }
+  for (let i = 0; i < rows - 1; i++) {
+    const d = document.createElement('div');
+    d.className = 'sev-cmp-divider active rc-divider horizontal';
+    d.title = 'Drag to resize the split';
+    _cmpLineHandles(d, _cmpLineApi(() => _xcRowRots, i, 'row', () => _xcRowSplits, _xcUpdateClips));
+    d.addEventListener('pointerdown', e => { e.preventDefault(); _xcGridDrag = { axis: 'row', idx: i }; });
+    dc.appendChild(d); _xcDividerEls.rows.push(d);
+  }
+  _xcLabelEls = [];
+  for (let i = 0; i < rows * cols; i++) {
+    const el = document.createElement('div');
+    el.className = 'sev-cmp-label rc-label xc-label';
+    lc.appendChild(el); _xcLabelEls.push(el);
+  }
+}
+// What each layer draws into: its pane, and for satellite also the tile
+// layers the map service draws, which live in the map's shared tile pane.
+function _xcTargets(layer) {
+  const els = layer.panes.map(n => map.getPane(n)).filter(Boolean);
+  if (layer.sat) {
+    map.eachLayer(l => {
+      if (L.GridLayer && l instanceof L.GridLayer && l._url && /cgi-bin\/wms\/goes/.test(l._url)
+          && l.getContainer && l.getContainer()) els.push(l.getContainer());
+    });
+  }
+  return els;
+}
+function _xcUpdateClips() {
+  if (!_xcOn || !_xcGrid) return;
+  const { rows, cols } = _xcGrid;
+  const geoms = [];
+  for (let c = 0; c < rows * cols; c++) {
+    geoms.push(_cmpCellGeometry(Math.floor(c / cols), c % cols, _xcColSplits, _xcRowSplits, _xcColRots, _xcRowRots));
+  }
+  XC_LAYERS.forEach(layer => {
+    const idx = [];
+    _xcCells.forEach((id, i) => { if (id === layer.id) idx.push(i); });
+    const els = _xcTargets(layer);
+    if (!idx.length) {
+      els.forEach(el => { if (_xcClipped.has(el)) { el.style.clipPath = ''; _xcClipped.delete(el); } });
+      return;
+    }
+    // One outline per pane it was given, as one path: a layer in two panes
+    // shows in both.
+    const d = idx.map(i => geoms[i].pts).filter(pts => pts && pts.length >= 3)
+      .map(pts => 'M' + pts.map(([x, y]) => x.toFixed(1) + ' ' + y.toFixed(1)).join(' L') + ' Z').join(' ');
+    const clip = d ? `path('${d}')` : 'polygon(0px 0px, 0px 0px, 0px 0px)';
+    els.forEach(el => { if (el.style.clipPath !== clip) el.style.clipPath = clip; _xcClipped.add(el); });
+  });
+  _xcLabelEls.forEach((el, i) => {
+    const g = geoms[i], layer = _xcLayer(_xcCells[i]);
+    if (!g || !layer) return;
+    el.textContent = String.fromCharCode(65 + i) + ' · ' + layer.label + (_xcIsOn(layer.id) ? '' : ' (off)');
+    el.style.display = g.visible ? '' : 'none';
+    el.style.left = (g.leftView + 8) + 'px';
+    el.style.top = (g.topView + 8) + 'px';
+    _cmpDodgeLabel(el);
+  });
+  _xcColSplits.forEach((pct, i) => _cmpPlaceLine(_xcDividerEls.cols[i], 'col', pct, _xcColRots[i]));
+  _xcRowSplits.forEach((pct, i) => _cmpPlaceLine(_xcDividerEls.rows[i], 'row', pct, _xcRowRots[i]));
+}
+window.addEventListener('pointermove', e => {
+  if (!_xcGridDrag) return;
+  const axis = _xcGridDrag.axis === 'row' ? 'y' : 'x';
+  const splits = _xcGridDrag.axis === 'row' ? _xcRowSplits : _xcColSplits;
+  const pct = _stripPctFromClientX(e.clientX, splits, _xcGridDrag.idx, axis, e.clientY);
+  if (pct == null) return;
+  splits[_xcGridDrag.idx] = pct;
+  _xcUpdateClips();
+});
+window.addEventListener('pointerup', () => { _xcGridDrag = null; });
+window.addEventListener('pointercancel', () => { _xcGridDrag = null; });
+// Which layer the pane under a client point was given, or null.
+function _xcLayerAt(cx, cy) {
+  if (!_xcOn || !_xcGrid) return null;
+  try {
+    const r = map.getContainer().getBoundingClientRect();
+    const c = _cmpCellAt(cx - r.left, cy - r.top, _xcColSplits, _xcRowSplits, _xcColRots, _xcRowRots);
+    return _xcCells[c.row * _xcGrid.cols + c.col] || null;
+  } catch (e) { return null; }
+}
+// True when a layer is in the split but not in the pane under this point:
+// the Inspector then leaves it out, since it is not what is on screen there.
+function _xcHidesAt(id, cx, cy) {
+  if (!_xcOn || !_xcCells.includes(id)) return false;
+  return _xcLayerAt(cx, cy) !== id;
+}
+
+// -- THE COMPARE TOOL ON THE TOOL RAIL ----------------------------------------
+// One place for every comparison, in a menu bar like the Polygon tool's:
+//   Same layer   radar beside radar, satellite beside satellite
+//   Cross layer  a different layer in each pane
+// plus the split size, rotate, peek and end, which used to float in the
+// corner of the map beside each comparison.
+let _cmpToolMode = 'same';
+function toggleCompareTool() {
+  if (activeTool === 'compare') { deactivateTool(); return; }
+  deactivateTool();
+  activeTool = 'compare';
+  _setBtn('tool-compare');
+  const mc = document.getElementById('map');
+  if (mc) mc.style.cursor = '';                     // nothing to click on the map
+  _cmpToolbarShow(true);
+}
+let _cmpToolbarTimer = null;
+function _cmpToolbarShow(show) {
+  const el = document.getElementById('cmp-toolbar');
+  if (!el) return;
+  el.classList.toggle('visible', !!show);
+  clearInterval(_cmpToolbarTimer); _cmpToolbarTimer = null;
+  if (show) {
+    _cmpToolbarRefresh();
+    // Comparisons also end elsewhere (the radar switched off, a pane's ×):
+    // the bar keeps up while it is open.
+    _cmpToolbarTimer = setInterval(_cmpToolbarRefresh, 800);
+  }
+}
+function _cmpActive() {
+  return _xcOn ? 'xc' : (typeof _rcOn !== 'undefined' && _rcOn) ? 'rc' : (typeof _scOn !== 'undefined' && _scOn) ? 'sc' : null;
+}
+function _cmpToolbarRefresh() {
+  const bar = document.getElementById('cmp-toolbar');
+  if (!bar) return;
+  const $ = (id) => document.getElementById(id);
+  if (_xcOn) _cmpToolMode = 'cross';
+  else if ((typeof _rcOn !== 'undefined' && _rcOn) || (typeof _scOn !== 'undefined' && _scOn)) _cmpToolMode = 'same';
+  const cross = _cmpToolMode === 'cross';
+  $('cmp-mode-same').classList.toggle('active', !cross);
+  $('cmp-mode-cross').classList.toggle('active', cross);
+  $('cmp-same-row').style.display = cross ? 'none' : 'flex';
+  $('cmp-cross-row').style.display = cross ? 'flex' : 'none';
+  $('cmp-radar').classList.toggle('active', typeof _rcOn !== 'undefined' && !!_rcOn);
+  $('cmp-sat').classList.toggle('active', typeof _scOn !== 'undefined' && !!_scOn);
+  const act = _cmpActive();
+  const grid = act === 'xc' ? _xcGrid : act === 'rc' ? _rcGrid : act === 'sc' ? _scGrid : null;
+  const cells = grid ? grid.rows * grid.cols : 2;
+  $('cmp-grid').textContent = cells === 2 ? 'Double' : cells === 4 ? 'Quad' : 'Octo';
+  // Split, rotate and peek need a split to act on (a radar comparison makes
+  // one when its second radar joins); End just needs something running.
+  ['cmp-grid', 'cmp-rotate', 'cmp-peek'].forEach(id => { $(id).disabled = !grid; });
+  $('cmp-end').disabled = !act;
+  // One picker per pane in a cross-layer split.
+  const wrap = $('cmp-cells');
+  if (cross && _xcOn) {
+    const want = _xcCells.map((id, i) => i + ':' + id + ':' + (_xcIsOn(id) ? 1 : 0)).join('|');
+    if (wrap.dataset.key !== want) {
+      wrap.dataset.key = want;
+      wrap.innerHTML = '';
+      _xcCells.forEach((id, i) => {
+        const sel = document.createElement('select');
+        sel.className = 'cmp-cell-sel';
+        sel.title = 'What pane ' + String.fromCharCode(65 + i) + ' shows';
+        XC_LAYERS.forEach(l => {
+          const o = document.createElement('option');
+          o.value = l.id;
+          o.textContent = String.fromCharCode(65 + i) + ': ' + l.label + (_xcIsOn(l.id) ? '' : ' (off)');
+          sel.appendChild(o);
+        });
+        sel.value = id;
+        sel.onchange = () => _xcSetCell(i, sel.value);
+        wrap.appendChild(sel);
+      });
+    }
+  } else if (wrap.innerHTML) { wrap.innerHTML = ''; wrap.dataset.key = ''; }
+}
+function _cmpToolSame() {
+  if (_xcOn) _xcOff();
+  _cmpToolMode = 'same';
+  _cmpToolbarRefresh();
+}
+function _cmpToolCross() {
+  _cmpToolMode = 'cross';
+  if (!_xcOn) _xcStart();
+  _cmpToolbarRefresh();
+}
+function _cmpToolRadar() {
+  if (typeof _rcOn !== 'undefined' && _rcOn) { _rcOff(); _cmpToolbarRefresh(); return; }
+  if (_xcOn) _xcOff();
+  const main = typeof _rcMainSite === 'function' ? _rcMainSite() : null;
+  if (!main) {
+    if (typeof showToast === 'function') {
+      showToast('Tap a radar site pill first, so one radar fills the map. Then Radar here starts the comparison, and each radar pill you tap joins it as the next pane.', 6000);
+    }
+    return;
+  }
+  const s = ((typeof NEXRAD_STATIONS !== 'undefined' && NEXRAD_STATIONS) || [])
+    .find(x => String(x.id).toLowerCase() === main) || { id: main };
+  Promise.resolve(_rcStart(s)).then(_cmpToolbarRefresh, _cmpToolbarRefresh);
+}
+function _cmpToolSat() {
+  if (_xcOn) _xcOff();
+  if (typeof _scToggle === 'function') _scToggle();
+  _cmpToolbarRefresh();
+}
+function _cmpToolGrid() {
+  const a = _cmpActive();
+  if (a === 'xc') _xcGridCycle();
+  if (a === 'rc' || (typeof _rcOn !== 'undefined' && _rcOn && a !== 'xc')) _rcGridCycle();
+  if (typeof _scOn !== 'undefined' && _scOn && a !== 'xc') _scGridCycle();
+  _cmpToolbarRefresh();
+}
+function _cmpToolRotate() {
+  if (_xcOn) { _xcToggleOrientation(); return; }
+  if (typeof _rcOn !== 'undefined' && _rcOn) _rcToggleOrientation();
+  if (typeof _scOn !== 'undefined' && _scOn) _scToggleOrientation();
+  _cmpToolbarRefresh();
+}
+function _cmpToolPeek() {
+  if (_xcOn) _cmpPeek('xc');
+  if (typeof _rcOn !== 'undefined' && _rcOn) _cmpPeek('rc');
+  if (typeof _scOn !== 'undefined' && _scOn) _cmpPeek('sc');
+}
+function _cmpToolEnd() {
+  if (_xcOn) _xcOff();
+  if (typeof _rcOn !== 'undefined' && _rcOn) _rcOff();
+  if (typeof _scOn !== 'undefined' && _scOn) _scOff();
+  _cmpToolbarRefresh();
+}
+(function _cmpWireToolbar() {
+  const bar = document.getElementById('cmp-toolbar');
+  if (!bar) return;
+  if (typeof _makeDraggable === 'function') {
+    try { _makeDraggable(bar, document.getElementById('cmp-drag')); } catch (e) {}
+  }
+})();
 
 (function _r3dWireInfo() {
   const btn = document.getElementById('r3d-info-btn');
