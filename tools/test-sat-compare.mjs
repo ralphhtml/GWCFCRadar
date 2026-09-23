@@ -63,7 +63,7 @@ console.log('\n1. the pieces are in the page');
      /function _scRefreshGridDOM[\s\S]{0,900}_cmpLineHandles\(d, _cmpLineApi\(\(\) => _scColRots/.test(PAGE));
   ok('a parsing server strip reclips the instant its own image lands, not just on the next pan/zoom '
      + '(the same race radar compare had to fix)',
-     /if \(!slot\.layer\) \{\s*\n\s*slot\.layer = L\.imageOverlay\(f\.url, f\.bounds,[\s\S]{0,600}_scUpdateClips\(\);\s*\n\s*\} else \{/.test(PAGE));
+     /if \(!slot\.layer\) \{\s*\n\s*slot\.layer = L\.imageOverlay\(GOES_BLANK, _goesMercBounds\(f\.bounds\),[\s\S]{0,600}_goesMercApply\(slot\.layer, f\.url, f\.bounds, _scUpdateClips\);[\s\S]{0,500}_scUpdateClips\(\);\s*\n\s*\} else \{/.test(PAGE));
   ok('the rotate button transposes the split, same shape as radar\'s',
      PAGE.includes('id="sc-rotate-btn"')
      && /function _scToggleOrientation\(\) \{\s*\n\s*if \(!_scOn \|\| !_scGrid\) return;\s*\n\s*if \(!_scSetGrid\(_scGrid\.cols, _scGrid\.rows\)\) return;/.test(PAGE));

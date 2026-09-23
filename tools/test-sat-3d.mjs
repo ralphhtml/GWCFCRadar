@@ -645,6 +645,64 @@ console.log('\n7f. both 3D panels follow the comparison pane the zone is drawn o
      JSON.stringify(r.inside));
 }
 
+console.log('\n7g. the Time Machine: a jump reloads the zone at that moment, live brings it back');
+{
+  const r = await p.evaluate(async () => {
+    _s3dOpenBounds(35.5, -97, 36.5, -95.5);
+    for (let i = 0; i < 100 && _s3dFrames.length < 6; i++) await new Promise(res => setTimeout(res, 100));
+    const out = {};
+    // The panel's own clock button opens the satellite's Time Machine.
+    document.getElementById('s3d-panel').classList.add('fullscreen');
+    document.getElementById('s3d-tm-btn').click();
+    out.opened = { modal: !!document.querySelector('#tm-modal.open'), scope: _tmScope,
+                   leftFull: !document.getElementById('s3d-panel').classList.contains('fullscreen') };
+    // Travel. Composites are asked for with the travelled clock in force.
+    const piAt = [];
+    const realPi = window._goesPiFramesFor;
+    window._goesPiFramesFor = async (product) => { piAt.push(_tmSatAt); return []; };
+    const T = Date.UTC(2025, 5, 14, 20, 0);
+    await _tmJump(T);
+    for (let i = 0; i < 100 && (_s3dFrames.length < 6 || !_s3dIndex); i++) await new Promise(res => setTimeout(res, 100));
+    out.travel = { at: _tmSatAt, where: document.getElementById('s3d-where').textContent,
+                   btnOn: document.getElementById('s3d-tm-btn').classList.contains('on') };
+    _s3dSkinSel = 'rgb-airmass';
+    await _s3dSkin(_s3dFrames[_s3dIdx], _s3dGen);
+    out.piAt = piAt.slice();
+    // A plain channel at the travelled moment comes from NOAA's archive
+    // first, not the map service.
+    const arcBefore = window.__arcCount ? window.__arcCount() : 0;
+    _s3dSkinSel = 'ch02';
+    await _s3dSkin(_s3dFrames[_s3dIdx], _s3dGen);
+    out.chSkin = _s3dFrames[_s3dIdx].data.skin;
+    _s3dSkinSel = 'map';
+    // Back to live.
+    _tmScope = 'sat';
+    await _tmLive();
+    for (let i = 0; i < 100 && _s3dFrames.length < 6; i++) await new Promise(res => setTimeout(res, 100));
+    out.live = { at: _tmSatAt, where: document.getElementById('s3d-where').textContent,
+                 btnOn: document.getElementById('s3d-tm-btn').classList.contains('on') };
+    window._goesPiFramesFor = realPi;
+    try { _tmClose(); } catch (e) {}
+    _s3dClose();
+    return { out, T };
+  });
+  const travelled = asked.index.filter(u => /&at=\d+/.test(u));
+  const lastIdx = asked.index[asked.index.length - 1];
+  ok('the panel\'s clock button opens the satellite Time Machine, leaving fullscreen first',
+     r.out.opened.modal && r.out.opened.scope === 'sat' && r.out.opened.leftFull, JSON.stringify(r.out.opened));
+  ok('a jump reloads the zone at that moment', travelled.some(u => u.includes('&at=' + r.T)),
+     travelled.slice(-1)[0]);
+  ok('the header shows the moment and the clock button says it is travelled', /2025-06-14 20:00Z/.test(r.out.travel.where)
+     && r.out.travel.btnOn, JSON.stringify(r.out.travel));
+  ok('a plain channel at the travelled moment is taken from NOAA\'s archive',
+     r.out.chSkin === 'Red Visible' && asked.arcIndex.some(u => /band=2&/.test(u) && u.includes('&at=')),
+     String(r.out.chSkin) + ' ' + asked.arcIndex.slice(-1)[0]);
+  ok('a composite skin is chosen with the travelled clock in force', r.out.piAt.length && r.out.piAt.every(a => a === r.T),
+     JSON.stringify(r.out.piAt));
+  ok('back to live reloads without a moment, and the marks clear', !/&at=/.test(lastIdx) && r.out.live.at == null
+     && !/Z$/.test(r.out.live.where) && !r.out.live.btnOn, lastIdx + ' ' + JSON.stringify(r.out.live));
+}
+
 console.log('\n8. nothing above threw');
 ok('no page errors', errs.length === 0, errs.join(' | '));
 await b.close();
