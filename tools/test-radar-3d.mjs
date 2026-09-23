@@ -802,14 +802,29 @@ console.log('\n7d. walking inside the box, and the honest (WebGL-free) VR');
     out.keyHeld = _r3dMoveKeys.has('fwd');
     document.dispatchEvent(new KeyboardEvent('keyup', { key: 'w', bubbles: true }));
     out.keyReleased = !_r3dMoveKeys.has('fwd');
-    // VR: fullscreen, both eye halves genuinely drawn.
+    // VR: fullscreen, both eye halves genuinely drawn. The browser's own
+    // full screen is recorded rather than entered (headless has no screen).
+    const pnl = document.getElementById('r3d-panel');
+    let fsAsked = 0;
+    pnl.requestFullscreen = () => { fsAsked++; return Promise.resolve(); };
     _r3dVrToggle();
     out.vrOn = _r3dVr === true;
-    out.vrFullscreen = document.getElementById('r3d-panel').classList.contains('fullscreen');
+    out.vrFullscreen = pnl.classList.contains('fullscreen');
+    out.fsAsked = fsAsked;
+    out.immersive = pnl.classList.contains('vr-immersive')
+      && getComputedStyle(pnl.querySelector('.p3d-top')).display === 'none'
+      && getComputedStyle(pnl.querySelector('.p3d-vr-exit')).display !== 'none'
+      && Math.abs(cv.getBoundingClientRect().height - innerHeight) < 2;
     await R();
     const half = Math.floor(cv.width / 2);
     out.leftEye = reds(0, half);
     out.rightEye = reds(half, cv.width);
+    // Leaving full screen the system's way (Esc, back swipe) leaves VR too.
+    document.dispatchEvent(new Event('fullscreenchange'));
+    out.sysExit = _r3dVr === false && !pnl.classList.contains('vr-immersive') && !pnl.classList.contains('fullscreen');
+    _r3dVrToggle();
+    pnl.querySelector('.p3d-vr-exit').click();
+    out.btnExit = _r3dVr === false && !pnl.classList.contains('vr-immersive');
     // Out: everything hands back cleanly.
     _r3dVrOff();
     _r3dWalkToggle(false);
@@ -828,6 +843,10 @@ console.log('\n7d. walking inside the box, and the honest (WebGL-free) VR');
   ok('VR goes fullscreen and draws the storm into BOTH eye halves',
      r.vrOn && r.vrFullscreen && r.leftEye > 25 && r.rightEye > 25,
      JSON.stringify({ left: r.leftEye, right: r.rightEye }));
+  ok('VR asks the browser for true full screen and shows only the stereo picture',
+     r.fsAsked === 1 && r.immersive, JSON.stringify({ fs: r.fsAsked, imm: r.immersive, now: r.fsNow }));
+  ok('leaving full screen by the system gesture, or Exit VR, brings the panel back',
+     r.sysExit && r.btnExit, JSON.stringify([r.sysExit, r.btnExit]));
   ok('walking and VR shut off cleanly, pad hidden again',
      r.walkOff && r.padHidden, JSON.stringify([r.walkOff, r.padHidden]));
 }
