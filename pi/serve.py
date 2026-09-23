@@ -276,6 +276,9 @@ class CORSHandler(SimpleHTTPRequestHandler):
         if head == "/sat/cth/frame":
             self._sat_cth_frame()
             return
+        if head.startswith("/terrain/"):
+            self._terrain_tile(head)
+            return
         if head == "/sounding/sources":
             self._sounding_sources()
             return
@@ -446,6 +449,38 @@ class CORSHandler(SimpleHTTPRequestHandler):
             return
         finally:
             _sat_gate.release()
+        self._reply_bytes(200, body, "image/png")
+
+    # -- The terrain door (every 3D view) ------------------------------------
+    # GET /terrain/{z}/{x}/{y}.png: one Terrarium elevation tile, downloaded
+    # once from the public tiles and served from disk after that. The browser
+    # reads those tiles directly and only comes here when it cannot reach
+    # them, so this is the backup, not the main road.
+    def _terrain_tile(self, head):
+        try:
+            import terrain
+        except Exception as e:
+            self._reply_json(501, {"error": f"terrain.py is not beside serve.py ({e})"})
+            return
+        parts = head[len("/terrain/"):].split("/")
+        if len(parts) != 3 or not parts[2].endswith(".png"):
+            self._reply_json(400, {"error": "ask for /terrain/z/x/y.png"})
+            return
+        try:
+            z, x, y = int(parts[0]), int(parts[1]), int(parts[2][:-4])
+        except ValueError:
+            self._reply_json(400, {"error": "z, x and y must be whole numbers"})
+            return
+        if not terrain.valid(z, x, y):
+            self._reply_json(400, {"error": "that is not a tile"})
+            return
+        cache = os.path.join(getattr(self, "directory", None)
+                             or os.path.expanduser("~/wxdata"), "terrain")
+        try:
+            body = terrain.tile(z, x, y, cache)
+        except Exception as e:
+            self._reply_json(502, {"error": f"could not get that tile ({e})"})
+            return
         self._reply_bytes(200, body, "image/png")
 
     # -- The cloud-top height doors (Satellite 3D) --------------------------

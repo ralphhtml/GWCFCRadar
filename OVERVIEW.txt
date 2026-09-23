@@ -14,7 +14,7 @@ hardcoded, that is said explicitly.
 1. WHAT IT IS
 ================================================================================
 
-A browser weather application. One HTML page, 84,598 lines, no build step, no
+A browser weather application. One HTML page, 85,846 lines, no build step, no
 framework. It runs from GitHub Pages and talks to a parsing server that does the
 heavy decoding and model rendering. Free, no accounts required for the map, no
 paid tier, no advertising.
@@ -26,7 +26,7 @@ Four separate front ends ship from the same repository:
   nwrchive.html           The NOAA Weather Radio archive
   assistant.html          The standalone AI assistant
 
-Plus 21 Python pipelines on the parsing server and a Discord bot in Node.
+Plus 22 Python pipelines on the parsing server and a Discord bot in Node.
 
 
 ================================================================================
@@ -189,6 +189,7 @@ drag handle.
   - Shows your own location, and Walk starts you there
   - Plays on the main animation bar like every other layer
   - In a comparison, it follows whichever pane the zone was drawn in
+  - A Terrain button puts the real ground under the storm
 
 --------------------------------------------------------------------------------
 2.8 COMPARE
@@ -248,8 +249,8 @@ SATELLITE 3D
   answer). Any of the 34 products can be draped over the relief. It carries
   Radar 3D's toolkit: fullscreen, Walk and VR, zoom and turn bars, height
   cutoffs, Smoothing, three looks, a cutaway, height units, your location, a
-  radar overlay, and a clock button that opens the Time Machine for any past
-  moment.
+  radar overlay, a Terrain button that raises the real hills under clear
+  sky, and a clock button that opens the Time Machine for any past moment.
 
 
 ================================================================================
@@ -480,6 +481,20 @@ NWS SOURCES INSIDE THE BUBBLES
   two days.
 
 
+LAYER 3D
+  Every one of these layers has its own 3D panel: model charts, waves, air,
+  wind, temperature, pressure, sea temperature and MRMS. Long-press the map,
+  pick Draw a 3D (layer) zone, and drag a box: the real ground rises to its
+  true height (public Terrarium elevation tiles, with the parsing server's
+  cached copy as the backup) and the layer is draped over it, read straight
+  off the map in your own colours. The drape keeps following the map, so it
+  plays with the animation bar. Ocean layers stand on the real seafloor,
+  with a Water button: a see-through sea over it, or the layer painted onto
+  it. Each panel has a height stretch (auto, or a slider), lit / flat /
+  relief looks, a cutaway, Walk, VR, fullscreen and your location; MRMS has
+  its own Time Machine button. Several panels can be open at once.
+
+
 ================================================================================
 9. THE AI ASSISTANT AND FORECAST ENGINE
 ================================================================================
@@ -609,7 +624,7 @@ THEMES AND THE LOOK
 
 
 ================================================================================
-13. THE PARSING SERVER (21 pipelines)
+13. THE PARSING SERVER (22 pipelines)
 ================================================================================
 
   radar_pipeline.py      NEXRAD L3 and the 163-product MRMS catalogue
@@ -617,6 +632,7 @@ THEMES AND THE LOOK
   satellite_pipeline.py  RGB composites built from raw ABI
   sat_archive.py         NOAA archive scans for the satellite Time Machine
   sat_cth.py             Cloud-top heights for Satellite 3D
+  terrain.py             Cached elevation tiles, the backup for every 3D view
   cities_pipeline.py     Every named town on Earth, tiled for the forecast dots
   sounding_pipeline.py   SounderPy fetch, SHARPpy params, rendered skew-Ts
   sounding_service.py    Live sounding endpoint
@@ -691,7 +707,7 @@ ASSISTANT (assistant.html)
 16. ENGINEERING
 ================================================================================
 
-  - 180 test files in tools/, mixed Node and Python
+  - 182 test files in tools/, mixed Node and Python
   - Service worker: network-first app shell with a timeout fallback,
     cache-first for CDN assets and fonts
   - Installable as a PWA
