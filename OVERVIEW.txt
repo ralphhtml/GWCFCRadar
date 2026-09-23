@@ -3,7 +3,7 @@ GWCFC RADAR - FULL FEATURE OVERVIEW
 ================================================================================
 
 Live site:  https://ralphhtml.github.io/GWCFCRadar/
-Generated:  20 September 2026
+Generated:  23 September 2026
 
 Everything below was read out of the source, not written from memory. Counts
 are real. Where a catalogue is built at runtime from a manifest rather than
@@ -14,7 +14,7 @@ hardcoded, that is said explicitly.
 1. WHAT IT IS
 ================================================================================
 
-A browser weather application. One HTML page, 78,116 lines, no build step, no
+A browser weather application. One HTML page, 84,598 lines, no build step, no
 framework. It runs from GitHub Pages and talks to a parsing server that does the
 heavy decoding and model rendering. Free, no accounts required for the map, no
 paid tier, no advertising.
@@ -26,7 +26,7 @@ Four separate front ends ship from the same repository:
   nwrchive.html           The NOAA Weather Radio archive
   assistant.html          The standalone AI assistant
 
-Plus 18 Python pipelines on the parsing server and a Discord bot in Node.
+Plus 21 Python pipelines on the parsing server and a Discord bot in Node.
 
 
 ================================================================================
@@ -181,28 +181,75 @@ from the AWS Level 2 archive, so a past supercell can be flown around. The
 marching runs in a worker pool so the map never stalls, and the panel has a
 drag handle.
 
+  - Box size is unlimited, with two camera bars (zoom and turn) and a
+    Smoothing slider
+  - Looks: lit, flat, height, and a Raw pixels look; the strongest cores glow
+  - Fullscreen, and Walk mode: step inside the box, with a WebGL-free VR view
+    and gyroscope look that work on any phone
+  - Shows your own location, and Walk starts you there
+  - Plays on the main animation bar like every other layer
+  - In a comparison, it follows whichever pane the zone was drawn in
+
+--------------------------------------------------------------------------------
+2.8 COMPARE
+--------------------------------------------------------------------------------
+
+A Compare button on the tool rail opens a menu bar, like the Polygon tool's,
+with every comparison in one place.
+
+  SAME LAYER    Radar beside radar (other sites, products or sources), or
+                satellite beside satellite (other channels, sectors or
+                satellites)
+  CROSS LAYER   A different layer in each pane: radar on one side and
+                satellite on the other, a model chart beside the radar, the
+                waves beside the ocean temperature, and so on
+
+The screen is split into 2, 4 or 8 panes along true split lines. Each line
+has a drag grip and a rotate handle that turns only that line (snapping to
+45 degrees; a tap turns it 90). Peek hides the dividers for a clean look, and
+each pane label dodges the logo, the search bar and the status banner. The
+Inspector reads whichever pane is under it, and Radar 3D and Satellite 3D
+follow the pane they were drawn in.
+
 
 ================================================================================
 3. SATELLITE
 ================================================================================
 
-27 products.
+34 products.
 
   ABI SINGLE BANDS (16)
     Blue Visible, Red Visible, Veggie, Cirrus, Snow/Ice, Cloud Top,
     Shortwave IR, Upper Water Vapor, Mid Water Vapor, Low Water Vapor,
     Cloud Top Temp, Fire Temp, Clean IR, IR Longwave, Dirty IR, CO2
 
-  RGB COMPOSITES (7)
+  RGB COMPOSITES (14)
     Air Mass, True Colour, Day Cloud Phase, Night Microphysics,
-    Dust, Volcanic Ash, Fire Temperature
+    Dust, Volcanic Ash, Day Land Cloud, Day Snow and Fog, Day Convection,
+    Simple Water Vapor, Differential Water Vapor, Day Land Cloud Fire,
+    Sulphur Dioxide, Fire Temperature
 
   GLOBAL (GMGSI, 4)
     Infrared, Visible, Water Vapor, Shortwave IR
 
 RGB composites are built on the parsing server from raw ABI radiances by
 satellite_pipeline.py. Satellite has its own preloaded frame pool for
-playback rather than mutating a single layer.
+playback rather than mutating a single layer, and ABI loops genuinely play.
+
+Pictures from the parsing server (the Time Machine's archive scans, the
+composites and the global mosaic) are plain latitude/longitude grids. Each
+one is resampled onto Mercator rows before it is drawn, so clouds sit on the
+right coastline instead of about 2 degrees south of it.
+
+SATELLITE 3D
+  Long-press the map and draw a zone: the cloud tops rise in relief, built
+  from real cloud-top heights (sat_cth.py on the parsing server, or worked
+  out in the browser from the Clean IR channel if the server does not
+  answer). Any of the 34 products can be draped over the relief. It carries
+  Radar 3D's toolkit: fullscreen, Walk and VR, zoom and turn bars, height
+  cutoffs, Smoothing, three looks, a cutaway, height units, your location, a
+  radar overlay, and a clock button that opens the Time Machine for any past
+  moment.
 
 
 ================================================================================
@@ -350,14 +397,14 @@ rendered skew-T PNGs per site) with Open-Meteo model soundings as a fallback.
 
 
 ================================================================================
-7. OVERLAYS (31)
+7. OVERLAYS (39)
 ================================================================================
 
   ALERTS AND WARNINGS
-    NWS Alert Polygons (warnings and watches)
+    Alert Polygons (NWS warnings and watches, in the NWS's own colours)
     WX Alert Panel (list of active warnings and watches)
     EAS Alert Panel (live Emergency Alert System broadcasts)
-    Environment Canada Weather Alerts
+    Environment Canada Weather Alerts and Outlooks
     NWS Forecast Offices (tap for alerts and text products)
 
   OUTLOOKS
@@ -366,13 +413,16 @@ rendered skew-T PNGs per site) with Open-Meteo model soundings as a fallback.
     SPC Mesoscale Discussions
     WPC Excessive Rainfall Outlook (Days 1-3)
     CPC Outlooks (6-10 day and 8-14 day, temperature and precipitation)
-    NHC Tropical Outlook
+    NHC Tropical Outlook, with ATCF Updates
     JTWC Tropical Outlook
     GWCFC Outlook (issued from our own Forecasting Portal)
     GWCFC Alerts (warnings, watches and statements from our own alert desk)
 
   OBSERVATIONS AND REPORTS
     Lightning Strikes
+    METAR Stations (tap a station for its full reading; four ways to draw
+      each one, chosen in Settings)
+    T-Storm Tracker
     Storm Reports (SPC local storm reports for tornado, hail and wind)
     Storm Centers (radar-detected TVS and hail signatures)
     Tornado Tracks (NWS Damage Assessment Toolkit paths, last 60 days)
@@ -391,10 +441,14 @@ rendered skew-T PNGs per site) with Open-Meteo model soundings as a fallback.
     Live Storm Chasers (real-time positions with heading)
     NOAA Weather Radio transmitter stations
     Traffic Cameras (Kansas, Maryland, Oregon, Kentucky, Iowa, South Dakota)
+    Navigation (the GPS and Nav panel lives here now)
 
   ANALYSIS
     WPC Surface Analysis (fronts, highs, lows)
-    Weather Forecasts (point forecast dots)
+    Weather Forecasts (point forecast dots; tap one for hourly charts with a
+      condition picker)
+    Day / Night terminator
+    Forecast Time Machine and Climate Time Machine
 
 Every overlay is drag-reorderable, and each carries an info button explaining
 what it is. 45 overlay descriptions and 106 layer descriptions are written into
@@ -486,10 +540,25 @@ A broadcast overlay mode for streaming.
 11. TOOLS
 ================================================================================
 
-  INSPECTOR       Click anywhere and read the real value under the cursor, for
-                  radar, MRMS, SST, lightning, outlooks and alerts
-  EXPORT          Download radar, satellite or model output as a PNG or as a
-                  video loop
+  INSPECTOR       Drag the crosshair anywhere and read the real value under it,
+                  for radar, satellite, models, the grids, MRMS, SST,
+                  lightning, outlooks and alerts; pins save a reading
+  COMPARE         Same-layer and cross-layer splits (see 2.8)
+  RADAR COMPASS   A full-screen dial that turns with the phone's compass and
+                  paints every weather layer on screen in the direction it
+                  faces. The range ring comes from a tilt you type in (the
+                  phone's own tilt is not tracked), and a small popup lists
+                  every layer with something within a radius you type in:
+                  the strongest radar echo and where, the nearest warning,
+                  how many lightning strikes landed nearby
+  CROSS SECTION   Vertical slice through a storm (see 2.6)
+  RADAR 3D        See 2.7
+  SATELLITE 3D    See section 3
+  MEASURE, RADIUS, TEXT, POLYGON
+                  Distance between two points, a circle of set radius, a
+                  placed label, a clicked-out shape
+  EXPORT          A view-capture card: a picture of exactly what is on
+                  screen, or every frame of the playing loop
   CUSTOM GRAPHICS Upload PNG, JPG, GIF, SVG or PDF and place it with a drag
                   editor
   GPS AND NAV     Live turn-by-turn navigation with weather-coloured routes,
@@ -530,6 +599,9 @@ THEMES AND THE LOOK
   red, and the account pill black with a red outline. The old red look ships
   as the Ralph's Red preset, beside 30-plus other whole-look presets and a
   full per-token, per-surface, per-part theme editor with import/export.
+  Settings also carry a 12-hour or 24-hour clock (the time stamp follows the
+  chosen timezone), a custom pointer (tornado, hurricane or supercell), and
+  a broadcast sweep beam over the active radar site.
   Liquid glass runs at a subtle frost by default on every theme: floating
   surfaces are translucent, tinted by the active theme's own gradients, with
   a backdrop blur (switched off on touch consoles where blur is the biggest
@@ -537,12 +609,15 @@ THEMES AND THE LOOK
 
 
 ================================================================================
-13. THE PI BACKEND (18 pipelines)
+13. THE PARSING SERVER (21 pipelines)
 ================================================================================
 
   radar_pipeline.py      NEXRAD L3 and the 163-product MRMS catalogue
   gfs_pipeline.py        66 models, 97 fields, regional nests
   satellite_pipeline.py  RGB composites built from raw ABI
+  sat_archive.py         NOAA archive scans for the satellite Time Machine
+  sat_cth.py             Cloud-top heights for Satellite 3D
+  cities_pipeline.py     Every named town on Earth, tiled for the forecast dots
   sounding_pipeline.py   SounderPy fetch, SHARPpy params, rendered skew-Ts
   sounding_service.py    Live sounding endpoint
   model_sounding.py      Model-derived soundings
@@ -584,6 +659,15 @@ mentions. Pings are constrained on the parsing server: allowed_mentions carries 
 parse, which makes @everyone, @here and role pings impossible whatever the
 message says, plus a users allowlist of at most 8 validated ids.
 
+  /economy            A weather-themed economy game
+  Embeds              Every AI reply arrives as an embed, with a rotating
+                      gold, red and blue sidebar and big markdown headers
+
+DISCORD RICH PRESENCE
+  Opt-in, through a small local bridge: your Discord status shows what you
+  are looking at, like single-site radar, Radar 3D, or which layers you are
+  comparing.
+
 
 ================================================================================
 15. OTHER SITES IN THE PROJECT
@@ -607,7 +691,7 @@ ASSISTANT (assistant.html)
 16. ENGINEERING
 ================================================================================
 
-  - 153 test files in tools/, mixed Node and Python
+  - 180 test files in tools/, mixed Node and Python
   - Service worker: network-first app shell with a timeout fallback,
     cache-first for CDN assets and fonts
   - Installable as a PWA
@@ -620,6 +704,14 @@ ASSISTANT (assistant.html)
     always available from the Updates button in the account panel
   - Hidden radar animation frames step off the map during a zoom and return
     in quiet batches after, so zooming with radar on stays smooth
+  - The mouse wheel zooms like a pinch: the map glides, and tiles load once
+    for the level you stop on instead of for every notch along the way
+  - Offline mode: every layer replays its last good copy, a banner says since
+    when, and a reconnect catches up by itself
+  - A memory guard sizes the frame pools to the machine, and a hidden tab
+    sheds its frames
+  - A first visit is one popup, not a chain of them
+  - No em dashes anywhere in the site, by rule
   - Searching a city flies the map there and opens its forecast
 
 
@@ -630,7 +722,6 @@ ASSISTANT (assistant.html)
 Worth knowing, and worth being straight about:
 
   - No globe projection
-  - No side-by-side synchronised radar panes
   - No live storm chaser video streams or weather cams (positions only)
   - No native iOS or Android app, it is a web app installable as a PWA
 

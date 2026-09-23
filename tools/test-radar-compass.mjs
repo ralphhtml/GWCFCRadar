@@ -2,8 +2,10 @@
 /*
  * Radar Compass replaced the old click-to-measure Bearing tool: a
  * full-screen dial that turns with the phone's own compass and paints a
- * wedge of real radar data toward wherever it is pointed, tilting through
- * preset range rings.
+ * wedge of every weather layer on screen toward wherever it is pointed.
+ * The range ring comes from a typed-in tilt (the phone's own pitch is not
+ * tracked), and a small popup lists every layer with something within a
+ * typed-in radius.
  *
  *     node tools/test-radar-compass.mjs
  *
@@ -12,8 +14,9 @@
  *   2. The toolbar button, labels and full-screen overlay are wired up.
  *   3. In a real browser: heading math (both the iOS webkitCompassHeading
  *      path and the computed-from-alpha path), the dial's rotation
- *      direction, tilt-to-range-ring mapping, the wedge draw and its
- *      "turn on Radar" hint, and closing (button and Escape).
+ *      direction, the typed tilt-to-range-ring mapping, the any-layer wedge
+ *      and its "turn on a layer" hint, the within-radius popup, and closing
+ *      (button and Escape).
  */
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
@@ -55,7 +58,8 @@ console.log('\n3. the full-screen overlay and its pieces exist');
   const ids = ['radc-overlay', 'radc-close', 'radc-status', 'radc-permission',
     'radc-dial-wrap', 'radc-wedge-canvas', 'radc-dial-svg', 'radc-rotating',
     'radc-range-labels', 'radc-pointer', 'radc-heading-readout',
-    'radc-range-readout', 'radc-tilt-debug'];
+    'radc-range-readout', 'radc-tilt-row', 'radc-tilt-input', 'radc-layers',
+    'radc-near', 'radc-near-input', 'radc-near-unit', 'radc-near-list'];
   for (const id of ids) {
     ok(`#${id} is in the page`, new RegExp('id="' + id + '"').test(PAGE));
   }
@@ -74,7 +78,7 @@ console.log('\n4. the heading, tilt and wedge math read correctly');
      /const h = 360 - e\.alpha - screenAngle;/.test(PAGE));
   ok('the dial rotates opposite the heading so the faced direction lands on top',
      /rotate\(\$\{-heading\} 110 110\)/.test(PAGE));
-  ok('tilt has four bands from the same three thresholds the debug readout uses',
+  ok('tilt has four bands from three thresholds',
      /const RADC_TILT_THRESHOLDS = \[60, 80, 100\];/.test(PAGE));
   ok('four preset ranges, nearest to farthest',
      /const RADC_RANGES_KM = \[10, 25, 50, 100\];/.test(PAGE));
@@ -89,7 +93,7 @@ console.log('\n4. the heading, tilt and wedge math read correctly');
      !/function _radcUnlockMapView\(\)[\s\S]{0,800}map\.scrollWheelZoom\.enable/.test(PAGE));
   ok('the map is re-zoomed so the outer ring matches its real-world distance',
      /function _radcSyncMapView\(\)[\s\S]{0,700}Math\.log2\(metersPerPixelAtZ0 \/ metersPerPixel\)/.test(PAGE));
-  ok('tilting to a new range ring re-zooms the map too, not just the ring labels',
+  ok('a new typed tilt re-zooms the map too, not just the ring labels',
      /_radcRenderRangeLabels\(\);\s*_radcSyncMapView\(\);\s*_radcScheduleWedge\(true\);/.test(PAGE));
   ok('the 3-finger rotate gesture exposes a setter and getter for Radar Compass to share',
      /window\._mapSetBearing = _applyBearing;/.test(PAGE)
@@ -351,76 +355,142 @@ console.log('\n7. an iOS-style webkitCompassHeading is used as-is, never recompu
   ok('webkitCompassHeading wins over alpha', r.heading === 213, JSON.stringify(r));
 }
 
-console.log('\n8. tilting the phone steps through the four preset range rings');
+console.log('\n8. the tilt is typed in, and the phone\'s own tilt is not tracked');
 {
-  // A held tilt, not one instant reading: the raw angle is smoothed
-  // (RADC_BETA_SMOOTHING) precisely so a single jittery sample can no
-  // longer flip the range on its own, so proving a SUSTAINED tilt gets
-  // there means firing enough repeats for that average to converge, the
-  // same as a real hand actually holding the phone at that angle would.
   const cases = [
-    { beta: 40, want: 3, label: '100 km (farthest, phone tipped up)' },
-    { beta: 70, want: 2, label: '50 km' },
-    { beta: 90, want: 1, label: '25 km' },
-    { beta: 150, want: 0, label: '10 km (nearest, phone tipped down)' },
+    { tilt: 40, want: 3, label: '100 km (farthest, looking up)' },
+    { tilt: 70, want: 2, label: '50 km' },
+    { tilt: 90, want: 1, label: '25 km' },
+    { tilt: 150, want: 0, label: '10 km (nearest, looking down)' },
   ];
   for (const c of cases) {
-    const r = await p.evaluate(beta => new Promise(resolve => {
-      for (let i = 0; i < 30; i++) {
-        const ev = new Event(_radcOrientEvent);
-        Object.defineProperty(ev, 'webkitCompassHeading', { value: 213, configurable: true });
-        Object.defineProperty(ev, 'beta', { value: beta, configurable: true });
-        window.dispatchEvent(ev);
-      }
-      setTimeout(() => resolve({ idx: _radcRangeIdx, dbg: document.getElementById('radc-tilt-debug').textContent }), 50);
-    }), c.beta);
-    ok(`beta ${c.beta} selects ${c.label}`, r.idx === c.want, JSON.stringify(r));
+    const r = await p.evaluate(tilt => {
+      const inp = document.getElementById('radc-tilt-input');
+      inp.value = String(tilt);
+      inp.dispatchEvent(new Event('change'));
+      let saved = null;
+      try { saved = localStorage.getItem('gwcfc_radc_tilt'); } catch (e) {}
+      return { idx: _radcRangeIdx, saved,
+               readout: document.getElementById('radc-range-readout').textContent };
+    }, c.tilt);
+    ok(`typing ${c.tilt} selects ${c.label}`, r.idx === c.want, JSON.stringify(r));
+    ok(`and ${c.tilt} is remembered for next time`, r.saved === String(c.tilt), JSON.stringify(r));
   }
-}
-
-console.log('\n8b. a single jittery reading near a threshold no longer flips the range');
-{
   const r = await p.evaluate(() => new Promise(resolve => {
-    // Settle on 25 km (idx 1) first, the same way the previous section left
-    // off, then fire one lone reading right at the 80 boundary - the kind
-    // of single noisy sample a hand tremor produces - and confirm it alone
-    // does not move the range.
-    for (let i = 0; i < 30; i++) {
+    const before = _radcRangeIdx;
+    for (let i = 0; i < 40; i++) {
       const ev = new Event(_radcOrientEvent);
-      Object.defineProperty(ev, 'beta', { value: 90, configurable: true });
+      Object.defineProperty(ev, 'webkitCompassHeading', { value: 10, configurable: true });
+      Object.defineProperty(ev, 'beta', { value: 30, configurable: true });
       window.dispatchEvent(ev);
     }
-    const before = _radcRangeIdx;
-    const jitter = new Event(_radcOrientEvent);
-    Object.defineProperty(jitter, 'beta', { value: 80, configurable: true });
-    window.dispatchEvent(jitter);
-    setTimeout(() => resolve({ before, after: _radcRangeIdx }), 30);
+    const inp = document.getElementById('radc-tilt-input');
+    inp.value = '500';
+    inp.dispatchEvent(new Event('change'));
+    const clamped = { idx: _radcRangeIdx, val: inp.value, tilt: _radcTilt };
+    setTimeout(() => resolve({ before, after: clamped.idx, clamped, heading: _radcHeading,
+      readout: document.getElementById('radc-range-readout').textContent }), 30);
   }));
-  ok('one noisy sample at the boundary does not flip the band',
-     r.before === r.after, JSON.stringify(r));
+  ok('a held phone tilt no longer moves the range at all', r.before === 0 && r.heading === 10, JSON.stringify(r));
+  ok('a number past 180 is held at 180', r.clamped.tilt === 180 && r.clamped.val === '180', JSON.stringify(r));
+  ok('the readout says to type a tilt, not to tilt the phone',
+     /type a tilt/.test(r.readout) && !/tilt the phone/.test(r.readout), r.readout);
+  ok('no sensor smoothing or hysteresis is left over',
+     !/_radcBetaSmoothed|RADC_BETA_SMOOTHING|RADC_TILT_HYSTERESIS/.test(PAGE));
 }
 
-console.log('\n9. the wedge draws and hints to turn Radar on when there is nothing to sample');
+console.log('\n9. the wedge paints any layer and hints when none is on');
 {
-  const r = await p.evaluate(() => new Promise(resolve => {
+  const draw = () => p.evaluate(() => new Promise(resolve => {
     _radcSetStatus('');
     _radcScheduleWedge(true);
     setTimeout(() => {
       const canvas = document.getElementById('radc-wedge-canvas');
-      const ctx = canvas.getContext('2d');
-      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      let painted = 0;
-      for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) painted++;
-      resolve({
-        painted,
+      const d = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+      let painted = 0, green = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] !== 0) painted++;
+        if (d[i + 3] > 100 && d[i + 1] > 150 && d[i] < 60 && d[i + 2] < 60) green++;
+      }
+      resolve({ painted, green,
         status: document.getElementById('radc-status').textContent,
-        nexrad: (typeof activeLayers !== 'undefined') ? activeLayers.nexrad : 'undefined',
-      });
+        layers: document.getElementById('radc-layers').textContent });
     }, 700);
   }));
-  ok('Radar is off by default so nothing gets painted', r.painted === 0, JSON.stringify(r));
-  ok('activeLayers.nexrad is off, which is the condition the hint checks', r.nexrad === false, JSON.stringify(r));
-  ok('the hint to turn Radar on appears', r.status === 'Turn on Radar to see it painted here.', JSON.stringify(r));
+  const none = await draw();
+  ok('nothing is on by default so nothing gets painted', none.painted === 0, JSON.stringify(none));
+  ok('the hint to turn a layer on appears',
+     none.status === 'Turn on a weather layer to see it painted here.', JSON.stringify(none));
+  ok('the layer line says none are on', none.layers === 'No weather layers are on', JSON.stringify(none));
+
+  // A satellite picture over the northern half and warnings that cover
+  // nothing: the wedge (pointing north) paints the satellite colour.
+  await p.evaluate(() => {
+    window.__realRows = _inspRowsAt; window.__realProj = _radcProjectToScreen;
+    window._radcProjectToScreen = () => ({ x: 10, y: 10 });
+    window._inspRowsAt = (c) => [
+      c.lat > _radcLoc.lat + 0.05
+        ? { label: 'Satellite', value: '≈-40°F', unit: 'deep cloud', color: 'rgb(0,200,0)' }
+        : { label: 'Satellite', value: 'No image', color: 'rgba(120,120,120,0.35)' },
+      { label: 'Warnings', value: 'none here', color: 'rgba(150,150,150,0.55)' },
+      { label: 'Nearest strike', value: '3', unit: 'mi', color: 'rgba(255,220,80,0.95)' },
+    ];
+    _radcHeading = 0; _radcApplyHeading(0);
+  });
+  const sat = await draw();
+  ok('a satellite-only view paints the wedge in the satellite colour', sat.green > 50, JSON.stringify(sat));
+  ok('with no radar-only hint', sat.status === '', JSON.stringify(sat));
+  ok('the layer line names what it reads and what is clear',
+     sat.layers === 'Reading: Satellite, Warnings (clear)', JSON.stringify(sat));
+}
+
+console.log('\n9b. the within-radius popup lists every layer with something nearby');
+{
+  const r = await p.evaluate(() => {
+    const savedDist = _units.dist;
+    _units.dist = 'km';
+    // Radar gets stronger to the east, out to 60 dBZ at the edge; a warning
+    // covers only the far west; the satellite is everywhere; lightning has
+    // two strikes inside 30 km and one far outside.
+    const lat0 = _radcLoc.lat, lon0 = _radcLoc.lon;
+    window._inspRowsAt = (c) => {
+      const east = (c.lng - lon0) * 111.32 * Math.cos(lat0 * Math.PI / 180);
+      const rows = [{ label: 'Radar', value: east > 5 ? Math.round(20 + east) + ' dBZ' : 'No echo',
+                      unit: '· Heavy', color: '#ff0000' }];
+      rows.push({ label: 'Satellite', value: '≈10°F', unit: 'cloud', color: 'rgb(200,200,200)' });
+      rows.push(east < -25 ? { label: 'Warnings', value: 'Tornado Warning', color: '#ff0000' }
+                           : { label: 'Warnings', value: 'none here', color: 'grey' });
+      rows.push({ label: 'SPC outlook', value: 'none here', color: 'grey' });
+      return rows;
+    };
+    activeLayers.lightning = true;
+    _ltgData = { features: [ { lat: lat0 + 0.05, lon: lon0 }, { lat: lat0 - 0.1, lon: lon0 }, { lat: lat0 + 3, lon: lon0 } ] };
+    const inp = document.getElementById('radc-near-input');
+    inp.value = '30';
+    inp.dispatchEvent(new Event('change'));
+    const out = {
+      km: _radcNearKm, unit: document.getElementById('radc-near-unit').textContent,
+      text: document.getElementById('radc-near-list').innerText,
+      rows: document.querySelectorAll('#radc-near-list .radc-near-row').length,
+    };
+    _units.dist = savedDist;
+    activeLayers.lightning = false; _ltgData = null;
+    _radcToggleNear();
+    out.collapsed = document.getElementById('radc-near').classList.contains('collapsed');
+    _radcToggleNear();
+    return out;
+  });
+  ok('the typed radius is used, in the chosen unit', r.km === 30 && r.unit === 'km', JSON.stringify(r));
+  ok('radar reports its strongest echo in the circle and that it is east',
+     /Radar\s*up to 50 dBZ Heavy\s*30 km E\b/.test(r.text), r.text);
+  ok('the satellite reads right here', /Satellite\s*≈10°F cloud\s*here/.test(r.text), r.text);
+  ok('the warning reports the nearest place it covers, to the west',
+     /Warnings\s*Tornado Warning\s*30 km (W|WSW|WNW)\b/.test(r.text), r.text);
+  ok('lightning counts only the strikes inside the circle', /Lightning\s*2 strikes\s*closest 6 km N\b/.test(r.text), r.text);
+  ok('layers with nothing nearby are listed as clear', /Clear: SPC outlook/.test(r.text), r.text);
+  ok('four layer lines in all', r.rows === 4, JSON.stringify(r));
+  ok('the popup folds away and back', r.collapsed === true, JSON.stringify(r));
+  await p.evaluate(() => { window._inspRowsAt = __realRows; window._radcProjectToScreen = __realProj; });
 }
 
 console.log('\n10. closing resets everything, by button and by Escape');

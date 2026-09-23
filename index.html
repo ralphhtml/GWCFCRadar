@@ -5216,12 +5216,51 @@ body.lite-mode #export-modal { display: none !important; }
   background: rgba(5,8,12,0.7); border-radius: 6px; padding: 3px 10px;
   display: inline-block;
 }
-#radc-tilt-debug {
-  margin-top: 4px;
-  font-family: var(--mono); font-size: 9px; color: rgba(218,238,251,0.5);
-  background: rgba(5,8,12,0.6); border-radius: 4px; padding: 2px 6px;
-  display: inline-block;
+/* The tilt is typed in now instead of read off the phone's sensor, so the
+   range only changes when the person asks it to. */
+#radc-tilt-row {
+  margin-top: 6px;
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 11px; color: rgba(218,238,251,0.85);
+  background: rgba(5,8,12,0.7); border-radius: 6px; padding: 3px 8px;
 }
+#radc-tilt-row input, #radc-near-head input {
+  width: 52px; font-family: var(--mono); font-size: 12px; color: #fff;
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 4px; padding: 2px 4px; text-align: right;
+}
+#radc-tilt-hint { color: rgba(218,238,251,0.55); font-size: 10px; }
+#radc-layers {
+  margin-top: 4px;
+  font-family: var(--mono); font-size: 10px; color: rgba(218,238,251,0.6);
+  background: rgba(5,8,12,0.6); border-radius: 4px; padding: 2px 6px;
+  max-width: 88vw; text-align: center;
+}
+/* The small "what is around me" popup: every weather layer that has
+   something within the radius typed into its header. */
+#radc-near {
+  position: absolute; left: 12px; top: calc(40px + env(safe-area-inset-top, 0px));
+  width: min(250px, calc(100vw - 24px)); max-height: 38vh; overflow: auto;
+  background: rgba(5,8,12,0.82); border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 10px; padding: 6px 8px; z-index: 2;
+  font-family: var(--mono); font-size: 11px; color: rgba(218,238,251,0.9);
+}
+#radc-near-head { display: flex; align-items: center; gap: 5px; font-weight: 700; }
+#radc-near-head input { width: 46px; }
+#radc-near-toggle {
+  margin-left: auto; background: none; border: none; color: rgba(218,238,251,0.7);
+  font-size: 12px; cursor: pointer; padding: 0 2px;
+}
+#radc-near.collapsed #radc-near-list { display: none; }
+#radc-near-list { margin-top: 4px; display: flex; flex-direction: column; gap: 3px; }
+.radc-near-row { display: flex; align-items: center; gap: 5px; line-height: 1.3; }
+.radc-near-sw { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 9px;
+  border: 1px solid rgba(0,0,0,0.5); }
+.radc-near-lbl { color: rgba(218,238,251,0.7); }
+.radc-near-row b { color: #fff; font-weight: 700; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.radc-near-where { margin-left: auto; color: rgba(218,238,251,0.6); white-space: nowrap; }
+.radc-near-quiet { color: rgba(218,238,251,0.5); font-size: 10px; }
 
 /* -- MAP ROTATION -- */
 #map {
@@ -11744,6 +11783,17 @@ body.clean-mode #clean-hint { opacity: 1; }
   <button id="radc-close" onclick="_radcClose()" title="Close">&#x2715;</button>
   <div id="radc-status"></div>
 
+  <div id="radc-near">
+    <div id="radc-near-head">
+      <span>Within</span>
+      <input id="radc-near-input" type="number" min="1" max="500" step="1" inputmode="numeric"
+             onchange="_radcSetNearRadius(this.value)" title="How far around you to look">
+      <span id="radc-near-unit">mi</span>
+      <button id="radc-near-toggle" onclick="_radcToggleNear()" title="Hide or show the list">&#9662;</button>
+    </div>
+    <div id="radc-near-list"></div>
+  </div>
+
   <div id="radc-permission">
     <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.4">
       <circle cx="12" cy="12" r="9.25"/>
@@ -11773,7 +11823,14 @@ body.clean-mode #clean-hint { opacity: 1; }
   </div>
 
   <div id="radc-range-readout"></div>
-  <div id="radc-tilt-debug"></div>
+  <div id="radc-tilt-row">
+    <label for="radc-tilt-input">Tilt</label>
+    <input id="radc-tilt-input" type="number" min="0" max="180" step="5" inputmode="numeric"
+           onchange="_radcSetTilt(this.value)" title="90 is level. Higher looks closer, lower looks farther.">
+    <span>&deg;</span>
+    <span id="radc-tilt-hint">90 = level, higher = closer</span>
+  </div>
+  <div id="radc-layers"></div>
 </div>
 
     <!-- Animation Bar -->
@@ -42030,6 +42087,7 @@ function _inspRadarMainRow(center, cx, cy) {
     const fam = typeof _meshFamily === 'function'
       ? _meshFamily(_lastMeshProduct) : _lastMeshProduct;
     let unit = INSP_UNITS[fam] || '';
+    const color = _meshColorFn(_lastMeshProduct)(value) || 'rgba(120,120,120,0.5)';
     // Velocity is knots off the decoder. It is a wind speed like any other,
     // so it follows the wind preference rather than being the one number on
     // screen that ignores it.
@@ -42037,7 +42095,6 @@ function _inspRadarMainRow(center, cx, cy) {
       const vc = _inspConvUnit(value, 'kt', 0);
       if (vc) return { label: 'Radar', value: vc.value, unit: vc.unit, color };
     }
-    const color = _meshColorFn(_lastMeshProduct)(value) || 'rgba(120,120,120,0.5)';
     return { label: 'Radar', value: _inspFormatValue(_lastMeshProduct, value), unit, color };
   }
   // 2) Reflectivity: read the displayed pixel color, map to NWS dBZ + intensity
@@ -42530,9 +42587,11 @@ function _inspLightningRow(center) {
 // Which polygon covers this point, for the layers that are areas rather
 // than fields. A category name is the honest reading of a risk area; a
 // number would be inventing precision the product does not have.
-function _inspPolyRow(label, layer, nameOf, color) {
+function _inspPolyRow(label, layer, nameOf, color, center) {
   if (!layer) return null;
-  const c = map.getCenter();
+  // The point being asked about. It used to always be the map's middle, so
+  // a dragged Inspector or a city label read the outlook somewhere else.
+  const c = center || map.getCenter();
   let hit = null;
   try {
     layer.eachLayer(l => {
@@ -42632,7 +42691,7 @@ function _inspRowsAt(center, cx, cy, light) {
   if (typeof spcOutlookLayer !== 'undefined' && spcOutlookLayer) {
     rows.push(_inspPolyRow('SPC outlook', spcOutlookLayer,
       f => (f.properties || {}).LABEL2 || (f.properties || {}).LABEL
-        || (f.properties || {}).DN, 'rgba(255,170,60,0.95)'));
+        || (f.properties || {}).DN, 'rgba(255,170,60,0.95)', center));
   }
   if (typeof _gwcfcOn !== 'undefined' && _gwcfcOn) {
     rows.push(_inspGwcfcRow(center));
@@ -44752,7 +44811,11 @@ let _radcWedgeTimer = null;
 let _radcLastWedgeHeading = null;
 let _radcDialBuilt = false;
 let _radcPrevMapView = null;    // { center, zoom } to restore once the tool closes
-let _radcBetaSmoothed = null;   // running average of the raw tilt reading
+let _radcTilt = 70;             // the tilt typed into the box, degrees (70 = the 50 km ring)
+let _radcNearKm = 40;           // radius of the "within" popup, always kept in km
+let _radcNearTimer = null;      // refreshes the popup and the wedge while open
+const RADC_TILT_KEY = 'gwcfc_radc_tilt';
+const RADC_NEAR_KEY = 'gwcfc_radc_near_km';
 let _radcOwnsLocationWatch = false; // true if Compass itself turned My Location on
 
 function _radcRangeKm() { return RADC_RANGES_KM[_radcRangeIdx]; }
@@ -44792,6 +44855,7 @@ async function startRadarCompassTool() {
   document.getElementById('radc-dial-wrap')?.classList.remove('show');
   document.getElementById('radc-permission')?.classList.remove('show');
   if (!_radcDialBuilt) { _radcBuildDial(); _radcDialBuilt = true; }
+  _radcLoadInputs();
   _radcBuildRangeLabels();
 
   // iOS 13+ Safari refuses raw sensor events until asked, and that ask has
@@ -44847,6 +44911,12 @@ async function _radcActuallyStart() {
   _radcStartSensors();
   _radcRenderRangeLabels();
   _radcScheduleWedge(true);
+  _radcNearScan();
+  if (_radcNearTimer) clearInterval(_radcNearTimer);
+  // Layers finish loading, animate and get switched on after the tool is
+  // already open, so both readings refresh on a slow beat of their own
+  // instead of only when the heading moves.
+  _radcNearTimer = setInterval(() => { _radcNearScan(); _radcScheduleWedge(true); }, 4000);
 }
 
 // Called from the live location watch (_startLocationTracking) on every new
@@ -44865,6 +44935,7 @@ function _radcOnPosition(lat, lon) {
     if (Math.hypot(dLat, dLon) < 8) return;
   }
   _radcSyncMapView();
+  _radcNearScan();
 }
 
 // The dial now sits directly over the live map (see #radc-overlay's
@@ -44975,36 +45046,55 @@ function _radcComputeHeading(e) {
   return null;
 }
 
-// Tilt (front-back pitch, .beta) decides which range ring is "active".
-// Held up like a camera aimed at the horizon, beta usually sits near 90;
-// tipping the top of the phone DOWN toward the ground - looking at
-// something closer - raises it toward 180, tipping it UP toward the sky
-// lowers it toward 0.
+// Tilt decides which range ring is "active". It used to be read live off the
+// phone's own pitch sensor (.beta), which meant the range kept changing
+// while the phone moved in a hand. Now it is a number the person types in,
+// on the same scale that sensor used: 90 is the phone held level at the
+// horizon, higher numbers are the top tipped DOWN toward the ground (looking
+// at something closer), lower numbers are tipped UP toward the sky (farther).
 const RADC_TILT_THRESHOLDS = [60, 80, 100]; // three cut points make four bands
-// A raw orientation reading jitters a degree or two even on a hand held
-// still, and every one of those readings used to be tried against the
-// threshold directly: hovering right at 80° flickered the range (and
-// re-triggered an animated map zoom) back and forth many times a second.
-// Two fixes, applied together: the angle fed in is a smoothed running
-// average rather than the instant reading (_radcHandleOrientation), and
-// leaving the CURRENT band takes a deliberate tilt past its threshold by
-// this many degrees, not just touching it - a dead zone, the same idea a
-// thermostat's hysteresis uses to stop short-cycling near its setpoint.
-const RADC_TILT_HYSTERESIS = 4;
-const RADC_BETA_SMOOTHING = 0.18; // 0-1, higher = snappier, lower = steadier
-function _radcRangeIdxForBeta(beta, currentIdx) {
-  if (beta == null || !isFinite(beta)) return currentIdx; // hold last known
-  const b = Math.abs(beta);
-  let idx = currentIdx;
-  // Move toward the nearest ring: needs b to climb past the boundary above
-  // the current band, plus the hysteresis margin.
-  while (idx > 0 && b >= RADC_TILT_THRESHOLDS[3 - idx] + RADC_TILT_HYSTERESIS) idx--;
-  // Move toward the farthest ring: needs b to drop below the boundary
-  // below the current band, minus the same margin.
-  while (idx < 3 && b < RADC_TILT_THRESHOLDS[2 - idx] - RADC_TILT_HYSTERESIS) idx++;
-  return idx;
+function _radcRangeIdxForTilt(tilt) {
+  let n = 0;
+  for (const th of RADC_TILT_THRESHOLDS) if (tilt >= th) n++;
+  return RADC_RANGES_KM.length - 1 - n; // 0 cut points passed = farthest ring
 }
 
+function _radcSetTilt(v) {
+  v = Number(v);
+  if (!isFinite(v)) return;
+  v = Math.max(0, Math.min(180, Math.round(v)));
+  _radcTilt = v;
+  try { localStorage.setItem(RADC_TILT_KEY, String(v)); } catch (e) {}
+  const inp = document.getElementById('radc-tilt-input');
+  if (inp) inp.value = v;
+  const idx = _radcRangeIdxForTilt(v);
+  if (idx !== _radcRangeIdx) {
+    _radcRangeIdx = idx;
+    _radcRenderRangeLabels();
+    _radcSyncMapView();
+    _radcScheduleWedge(true);
+  } else {
+    _radcRenderRangeLabels();
+  }
+}
+
+// The two typed numbers are remembered between visits, so the compass opens
+// on the same range and the same radius it was last left on.
+function _radcLoadInputs() {
+  try {
+    const t = parseFloat(localStorage.getItem(RADC_TILT_KEY));
+    if (isFinite(t)) _radcTilt = Math.max(0, Math.min(180, t));
+    const k = parseFloat(localStorage.getItem(RADC_NEAR_KEY));
+    if (isFinite(k) && k > 0) _radcNearKm = Math.max(1, Math.min(800, k));
+  } catch (e) {}
+  _radcRangeIdx = _radcRangeIdxForTilt(_radcTilt);
+  const inp = document.getElementById('radc-tilt-input');
+  if (inp) inp.value = _radcTilt;
+  _radcRenderNearInput();
+}
+
+// Only the compass heading comes from the sensor now. The pitch in the same
+// event is ignored on purpose: the range follows the typed tilt instead.
 function _radcHandleOrientation(e) {
   if (!_radcOn) return;
   const heading = _radcComputeHeading(e);
@@ -45012,22 +45102,6 @@ function _radcHandleOrientation(e) {
     _radcHeading = heading;
     _radcApplyHeading(heading);
   }
-  // A running average of the raw reading, not the reading itself - the
-  // thing that made a still hand's natural tremor visible as the range
-  // ring hopping around on its own.
-  if (typeof e.beta === 'number' && isFinite(e.beta)) {
-    _radcBetaSmoothed = _radcBetaSmoothed == null
-      ? e.beta : _radcBetaSmoothed + (e.beta - _radcBetaSmoothed) * RADC_BETA_SMOOTHING;
-  }
-  const newIdx = _radcRangeIdxForBeta(_radcBetaSmoothed, _radcRangeIdx);
-  if (newIdx !== _radcRangeIdx) {
-    _radcRangeIdx = newIdx;
-    _radcRenderRangeLabels();
-    _radcSyncMapView();
-    _radcScheduleWedge(true);
-  }
-  const dbg = document.getElementById('radc-tilt-debug');
-  if (dbg && _radcBetaSmoothed != null) dbg.textContent = `tilt ${Math.round(_radcBetaSmoothed)}°`;
   _radcScheduleWedge(false);
 }
 
@@ -45115,10 +45189,30 @@ function _radcRenderRangeLabels() {
   });
   const readout = document.getElementById('radc-range-readout');
   if (readout) readout.textContent = 'Showing out to ' + _radcFmtRange(_radcRangeKm())
-    + ' · tilt the phone to change range';
+    + ' · type a tilt to change range';
 }
 
-// The wedge: real radar colour sampled in a fan around the current
+// What a layer reads when it has nothing at that point. Anything else in
+// a row's value is a real reading worth painting or listing.
+const RADC_EMPTY_VALUE = /^(no data|no image|no echo|nothing here|none|none here|none loaded|land \/ no data|reading…|\(no cors\)|--)$/i;
+function _radcRowHasData(row) {
+  if (!row || row.value == null) return false;
+  // The lightning row is the distance to the nearest strike from wherever
+  // it is asked, so it "has data" everywhere; strikes are counted on their
+  // own in the popup instead.
+  if (row.label === 'Nearest strike') return false;
+  return !RADC_EMPTY_VALUE.test(String(row.value).trim());
+}
+
+// Every layer that is on, read at one real place: the same rows the
+// Inspector shows, so radar, satellite, models, the grids, the ocean, the
+// outlooks and the warnings are all read the same way they are there.
+function _radcRowsAt(lat, lng) {
+  const sp = _radcProjectToScreen(lat, lng);
+  return _inspRowsAt({ lat, lng }, sp.x, sp.y, false) || [];
+}
+
+// The wedge: real layer colour sampled in a fan around the current
 // heading, out to the active range ring, painted straight up from centre
 // since "up" is always wherever the phone is currently pointed. Recomputed
 // on a throttle rather than on every orientation event (which can fire
@@ -45187,7 +45281,7 @@ function _radcDrawWedge() {
   const rangeKm = _radcRangeKm();
   const cx = canvas.width / 2, cy = canvas.height / 2;
   const rOuter = Math.min(cx, cy) - 4;
-  let anySample = false;
+  const active = new Set(), painted = new Set();
   for (let a = 0; a < RADC_WEDGE_ANGLE_STEPS; a++) {
     const frac = RADC_WEDGE_ANGLE_STEPS === 1 ? 0.5 : a / (RADC_WEDGE_ANGLE_STEPS - 1);
     const screenDeg = frac * (RADC_WEDGE_HALF_DEG * 2) - RADC_WEDGE_HALF_DEG;
@@ -45196,17 +45290,16 @@ function _radcDrawWedge() {
       const rFrac = r / RADC_WEDGE_RANGE_STEPS;
       const distKm = rFrac * rangeKm;
       const pt = _radcDestPoint(_radcLoc.lat, _radcLoc.lon, bearing, distKm);
+      // The first layer in the Inspector's order with something here wins
+      // the cell: radar first, then satellite, the grids, and so on.
       let color = null;
       try {
-        const sp = _radcProjectToScreen(pt.lat, pt.lng);
-        const s = _inspSampleRadarColor(sp.x, sp.y);
-        if (s && !s.tainted && !s.transparent) {
-          const meta = _inspColorToDbz(s.r, s.g, s.b);
-          if (meta) color = meta.hex;
-        }
+        const rows = _radcRowsAt(pt.lat, pt.lng);
+        for (const row of rows) if (row.label !== 'Nearest strike') active.add(row.label);
+        const hit = rows.find(_radcRowHasData);
+        if (hit) { color = hit.color; painted.add(hit.label); }
       } catch (e) {}
       if (!color) continue;
-      anySample = true;
       const halfCellDeg = RADC_WEDGE_HALF_DEG * 2 / RADC_WEDGE_ANGLE_STEPS / 2;
       const rad0 = (screenDeg - 90 - halfCellDeg) * Math.PI / 180;
       const rad1 = (screenDeg - 90 + halfCellDeg) * Math.PI / 180;
@@ -45225,17 +45318,136 @@ function _radcDrawWedge() {
   }
   ctx.globalAlpha = 1;
   const status = document.getElementById('radc-status');
-  if (status && status.textContent === '' && !anySample
-      && (typeof activeLayers === 'undefined' || !activeLayers.nexrad)) {
-    _radcSetStatus('Turn on Radar to see it painted here.');
+  const HINT = 'Turn on a weather layer to see it painted here.';
+  if (status && status.textContent === '' && !active.size) _radcSetStatus(HINT);
+  else if (status && status.textContent === HINT && active.size) _radcSetStatus('');
+  const lay = document.getElementById('radc-layers');
+  if (lay) {
+    lay.textContent = active.size
+      ? 'Reading: ' + [...active].map(l => painted.has(l) ? l : l + ' (clear)').join(', ')
+      : 'No weather layers are on';
   }
+}
+
+// -- The "within" popup ------------------------------------------------------
+// A ring of points around the person, out to the typed radius, each read with
+// the same rows as the wedge. Each layer that has something anywhere in that
+// circle gets one line: radar says its STRONGEST echo and where, everything
+// else says the nearest place it has something (often "here").
+const RADC_NEAR_BEARINGS = 16;
+const RADC_NEAR_RINGS = 5;
+
+function _radcNearUseKm() { return typeof _units !== 'undefined' && _units.dist === 'km'; }
+
+function _radcRenderNearInput() {
+  const inp = document.getElementById('radc-near-input');
+  const unit = document.getElementById('radc-near-unit');
+  const km = _radcNearUseKm();
+  if (inp && document.activeElement !== inp) inp.value = Math.round(km ? _radcNearKm : _radcNearKm * 0.621371);
+  if (unit) unit.textContent = km ? 'km' : 'mi';
+}
+
+function _radcSetNearRadius(v) {
+  v = Number(v);
+  if (!isFinite(v) || v <= 0) { _radcRenderNearInput(); return; }
+  const km = _radcNearUseKm() ? v : v / 0.621371;
+  _radcNearKm = Math.max(1, Math.min(800, km));
+  try { localStorage.setItem(RADC_NEAR_KEY, String(_radcNearKm)); } catch (e) {}
+  _radcRenderNearInput();
+  _radcNearScan();
+}
+
+function _radcToggleNear() {
+  const el = document.getElementById('radc-near');
+  if (!el) return;
+  el.classList.toggle('collapsed');
+  const b = document.getElementById('radc-near-toggle');
+  if (b) b.innerHTML = el.classList.contains('collapsed') ? '&#9656;' : '&#9662;';
+}
+
+function _radcNearWhere(d, br) {
+  if (d < 0.5) return 'here';
+  return _radcFmtRange(d) + ' ' + _radcCardinalFor(((br % 360) + 360) % 360);
+}
+
+function _radcNearScan() {
+  const list = document.getElementById('radc-near-list');
+  if (!list || !_radcOn || !_radcLoc || typeof map === 'undefined' || !map) return;
+  const lat = _radcLoc.lat, lon = _radcLoc.lon, R = _radcNearKm;
+  const found = new Map(), active = new Set();
+  const pts = [{ d: 0, br: 0 }];
+  for (let r = 1; r <= RADC_NEAR_RINGS; r++) {
+    for (let a = 0; a < RADC_NEAR_BEARINGS; a++) {
+      pts.push({ d: R * r / RADC_NEAR_RINGS, br: a * 360 / RADC_NEAR_BEARINGS });
+    }
+  }
+  for (const p of pts) {
+    const at = p.d ? _radcDestPoint(lat, lon, p.br, p.d) : { lat, lng: lon };
+    let rows;
+    try { rows = _radcRowsAt(at.lat, at.lng); } catch (e) { continue; }
+    for (const row of rows) {
+      if (!row || row.label === 'Nearest strike') continue;
+      active.add(row.label);
+      if (!_radcRowHasData(row)) continue;
+      const num = parseFloat(row.value);
+      const byStrength = /^Radar/.test(row.label) && isFinite(num);
+      const prev = found.get(row.label);
+      // Points are visited nearest first, so the first hit is the nearest.
+      if (!prev || (byStrength && num > prev.num)) {
+        found.set(row.label, { row, d: p.d, br: p.br, num, byStrength });
+      }
+    }
+  }
+  // Lightning is a list of strikes rather than a picture, so it is counted
+  // directly: how many landed inside the circle, and how far the closest is.
+  let ltg = null;
+  if (typeof activeLayers !== 'undefined' && activeLayers.lightning) {
+    const src = (typeof _ltgData !== 'undefined' && _ltgData) || null;
+    const arr = (src && (src.features || src.strikes)) || (Array.isArray(src) ? src : []);
+    let n = 0, best = Infinity, bestBr = 0;
+    for (const st of (Array.isArray(arr) ? arr : [])) {
+      const la = st.lat != null ? st.lat : st[0];
+      const lo = st.lon != null ? st.lon : (st.lng != null ? st.lng : st[1]);
+      if (!isFinite(la) || !isFinite(lo)) continue;
+      const dy = (la - lat) * 111.32;
+      const dx = (lo - lon) * 111.32 * Math.cos(lat * Math.PI / 180);
+      const d = Math.hypot(dx, dy);
+      if (d > R) continue;
+      n++;
+      if (d < best) { best = d; bestBr = Math.atan2(dx, dy) * 180 / Math.PI; }
+    }
+    ltg = { n, best, bestBr };
+  }
+  const esc = (typeof _escapeHtml === 'function') ? _escapeHtml : (x => String(x));
+  const lines = [];
+  for (const [label, f] of found) {
+    const unit = f.row.unit ? ' ' + String(f.row.unit).replace(/^·\s*/, '') : '';
+    const lead = f.byStrength ? 'up to ' : '';
+    lines.push(`<div class="radc-near-row"><span class="radc-near-sw" style="background:${esc(f.row.color || '#888')}"></span>`
+      + `<span class="radc-near-lbl">${esc(label)}</span> <b>${esc(lead + f.row.value + unit)}</b>`
+      + `<span class="radc-near-where">${esc(_radcNearWhere(f.d, f.br))}</span></div>`);
+  }
+  if (ltg && ltg.n) {
+    lines.push(`<div class="radc-near-row"><span class="radc-near-sw" style="background:rgba(255,220,80,0.95)"></span>`
+      + `<span class="radc-near-lbl">Lightning</span> <b>${ltg.n} strike${ltg.n === 1 ? '' : 's'}</b>`
+      + `<span class="radc-near-where">${esc('closest ' + _radcNearWhere(ltg.best, ltg.bestBr))}</span></div>`);
+  }
+  const quiet = [...active].filter(l => !found.has(l));
+  if (ltg && !ltg.n) quiet.push('Lightning');
+  if (!lines.length && !quiet.length) {
+    list.innerHTML = '<div class="radc-near-quiet">No weather layers are on.</div>';
+    return;
+  }
+  if (!lines.length) lines.push('<div class="radc-near-quiet">Nothing within this radius.</div>');
+  if (quiet.length) lines.push(`<div class="radc-near-quiet">Clear: ${esc(quiet.join(', '))}</div>`);
+  list.innerHTML = lines.join('');
 }
 
 function _radcClose() {
   _radcOn = false;
   _radcStopSensors();
   _radcUnlockMapView();
-  _radcBetaSmoothed = null;
+  if (_radcNearTimer) { clearInterval(_radcNearTimer); _radcNearTimer = null; }
   // Compass turning live tracking on as a side effect of opening should not
   // leave it running (and the blue dot on screen, and the battery draw)
   // after closing, when the person never asked for it separately.
@@ -68127,6 +68339,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-k', date: 'Sep 23, 2026',
+    text: 'Radar Compass reads every layer now, not just radar. The wedge you point paints whatever is on screen: radar first, then satellite, model charts, the waves, air, wind, temperature and pressure grids, ocean temperature, outlooks and warnings. The phone\'s tilt is no longer tracked: type a tilt into the box under the dial instead (90 is level, higher looks closer) and the range ring only changes when you change it. A small popup in the corner lists every weather layer with something within a radius you type in, like the strongest radar echo and where it is, the nearest warning, or how many lightning strikes landed nearby.' },
   { id: '2026-09-23-j', date: 'Sep 23, 2026',
     text: 'Compare moved to the tool rail. The new Compare button opens a menu bar like the Polygon tool\'s, with every comparison in one place. Same layer is radar beside radar or satellite beside satellite, as before. Cross layer is new: a different layer in each pane, like radar on one side and satellite on the other, or a model chart beside the radar, split along the same draggable, turnable lines, up to eight panes, each with its own picker. Split size, rotate, peek and end live in the bar now instead of floating on the map, and the Inspector reads whichever layer the pane under it shows.' },
   { id: '2026-09-23-i', date: 'Sep 23, 2026',
@@ -74951,7 +75165,7 @@ const TOOL_DESCRIPTIONS = {
   'tool-text':      'Adds a text label you can place and edit anywhere on the map.',
   'tool-polygon':   'Draws a custom shape by clicking each corner point.',
   'tool-distance':  'Measures the straight-line distance between two points you click.',
-  'tool-radar-compass': 'Turns with your phone’s own compass and shows the real radar in whichever direction you point it. Tilt the phone up or down to step through range rings.',
+  'tool-radar-compass': 'Turns with your phone’s own compass and paints every weather layer on screen in whichever direction you point it. Type a tilt to pick the range ring, and a radius to list every layer with something near you.',
   'tool-radius':    'Click to place a center point, then set a radius to draw a circle around it.',
   'tool-stormcone': 'Click and drag to draw a cone-shaped threat area with hurricane-category icons and speed per point, lists the cities inside it with ETA, and can animate the storm moving along its path.',
   'tool-inspector': 'Shows the radar value at the exact center of the map, and updates live as you pan.',
