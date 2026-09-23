@@ -12835,10 +12835,23 @@ function _wireWheelZoom(m) {
 // around the edges instead of a void, and the sharp tiles fade in over it.
 // It follows whichever basemap is on, and only refreshes once a gesture ends.
 const BACKDROP_ZOOM_BACK = 3;
-const BACKDROP_PAD = 3.5;       // screens of cover on each side
+const BACKDROP_PAD = 2;         // screens of cover on each side
 let _basemapBackdrop = null;
+// Never on iPhones and iPads, nor on small-memory machines. Each backdrop tile
+// is drawn at 2048 CSS pixels and Leaflet places tiles with a 3D transform,
+// which on WebKit makes every one its own GPU surface: at three device pixels
+// per CSS pixel a single tile can want well over 100 MB, and iOS kills the tab
+// ("Can't open this page") long before that adds up. Those devices keep the
+// old behaviour, an empty edge for a moment during a pinch, which is harmless.
+function _backdropAllowed() {
+  if (typeof _isIOS !== 'undefined' && _isIOS) return false;
+  const mem = (typeof navigator !== 'undefined' && navigator.deviceMemory) || 0;
+  if (mem && mem <= 4) return false;
+  return true;
+}
 function _wireBasemapBackdrop() {
   if (typeof L === 'undefined' || !map || !L.TileLayer) return;
+  if (!_backdropAllowed()) return;
   if (!map.getPane('backdropPane')) {
     const pane = map.createPane('backdropPane');
     pane.style.zIndex = 150;          // under the basemap's tilePane (200)
@@ -69167,6 +69180,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-z', date: 'Sep 23, 2026',
+    text: 'Fix for iPhones and iPads showing "Can\'t open this page". The soft backdrop map added under the basemap for pinch zooming is now switched off on Apple devices and on low-memory machines: on those screens it could ask the graphics chip for far more memory than iOS allows a tab, and iOS closed the page. Everywhere else it now reaches a little less far off screen, which uses less memory too.' },
   { id: '2026-09-23-y', date: 'Sep 23, 2026',
     text: 'New overlay: Low Tracks, in the overlay list beside ECMWF TC Probability. It shows where every low pressure centre goes, in each member of the GFS and ECMWF ensembles and in the regular GFS and ECMWF runs. Tracks shows every path, one colour per member; Centers shows an L with its pressure for each low at the forecast hour you pick with the slider, like the ensemble low maps forecasters share. Filter to only the deep lows, and the Inspector names the nearest one.' },
   { id: '2026-09-23-x', date: 'Sep 23, 2026',
