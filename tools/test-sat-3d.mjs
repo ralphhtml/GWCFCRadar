@@ -501,6 +501,150 @@ console.log('\n7c. no parsing server at all: the browser builds the heights from
   await p.evaluate(() => _s3dClose());
 }
 
+console.log('\n7d. everything Radar 3D has that fits a cloud-top surface');
+{
+  await p.evaluate(() => { _s3dOpenBounds(35.5, -97, 36.5, -95.5); });
+  await p.waitForFunction(() => _s3dFrames.length === 6, null, { timeout: 30000 }).catch(() => {});
+  const r = await p.evaluate(async () => {
+    const out = {};
+    const $ = (id) => document.getElementById(id);
+    out.controls = ['s3d-full', 's3d-walk-btn', 's3d-vr-btn', 's3d-info-btn', 's3d-above', 's3d-upto', 's3d-smooth',
+                    's3d-mode', 's3d-cut', 's3d-cutpct', 's3d-hunit', 's3d-zoom', 's3d-yaw', 's3d-walk-pad',
+                    's3d-rprod', 's3d-rsite'].filter(id => !$(id));
+    const d = _s3dFrames[_s3dIdx].data;
+    const set = (id, v) => { const el = $(id); el.value = String(v); el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input')); };
+    const cloudy = (hm) => { let n = 0, mx = 0; for (const v of hm) { if (v > 0) n++; if (v > mx) mx = v; } return { n, mx }; };
+    const base = cloudy(_s3dShownHeights(d));
+    set('s3d-above', 30); const above = cloudy(_s3dShownHeights(d)); const aboveLabel = $('s3d-above-label').textContent;
+    set('s3d-above', 0); set('s3d-upto', 20); const upto = cloudy(_s3dShownHeights(d));
+    set('s3d-upto', 60); set('s3d-smooth', 100); const sm = _s3dShownHeights(d);
+    let jump = 0, jump0 = 0;
+    for (let i = 1; i < d.w; i++) { const k = 20 * d.w + i;
+      jump = Math.max(jump, Math.abs(sm[k] - sm[k - 1])); jump0 = Math.max(jump0, Math.abs(d.hm[k] - d.hm[k - 1])); }
+    set('s3d-smooth', 0);
+    out.filters = { base, above, aboveLabel, upto, jump, jump0 };
+    // The looks and the cutaway, straight through the rasterizer.
+    const z = _s3dZone, v = _s3dCamBasis();
+    const count = (px) => { let n = 0, grey = 0; for (let i = 0; i < px.length; i += 4) if (px[i + 3]) { n++; if (px[i] === px[i + 1] && px[i + 1] === px[i + 2]) grey++; } return { n, grey }; };
+    const lit = count(_s3dRaster(d, z, v, 200, 120, 10, 1, 1, { mode: 'lit' }));
+    const hc = count(_s3dRaster(d, z, v, 200, 120, 10, 1, 1, { mode: 'height' }));
+    set('s3d-cut', 'e'); set('s3d-cutpct', 50);
+    const cut = count(_s3dRaster(d, z, v, 200, 120, 10, 1, 1, { box: _s3dCutBox(z.wKm / 2, z.hKm / 2) }));
+    set('s3d-cut', 'off');
+    out.looks = { lit, hc, cut };
+    // Units.
+    set('s3d-hunit', 'km'); set('s3d-upto', 33);
+    out.units = $('s3d-upto-label').textContent;
+    set('s3d-hunit', 'kft'); set('s3d-upto', 60);
+    // Walk: the pad shows, the orbit bars step aside, W walks forward.
+    $('s3d-walk-btn').click();
+    const w0 = { ..._s3dWalk };
+    const padShown = $('s3d-walk-pad').style.display !== 'none';
+    const barsHidden = document.querySelector('#s3d-panel .r3d-cam-zoom').style.display === 'none';
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', bubbles: true }));
+    await new Promise(res => setTimeout(res, 300));
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'w', bubbles: true }));
+    const moved = Math.hypot(_s3dWalk.x - w0.x, _s3dWalk.y - w0.y);
+    // VR: two eyes, fullscreen; then back out of both.
+    $('s3d-vr-btn').click();
+    _s3dDirty = false; _s3dRender(); await _s3dRenderIdle(15000);
+    const vr = { on: _s3dVr, full: $('s3d-panel').classList.contains('fullscreen') };
+    $('s3d-vr-btn').click(); $('s3d-walk-btn').click();
+    $('s3d-panel').classList.remove('fullscreen');
+    out.walk = { padShown, barsHidden, moved, vr, off: !_s3dWalk && !_s3dVr };
+    // Fullscreen and info.
+    $('s3d-full').click(); const full = $('s3d-panel').classList.contains('fullscreen'); $('s3d-full').click();
+    let infoText = null; const realInfo = window._ovShowInfo; window._ovShowInfo = (t) => { infoText = t; };
+    $('s3d-info-btn').click(); window._ovShowInfo = realInfo;
+    out.chrome = { full, info: infoText };
+    // Camera bars drive the orbit.
+    const y0 = _s3dCam.yaw; set('s3d-yaw', 90); const d0 = _s3dCam.dist; set('s3d-zoom', 900);
+    out.bars = { yaw: _s3dCam.yaw - y0, closer: _s3dCam.dist < d0 };
+    // Radar pickers.
+    out.radar = { products: $('s3d-rprod').options.length, sites: Array.from($('s3d-rsite').options).map(o => o.textContent).slice(0, 3) };
+    // You.
+    const realU = window._r3dUserLatLng; window._r3dUserLatLng = () => ({ lat: _s3dZone.lat, lng: _s3dZone.lng });
+    out.you = _s3dYou(); window._r3dUserLatLng = realU;
+    return out;
+  });
+  ok('every Radar 3D control that fits is here: fullscreen, walk, VR, info, filters, look, cutaway, units, camera bars, radar pickers',
+     r.controls.length === 0, r.controls.join(','));
+  ok('Tops above hides the low clouds and keeps the tall ones', r.filters.above.n < r.filters.base.n
+     && r.filters.above.mx === r.filters.base.mx && r.filters.aboveLabel === '30 kft', JSON.stringify(r.filters));
+  ok('Up to shaves the tops at that height', r.filters.upto.mx <= 20 / 3.28084 + 1e-3 && r.filters.upto.n === r.filters.base.n,
+     JSON.stringify(r.filters.upto));
+  ok('Smoothing turns cliffs into slopes', r.filters.jump < r.filters.jump0 * 0.7, r.filters.jump + ' vs ' + r.filters.jump0);
+  ok('Height colours colour the surface; lit keeps the grey picture', r.looks.hc.grey < r.looks.hc.n * 0.2
+     && r.looks.lit.grey > r.looks.lit.n * 0.8, JSON.stringify(r.looks));
+  ok('the cutaway removes the side it cuts from', r.looks.cut.n < r.looks.lit.n * 0.8, JSON.stringify(r.looks));
+  ok('heights read in the chosen unit', r.units === '10 km', r.units);
+  ok('Walk shows the pad, hides the orbit bars, and W walks forward', r.walk.padShown && r.walk.barsHidden
+     && r.walk.moved > 1, JSON.stringify(r.walk));
+  ok('VR goes fullscreen in stereo, and both switch off again', r.walk.vr.on && r.walk.vr.full && r.walk.off,
+     JSON.stringify(r.walk));
+  ok('fullscreen toggles, and the info button explains the panel', r.chrome.full && /cloud tops/i.test(r.chrome.info || ''),
+     JSON.stringify(r.chrome).slice(0, 120));
+  ok('the camera bars turn and zoom the orbit', Math.abs(r.bars.yaw) > 0.5 && r.bars.closer, JSON.stringify(r.bars));
+  ok('Radar inside offers every radar product and the nearest radars', r.radar.products >= 6
+     && /^Nearest/.test(r.radar.sites[0]) && /km/.test(r.radar.sites[1] || ''), JSON.stringify(r.radar));
+  ok('You is placed in the zone\'s own frame', r.you && Math.abs(r.you.x) < 0.5 && Math.abs(r.you.y) < 0.5, JSON.stringify(r.you));
+  await p.evaluate(() => _s3dClose());
+}
+
+console.log('\n7e. the menu row and its new icon');
+{
+  const r = await p.evaluate(() => {
+    _cmOpen({ latlng: map.getCenter() });
+    const rows = Array.from(document.querySelectorAll('#map-ctx-menu .cm-item'));
+    const row = rows.find(el => /Draw a 3D radar zone/.test(el.textContent));
+    const out = { row: !!row, icon: row ? (row.querySelector('use') || {}).getAttribute && row.querySelector('use').getAttribute('href') : null,
+                  old: rows.some(el => /^\s*Draw a 3D zone\s*$/.test(el.textContent)),
+                  symbol: !!document.getElementById('ic-radar3d') };
+    try { _cmClose(); } catch (e) {}
+    return out;
+  });
+  ok('the map menu says Draw a 3D radar zone, with its own new icon', r.row && !r.old && r.symbol
+     && /ic-radar3d/.test(r.icon || ''), JSON.stringify(r));
+}
+
+console.log('\n7f. both 3D panels follow the comparison pane the zone is drawn over');
+{
+  const r = await p.evaluate(async () => {
+    const rc = map.getContainer().getBoundingClientRect();
+    const ll = (fx, fy) => map.containerPointToLatLng([rc.width * fx, rc.height * fy]);
+    const box = (fx) => { const a = ll(fx - 0.05, 0.45), b = ll(fx + 0.05, 0.55); return [b.lat, a.lng, a.lat, b.lng]; };
+    // Satellite comparison: pane B, on the right, shows Mid Water Vapor.
+    activeLayers.satellite = true; _goesProductId = 'ch13';
+    _scOn = true; _scSetGrid(1, 2);
+    _scSlots.push({ id: 'sfollow', productId: 'ch09', regionId: 'auto', kind: 'wms', layer: null, frames: null, labelEl: null, token: 0 });
+    _s3dOpenBounds(...box(0.75)); const right = (_s3dSkinProduct() || {}).id; _s3dClose();
+    _s3dOpenBounds(...box(0.25)); const left = (_s3dSkinProduct() || {}).id; _s3dClose();
+    _scSlots.length = 0; _scSetGrid(null); _scOn = false; activeLayers.satellite = false;
+    // Radar comparison: pane B is KTLX velocity.
+    _rcOn = true; _rcSetGrid(1, 2);
+    _rcSlots.push({ id: 'rfollow', site: 'ktlx', prodSel: 'vel', kind: 'wms', layer: null, labelEl: null, token: 0 });
+    _r3dOpenBounds(...box(0.75));
+    const r3d = { station: _r3dStation, product: document.getElementById('r3d-product').value };
+    _r3dClose();
+    // Satellite 3D's Radar inside, over the same pane.
+    let asked = null; const realF = _fetchVolumeDirect;
+    window._fetchVolumeDirect = async (site) => { asked = site; throw new Error('stub'); };
+    _s3dOpenBounds(...box(0.75));
+    _s3dRadarOn = true; await _s3dRadarLoad();
+    const inside = { asked, product: _s3dRadarProduct };
+    _s3dRadarOn = false; _s3dClose(); _s3dRadarProduct = 'ref';
+    window._fetchVolumeDirect = realF;
+    _rcSlots.length = 0; _rcSetGrid(null); _rcOn = false;
+    return { right, left, r3d, inside };
+  });
+  ok('Satellite 3D drapes the product of the satellite pane it is drawn over', r.right === 'ch09' && r.left === 'ch13',
+     JSON.stringify(r));
+  ok('Radar 3D opens on the radar pane\'s own radar and product', r.r3d.station === 'ktlx' && r.r3d.product === 'vel',
+     JSON.stringify(r.r3d));
+  ok('and Satellite 3D\'s Radar inside uses that radar pane too', r.inside.asked === 'ktlx' && r.inside.product === 'vel',
+     JSON.stringify(r.inside));
+}
+
 console.log('\n8. nothing above threw');
 ok('no page errors', errs.length === 0, errs.join(' | '));
 await b.close();

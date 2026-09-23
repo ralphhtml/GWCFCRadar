@@ -4808,6 +4808,33 @@ body.lite-mode #export-modal { display: none !important; }
 }
 #s3d-panel canvas.r3d-dragging { cursor: grabbing; }
 #s3d-panel.big canvas { height: min(60vh, 560px); }
+#s3d-panel.fullscreen {
+  position: fixed;
+  left: 0 !important; top: 0 !important; right: 0 !important; bottom: 0 !important;
+  transform: none !important; width: 100vw !important; max-width: 100vw !important;
+  height: 100vh; max-height: 100vh; border-radius: 0; border: none; z-index: 99999; overflow: auto;
+}
+#s3d-panel.fullscreen canvas { height: calc(100vh - 290px); }
+#s3d-panel .r3d-controls .dtb-btn {
+  height: 26px; min-width: 26px; padding: 0 7px; border-radius: 7px; flex-shrink: 0;
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18);
+  cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px;
+}
+#s3d-walk-btn.on, #s3d-vr-btn.on { background: rgba(232,184,0,0.25); border-color: var(--accent); }
+#s3d-panel .s3d-radar-row { padding-top: 4px; }
+#s3d-panel .s3d-radar-row select { max-width: 150px; }
+#s3d-walk-pad {
+  position: absolute; left: 16px; top: 14px; z-index: 3;
+  display: grid; grid-template-columns: repeat(3, 32px); gap: 4px;
+}
+#s3d-walk-pad button {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: rgba(10,10,14,0.72); border: 1px solid rgba(232,184,0,0.45);
+  color: #e8b800; font-size: 13px; cursor: pointer;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+  display: flex; align-items: center; justify-content: center;
+}
+#s3d-walk-pad button:active { background: rgba(232,184,0,0.3); }
 @media (max-width: 640px) {
   #s3d-panel { left: 8px; right: 8px; width: auto; bottom: 72px; }
   #s3d-panel canvas { height: 220px; }
@@ -10847,7 +10874,7 @@ if (window._glassLevel && _glassAllowed()) {
 </head>
 <body>
 
-<svg id="icon-sprite-defs" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden"><defs><symbol id="ic-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.6 9.6 0 0 1-2.9-.4L3 21l1.6-4.6A8.2 8.2 0 0 1 3 11.5 8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z"/></symbol><symbol id="ic-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></symbol><symbol id="ic-refresh-ccw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 3v4.3h4.3"/></symbol><symbol id="ic-refresh-cw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 3v4.3h-4.3"/></symbol><symbol id="ic-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h14M13 4l4 4-4 4"/><path d="M21 16H7M11 20l-4-4 4-4"/></symbol><symbol id="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol><symbol id="ic-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4.5 4.5 0 0 1-1-8.9A5.5 5.5 0 0 1 16.7 7 4 4 0 0 1 17 15H7z"/></symbol><symbol id="ic-cloud-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="7" r="3"/><path d="M16 2v1.4M20.6 7h-1.4M12.6 3.8l1 1M19.4 10.2l1 1"/><path d="M6 19a4 4 0 0 1-.7-7.9A5 5 0 0 1 15 9.4 3.6 3.6 0 0 1 14.6 16H6z"/></symbol><symbol id="ic-cloud-rain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15a4 4 0 0 1-.6-7.9A5 5 0 0 1 15 9.2 3.6 3.6 0 0 1 14.6 16H6z"/><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3"/></symbol><symbol id="ic-storm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 13a4 4 0 0 1-.6-7.9A5 5 0 0 1 15 7.2 3.6 3.6 0 0 1 14.6 14H6z"/><path d="M13 14l-3 5h3l-2 4"/></symbol><symbol id="ic-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></symbol><symbol id="ic-snow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M4.5 7l15 10M19.5 7l-15 10"/></symbol><symbol id="ic-cloud-snow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12a4 4 0 0 1-.6-7.9A5 5 0 0 1 15 6.2 3.6 3.6 0 0 1 14.6 13H6z"/><path d="M9 17v4M7 18l4 2M13 18l-4 2M15 17v4"/></symbol><symbol id="ic-fog" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h18M3 12h18M3 16h12"/></symbol><symbol id="ic-wind" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h15a3 3 0 1 0-2.5-4.6"/><path d="M2 12h18a3 3 0 1 1-2.5 4.6"/><path d="M2 17h12"/></symbol><symbol id="ic-tornado" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18M5 8h14M7 12h10M9 16h6M10.5 20h3"/></symbol><symbol id="ic-rainbow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18a10 10 0 0 1 20 0"/><path d="M6 18a6 6 0 0 1 12 0"/></symbol><symbol id="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></symbol><symbol id="ic-drop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 7 6 11a6 6 0 1 1-12 0c0-4 6-11 6-11z"/></symbol><symbol id="ic-ice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="1"/><path d="M5 12h14M12 5v14M7 7l10 10M17 7L7 17"/></symbol><symbol id="ic-temp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a2 2 0 0 0-2 2v9.5a4 4 0 1 0 4 0V5a2 2 0 0 0-2-2z"/><circle cx="12" cy="17.5" r="2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-cyclone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h14a2 2 0 1 1-2 3H6M4 12h10a2 2 0 1 1-2 3H8M4 18h6"/></symbol><symbol id="ic-antenna" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15a9 9 0 0 1 9-9"/><path d="M4 15l7 7"/><path d="M11 15a4 4 0 0 0 4-4"/><circle cx="11" cy="15" r="1.3" fill="currentColor" stroke="none"/><path d="M18 4l2 2-9 9-2-2z"/></symbol><symbol id="ic-satellite" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="6" height="6" rx="1"/><line x1="2" y1="6" x2="7" y2="11"/><line x1="2" y1="12" x2="7" y2="7"/><line x1="22" y1="6" x2="17" y2="11"/><line x1="22" y1="12" x2="17" y2="7"/><line x1="12" y1="15" x2="12" y2="21"/><path d="M9 21h6"/></symbol><symbol id="ic-siren" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 21v-4"/><path d="M5 17a7 7 0 0 1 14 0z"/><path d="M12 6V3M6.5 8L4.5 6M17.5 8l2-2"/></symbol><symbol id="ic-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"/><path d="M12 10v4"/><circle cx="12" cy="17.3" r="0.9" fill="currentColor" stroke="none"/></symbol><symbol id="ic-fire" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a7 7 0 0 0 7-7c0-3-2-5-3-7 0 2-1 3-2 3 0-3-1-5-3-8-1 4-5 6-5 12a6 6 0 0 0 6 7z"/></symbol><symbol id="ic-wave" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8c1.5 1.5 3 1.5 4.5 0S9 6.5 10.5 8s3 1.5 4.5 0 3-1.5 4.5 0 3 1.5 4.5 0"/><path d="M2 14c1.5 1.5 3 1.5 4.5 0S9 12.5 10.5 14s3 1.5 4.5 0 3-1.5 4.5 0 3 1.5 4.5 0"/><path d="M2 20c1.5 1.5 3 1.5 4.5 0S9 18.5 10.5 20s3 1.5 4.5 0 3-1.5 4.5 0 3 1.5 4.5 0"/></symbol><symbol id="ic-target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-compass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 9l-2 6-6 2 2-6z" fill="currentColor" stroke="none"/></symbol><symbol id="ic-map" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></symbol><symbol id="ic-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-7.6 7-12.5A7 7 0 1 0 5 9.5C5 14.4 12 22 12 22z"/><circle cx="12" cy="9.5" r="2.3" fill="currentColor" stroke="none"/></symbol><symbol id="ic-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></symbol><symbol id="ic-car" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16l1.5-5A2 2 0 0 1 7.4 9.5h9.2A2 2 0 0 1 18.5 11L20 16"/><rect x="3" y="16" width="18" height="3" rx="1"/><circle cx="7.5" cy="19" r="1.3" fill="currentColor" stroke="none"/><circle cx="16.5" cy="19" r="1.3" fill="currentColor" stroke="none"/></symbol><symbol id="ic-building" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10 21v-3h4v3"/></symbol><symbol id="ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="1.5"/><path d="M8 11V7a4 4 0 1 1 8 0v4"/></symbol><symbol id="ic-unlock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 7.5-1.9"/></symbol><symbol id="ic-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.5M12 18.5V21M4.4 7.5l2.2 1.3M17.4 15.2l2.2 1.3M4.4 16.5l2.2-1.3M17.4 8.8l2.2-1.3M3 12h2.5M18.5 12H21"/></symbol><symbol id="ic-palette" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 8 0 1 0 0 16c1.2 0 1.6-.7 1.2-1.6-.4-.9 0-1.9 1-1.9H16a5 5 0 0 0 5-5c0-4.1-4-7.5-9-7.5z"/><circle cx="7.5" cy="10.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="11" cy="7.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.1" fill="currentColor" stroke="none"/></symbol><symbol id="ic-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M10.5 19h3"/></symbol><symbol id="ic-desktop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="1"/><path d="M8 20h8M12 16v4"/></symbol><symbol id="ic-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-5-5"/></symbol><symbol id="ic-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol><symbol id="ic-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></symbol><symbol id="ic-speaker" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9v6h4l5 4V5L7 9z"/><path d="M17 9a4 4 0 0 1 0 6M19.5 6.5a8 8 0 0 1 0 11"/></symbol><symbol id="ic-dice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="8.5" cy="15.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><rect x="8" y="3" width="6" height="5"/><rect x="7" y="14" width="10" height="6"/></symbol><symbol id="ic-chart-bar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="20" x2="5" y2="13"/><line x1="12" y1="20" x2="12" y2="8"/><line x1="19" y1="20" x2="19" y2="4"/><line x1="2" y1="20" x2="22" y2="20"/></symbol><symbol id="ic-chart-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-9"/><path d="M15 6h6v6"/></symbol><symbol id="ic-chart-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l6 6 4-4 8 9"/><path d="M15 18h6v-6"/></symbol><symbol id="ic-radio" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="11" rx="2"/><circle cx="8" cy="14.5" r="2"/><path d="M13 14h5M13 17h3"/><path d="M7 9l3-5 3 5"/></symbol><symbol id="ic-robot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="9" width="14" height="10" rx="2"/><circle cx="9.5" cy="14" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="14" r="1.2" fill="currentColor" stroke="none"/><path d="M12 9V5M9 5h6"/></symbol><symbol id="ic-dot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7" fill="currentColor" stroke="none"/></symbol><symbol id="ic-hex" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z"/></symbol><symbol id="ic-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5l14 14M19 5L5 19"/></symbol><symbol id="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6"/></symbol><symbol id="ic-blocked" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.5 5.5l13 13"/></symbol><symbol id="ic-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></symbol><symbol id="ic-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></symbol><symbol id="ic-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17H6z"/><path d="M15 2v3h3"/><path d="M9 11h6M9 15h6"/></symbol><symbol id="ic-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="18" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M8 11h8M8 15h8"/></symbol><symbol id="ic-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></symbol><symbol id="ic-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1-5L16 4l4 4L9 19z"/><path d="M13 7l4 4"/></symbol><symbol id="ic-tools" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 1 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4l-3-3-1.4 1.4z"/></symbol><symbol id="ic-ruler" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="6" rx="1"/><path d="M7 9v3M11 9v3M15 9v3M19 9v3"/></symbol><symbol id="ic-paperclip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12V6a4 4 0 0 1 8 0v10a3 3 0 1 1-6 0V9"/></symbol><symbol id="ic-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M4 17l5-5 3 3 4-5 4 5"/></symbol><symbol id="ic-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M4 6l8 7 8-7"/></symbol><symbol id="ic-megaphone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10v4h3l6 4V6l-6 4z"/><path d="M14 9a4 4 0 0 1 0 6"/></symbol><symbol id="ic-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 0-2 2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 1 2 2z"/></symbol><symbol id="ic-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></symbol><symbol id="ic-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol><symbol id="ic-sparkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/></symbol><symbol id="ic-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 6.5 7 .8-5.2 4.8 1.4 6.9L12 17.7l-6.2 3.3 1.4-6.9L2 9.3l7-.8z"/></symbol><symbol id="ic-microscope" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20h8M12 20v-4M8 16h6a3 3 0 0 0 0-6H8"/><path d="M8 10V4l3 2 3-2v6"/><circle cx="8" cy="12" r="1" fill="currentColor" stroke="none"/></symbol><symbol id="ic-telescope" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15l14-6 2 4-14 6z"/><path d="M12 12l2 6-4 1.5"/><circle cx="6" cy="18" r="1.5"/></symbol><symbol id="ic-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M17 6h3M4 12h4M11 12h9M4 18h13M20 18h0"/><circle cx="14" cy="6" r="2" fill="currentColor" stroke="none"/><circle cx="8" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="17" cy="18" r="2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-signal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20v-3M9 20v-6M14 20v-9M19 20V4"/></symbol><symbol id="ic-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a13 13 0 0 1 0 18M12 3a13 13 0 0 0 0 18"/></symbol><symbol id="ic-trophy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10v6a5 5 0 0 1-10 0z"/><path d="M7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3"/><path d="M10 19h4M12 15v4M9 21h6"/></symbol><symbol id="ic-mountain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20l6-11 4 6 3-4 7 9z"/></symbol><symbol id="ic-leaf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20C4 10 12 4 20 4c0 8-6 16-16 16z"/><path d="M6 18C9 13 12 10 18 6"/></symbol><symbol id="ic-flag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v18"/><path d="M5 4h13l-3 4 3 4H5"/></symbol><symbol id="ic-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="18" r="2.2" fill="currentColor" stroke="none"/><circle cx="17" cy="16" r="2.2" fill="currentColor" stroke="none"/><path d="M9.2 18V5l10-2v13"/></symbol><symbol id="ic-fullscreen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol><symbol id="ic-gauge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4-5"/><circle cx="12" cy="16" r="1.2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-sunrise" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18h20"/><path d="M6 18a6 6 0 0 1 12 0"/><path d="M12 8v3M6.5 11.5l1.8 1.8M17.5 11.5l-1.8 1.8"/></symbol><symbol id="ic-noodles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7c2 2 4-2 6 0s4-2 6 0 4-2 6 0"/><path d="M3 12c2 2 4-2 6 0s4-2 6 0 4-2 6 0"/><path d="M3 17c2 2 4-2 6 0s4-2 6 0 4-2 6 0"/></symbol><symbol id="ic-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/></symbol><symbol id="ic-bulb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3 11c1 .6 1 1 1 2h4c0-1 0-1.4 1-2a6 6 0 0 0-3-11z"/></symbol><symbol id="ic-numbers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9h14M5 15h14M9 4L7 20M17 4l-2 16"/></symbol><symbol id="ic-plane" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13l20-6-7 7 2 7-4-4-4 4-1-7z"/></symbol><symbol id="ic-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l14 8-14 8z" fill="currentColor" stroke="none"/></symbol><symbol id="ic-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/></symbol><symbol id="ic-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-stopwatch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 13V9"/><path d="M9 2h6"/><path d="M12 2v2"/></symbol><symbol id="ic-hourglass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12M6 21h12M7 3c0 5 3 6 5 8-2 2-5 3-5 8M17 3c0 5-3 6-5 8 2 2 5 3 5 8"/></symbol><symbol id="ic-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="7.5" r="0.9" fill="currentColor" stroke="none"/><path d="M12 11v6"/></symbol><symbol id="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="1.5"/><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></symbol><symbol id="ic-grip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="18" r="1.4" fill="currentColor" stroke="none"/></symbol><symbol id="ic-external" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-8 8"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol><pattern id="eccc-extreme-dots" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="#d9534f"/><circle cx="4" cy="4" r="1.3" fill="#ffffff" fill-opacity="0.9"/></pattern></defs></svg>
+<svg id="icon-sprite-defs" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden"><defs><symbol id="ic-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.6 9.6 0 0 1-2.9-.4L3 21l1.6-4.6A8.2 8.2 0 0 1 3 11.5 8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z"/></symbol><symbol id="ic-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></symbol><symbol id="ic-refresh-ccw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 3v4.3h4.3"/></symbol><symbol id="ic-refresh-cw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 3v4.3h-4.3"/></symbol><symbol id="ic-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h14M13 4l4 4-4 4"/><path d="M21 16H7M11 20l-4-4 4-4"/></symbol><symbol id="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol><symbol id="ic-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4.5 4.5 0 0 1-1-8.9A5.5 5.5 0 0 1 16.7 7 4 4 0 0 1 17 15H7z"/></symbol><symbol id="ic-cloud-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="7" r="3"/><path d="M16 2v1.4M20.6 7h-1.4M12.6 3.8l1 1M19.4 10.2l1 1"/><path d="M6 19a4 4 0 0 1-.7-7.9A5 5 0 0 1 15 9.4 3.6 3.6 0 0 1 14.6 16H6z"/></symbol><symbol id="ic-cloud-rain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15a4 4 0 0 1-.6-7.9A5 5 0 0 1 15 9.2 3.6 3.6 0 0 1 14.6 16H6z"/><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3"/></symbol><symbol id="ic-storm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 13a4 4 0 0 1-.6-7.9A5 5 0 0 1 15 7.2 3.6 3.6 0 0 1 14.6 14H6z"/><path d="M13 14l-3 5h3l-2 4"/></symbol><symbol id="ic-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></symbol><symbol id="ic-snow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M4.5 7l15 10M19.5 7l-15 10"/></symbol><symbol id="ic-cloud-snow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12a4 4 0 0 1-.6-7.9A5 5 0 0 1 15 6.2 3.6 3.6 0 0 1 14.6 13H6z"/><path d="M9 17v4M7 18l4 2M13 18l-4 2M15 17v4"/></symbol><symbol id="ic-fog" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h18M3 12h18M3 16h12"/></symbol><symbol id="ic-wind" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h15a3 3 0 1 0-2.5-4.6"/><path d="M2 12h18a3 3 0 1 1-2.5 4.6"/><path d="M2 17h12"/></symbol><symbol id="ic-tornado" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18M5 8h14M7 12h10M9 16h6M10.5 20h3"/></symbol><symbol id="ic-rainbow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18a10 10 0 0 1 20 0"/><path d="M6 18a6 6 0 0 1 12 0"/></symbol><symbol id="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></symbol><symbol id="ic-drop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 7 6 11a6 6 0 1 1-12 0c0-4 6-11 6-11z"/></symbol><symbol id="ic-ice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="1"/><path d="M5 12h14M12 5v14M7 7l10 10M17 7L7 17"/></symbol><symbol id="ic-temp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a2 2 0 0 0-2 2v9.5a4 4 0 1 0 4 0V5a2 2 0 0 0-2-2z"/><circle cx="12" cy="17.5" r="2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-cyclone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h14a2 2 0 1 1-2 3H6M4 12h10a2 2 0 1 1-2 3H8M4 18h6"/></symbol><symbol id="ic-antenna" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15a9 9 0 0 1 9-9"/><path d="M4 15l7 7"/><path d="M11 15a4 4 0 0 0 4-4"/><circle cx="11" cy="15" r="1.3" fill="currentColor" stroke="none"/><path d="M18 4l2 2-9 9-2-2z"/></symbol><symbol id="ic-satellite" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="6" height="6" rx="1"/><line x1="2" y1="6" x2="7" y2="11"/><line x1="2" y1="12" x2="7" y2="7"/><line x1="22" y1="6" x2="17" y2="11"/><line x1="22" y1="12" x2="17" y2="7"/><line x1="12" y1="15" x2="12" y2="21"/><path d="M9 21h6"/></symbol><symbol id="ic-siren" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 21v-4"/><path d="M5 17a7 7 0 0 1 14 0z"/><path d="M12 6V3M6.5 8L4.5 6M17.5 8l2-2"/></symbol><symbol id="ic-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"/><path d="M12 10v4"/><circle cx="12" cy="17.3" r="0.9" fill="currentColor" stroke="none"/></symbol><symbol id="ic-fire" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a7 7 0 0 0 7-7c0-3-2-5-3-7 0 2-1 3-2 3 0-3-1-5-3-8-1 4-5 6-5 12a6 6 0 0 0 6 7z"/></symbol><symbol id="ic-wave" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8c1.5 1.5 3 1.5 4.5 0S9 6.5 10.5 8s3 1.5 4.5 0 3-1.5 4.5 0 3 1.5 4.5 0"/><path d="M2 14c1.5 1.5 3 1.5 4.5 0S9 12.5 10.5 14s3 1.5 4.5 0 3-1.5 4.5 0 3 1.5 4.5 0"/><path d="M2 20c1.5 1.5 3 1.5 4.5 0S9 18.5 10.5 20s3 1.5 4.5 0 3-1.5 4.5 0 3 1.5 4.5 0"/></symbol><symbol id="ic-target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-compass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 9l-2 6-6 2 2-6z" fill="currentColor" stroke="none"/></symbol><symbol id="ic-map" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></symbol><symbol id="ic-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-7.6 7-12.5A7 7 0 1 0 5 9.5C5 14.4 12 22 12 22z"/><circle cx="12" cy="9.5" r="2.3" fill="currentColor" stroke="none"/></symbol><symbol id="ic-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></symbol><symbol id="ic-car" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16l1.5-5A2 2 0 0 1 7.4 9.5h9.2A2 2 0 0 1 18.5 11L20 16"/><rect x="3" y="16" width="18" height="3" rx="1"/><circle cx="7.5" cy="19" r="1.3" fill="currentColor" stroke="none"/><circle cx="16.5" cy="19" r="1.3" fill="currentColor" stroke="none"/></symbol><symbol id="ic-building" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10 21v-3h4v3"/></symbol><symbol id="ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="1.5"/><path d="M8 11V7a4 4 0 1 1 8 0v4"/></symbol><symbol id="ic-unlock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 7.5-1.9"/></symbol><symbol id="ic-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.5M12 18.5V21M4.4 7.5l2.2 1.3M17.4 15.2l2.2 1.3M4.4 16.5l2.2-1.3M17.4 8.8l2.2-1.3M3 12h2.5M18.5 12H21"/></symbol><symbol id="ic-palette" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 8 0 1 0 0 16c1.2 0 1.6-.7 1.2-1.6-.4-.9 0-1.9 1-1.9H16a5 5 0 0 0 5-5c0-4.1-4-7.5-9-7.5z"/><circle cx="7.5" cy="10.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="11" cy="7.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.1" fill="currentColor" stroke="none"/></symbol><symbol id="ic-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M10.5 19h3"/></symbol><symbol id="ic-desktop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="1"/><path d="M8 20h8M12 16v4"/></symbol><symbol id="ic-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-5-5"/></symbol><symbol id="ic-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol><symbol id="ic-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></symbol><symbol id="ic-speaker" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9v6h4l5 4V5L7 9z"/><path d="M17 9a4 4 0 0 1 0 6M19.5 6.5a8 8 0 0 1 0 11"/></symbol><symbol id="ic-dice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="8.5" cy="15.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><rect x="8" y="3" width="6" height="5"/><rect x="7" y="14" width="10" height="6"/></symbol><symbol id="ic-chart-bar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="20" x2="5" y2="13"/><line x1="12" y1="20" x2="12" y2="8"/><line x1="19" y1="20" x2="19" y2="4"/><line x1="2" y1="20" x2="22" y2="20"/></symbol><symbol id="ic-chart-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-9"/><path d="M15 6h6v6"/></symbol><symbol id="ic-chart-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l6 6 4-4 8 9"/><path d="M15 18h6v-6"/></symbol><symbol id="ic-radio" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="11" rx="2"/><circle cx="8" cy="14.5" r="2"/><path d="M13 14h5M13 17h3"/><path d="M7 9l3-5 3 5"/></symbol><symbol id="ic-robot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="9" width="14" height="10" rx="2"/><circle cx="9.5" cy="14" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="14" r="1.2" fill="currentColor" stroke="none"/><path d="M12 9V5M9 5h6"/></symbol><symbol id="ic-dot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7" fill="currentColor" stroke="none"/></symbol><symbol id="ic-radar3d" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z"/><path d="M4.2 7.5L12 12l7.8-4.5M12 12v9"/><path d="M12 12l-4.3-2.5" stroke-width="1.4"/><path d="M6.6 10.9a6 6 0 0 1 .4-4.6" stroke-width="1.4"/></symbol><symbol id="ic-hex" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z"/></symbol><symbol id="ic-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5l14 14M19 5L5 19"/></symbol><symbol id="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6"/></symbol><symbol id="ic-blocked" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.5 5.5l13 13"/></symbol><symbol id="ic-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></symbol><symbol id="ic-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></symbol><symbol id="ic-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17H6z"/><path d="M15 2v3h3"/><path d="M9 11h6M9 15h6"/></symbol><symbol id="ic-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="18" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M8 11h8M8 15h8"/></symbol><symbol id="ic-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></symbol><symbol id="ic-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1-5L16 4l4 4L9 19z"/><path d="M13 7l4 4"/></symbol><symbol id="ic-tools" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 1 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4l-3-3-1.4 1.4z"/></symbol><symbol id="ic-ruler" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="6" rx="1"/><path d="M7 9v3M11 9v3M15 9v3M19 9v3"/></symbol><symbol id="ic-paperclip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12V6a4 4 0 0 1 8 0v10a3 3 0 1 1-6 0V9"/></symbol><symbol id="ic-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M4 17l5-5 3 3 4-5 4 5"/></symbol><symbol id="ic-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M4 6l8 7 8-7"/></symbol><symbol id="ic-megaphone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10v4h3l6 4V6l-6 4z"/><path d="M14 9a4 4 0 0 1 0 6"/></symbol><symbol id="ic-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 0-2 2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 1 2 2z"/></symbol><symbol id="ic-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></symbol><symbol id="ic-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol><symbol id="ic-sparkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/></symbol><symbol id="ic-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 6.5 7 .8-5.2 4.8 1.4 6.9L12 17.7l-6.2 3.3 1.4-6.9L2 9.3l7-.8z"/></symbol><symbol id="ic-microscope" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20h8M12 20v-4M8 16h6a3 3 0 0 0 0-6H8"/><path d="M8 10V4l3 2 3-2v6"/><circle cx="8" cy="12" r="1" fill="currentColor" stroke="none"/></symbol><symbol id="ic-telescope" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15l14-6 2 4-14 6z"/><path d="M12 12l2 6-4 1.5"/><circle cx="6" cy="18" r="1.5"/></symbol><symbol id="ic-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M17 6h3M4 12h4M11 12h9M4 18h13M20 18h0"/><circle cx="14" cy="6" r="2" fill="currentColor" stroke="none"/><circle cx="8" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="17" cy="18" r="2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-signal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20v-3M9 20v-6M14 20v-9M19 20V4"/></symbol><symbol id="ic-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a13 13 0 0 1 0 18M12 3a13 13 0 0 0 0 18"/></symbol><symbol id="ic-trophy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10v6a5 5 0 0 1-10 0z"/><path d="M7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3"/><path d="M10 19h4M12 15v4M9 21h6"/></symbol><symbol id="ic-mountain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20l6-11 4 6 3-4 7 9z"/></symbol><symbol id="ic-leaf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20C4 10 12 4 20 4c0 8-6 16-16 16z"/><path d="M6 18C9 13 12 10 18 6"/></symbol><symbol id="ic-flag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v18"/><path d="M5 4h13l-3 4 3 4H5"/></symbol><symbol id="ic-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="18" r="2.2" fill="currentColor" stroke="none"/><circle cx="17" cy="16" r="2.2" fill="currentColor" stroke="none"/><path d="M9.2 18V5l10-2v13"/></symbol><symbol id="ic-fullscreen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol><symbol id="ic-gauge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4-5"/><circle cx="12" cy="16" r="1.2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-sunrise" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18h20"/><path d="M6 18a6 6 0 0 1 12 0"/><path d="M12 8v3M6.5 11.5l1.8 1.8M17.5 11.5l-1.8 1.8"/></symbol><symbol id="ic-noodles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7c2 2 4-2 6 0s4-2 6 0 4-2 6 0"/><path d="M3 12c2 2 4-2 6 0s4-2 6 0 4-2 6 0"/><path d="M3 17c2 2 4-2 6 0s4-2 6 0 4-2 6 0"/></symbol><symbol id="ic-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/></symbol><symbol id="ic-bulb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3 11c1 .6 1 1 1 2h4c0-1 0-1.4 1-2a6 6 0 0 0-3-11z"/></symbol><symbol id="ic-numbers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9h14M5 15h14M9 4L7 20M17 4l-2 16"/></symbol><symbol id="ic-plane" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13l20-6-7 7 2 7-4-4-4 4-1-7z"/></symbol><symbol id="ic-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l14 8-14 8z" fill="currentColor" stroke="none"/></symbol><symbol id="ic-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/></symbol><symbol id="ic-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-stopwatch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 13V9"/><path d="M9 2h6"/><path d="M12 2v2"/></symbol><symbol id="ic-hourglass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12M6 21h12M7 3c0 5 3 6 5 8-2 2-5 3-5 8M17 3c0 5-3 6-5 8 2 2 5 3 5 8"/></symbol><symbol id="ic-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="7.5" r="0.9" fill="currentColor" stroke="none"/><path d="M12 11v6"/></symbol><symbol id="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="1.5"/><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></symbol><symbol id="ic-grip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="18" r="1.4" fill="currentColor" stroke="none"/></symbol><symbol id="ic-external" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-8 8"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol><pattern id="eccc-extreme-dots" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="#d9534f"/><circle cx="4" cy="4" r="1.3" fill="#ffffff" fill-opacity="0.9"/></pattern></defs></svg>
 <script>
 // Every emoji used as a visual icon in the app maps to a hand-drawn SVG
 // symbol above (defined once, referenced everywhere via <use>) so nothing
@@ -12030,17 +12057,61 @@ body.clean-mode #clean-hint { opacity: 1; }
     <span class="xs-where" id="s3d-where"></span>
     <div class="xs-spacer"></div>
     <button class="xs-big" title="Expand">&#11036;</button>
+    <button class="xs-big" id="s3d-full" title="Fullscreen">&#9974;</button>
     <button class="xs-x" title="Close">&#10005;</button>
   </div>
   <div class="r3d-controls">
     <span id="s3d-status"></span>
     <div class="xs-spacer"></div>
+    <button class="dtb-btn" id="s3d-walk-btn" type="button" title="Walk over the cloud tops: drag to look around, WASD/arrows or the on-screen pad to move, E and Q to rise and sink, wheel to walk forward">Walk</button>
+    <button class="dtb-btn" id="s3d-vr-btn" type="button" title="VR: fullscreen side-by-side stereo for a phone in a headset viewer, turning as you turn">VR</button>
+    <button class="dtb-btn" id="s3d-info-btn" title="What this does" type="button"></button>
+  </div>
+  <div class="r3d-controls s3d-radar-row">
     <label class="s3d-check" title="Draw the radar's storm volume under the clouds, with the cloud tops turned see-through so the storm shows inside"><input type="checkbox" id="s3d-radar"> Radar inside</label>
+    <select class="xsec-sel" id="s3d-rprod" title="Which radar measurement to draw under the clouds"></select>
+    <select class="xsec-sel" id="s3d-rsite" title="Which radar the storm is seen from (nearest first)"></select>
   </div>
   <div class="r3d-sliders">
     <label class="r3d-slider-row">
       <span>Picture</span>
       <select class="xsec-sel" id="s3d-skin" title="The satellite picture draped over the cloud tops: whatever the map is showing, or any product at all, channels, composites and the global mosaic alike"></select>
+    </label>
+    <label class="r3d-slider-row">
+      <span>Tops above</span>
+      <input type="range" id="s3d-above" min="0" max="50" value="0" step="1" title="Hide every cloud whose top is lower than this, so only the tall ones stand up">
+      <span id="s3d-above-label">all</span>
+    </label>
+    <label class="r3d-slider-row">
+      <span>Up to</span>
+      <input type="range" id="s3d-upto" min="5" max="60" value="60" step="1" title="Shave every cloud top off at this height">
+      <span id="s3d-upto-label">60 kft</span>
+    </label>
+    <label class="r3d-slider-row">
+      <span>Clouds</span>
+      <input type="range" id="s3d-alpha" min="15" max="100" value="100" step="5" title="How solid the cloud surface is drawn. Lower it to see the radar inside.">
+      <span id="s3d-alpha-label">100%</span>
+    </label>
+    <label class="r3d-slider-row">
+      <span>Smoothing</span>
+      <input type="range" id="s3d-smooth" min="0" max="100" value="0" step="5" title="Blend each cloud top with the ones around it, so the surface reads as smooth hills instead of pixel-sized spikes">
+      <span id="s3d-smooth-label">Off</span>
+    </label>
+    <label class="r3d-slider-row">
+      <span>Look</span>
+      <select class="xsec-sel" id="s3d-mode" title="Lit surface: the picture, shaded by a light. Flat picture: the picture exactly, unshaded. Height colours: coloured by how tall each top is, like a relief map.">
+        <option value="lit" selected>Lit surface</option>
+        <option value="flat">Flat picture</option>
+        <option value="height">Height colours</option>
+      </select>
+      <select class="xsec-sel" id="s3d-cut" title="Cut the box open from one side to look along a slice of the clouds">
+        <option value="off" selected>No cutaway</option>
+        <option value="n">Cut from north</option>
+        <option value="s">Cut from south</option>
+        <option value="e">Cut from east</option>
+        <option value="w">Cut from west</option>
+      </select>
+      <input type="range" id="s3d-cutpct" min="0" max="95" value="50" step="1" title="How far in the cutaway reaches">
     </label>
     <label class="r3d-slider-row">
       <span>Height</span>
@@ -12053,15 +12124,30 @@ body.clean-mode #clean-hint { opacity: 1; }
         <option value="20">20&times;</option>
         <option value="40">40&times;</option>
       </select>
-    </label>
-    <label class="r3d-slider-row">
-      <span>Clouds</span>
-      <input type="range" id="s3d-alpha" min="15" max="100" value="100" step="5" title="How solid the cloud surface is drawn. Lower it to see the radar inside.">
-      <span id="s3d-alpha-label">100%</span>
+      <select class="xsec-sel" id="s3d-hunit" title="Which unit the heights are printed in">
+        <option value="kft" selected>kft</option>
+        <option value="km">km</option>
+        <option value="ft">ft</option>
+        <option value="m">m</option>
+      </select>
     </label>
   </div>
   <div class="xs-plot">
     <canvas id="s3d-canvas"></canvas>
+    <div id="s3d-walk-pad" style="display:none;" title="Move around over the clouds">
+      <button type="button" data-mv="up" title="Rise">&#8613;</button>
+      <button type="button" data-mv="fwd" title="Forward">&#9650;</button>
+      <button type="button" data-mv="down" title="Sink">&#8615;</button>
+      <button type="button" data-mv="left" title="Left">&#9664;</button>
+      <button type="button" data-mv="back" title="Back">&#9660;</button>
+      <button type="button" data-mv="right" title="Right">&#9654;</button>
+    </div>
+    <div class="r3d-cam-zoom" title="Zoom">
+      <input type="range" id="s3d-zoom" min="0" max="1000" value="500" step="1">
+    </div>
+    <div class="r3d-cam-move" title="Move around">
+      <input type="range" id="s3d-yaw" min="-180" max="180" value="0" step="1">
+    </div>
   </div>
 </div>
 
@@ -43386,7 +43472,7 @@ function _cmOpen(e) {
     <div class="cm-item" onclick="_cmSoundingHere()">${ic('chart-up')} Sounding here</div>
     ${pm ? `<div class="cm-item" onclick="_cmModelSoundingHere()">${ic('chart-up')} Model sounding: ${esc(pm.label)} &middot; F+${String(pm.fhr).padStart(3, '0')}</div>` : ''}
     <div class="cm-item" onclick="_cmCrossSectionHere()">${ic('ruler')} Cross section here</div>
-    <div class="cm-item" onclick="_cmRadar3DDraw()">${ic('hex')} Draw a 3D zone</div>
+    <div class="cm-item" onclick="_cmRadar3DDraw()">${ic('radar3d')} Draw a 3D radar zone</div>
     <div class="cm-item" onclick="_cmSat3DDraw()">${ic('satellite')} Draw a 3D satellite zone</div>
     <div class="cm-item" onclick="_cmRadiusHere()">${ic('target')} 50 mi radius here</div>
     <div class="cm-item" onclick="_cmSetRecenter()">${ic('compass')} Set as recenter</div>
@@ -50229,6 +50315,15 @@ function _cmpPaneAt(which, cx, cy) {
     const cell = c.row * grid.cols + c.col;
     const slot = cell > 0 ? slots[cell - 1] : null;
     return slot ? { slot, letter: String.fromCharCode(65 + cell) } : null;
+  } catch (e) { return null; }
+}
+// The same, for a place on the map rather than a point on the screen: the
+// 3D panels ask which comparison pane their zone was drawn over.
+function _cmpPaneAtLatLng(which, lat, lng) {
+  try {
+    const r = map.getContainer().getBoundingClientRect();
+    const p = map.latLngToContainerPoint([lat, lng]);
+    return _cmpPaneAt(which, r.left + p.x, r.top + p.y);
   } catch (e) { return null; }
 }
 // The line API a rotate handle drives: read and write this line's angle,
@@ -67865,6 +67960,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-h', date: 'Sep 23, 2026',
+    text: 'Satellite 3D picked up nearly everything Radar 3D has: fullscreen, Walk (fly over the cloud tops with WASD, the on-screen pad or the wheel), VR for a phone headset, an info button, zoom and turn bars on the picture, Tops above and Up to height filters, Smoothing, three looks (lit, flat, and height colours like a relief map), a cutaway, height units (kft, km, ft, m), your location marked with You, and a radar product and radar site picker for Radar inside. The map menu row for Radar 3D now reads Draw a 3D radar zone, with its own new icon. And both 3D views follow comparisons: draw a zone over a comparison pane and it opens on that pane\'s radar, product or satellite picture.' },
   { id: '2026-09-23-g', date: 'Sep 23, 2026',
     text: 'Satellite 3D no longer stops at "the scan list failed (HTTP 503)". That message meant the parsing server did not answer at all. Now a busy or unreachable parsing server is asked again a couple of times, and if it still cannot answer, your browser builds the 3D view itself from the map\'s own infrared picture: the colder a cloud top, the higher it stands. It is a little less exact than the parsing server\'s heights, which also use NOAA\'s cloud-top height product, and the status line says which one you are looking at.' },
   { id: '2026-09-23-f', date: 'Sep 23, 2026',
@@ -72591,9 +72688,22 @@ function _r3dOpenBounds(south, west, north, east) {
   }
   _r3dZone = { lat, lng, wKm: Math.round(wKm * 10) / 10, hKm: Math.round(hKm * 10) / 10 };
   _r3dStationKm = near.km;
+  // Drawn over a radar comparison pane: that pane's radar, and its own
+  // product when it picked one, rather than whatever is nearest.
+  const pane = typeof _cmpPaneAtLatLng === 'function' ? _cmpPaneAtLatLng('rc', lat, lng) : null;
+  if (pane && pane.slot && pane.slot.site) {
+    const pos = _xsSiteLatLon(String(pane.slot.site).toLowerCase());
+    if (pos) _r3dStationKm = Math.hypot((pos.lat - lat) * 111.32,
+      (pos.lng - lng) * 111.32 * Math.cos(lat * Math.PI / 180));
+    if (pane.slot.prodSel && R3D_PRODUCTS.some(p => p.id === pane.slot.prodSel)) _r3dWantProduct = pane.slot.prodSel;
+    _r3dOpen(pane.slot.site);
+    return true;
+  }
   _r3dOpen(near.id);
   return true;
 }
+// A product the panel should open on (set by a comparison pane), once.
+let _r3dWantProduct = null;
 
 // The Radius maker's button: the newest radius, as its bounding square.
 function _r3dFromRadius() {
@@ -72785,6 +72895,12 @@ function _r3dOpen(stationId) {
       o.value = p.id; o.textContent = p.label;
       ps.appendChild(o);
     });
+  }
+  if (ps && _r3dWantProduct) {
+    ps.value = _r3dWantProduct;
+    _r3dFilterPct = _r3dSpec(_r3dWantProduct).filter;
+    _r3dLutCache = null;
+    _r3dWantProduct = null;
   }
   const filter = _r3dEl('r3d-filter'), height = _r3dEl('r3d-height');
   if (filter) filter.value = String(_r3dFilterPct);
@@ -74670,6 +74786,7 @@ const TOOL_DESCRIPTIONS = {
   'tool-inspector': 'Shows the radar value at the exact center of the map, and updates live as you pan.',
   'tool-export':    'Saves the map exactly as you see it: a picture of the whole view, or every frame of the playing loop as a video.',
   'tool-xsec':      'Cuts a vertical slice through a storm. A radar picture is one thin cone and says nothing about how tall the weather is, but a volume scan sweeps the same circle at rising angles, so sampling every one of them along a line on the ground stacks them into a side-on view. Drag the two ends of the line, press the arrow, and it shows where the core sits, whether it leans, and whether there is an overhang. Uses the volume already downloaded for the radar picture, so it costs no extra download.',
+  'tool-s3d':       'Cloud tops in three dimensions. Long-press the map, choose Draw a 3D satellite zone, and drag out a box: every spot is lifted to the height of the cloud top above it, worked out on the parsing server from NOAA\'s cloud-top height product and the infrared scan (colder tops stand higher), and the satellite picture you choose is draped over it. Orbit with a drag, zoom with the wheel or a pinch, or press Walk to move over the clouds (VR splits it for a phone headset). Tops above hides the low clouds, Up to shaves the tall ones, Smoothing turns pixels into hills, Look swaps the shading, and the cutaway opens a side. Radar inside draws the radar\'s own storm volume under see-through clouds. Satellites have no tilts, so this is the surface of the cloud tops, not the inside of a storm.',
   'tool-r3d':       'A storm’s real shape in three dimensions, rendered as a solid volume rather than a flat picture. Double-click or long-press the map, choose Draw a 3D zone, and drag out any box you like, the way a screenshot is taken; or press the 3D button on the Radius or Polygon toolbar to use that shape\'s area. The panel ray-marches everything inside the box from the nearest radar, tilt by tilt, resampled into a 3D grid so it reads as one continuous cloud with a solid core and a hazy edge. The Show above slider hides weak returns, the Up to slider caps the height, and it draws coarse while you drag then sharpens the moment you stop. A site with no Level 2 archive, like a terminal TDWR at an airport, builds from its separate Level 3 tilt files instead, as a single frame with no time slider.',
 };
 
@@ -82258,6 +82375,17 @@ let _s3dExagSel = 'auto';
 let _s3dAlpha = 1;
 let _s3dRadarOn = false, _s3dRadar = null, _s3dRadarGen = 0;
 let _s3dRect = null;
+let _s3dWalk = null, _s3dVr = false, _s3dWalkLastTs = 0;
+const _s3dMoveKeys = new Set();
+let _s3dTopsAbove = 0;        // kft: tops lower than this are hidden
+let _s3dUpTo = 60;            // kft: tops are shaved off here
+let _s3dSmooth = 0;           // 0..100
+let _s3dMode = 'lit';         // 'lit' | 'flat' | 'height'
+let _s3dCutSide = 'off', _s3dCutPct = 50;
+let _s3dHeightUnit = 'kft';
+let _s3dRadarProduct = 'ref';
+let _s3dRadarProductPicked = false;   // chosen in the panel, so a comparison pane does not override it
+let _s3dRadarSite = null;     // null: the nearest radar
 
 function _s3dEl(id) { return document.getElementById(id); }
 function _s3dSay(msg, kind) {
@@ -82288,17 +82416,30 @@ function _s3dDistMax() {
 // The orbit camera, the same model and axes as Radar 3D's (x east, y
 // north, z up in stretched km, the zone's centre at the origin), so the
 // radar marcher and this rasterizer see through one lens and line up.
-function _s3dCamBasis() {
-  const { yaw, pitch, dist } = _s3dCam;
-  const targetZ = S3D_TOP_KM * _s3dExag() / 4;
-  const horiz = dist * Math.cos(pitch);
-  const camX = horiz * Math.sin(yaw), camY = horiz * Math.cos(yaw), camZ = targetZ + dist * Math.sin(pitch);
-  let fx = -camX, fy = -camY, fz = targetZ - camZ;
-  const fl = Math.hypot(fx, fy, fz) || 1; fx /= fl; fy /= fl; fz /= fl;
+function _s3dCamBasis(eye) {
+  let camX, camY, camZ, fx, fy, fz;
+  if (_s3dWalk) {
+    const cp = Math.cos(_s3dWalk.pitch);
+    camX = _s3dWalk.x; camY = _s3dWalk.y; camZ = _s3dWalk.z;
+    fx = Math.sin(_s3dWalk.yaw) * cp; fy = Math.cos(_s3dWalk.yaw) * cp; fz = Math.sin(_s3dWalk.pitch);
+  } else {
+    const { yaw, pitch, dist } = _s3dCam;
+    const targetZ = S3D_TOP_KM * _s3dExag() / 4;
+    const horiz = dist * Math.cos(pitch);
+    camX = horiz * Math.sin(yaw); camY = horiz * Math.cos(yaw); camZ = targetZ + dist * Math.sin(pitch);
+    fx = -camX; fy = -camY; fz = targetZ - camZ;
+    const fl = Math.hypot(fx, fy, fz) || 1; fx /= fl; fy /= fl; fz /= fl;
+  }
   let rx = fy, ry = -fx;
   const rl = Math.hypot(rx, ry) || 1; rx /= rl; ry /= rl;
   const rz = 0;
   const ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
+  // Stereo: each eye slides along the right vector, scaled to the scene.
+  if (eye) {
+    const span = _s3dZone ? Math.max(_s3dZone.wKm, _s3dZone.hKm) : 300;
+    const sep = Math.max(0.04, span * 0.012) * eye / 2;
+    camX += rx * sep; camY += ry * sep;
+  }
   return { camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz };
 }
 
@@ -82336,6 +82477,9 @@ function _s3dOpen() {
   _s3dDirty = true;
   if (!_s3dTicking) { _s3dTicking = true; requestAnimationFrame(_s3dTick); }
   _s3dLoad();
+  _s3dRadarSite = null;
+  _s3dFillRadarMenus();
+  _s3dSyncCamBars();
   if (_s3dRadarOn) _s3dRadarLoad();
   _s3dUpdateBar();
 }
@@ -82352,6 +82496,9 @@ function _s3dClose() {
   _s3dIdx = -1;
   _s3dIndex = null;
   _s3dRadar = null;
+  if (_s3dVr) _s3dVrOff();
+  if (_s3dWalk) _s3dWalkToggle(false);
+  if (panel) panel.classList.remove('fullscreen');
   _s3dUpdateBar();
 }
 
@@ -82690,6 +82837,13 @@ function _s3dSkinProduct() {
   if (_s3dSkinSel === 'ir') return null;
   if (_s3dSkinSel === 'map') {
     if (typeof activeLayers === 'undefined' || !activeLayers.satellite) return null;
+    // Drawn over a satellite comparison pane: the product that pane shows.
+    const pane = _s3dZone && typeof _cmpPaneAtLatLng === 'function'
+      ? _cmpPaneAtLatLng('sc', _s3dZone.lat, _s3dZone.lng) : null;
+    if (pane && pane.slot && typeof GOES_PRODUCTS !== 'undefined') {
+      const p = GOES_PRODUCTS.find(x => x.id === pane.slot.productId);
+      if (p) return p;
+    }
     try { return _goesProduct(); } catch (e) { return null; }
   }
   return (typeof GOES_PRODUCTS !== 'undefined' && GOES_PRODUCTS.find(p => p.id === _s3dSkinSel)) || null;
@@ -82899,7 +83053,15 @@ async function _s3dRadarLoad() {
   if (!_s3dRadarOn || !_s3dZone) return;
   const alive = () => gen === _s3dRadarGen && _s3dOn && _s3dRadarOn;
   const z = _s3dZone;
-  const near = typeof _r3dNearestStation === 'function' ? _r3dNearestStation(z.lat, z.lng) : null;
+  // Asked for by name, or the radar comparison pane under the zone, or the
+  // nearest radar, in that order.
+  const pane = !_s3dRadarSite && typeof _cmpPaneAtLatLng === 'function'
+    ? _cmpPaneAtLatLng('rc', z.lat, z.lng) : null;
+  if (pane && pane.slot && pane.slot.prodSel && !_s3dRadarProductPicked
+      && R3D_PRODUCTS.some(p => p.id === pane.slot.prodSel)) _s3dRadarProduct = pane.slot.prodSel;
+  const near = _s3dRadarSite ? { id: _s3dRadarSite, km: 0 }
+    : pane && pane.slot && pane.slot.site ? { id: String(pane.slot.site).toLowerCase(), km: 0 }
+    : typeof _r3dNearestStation === 'function' ? _r3dNearestStation(z.lat, z.lng) : null;
   if (!near || near.km > 420) { _s3dSay('no radar close enough to this zone for the overlay', 'bad'); return; }
   if (typeof _r3dBuildFrame !== 'function' || typeof _workerProcess !== 'function') {
     _s3dSay('this build has no radar decoder', 'bad'); return;
@@ -82918,7 +83080,7 @@ async function _s3dRadarLoad() {
     if (!alive()) return;
     if (!buf) throw new Error('no volume from ' + site.toUpperCase());
     const zone = { lat: z.lat, lng: z.lng, wKm: z.wKm, hKm: z.hKm };
-    const spec = _r3dSpec('ref');
+    const spec = _r3dSpec(_s3dRadarProduct);
     const frame = await _r3dBuildFrame(buf, spec.layer, _xsSiteLatLon(site), zone, 0, null, alive);
     if (!alive()) return;
     if (!frame) { _s3dSay('the radar sees nothing in this zone', 'bad'); return; }
@@ -82936,7 +83098,12 @@ async function _s3dRadarLoad() {
 // its neighbours), and each triangle is filled pixel by pixel with its
 // corners' colours blended across it (Gouraud shading), keeping only the
 // pixel nearest the eye. Clear sky sits at height 0 and is the ground.
-function _s3dRaster(d, zone, v, W, H, exag, alpha, clearAlpha) {
+//
+// opts (all optional): hm (the heights to draw, after the sliders), mode
+// ('lit' | 'flat' | 'height'), box (the cutaway: only what is inside it).
+function _s3dRaster(d, zone, v, W, H, exag, alpha, clearAlpha, opts) {
+  const o = opts || {};
+  const hm = o.hm || d.hm, mode = o.mode || 'lit', box = o.box || null;
   const nx = d.w, ny = d.h, N = nx * ny;
   const hx = zone.wKm / 2, hy = zone.hKm / 2;
   const cx = 2 * hx / nx, cy = 2 * hy / ny;
@@ -82945,28 +83112,40 @@ function _s3dRaster(d, zone, v, W, H, exag, alpha, clearAlpha) {
   let lx = -0.35 * rx + 0.75 * ux - 0.55 * fx, ly = -0.35 * ry + 0.75 * uy - 0.55 * fy,
       lz = -0.35 * rz + 0.75 * uz - 0.55 * fz;
   const ll = Math.hypot(lx, ly, lz) || 1; lx /= ll; ly /= ll; lz /= ll;
-  const hm = d.hm, rgb = d.rgb;
+  const rgb = d.rgb;
   const PX = new Float32Array(N), PY = new Float32Array(N), PZ = new Float32Array(N);
   const CR = new Float32Array(N), CG = new Float32Array(N), CB = new Float32Array(N), CA = new Float32Array(N);
+  const eps = Math.max(cx, cy) * 0.5;
   for (let j = 0; j < ny; j++) {
     const Y = hy - (j + 0.5) * cy;
     const jn = j > 0 ? j - 1 : j, js = j < ny - 1 ? j + 1 : j;
     for (let i = 0; i < nx; i++) {
       const k = j * nx + i;
       const X = -hx + (i + 0.5) * cx, Z = hm[k] * exag;
+      if (box && (X < box.minX - eps || X > box.maxX + eps || Y < box.minY - eps || Y > box.maxY + eps)) {
+        PZ[k] = -1; continue;
+      }
       const dx = X - camX, dy = Y - camY, dz = Z - camZ;
       const depth = dx * fx + dy * fy + dz * fz;
-      if (depth < 0.5) { PZ[k] = -1; continue; }
+      if (depth < 0.05) { PZ[k] = -1; continue; }
       PX[k] = W2 + (dx * rx + dy * ry + dz * rz) / depth * focal;
       PY[k] = H2 - (dx * ux + dy * uy + dz * uz) / depth * focal;
       PZ[k] = depth;
-      const iw = i > 0 ? i - 1 : i, ie = i < nx - 1 ? i + 1 : i;
-      const sx = (hm[j * nx + ie] - hm[j * nx + iw]) * exag / (Math.max(1, ie - iw) * cx);
-      const sy = (hm[jn * nx + i] - hm[js * nx + i]) * exag / (Math.max(1, js - jn) * cy);
-      const nl = Math.sqrt(sx * sx + sy * sy + 1);
-      const lam = Math.max(0, (-sx * lx - sy * ly + lz) / nl);
-      const shade = 0.38 + 0.62 * lam;
-      CR[k] = rgb[k * 3] * shade; CG[k] = rgb[k * 3 + 1] * shade; CB[k] = rgb[k * 3 + 2] * shade;
+      let shade = 1;
+      if (mode !== 'flat') {
+        const iw = i > 0 ? i - 1 : i, ie = i < nx - 1 ? i + 1 : i;
+        const sx = (hm[j * nx + ie] - hm[j * nx + iw]) * exag / (Math.max(1, ie - iw) * cx);
+        const sy = (hm[jn * nx + i] - hm[js * nx + i]) * exag / (Math.max(1, js - jn) * cy);
+        const nl = Math.sqrt(sx * sx + sy * sy + 1);
+        const lam = Math.max(0, (-sx * lx - sy * ly + lz) / nl);
+        shade = 0.38 + 0.62 * lam;
+      }
+      if (mode === 'height') {
+        const c = _s3dHeightRgb(hm[k]);
+        CR[k] = c[0] * shade; CG[k] = c[1] * shade; CB[k] = c[2] * shade;
+      } else {
+        CR[k] = rgb[k * 3] * shade; CG[k] = rgb[k * 3 + 1] * shade; CB[k] = rgb[k * 3 + 2] * shade;
+      }
       CA[k] = (hm[k] > 0 ? alpha : clearAlpha) * 255;
     }
   }
@@ -82978,9 +83157,13 @@ function _s3dRaster(d, zone, v, W, H, exag, alpha, clearAlpha) {
     const ax = PX[a], ay = PY[a], bx = PX[b], by = PY[b], qx = PX[c], qy = PY[c];
     const area = (bx - ax) * (qy - ay) - (by - ay) * (qx - ax);
     if (area === 0 || !isFinite(area)) return;
-    let x0 = Math.max(0, Math.floor(Math.min(ax, bx, qx))), x1 = Math.min(W - 1, Math.ceil(Math.max(ax, bx, qx)));
-    let y0 = Math.max(0, Math.floor(Math.min(ay, by, qy))), y1 = Math.min(H - 1, Math.ceil(Math.max(ay, by, qy)));
+    const x0 = Math.max(0, Math.floor(Math.min(ax, bx, qx))), x1 = Math.min(W - 1, Math.ceil(Math.max(ax, bx, qx)));
+    const y0 = Math.max(0, Math.floor(Math.min(ay, by, qy))), y1 = Math.min(H - 1, Math.ceil(Math.max(ay, by, qy)));
     if (x0 > x1 || y0 > y1) return;
+    // A triangle smeared across most of the screen is one that runs from in
+    // front of the eye to behind it (walking among the clouds); skipping it
+    // costs a sliver of surface and saves a frame-long stall.
+    if ((x1 - x0) * (y1 - y0) > W * H * 0.6) return;
     const inv = 1 / area;
     for (let py = y0; py <= y1; py++) {
       const sy = py + 0.5;
@@ -82994,11 +83177,11 @@ function _s3dRaster(d, zone, v, W, H, exag, alpha, clearAlpha) {
         const p = py * W + px;
         if (z >= zb[p]) continue;
         zb[p] = z;
-        const o = p * 4;
-        out[o] = w0 * CR[a] + w1 * CR[b] + w2 * CR[c];
-        out[o + 1] = w0 * CG[a] + w1 * CG[b] + w2 * CG[c];
-        out[o + 2] = w0 * CB[a] + w1 * CB[b] + w2 * CB[c];
-        out[o + 3] = w0 * CA[a] + w1 * CA[b] + w2 * CA[c];
+        const o4 = p * 4;
+        out[o4] = w0 * CR[a] + w1 * CR[b] + w2 * CR[c];
+        out[o4 + 1] = w0 * CG[a] + w1 * CG[b] + w2 * CG[c];
+        out[o4 + 2] = w0 * CB[a] + w1 * CB[b] + w2 * CB[c];
+        out[o4 + 3] = w0 * CA[a] + w1 * CA[b] + w2 * CA[c];
       }
     }
   };
@@ -83012,10 +83195,79 @@ function _s3dRaster(d, zone, v, W, H, exag, alpha, clearAlpha) {
   return out;
 }
 
+// Height colours, for the Look menu: a relief map of the cloud tops, from
+// low cloud through the mid levels to the tallest anvils.
+const S3D_HEIGHT_RAMP = [[0, [40, 44, 52]], [2, [60, 110, 200]], [5, [40, 190, 210]], [8, [70, 200, 90]],
+                         [11, [240, 220, 60]], [14, [240, 120, 40]], [16, [220, 40, 60]], [18, [230, 120, 230]]];
+function _s3dHeightRgb(km) {
+  const r = S3D_HEIGHT_RAMP;
+  if (km <= r[0][0]) return r[0][1];
+  for (let i = 1; i < r.length; i++) {
+    if (km <= r[i][0]) {
+      const t = (km - r[i - 1][0]) / (r[i][0] - r[i - 1][0]), a = r[i - 1][1], b = r[i][1];
+      return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+    }
+  }
+  return r[r.length - 1][1];
+}
+
+// The heights actually drawn: the scan's own, smoothed, with tops below
+// "Tops above" dropped to the ground and tops above "Up to" shaved off.
+// Kept on the frame per slider setting, so playing the loop never redoes it.
+function _s3dShownHeights(d) {
+  const key = _s3dSmooth + '|' + _s3dTopsAbove + '|' + _s3dUpTo;
+  if (d._hk === key && d._hp) return d._hp;
+  const nx = d.w, ny = d.h, n = nx * ny;
+  let hm = d.hm;
+  const r = Math.round(_s3dSmooth / 100 * 3);
+  if (r > 0) {
+    // A box blur, rows then columns, r cells each way.
+    const tmp = new Float32Array(n), out = new Float32Array(n);
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        let s = 0, c = 0;
+        for (let q = Math.max(0, i - r); q <= Math.min(nx - 1, i + r); q++) { s += hm[j * nx + q]; c++; }
+        tmp[j * nx + i] = s / c;
+      }
+    }
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        let s = 0, c = 0;
+        for (let q = Math.max(0, j - r); q <= Math.min(ny - 1, j + r); q++) { s += tmp[q * nx + i]; c++; }
+        out[j * nx + i] = s / c;
+      }
+    }
+    hm = out;
+  }
+  const lo = _s3dTopsAbove / R3D_KFT_PER_KM, hi = _s3dUpTo / R3D_KFT_PER_KM;
+  const out = new Float32Array(n);
+  for (let k = 0; k < n; k++) {
+    let v = hm[k];
+    if (lo > 0 && v < lo) v = 0;
+    if (v > hi) v = hi;
+    out[k] = v;
+  }
+  d._hk = key; d._hp = out;
+  return out;
+}
+
+// The part of the box the cutaway leaves standing (the whole box with no cut).
+function _s3dCutBox(hx, hy) {
+  const box = { minX: -hx, maxX: hx, minY: -hy, maxY: hy };
+  if (_s3dCutSide === 'off') return box;
+  const pct = Math.max(0, Math.min(95, _s3dCutPct)) / 100;
+  if (_s3dCutSide === 'e') box.maxX = hx - 2 * hx * pct;
+  else if (_s3dCutSide === 'w') box.minX = -hx + 2 * hx * pct;
+  else if (_s3dCutSide === 'n') box.maxY = hy - 2 * hy * pct;
+  else if (_s3dCutSide === 's') box.minY = -hy + 2 * hy * pct;
+  return box;
+}
+
 // -- Painting -------------------------------------------------------------
-let _s3dPaintSeq = 0, _s3dOffCv = null, _s3dRadarCv = null;
-function _s3dTick() {
+let _s3dPaintSeq = 0, _s3dOffCv = null;
+function _s3dTick(ts) {
   if (!_s3dOn) { _s3dTicking = false; return; }
+  _s3dWalkStep(ts || performance.now());
   if (_s3dDirty && !_s3dRendering) { _s3dDirty = false; _s3dRender(); }
   requestAnimationFrame(_s3dTick);
 }
@@ -83043,51 +83295,68 @@ function _s3dRenderIdle(timeoutMs) {
   });
 }
 
+// The radar under the clouds for one eye, through Radar 3D's own marcher,
+// kept while nothing that shapes it changes, so playing the clouds over a
+// still storm never re-marches it.
+async function _s3dRadarPicture(R, v, iw, ih, exag, box, fast, seq) {
+  const spec = _r3dSpec(_s3dRadarProduct);
+  const key = [v.camX, v.camY, v.camZ, v.fx, v.fy, v.fz, exag, iw, ih, R.P.id, spec.id,
+               box.minX, box.maxX, box.minY, box.maxY].map(x => typeof x === 'number' ? x.toFixed(3) : x).join('|');
+  if (!R.cache) R.cache = new Map();
+  if (R.cache.has(key)) return R.cache.get(key);
+  const stepKm = Math.max(0.08, Math.min(1.5, R.P.rStep * (fast ? 1.3 : 0.6)));
+  const pack = _r3dLutFor(spec.id, stepKm);
+  let lx = -0.35 * v.rx + 0.75 * v.ux - 0.55 * v.fx, ly = -0.35 * v.ry + 0.75 * v.uy - 0.55 * v.fy,
+      lz = -0.35 * v.rz + 0.75 * v.uz - 0.55 * v.fz;
+  const ll = Math.hypot(lx, ly, lz) || 1;
+  const data = await _r3dMarchAsync(R.P, {
+    iw, ih, fine: fast ? 0 : 1, crisp: 0, exag, stepKm,
+    cam: new Float64Array([v.camX, v.camY, v.camZ, v.rx, v.ry, v.rz, v.ux, v.uy, v.uz, v.fx, v.fy, v.fz]),
+    minX: box.minX, maxX: box.maxX, minY: box.minY, maxY: box.maxY, maxZ: S3D_TOP_KM * exag,
+    lut: pack.lut, floorRgb: pack.floorRgb, signed: !!spec.signed,
+    light: new Float32Array([lx / ll, ly / ll, lz / ll]),
+  });
+  if (seq !== _s3dPaintSeq || !data) return null;
+  const c = document.createElement('canvas');
+  c.width = iw; c.height = ih;
+  const im = c.getContext('2d').createImageData(iw, ih);
+  im.data.set(data);
+  c.getContext('2d').putImageData(im, 0, 0);
+  if (!fast) {
+    R.cache.set(key, c);
+    while (R.cache.size > 4) R.cache.delete(R.cache.keys().next().value);
+  }
+  return c;
+}
+
 async function _s3dPaint(ctx, w, h, dpr) {
   const seq = ++_s3dPaintSeq;
   const fr = _s3dFrames[_s3dIdx];
   const zone = _s3dZone;
   const fast = _s3dFast;
+  const exag = _s3dExag();
+  const hx = zone ? zone.wKm / 2 : 150, hy = zone ? zone.hKm / 2 : 150;
+  const box = _s3dCutBox(hx, hy);
+  // Stereo is two eyes side by side, each half the canvas; mono is one
+  // full-width eye. Everything below runs per eye.
+  const eyes = _s3dVr ? [-1, 1] : [0];
+  const eyeW = _s3dVr ? Math.floor(w / 2) : w;
+  const views = eyes.map(e => _s3dCamBasis(e));
   // A dragging picture is drawn small and stretched, the way Radar 3D's
   // coarse pass is: the orbit keeps up with the finger, and the full
   // picture follows the moment the finger stops.
-  const cap = fast ? 0.45 : Math.min(1, 1300 / w);
-  const rw = Math.max(80, Math.round(w * cap)), rh = Math.max(50, Math.round(h * cap));
-  const exag = _s3dExag();
-  const v = _s3dCamBasis();
-  const hx = zone ? zone.wKm / 2 : 150, hy = zone ? zone.hKm / 2 : 150;
-
-  // The radar, when asked for: marched through this same camera, and kept
-  // while the camera and size stand still, so playing the clouds over it
-  // never re-marches the storm.
-  let radarCv = null;
+  const cap = fast ? 0.45 : Math.min(1, 1300 / eyeW);
+  const rw = Math.max(80, Math.round(eyeW * cap)), rh = Math.max(50, Math.round(h * cap));
   const R = _s3dRadarOn && _s3dRadar && _s3dRadar.P ? _s3dRadar : null;
+
+  const radars = [];
   if (R && zone) {
     const iw = fast ? Math.min(rw, 220) : Math.min(rw, 560);
-    const ih = Math.max(40, Math.round(iw * h / w));
-    const key = [_s3dCam.yaw, _s3dCam.pitch, _s3dCam.dist, exag, iw, ih, R.P.id, _s3dAlpha].join('|');
-    if (R.cache && R.cache.key === key) radarCv = R.cache.cv;
-    else {
-      const stepKm = Math.max(0.08, Math.min(1.5, R.P.rStep * (fast ? 1.3 : 0.6)));
-      const pack = _r3dLutFor('ref', stepKm);
-      let lx = -0.35 * v.rx + 0.75 * v.ux - 0.55 * v.fx, ly = -0.35 * v.ry + 0.75 * v.uy - 0.55 * v.fy,
-          lz = -0.35 * v.rz + 0.75 * v.uz - 0.55 * v.fz;
-      const ll = Math.hypot(lx, ly, lz) || 1;
-      const data = await _r3dMarchAsync(R.P, {
-        iw, ih, fine: fast ? 0 : 1, crisp: 0, exag, stepKm,
-        cam: new Float64Array([v.camX, v.camY, v.camZ, v.rx, v.ry, v.rz, v.ux, v.uy, v.uz, v.fx, v.fy, v.fz]),
-        minX: -hx, maxX: hx, minY: -hy, maxY: hy, maxZ: S3D_TOP_KM * exag,
-        lut: pack.lut, floorRgb: pack.floorRgb, signed: false,
-        light: new Float32Array([lx / ll, ly / ll, lz / ll]),
-      });
-      if (seq !== _s3dPaintSeq || !data) return;
-      const c = document.createElement('canvas');
-      c.width = iw; c.height = ih;
-      const im = c.getContext('2d').createImageData(iw, ih);
-      im.data.set(data);
-      c.getContext('2d').putImageData(im, 0, 0);
-      if (!fast) R.cache = { key, cv: c };
-      radarCv = c;
+    const ih = Math.max(40, Math.round(iw * h / eyeW));
+    for (const v of views) {
+      const c = await _s3dRadarPicture(R, v, iw, ih, exag, box, fast, seq);
+      if (seq !== _s3dPaintSeq) return;
+      radars.push(c);
     }
   }
 
@@ -83096,22 +83365,38 @@ async function _s3dPaint(ctx, w, h, dpr) {
   ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
   ctx.imageSmoothingEnabled = true;
   try { ctx.imageSmoothingQuality = 'high'; } catch (e) {}
-  if (radarCv) ctx.drawImage(radarCv, 0, 0, w, h);
-  if (fr && fr.data && zone) {
-    // With the radar under it, clear sky goes nearly away and cloud goes
-    // see-through, so the storm reads through its own anvil.
-    const alpha = radarCv ? Math.min(_s3dAlpha, 0.85) : _s3dAlpha;
-    const clearA = radarCv ? Math.min(0.2, alpha) : Math.max(alpha, 0.9);
-    const px = _s3dRaster(fr.data, zone, v, rw, rh, exag, alpha, clearA);
-    if (!_s3dOffCv) _s3dOffCv = document.createElement('canvas');
-    if (_s3dOffCv.width !== rw || _s3dOffCv.height !== rh) { _s3dOffCv.width = rw; _s3dOffCv.height = rh; }
-    const octx = _s3dOffCv.getContext('2d');
-    const im = octx.createImageData(rw, rh);
-    im.data.set(px);
-    octx.putImageData(im, 0, 0);
-    ctx.drawImage(_s3dOffCv, 0, 0, w, h);
+  const hm = fr && fr.data ? _s3dShownHeights(fr.data) : null;
+  views.forEach((v, i) => {
+    const ex = i * eyeW;
+    const radarCv = radars[i] || null;
+    if (radarCv) ctx.drawImage(radarCv, ex, 0, eyeW, h);
+    if (fr && fr.data && zone) {
+      // With the radar under it, clear sky goes nearly away and cloud goes
+      // see-through, so the storm reads through its own anvil.
+      const alpha = radarCv ? Math.min(_s3dAlpha, 0.85) : _s3dAlpha;
+      const clearA = radarCv ? Math.min(0.2, alpha) : Math.max(alpha, 0.9);
+      const px = _s3dRaster(fr.data, zone, v, rw, rh, exag, alpha, clearA, { hm, mode: _s3dMode, box });
+      if (!_s3dOffCv) _s3dOffCv = document.createElement('canvas');
+      if (_s3dOffCv.width !== rw || _s3dOffCv.height !== rh) { _s3dOffCv.width = rw; _s3dOffCv.height = rh; }
+      const octx = _s3dOffCv.getContext('2d');
+      const im = octx.createImageData(rw, rh);
+      im.data.set(px);
+      octx.putImageData(im, 0, 0);
+      ctx.drawImage(_s3dOffCv, ex, 0, eyeW, h);
+    }
+    if (zone) {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(ex, 0, eyeW, h); ctx.clip();
+      ctx.translate(ex, 0);
+      _s3dDrawBox(ctx, eyeW, h, v, hx, hy, exag, dpr, box, hm, fr && fr.data);
+      ctx.restore();
+    }
+  });
+  if (_s3dVr) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = Math.max(1, dpr);
+    ctx.beginPath(); ctx.moveTo(eyeW, 0); ctx.lineTo(eyeW, h); ctx.stroke();
   }
-  if (zone) _s3dDrawBox(ctx, w, h, v, hx, hy, exag, dpr);
   if (!fr || !fr.data) {
     ctx.fillStyle = typeof _r3dGoldFill === 'function' ? _r3dGoldFill(ctx, h) : '#e8b800';
     ctx.font = `${Math.round(12 * dpr)}px 'Comfortaa', sans-serif`;
@@ -83121,19 +83406,21 @@ async function _s3dPaint(ctx, w, h, dpr) {
   }
 }
 
-// The box around the zone: its edges, height lines on the far corner in
-// true height (not stretched), and N on the north rim.
-function _s3dDrawBox(ctx, w, h, v, hx, hy, exag, dpr) {
+// The box around the zone (or what the cutaway leaves of it): its edges,
+// height lines on the far corner in true height in the chosen unit, N on
+// the north rim, and You where you stand, when that is inside the box.
+function _s3dDrawBox(ctx, w, h, v, hx, hy, exag, dpr, box, hm, d) {
+  box = box || { minX: -hx, maxX: hx, minY: -hy, maxY: hy };
   const focal = h * 1.15;
   const proj = (X, Y, Z) => {
     const dx = X - v.camX, dy = Y - v.camY, dz = Z - v.camZ;
     const depth = dx * v.fx + dy * v.fy + dz * v.fz;
-    if (depth < 0.5) return null;
+    if (depth < 0.05) return null;
     return [w / 2 + (dx * v.rx + dy * v.ry + dz * v.rz) / depth * focal,
             h / 2 - (dx * v.ux + dy * v.uy + dz * v.uz) / depth * focal];
   };
   const top = S3D_TOP_KM * exag;
-  const cs = [[-hx, -hy], [hx, -hy], [hx, hy], [-hx, hy]];
+  const cs = [[box.minX, box.minY], [box.maxX, box.minY], [box.maxX, box.maxY], [box.minX, box.maxY]];
   const line = (a, b) => { if (a && b) { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); } };
   ctx.save();
   ctx.lineWidth = Math.max(1, dpr);
@@ -83146,22 +83433,190 @@ function _s3dDrawBox(ctx, w, h, v, hx, hy, exag, dpr) {
     line(proj(x0, y0, 0), proj(x0, y0, top));
   }
   ctx.stroke();
-  // Height lines on the corner farthest from the eye, labelled in kft.
+  // Height lines on the corner farthest from the eye, in the chosen unit.
+  const unit = (typeof R3D_HEIGHT_UNITS !== 'undefined' && R3D_HEIGHT_UNITS[_s3dHeightUnit])
+    || { label: 'kft', perKm: R3D_KFT_PER_KM, step: 10 };
   let far = cs[0], best = -Infinity;
-  cs.forEach(c => { const d = Math.hypot(c[0] - v.camX, c[1] - v.camY); if (d > best) { best = d; far = c; } });
+  cs.forEach(c => { const dd = Math.hypot(c[0] - v.camX, c[1] - v.camY); if (dd > best) { best = dd; far = c; } });
   ctx.fillStyle = typeof _r3dGoldFill === 'function' ? _r3dGoldFill(ctx, h) : '#e8b800';
   ctx.font = `${Math.round(9 * dpr)}px 'Comfortaa', sans-serif`;
   ctx.textAlign = 'right';
-  ctx.strokeStyle = 'rgba(232,184,0,0.2)';
-  for (let kft = 10; kft / R3D_KFT_PER_KM <= S3D_TOP_KM; kft += 10) {
-    const z = kft / R3D_KFT_PER_KM * exag;
-    const p = proj(far[0], far[1], z);
+  for (let val = unit.step; val / unit.perKm <= S3D_TOP_KM + 1e-6; val += unit.step) {
+    const p = proj(far[0], far[1], val / unit.perKm * exag);
     if (!p) continue;
-    ctx.fillText(kft + ' kft', p[0] - 4 * dpr, p[1] + 3 * dpr);
+    ctx.fillText(val.toLocaleString() + ' ' + unit.label, p[0] - 4 * dpr, p[1] + 3 * dpr);
   }
-  const n = proj(0, hy, 0);
+  const n = proj(0, box.maxY, 0);
   if (n) { ctx.textAlign = 'center'; ctx.font = `bold ${Math.round(11 * dpr)}px 'Comfortaa', sans-serif`; ctx.fillText('N', n[0], n[1] - 5 * dpr); }
+  // You: on the ground where you stand, with a stalk up to the cloud top
+  // above you so it is findable under a deck.
+  const me = _s3dYou();
+  if (me && me.x >= box.minX && me.x <= box.maxX && me.y >= box.minY && me.y <= box.maxY) {
+    let topKm = 0;
+    if (hm && d) {
+      const i = Math.floor((me.x + hx) / (2 * hx) * d.w), j = Math.floor((hy - me.y) / (2 * hy) * d.h);
+      if (i >= 0 && i < d.w && j >= 0 && j < d.h) topKm = hm[j * d.w + i];
+    }
+    const g = proj(me.x, me.y, 0), t = proj(me.x, me.y, topKm * exag);
+    if (g) {
+      if (t && topKm > 0) {
+        ctx.strokeStyle = 'rgba(78,162,218,0.8)'; ctx.setLineDash([3 * dpr, 3 * dpr]);
+        ctx.beginPath(); ctx.moveTo(g[0], g[1]); ctx.lineTo(t[0], t[1]); ctx.stroke(); ctx.setLineDash([]);
+      }
+      ctx.fillStyle = '#4ea2da'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5 * dpr;
+      ctx.beginPath(); ctx.arc(g[0], g[1], 5 * dpr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.font = `bold ${Math.round(9 * dpr)}px 'Comfortaa', sans-serif`;
+      ctx.fillText('You', g[0] + 8 * dpr, g[1] + 3 * dpr);
+    }
+  }
   ctx.restore();
+}
+// Where you are, in the zone's own km (x east, y north from its centre).
+function _s3dYou() {
+  if (!_s3dZone || typeof _r3dUserLatLng !== 'function') return null;
+  const f = _r3dUserLatLng();
+  if (!f) return null;
+  return { x: (f.lng - _s3dZone.lng) * 111.32 * Math.cos(_s3dZone.lat * Math.PI / 180),
+           y: (f.lat - _s3dZone.lat) * 111.32 };
+}
+
+// -- Walking over the clouds, and VR --------------------------------------
+// The same walker as Radar 3D's: a position and a heading inside the box,
+// moved by WASD/arrows, E/Q, the on-screen pad or the wheel, looked around
+// with a drag. VR splits it into two eyes and turns it with the phone.
+function _s3dWalkStep(ts) {
+  const dt = Math.min(0.1, Math.max(0, (ts - _s3dWalkLastTs) / 1000));
+  _s3dWalkLastTs = ts;
+  if (!_s3dWalk || !_s3dMoveKeys.size) return;
+  const span = _s3dZone ? Math.max(_s3dZone.wKm, _s3dZone.hKm) : 300;
+  const sp = span * 0.25 * dt;
+  const wlk = _s3dWalk, sy = Math.sin(wlk.yaw), cy = Math.cos(wlk.yaw);
+  let mx = 0, my = 0, mz = 0;
+  if (_s3dMoveKeys.has('fwd')) { mx += sy; my += cy; }
+  if (_s3dMoveKeys.has('back')) { mx -= sy; my -= cy; }
+  if (_s3dMoveKeys.has('left')) { mx -= cy; my += sy; }
+  if (_s3dMoveKeys.has('right')) { mx += cy; my -= sy; }
+  if (_s3dMoveKeys.has('up')) mz += 0.3;
+  if (_s3dMoveKeys.has('down')) mz -= 0.3;
+  const hx = (_s3dZone ? _s3dZone.wKm : 300) / 2 * 1.8, hy = (_s3dZone ? _s3dZone.hKm : 300) / 2 * 1.8;
+  const top = S3D_TOP_KM * _s3dExag();
+  wlk.x = Math.max(-hx, Math.min(hx, wlk.x + mx * sp));
+  wlk.y = Math.max(-hy, Math.min(hy, wlk.y + my * sp));
+  wlk.z = Math.max(0.15, Math.min(top * 2, wlk.z + mz * sp));
+  _s3dInteract();
+}
+function _s3dWalkToggle(force) {
+  const on = force !== undefined ? !!force : !_s3dWalk;
+  const exag = _s3dExag(), top = S3D_TOP_KM * exag;
+  if (on && !_s3dWalk) {
+    const halfX = (_s3dZone ? _s3dZone.wKm : 300) / 2, halfY = (_s3dZone ? _s3dZone.hKm : 300) / 2;
+    const me = _s3dYou();
+    if (me && Math.abs(me.x) <= halfX && Math.abs(me.y) <= halfY) {
+      // Standing where you are, just above the highest cloud top: looking
+      // out over the deck from above it, facing the middle of the box.
+      const yaw = (Math.abs(me.x) + Math.abs(me.y) > 0.05) ? Math.atan2(-me.x, -me.y) : _s3dCam.yaw + Math.PI;
+      _s3dWalk = { x: me.x, y: me.y, z: Math.min(top, S3D_TOP_KM * 0.8 * exag), yaw, pitch: -0.2 };
+    } else {
+      const dd = Math.max(halfX, halfY) * 1.1;
+      const x = dd * Math.sin(_s3dCam.yaw), y = dd * Math.cos(_s3dCam.yaw);
+      _s3dWalk = { x, y, z: Math.min(top, S3D_TOP_KM * 0.8 * exag), yaw: Math.atan2(-x, -y), pitch: -0.25 };
+    }
+  } else if (!on) {
+    _s3dWalk = null;
+    _s3dMoveKeys.clear();
+    if (_s3dVr) _s3dVrOff();
+  }
+  const btn = _s3dEl('s3d-walk-btn');
+  if (btn) btn.classList.toggle('on', !!_s3dWalk);
+  const pad = _s3dEl('s3d-walk-pad');
+  if (pad) pad.style.display = _s3dWalk ? '' : 'none';
+  // The two camera bars steer the orbit only, so they step aside.
+  document.querySelectorAll('#s3d-panel .r3d-cam-zoom, #s3d-panel .r3d-cam-move')
+    .forEach(el => { el.style.display = _s3dWalk ? 'none' : ''; });
+  _s3dInteract();
+}
+let _s3dGyroBase = null;
+function _s3dOnGyro(e) {
+  if (!_s3dWalk || e.alpha == null || e.beta == null) return;
+  const rad = Math.PI / 180;
+  if (!_s3dGyroBase) _s3dGyroBase = { a: e.alpha, yaw0: _s3dWalk.yaw };
+  let da = e.alpha - _s3dGyroBase.a;
+  if (da > 180) da -= 360; else if (da < -180) da += 360;
+  _s3dWalk.yaw = _s3dGyroBase.yaw0 - da * rad;
+  _s3dWalk.pitch = Math.max(-1.45, Math.min(1.45, (e.beta - 70) * rad));
+  _s3dInteract();
+}
+function _s3dVrOn() {
+  if (!_s3dWalk) _s3dWalkToggle(true);
+  _s3dVr = true;
+  const panel = _s3dEl('s3d-panel');
+  if (panel) panel.classList.add('fullscreen');
+  const btn = _s3dEl('s3d-vr-btn');
+  if (btn) btn.classList.add('on');
+  _s3dGyroBase = null;
+  const wire = () => window.addEventListener('deviceorientation', _s3dOnGyro);
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined'
+        && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission().then(s => { if (s === 'granted') wire(); }).catch(() => {});
+    } else wire();
+  } catch (e) {}
+  _s3dDirty = true;
+}
+function _s3dVrOff() {
+  _s3dVr = false;
+  try { window.removeEventListener('deviceorientation', _s3dOnGyro); } catch (e) {}
+  _s3dGyroBase = null;
+  const btn = _s3dEl('s3d-vr-btn');
+  if (btn) btn.classList.remove('on');
+  _s3dDirty = true;
+}
+function _s3dVrToggle() { if (_s3dVr) _s3dVrOff(); else _s3dVrOn(); }
+
+// -- The camera bars ------------------------------------------------------
+function _s3dSyncCamBars() {
+  const zoom = _s3dEl('s3d-zoom');
+  if (zoom && document.activeElement !== zoom) {
+    const lo = _s3dDistMin(), hi = Math.max(lo + 1, _s3dDistMax());
+    zoom.value = String(Math.round(Math.max(0, Math.min(1, (hi - _s3dCam.dist) / (hi - lo))) * 1000));
+  }
+  const yaw = _s3dEl('s3d-yaw');
+  if (yaw && document.activeElement !== yaw) {
+    let deg = (_s3dCam.yaw * 180 / Math.PI) % 360;
+    if (deg > 180) deg -= 360; else if (deg < -180) deg += 360;
+    yaw.value = String(Math.round(deg));
+  }
+}
+
+// -- The radar pickers ----------------------------------------------------
+function _s3dFillRadarMenus() {
+  const ps = _s3dEl('s3d-rprod');
+  if (ps && !ps.options.length && typeof R3D_PRODUCTS !== 'undefined') {
+    R3D_PRODUCTS.forEach(p => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.label; ps.appendChild(o); });
+    ps.value = _s3dRadarProduct;
+  }
+  const ss = _s3dEl('s3d-rsite');
+  if (ss && _s3dZone) {
+    ss.innerHTML = '';
+    const list = ((typeof NEXRAD_STATIONS !== 'undefined' && NEXRAD_STATIONS) || [])
+      .filter(s => !(typeof _isTdwrSite === 'function' && _isTdwrSite(s.id)))
+      .map(s => ({ id: String(s.id).toLowerCase(),
+                   km: typeof _fxHaversineKm === 'function' ? _fxHaversineKm(_s3dZone.lat, _s3dZone.lng, s.lat, s.lon)
+                     : Math.hypot((s.lat - _s3dZone.lat) * 111.32, (s.lon - _s3dZone.lng) * 111.32 * Math.cos(_s3dZone.lat * Math.PI / 180)) }))
+      .filter(s => isFinite(s.km))
+      .sort((a, b) => a.km - b.km).slice(0, 10);
+    const o0 = document.createElement('option'); o0.value = '';
+    o0.textContent = list.length ? 'Nearest (' + list[0].id.toUpperCase() + ')' : 'Nearest radar';
+    ss.appendChild(o0);
+    list.forEach(s => {
+      const o = document.createElement('option'); o.value = s.id;
+      o.textContent = s.id.toUpperCase() + ' · ' + Math.round(s.km) + ' km';
+      ss.appendChild(o);
+    });
+    ss.value = _s3dRadarSite || '';
+  }
+  const row = document.querySelectorAll('#s3d-rprod, #s3d-rsite');
+  row.forEach(el => { el.style.display = _s3dRadarOn ? '' : 'none'; });
 }
 
 // -- The camera and the panel's own chrome --------------------------------
@@ -83170,6 +83625,7 @@ function _s3dInteract() {
   _s3dDirty = true;
   clearTimeout(_s3dFastTimer);
   _s3dFastTimer = setTimeout(() => { _s3dFast = false; _s3dDirty = true; }, 180);
+  _s3dSyncCamBars();
 }
 
 (function _s3dWire() {
@@ -83182,7 +83638,9 @@ function _s3dInteract() {
     try { cv.setPointerCapture(e.pointerId); } catch (err) {}
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 1) {
-      drag = { yaw: _s3dCam.yaw, pitch: _s3dCam.pitch, x: e.clientX, y: e.clientY };
+      drag = _s3dWalk
+        ? { walk: true, yaw: _s3dWalk.yaw, pitch: _s3dWalk.pitch, x: e.clientX, y: e.clientY }
+        : { yaw: _s3dCam.yaw, pitch: _s3dCam.pitch, x: e.clientX, y: e.clientY };
       cv.classList.add('r3d-dragging');
     } else if (pointers.size === 2) { drag = null; pinch = { dist: pinchDist(), cam: _s3dCam.dist }; }
   });
@@ -83190,10 +83648,18 @@ function _s3dInteract() {
     if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 1 && drag) {
-      _s3dCam.yaw = drag.yaw + (e.clientX - drag.x) * 0.008;
-      _s3dCam.pitch = Math.max(S3D_PITCH_MIN, Math.min(S3D_PITCH_MAX, drag.pitch - (e.clientY - drag.y) * 0.008));
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (drag.walk && _s3dWalk) {
+        _s3dWalk.yaw = drag.yaw + dx * 0.004;
+        _s3dWalk.pitch = Math.max(-1.45, Math.min(1.45, drag.pitch + dy * 0.004));
+        _s3dInteract();
+        return;
+      }
+      if (_s3dWalk) return;
+      _s3dCam.yaw = drag.yaw + dx * 0.008;
+      _s3dCam.pitch = Math.max(S3D_PITCH_MIN, Math.min(S3D_PITCH_MAX, drag.pitch - dy * 0.008));
       _s3dInteract();
-    } else if (pointers.size === 2 && pinch) {
+    } else if (pointers.size === 2 && pinch && !_s3dWalk) {
       _s3dCam.dist = Math.max(_s3dDistMin(), Math.min(_s3dDistMax(), pinch.cam * pinch.dist / Math.max(1, pinchDist())));
       _s3dInteract();
     }
@@ -83207,12 +83673,64 @@ function _s3dInteract() {
   cv.addEventListener('pointercancel', end);
   cv.addEventListener('wheel', (e) => {
     e.preventDefault();
+    if (_s3dWalk) {
+      // Rolling the wheel walks: forward over the clouds, back out.
+      const span = _s3dZone ? Math.max(_s3dZone.wKm, _s3dZone.hKm) : 300;
+      const sp = -e.deltaY * span * 0.0003;
+      const cp = Math.cos(_s3dWalk.pitch);
+      _s3dWalk.x += Math.sin(_s3dWalk.yaw) * cp * sp;
+      _s3dWalk.y += Math.cos(_s3dWalk.yaw) * cp * sp;
+      _s3dWalk.z = Math.max(0.15, _s3dWalk.z + Math.sin(_s3dWalk.pitch) * sp);
+      _s3dInteract();
+      return;
+    }
     _s3dCam.dist = Math.max(_s3dDistMin(), Math.min(_s3dDistMax(), _s3dCam.dist * (1 + e.deltaY * 0.0015)));
     _s3dInteract();
   }, { passive: false });
 
+  // WASD/arrows move the walker, E and Q rise and sink. Captured ahead of
+  // the app's own arrow-key shortcuts while walking, released otherwise.
+  const KEYS = { w: 'fwd', s: 'back', a: 'left', d: 'right', e: 'up', q: 'down',
+                 ArrowUp: 'fwd', ArrowDown: 'back', ArrowLeft: 'left', ArrowRight: 'right' };
+  document.addEventListener('keydown', (e) => {
+    if (!_s3dOn || !_s3dWalk) return;
+    const t = e.target;
+    if (t && /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) return;
+    const mv = KEYS[e.key] || KEYS[String(e.key).toLowerCase()];
+    if (!mv) return;
+    e.preventDefault();
+    e.stopPropagation();
+    _s3dMoveKeys.add(mv);
+  }, true);
+  document.addEventListener('keyup', (e) => {
+    const mv = KEYS[e.key] || KEYS[String(e.key).toLowerCase()];
+    if (mv) _s3dMoveKeys.delete(mv);
+  }, true);
+  const pad = _s3dEl('s3d-walk-pad');
+  if (pad) pad.querySelectorAll('button').forEach(b => {
+    const mv = b.dataset.mv;
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); _s3dMoveKeys.add(mv); try { b.setPointerCapture(e.pointerId); } catch (err) {} });
+    const release = () => _s3dMoveKeys.delete(mv);
+    b.addEventListener('pointerup', release);
+    b.addEventListener('pointercancel', release);
+  });
+
+  const full = _s3dEl('s3d-full');
+  const fullOff = () => { panel.classList.remove('fullscreen'); if (full) full.title = 'Fullscreen'; };
+  if (full) full.onclick = () => {
+    const on = panel.classList.toggle('fullscreen');
+    full.title = on ? 'Exit fullscreen (Esc)' : 'Fullscreen';
+    _s3dDirty = true;
+  };
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && panel.classList.contains('fullscreen')) {
+      fullOff();
+      if (_s3dVr) _s3dVrOff();
+      _s3dDirty = true;
+    }
+  });
   const x = panel.querySelector('.xs-x');
-  if (x) x.onclick = () => _s3dClose();
+  if (x) x.onclick = () => { fullOff(); _s3dClose(); };
   const big = panel.querySelector('.xs-big');
   if (big) big.onclick = () => {
     panel.classList.toggle('big');
@@ -83223,24 +83741,82 @@ function _s3dInteract() {
     try { _makeDraggable(panel, panel.querySelector('.xs-head')); } catch (e) {}
   }
   window.addEventListener('resize', () => { if (_s3dOn) _s3dDirty = true; });
+  const walkBtn = _s3dEl('s3d-walk-btn');
+  if (walkBtn) walkBtn.onclick = () => _s3dWalkToggle();
+  const vrBtn = _s3dEl('s3d-vr-btn');
+  if (vrBtn) vrBtn.onclick = () => _s3dVrToggle();
+  const info = _s3dEl('s3d-info-btn');
+  if (info) {
+    info.innerHTML = '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-info></use></svg>';
+    info.onclick = (ev) => {
+      ev.stopPropagation();
+      const text = (typeof TOOL_DESCRIPTIONS === 'object' && TOOL_DESCRIPTIONS['tool-s3d']) || 'Satellite 3D.';
+      if (typeof _ovShowInfo === 'function') _ovShowInfo(text, info);
+    };
+  }
+  const zoomBar = _s3dEl('s3d-zoom');
+  if (zoomBar) zoomBar.oninput = () => {
+    const lo = _s3dDistMin(), hi = Math.max(lo + 1, _s3dDistMax());
+    _s3dCam.dist = lo + (1 - Math.max(0, Math.min(1000, +zoomBar.value || 0)) / 1000) * (hi - lo);
+    _s3dInteract();
+  };
+  const yawBar = _s3dEl('s3d-yaw');
+  if (yawBar) yawBar.oninput = () => { _s3dCam.yaw = (+yawBar.value || 0) * Math.PI / 180; _s3dInteract(); };
+
   const ex = _s3dEl('s3d-exag');
   if (ex) ex.onchange = () => { _s3dExagSel = ex.value; _s3dDirty = true; };
+  const hu = _s3dEl('s3d-hunit');
+  if (hu) hu.onchange = () => { _s3dHeightUnit = hu.value; _s3dSyncLabels(); _s3dDirty = true; };
   _s3dFillSkinMenu();
   const sk = _s3dEl('s3d-skin');
   if (sk) sk.onchange = () => { _s3dSkinSel = sk.value; _s3dReskin(); };
-  const al = _s3dEl('s3d-alpha'), alLabel = _s3dEl('s3d-alpha-label');
-  const syncAlpha = () => { if (alLabel) alLabel.textContent = Math.round(_s3dAlpha * 100) + '%'; };
+  const al = _s3dEl('s3d-alpha');
+  const syncAlpha = () => { const l = _s3dEl('s3d-alpha-label'); if (l) l.textContent = Math.round(_s3dAlpha * 100) + '%'; };
   if (al) al.oninput = () => { _s3dAlpha = Math.max(0.15, Math.min(1, (+al.value || 100) / 100)); syncAlpha(); _s3dDirty = true; };
+  const above = _s3dEl('s3d-above');
+  if (above) above.oninput = () => { _s3dTopsAbove = +above.value || 0; _s3dSyncLabels(); _s3dDirty = true; };
+  const upto = _s3dEl('s3d-upto');
+  if (upto) upto.oninput = () => { _s3dUpTo = +upto.value || 60; _s3dSyncLabels(); _s3dDirty = true; };
+  const sm = _s3dEl('s3d-smooth');
+  if (sm) sm.oninput = () => { _s3dSmooth = +sm.value || 0; _s3dSyncLabels(); _s3dDirty = true; };
+  const mode = _s3dEl('s3d-mode');
+  if (mode) mode.onchange = () => { _s3dMode = mode.value; _s3dDirty = true; };
+  const cut = _s3dEl('s3d-cut');
+  if (cut) cut.onchange = () => { _s3dCutSide = cut.value; _s3dDirty = true; };
+  const cutPct = _s3dEl('s3d-cutpct');
+  if (cutPct) cutPct.oninput = () => { _s3dCutPct = +cutPct.value || 0; _s3dInteract(); };
   const rd = _s3dEl('s3d-radar');
   if (rd) rd.onchange = () => {
     _s3dRadarOn = !!rd.checked;
     // Turning the radar on turns the clouds see-through, since a solid
     // cloud would hide exactly what was just asked for.
     if (_s3dRadarOn && _s3dAlpha > 0.6 && al) { al.value = '55'; _s3dAlpha = 0.55; syncAlpha(); }
+    _s3dFillRadarMenus();
     if (_s3dRadarOn) _s3dRadarLoad(); else { _s3dRadarGen++; _s3dRadar = null; _s3dSayFrame(); }
     _s3dDirty = true;
   };
+  const rp = _s3dEl('s3d-rprod');
+  if (rp) rp.onchange = () => { _s3dRadarProduct = rp.value; _s3dRadarProductPicked = true; if (_s3dRadarOn) _s3dRadarLoad(); };
+  const rs = _s3dEl('s3d-rsite');
+  if (rs) rs.onchange = () => { _s3dRadarSite = rs.value || null; if (_s3dRadarOn) _s3dRadarLoad(); };
+  _s3dFillRadarMenus();
+  _s3dSyncLabels();
 })();
+// The sliders' own readouts, in the chosen height unit.
+function _s3dSyncLabels() {
+  const unit = (typeof R3D_HEIGHT_UNITS !== 'undefined' && R3D_HEIGHT_UNITS[_s3dHeightUnit])
+    || { label: 'kft', perKm: R3D_KFT_PER_KM };
+  const fmt = (kft) => {
+    const v = kft / R3D_KFT_PER_KM * unit.perKm;
+    return (v >= 100 ? Math.round(v).toLocaleString() : v.toFixed(v < 10 ? 1 : 0)) + ' ' + unit.label;
+  };
+  const a = _s3dEl('s3d-above-label');
+  if (a) a.textContent = _s3dTopsAbove > 0 ? fmt(_s3dTopsAbove) : 'all';
+  const u = _s3dEl('s3d-upto-label');
+  if (u) u.textContent = fmt(_s3dUpTo);
+  const s = _s3dEl('s3d-smooth-label');
+  if (s) s.textContent = _s3dSmooth > 0 ? _s3dSmooth + '%' : 'Off';
+}
 
 (function _r3dWireInfo() {
   const btn = document.getElementById('r3d-info-btn');
