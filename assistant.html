@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
    A personal assistant, and the room it sits in.
 
    The look is one idea: an instrument read through a dark screen. That is
@@ -24,7 +24,7 @@
    The palette is the radar app's own, because this is the same assistant.
    Cyan is the machine, gold is what it is doing, red is the accent it shares
    with the site's logo, and the pale is the light at the middle of the core.
-   ══════════════════════════════════════════════════════════════════════════ */
+   ========================================================================== */
 :root {
   /* Red and gold, which is the site's own scheme. The cyan that was here is
      gone: it belongs to the radar's UI chrome, not to this. Red carries the
@@ -82,7 +82,7 @@ html, body {
   max-width: 1000px; margin: 0 auto; padding: 0 16px;
 }
 
-/* ── The head ─────────────────────────────────────────────────────────── */
+/* -- The head ----------------------------------------------------------- */
 header {
   display: flex; align-items: center; gap: 14px;
   padding: 15px 4px 11px; position: relative;
@@ -165,7 +165,7 @@ body.busy #state { color: var(--gold-hi); opacity: 1; }
   color: #2a1a00;
 }
 
-/* ── The conversation ─────────────────────────────────────────────────── */
+/* -- The conversation --------------------------------------------------- */
 #log {
   flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain;
   padding: 20px 2px 8px; scrollbar-width: thin;
@@ -243,7 +243,7 @@ body.busy #state { color: var(--gold-hi); opacity: 1; }
   background: var(--g-gold); -webkit-background-clip: text;
   background-clip: text; color: transparent; }
 
-/* ── Suggestions ──────────────────────────────────────────────────────── */
+/* -- Suggestions -------------------------------------------------------- */
 #seeds { display: flex; flex-wrap: wrap; gap: 8px; margin: 15px 0 4px; }
 #seeds button {
   border: 1px solid transparent; border-radius: 999px;
@@ -255,7 +255,7 @@ body.busy #state { color: var(--gold-hi); opacity: 1; }
 #seeds button:hover { filter: brightness(1.5); }
 #seeds button:active { transform: translateY(1px); }
 
-/* ── The prompt ───────────────────────────────────────────────────────── */
+/* -- The prompt --------------------------------------------------------- */
 #bar {
   flex: 0 0 auto; display: flex; align-items: flex-end; gap: 9px;
   padding: 12px 0 calc(15px + env(safe-area-inset-bottom, 0px));
@@ -291,7 +291,7 @@ body.busy #state { color: var(--gold-hi); opacity: 1; }
   color: #2a1a00; }
 #send:hover:not(:disabled) { filter: brightness(1.15); }
 
-/* ══ THE BACKGROUND, AND WHAT KEEPS THE WORDS ON TOP OF IT READABLE ══════
+/* == THE BACKGROUND, AND WHAT KEEPS THE WORDS ON TOP OF IT READABLE ======
    #bg carries the picture. #veil sits between it and everything else, and
    it is not decoration: an arbitrary photograph behind text is unreadable,
    and no amount of care with the text can fix a busy picture underneath. So
@@ -467,7 +467,7 @@ body.busy #state { color: var(--gold-hi); opacity: 1; }
 
 <script>
 'use strict';
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
    THE BACKGROUND
 
    Seven drawn scenes, plus whatever picture you care to hand it.
@@ -492,7 +492,7 @@ body.busy #state { color: var(--gold-hi); opacity: 1; }
    amount of care with the text fixes a busy picture underneath. So there is a
    dimmer, set by the person who can see both, rather than a number I guessed
    once for a picture I have never seen.
-   ══════════════════════════════════════════════════════════════════════════ */
+   ========================================================================== */
 const BG_KEY   = 'asturio_bg_v1';        // which scene
 const BG_VEIL  = 'asturio_bg_veil_v1';   // how much to dim it
 const BG_RAIN  = 'asturio_bg_rain_v1';   // is the code rain on
@@ -677,7 +677,7 @@ addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && $('bgpick').classList.contains('open')) bgClose();
 });
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
    THE RAIN
 
    On a canvas because it is a few hundred glyphs redrawn many times a second,
@@ -687,7 +687,7 @@ addEventListener('keydown', (e) => {
    hidden, because an animation nobody is looking at is a flat battery for
    nothing. And it holds still for anyone whose system asks for reduced
    motion, rather than assuming the request was about something else.
-   ══════════════════════════════════════════════════════════════════════════ */
+   ========================================================================== */
 (function rain() {
   const cv = document.getElementById('rain');
   const ctx = cv.getContext('2d', { alpha: true });
@@ -759,7 +759,7 @@ addEventListener('keydown', (e) => {
   start();
 })();
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* ==========================================================================
    THE ASSISTANT
 
    The same brain the radar app and the Discord bot use: one Cloudflare Worker
@@ -769,7 +769,7 @@ addEventListener('keydown', (e) => {
    The persona is deliberately NOT the weather one. This is a personal
    assistant that happens to know its way round a radar, not a radar that
    answers other questions grudgingly.
-   ══════════════════════════════════════════════════════════════════════════ */
+   ========================================================================== */
 const WORKER = 'https://asturio-ai.ralphies1005.workers.dev';
 const RADAR  = 'https://ralphhtml.github.io/GWCFCRadar/';
 const KEY    = 'asturio_assistant_v1';
@@ -860,7 +860,7 @@ function setState(t, working) {
   document.body.classList.toggle('busy', !!working);
 }
 
-/* ── Asking ───────────────────────────────────────────────────────────── */
+/* -- Asking ------------------------------------------------------------- */
 async function ask(text) {
   if (busy) return;
   const q = $('q');
@@ -927,7 +927,7 @@ async function ask(text) {
   }
 }
 
-/* ── Speaking, and listening ──────────────────────────────────────────── */
+/* -- Speaking, and listening -------------------------------------------- */
 function say(text) {
   if (!('speechSynthesis' in window)) return;
   try {
@@ -991,7 +991,7 @@ function listen() {
   try { rec.start(); } catch (e) { rec = null; $('mic').classList.remove('rec'); }
 }
 
-/* ── Keeping the conversation ─────────────────────────────────────────── */
+/* -- Keeping the conversation ------------------------------------------- */
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(history.slice(-MAX_TURNS * 2))); }
   catch (e) { /* a full or blocked store loses the history, not the page */ }
@@ -1018,7 +1018,7 @@ function wipe() {
   greet();
 }
 
-/* ── The room switching on ────────────────────────────────────────────── */
+/* -- The room switching on ---------------------------------------------- */
 const SEEDS = [
   'What should I get done today?',
   'Explain something I should understand better',

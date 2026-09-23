@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /*
  * Mints fresh Discord webhooks for the site's chat bridge and feedback form,
- * ON the Pi, and writes their URLs straight into ~/.gwcfc_webhooks.json,
+ * ON the parsing server, and writes their URLs straight into ~/.gwcfc_webhooks.json,
  * which pi/serve.py's relay reads and nothing serves.
  *
  *     cd ~/GWCFCRadar && node services/bot/make-webhooks.mjs <feedback-channel-id> [chat-channel-id]

@@ -8,7 +8,7 @@
  * Two halves. The cards: four sections that used to be one long scroll of
  * headings and dividers are now fold-away cards whose state is remembered,
  * and every control keeps its id, so nothing that drove the old layout
- * breaks. The Google models: the Pi's new fetch produces a manifest whose
+ * breaks. The Google models: the parsing server's new fetch produces a manifest whose
  * track sets are FNV3_members / GENC_members with storm|member|track keys
  * and no storm names, so this proves the page draws that shape, keeps two
  * simultaneous storms in one member apart, names lines from the a-deck
@@ -37,7 +37,7 @@ const ok = (name, cond, extra) => {
   else { fail++; console.log('  FAIL ' + name + (extra ? '  <' + extra + '>' : '')); }
 };
 
-// ── the run the fixed pipeline would build ──────────────────────────────────
+// -- the run the fixed pipeline would build ----------------------------------
 const RUN = '2026_08_26T00_00';
 const T = (lead, lat, lon, wind, mslp) => ({ lat, lon, lead, wind, mslp });
 const FNV3_TRACKS = {

@@ -7,7 +7,7 @@
  * Typing @ in the composer opens a list of people. Picking one puts their
  * name in the message and remembers their Discord id; on send, that name is
  * rewritten as <@id> on the copy Discord receives, and the ids travel to the
- * Pi as a separate list. The Pi turns that list into allowed_mentions.users,
+ * parsing server as a separate list. The parsing server turns that list into allowed_mentions.users,
  * which is the only reason the token in the text raises a notification.
  *
  * The things worth being careful about, and why each has checks here:

@@ -14,7 +14,7 @@ and region combinations. No account, nothing to install.
     assets/       images, audio and data the page loads
     icons/        app icons and notification badges
 
-    pi/           the Raspberry Pi pipelines: models, radar, cyclones
+    pi/           the parsing server pipelines: models, radar, cyclones
     services/     the parts deployed elsewhere
                     bot/          Discord bot
                     chat-bridge/  Discord messages onto the live chat
@@ -33,7 +33,7 @@ would shrink its reach to nothing.
 Most layers are fetched straight from the agencies by the browser. Level 2
 radar is decoded in the browser too, from one station at a time.
 
-Forecast models are too big for that, so a Raspberry Pi at home downloads only
+Forecast models are too big for that, so a parsing server at home downloads only
 the bytes it needs from NOAA, renders them to PNGs, and serves them through a
 Cloudflare tunnel. It publishes its own address, so nothing needs pasting after
 a reboot. See `pi/README.md`.
@@ -43,7 +43,7 @@ it, and people open this on one.
 
 ## Checks
 
-    node tools/test-models.js               # model panel, against a fake Pi
+    node tools/test-models.js               # model panel, against a fake parsing server
     node services/bot/test-map-command.mjs  # the bot's /map command
     python3 pi/check_models.py              # every model address, against NOAA
     python3 pi/radar_pipeline.py --check    # both radar levels, per site

@@ -8,7 +8,7 @@
  * over. It only ever read the map's centre, so getting a profile somewhere
  * meant dragging the map until that place was in the middle. And it sat inside
  * the models panel, which made it look like a thing about models, when the
- * profile is read off the Pi's own level images and has nothing to do with
+ * profile is read off the parsing server's own level images and has nothing to do with
  * which layer is on screen: radar, satellite, a model chart or a bare basemap
  * all give the same answer for the same point.
  *
@@ -126,7 +126,7 @@ console.log('\n3. it uses the point that was clicked, not the middle of the map'
 
 console.log('\n4. it works whatever is drawn underneath');
 {
-  // The whole point of the move: the profile comes from the Pi's level
+  // The whole point of the move: the profile comes from the parsing server's level
   // images, so the layer on screen is irrelevant. If anything ever made it
   // depend on the active layer, this is what would catch it.
   const r = await page.evaluate(async () => {
@@ -236,7 +236,7 @@ console.log('\n7. the page carries the new fields and region names');
 console.log('\n8. the region picker says which resolution each region is');
 {
   const r = await page.evaluate(() => {
-    // Stand in a Pi index shaped the way the folded catalogue writes one.
+    // Stand in a parsing server index shaped the way the folded catalogue writes one.
     _hdIndex = { models: { nam: { label: 'NAM', res: '12 km', regions: {
       conus:   { res: '12 km', path: 'nam/conus/x/manifest.json', run: 'r' },
       alaska:  { res: '6 km',  path: 'nam/alaska/x/manifest.json', run: 'r' },

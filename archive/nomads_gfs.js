@@ -29,7 +29,7 @@
 (function (window) {
   'use strict';
 
-  // ── Run calculation ──────────────────────────────────────────────────────
+  // -- Run calculation ------------------------------------------------------
   // GFS runs 4 times a day: 00z, 06z, 12z, 18z UTC.
   // Data takes about 3.5 hours to process and appear on NOMADS.
   // So at 10:00z, the latest *available* run is 06z (not 12z yet).
@@ -64,7 +64,7 @@
     ));
   }
 
-  // ── Layer catalogue ──────────────────────────────────────────────────────
+  // -- Layer catalogue ------------------------------------------------------
   // Layer names follow GRIB2 naming: PARAM_LEVELTYPE_LEVELVALUE
   //   TGL  = height above ground (metres)
   //   SFC  = surface
@@ -73,10 +73,10 @@
   //   NNN  = pressure level in mb (e.g. 500 = 500mb)
   //
   // opacity: how see-through the overlay is (0 = invisible, 1 = solid).
-  // Kept around 0.6–0.75 so the base map shows through.
+  // Kept around 0.6-0.75 so the base map shows through.
 
   const GFS_LAYERS = {
-    // ── Surface / near-surface ─────────────────────────────────────────────
+    // -- Surface / near-surface ---------------------------------------------
     TMP_TGL_2:   { label: '2m Temperature',        unit: '°C',    opacity: 0.65 },
     DPT_TGL_2:   { label: '2m Dew Point',           unit: '°C',    opacity: 0.65 },
     RH_TGL_2:    { label: '2m Relative Humidity',   unit: '%',     opacity: 0.65 },
@@ -84,23 +84,23 @@
     GUST_SFC_0:  { label: 'Surface Wind Gust',       unit: 'm/s',   opacity: 0.70 },
     PRMSL_MSL_0: { label: 'MSL Pressure',            unit: 'hPa',   opacity: 0.55 },
 
-    // ── Precipitation / moisture ───────────────────────────────────────────
+    // -- Precipitation / moisture -------------------------------------------
     APCP_SFC_0:  { label: 'Total Precipitation',     unit: 'mm',    opacity: 0.70 },
     PWAT_EATM_0: { label: 'Precipitable Water',       unit: 'kg/m²', opacity: 0.65 },
     TCDC_EATM_0: { label: 'Total Cloud Cover',         unit: '%',     opacity: 0.55 },
 
-    // ── Severe weather ─────────────────────────────────────────────────────
+    // -- Severe weather -----------------------------------------------------
     CAPE_SFC_0:  { label: 'Surface CAPE',             unit: 'J/kg',  opacity: 0.70 },
     CIN_SFC_0:   { label: 'Surface CIN',              unit: 'J/kg',  opacity: 0.65 },
 
-    // ── Upper air ──────────────────────────────────────────────────────────
+    // -- Upper air ----------------------------------------------------------
     HGT_500_0:   { label: '500mb Height',             unit: 'dm',    opacity: 0.60 },
     TMP_850_0:   { label: '850mb Temperature',         unit: '°C',    opacity: 0.60 },
     UGRD_250_0:  { label: '250mb U-Wind',              unit: 'm/s',   opacity: 0.60 },
     VGRD_250_0:  { label: '250mb V-Wind',              unit: 'm/s',   opacity: 0.60 },
   };
 
-  // ── NomadsGFS class ──────────────────────────────────────────────────────
+  // -- NomadsGFS class ------------------------------------------------------
   class NomadsGFS {
     /**
      * @param {L.Map} map - The Leaflet map instance to add layers to.
@@ -113,7 +113,7 @@
       this._forecastHour = 0;              // 0 = analysis; max 384h
     }
 
-    // ── Public API ─────────────────────────────────────────────────────────
+    // -- Public API ---------------------------------------------------------
 
     /**
      * Display a GFS variable on the map.
@@ -139,7 +139,7 @@
      * Change which forecast hour is displayed.
      * GFS goes from 0 (analysis) to 384 hours in 1h or 3h steps.
      * The layer will reload automatically.
-     * @param {number} hours - Forecast hour offset (0–384)
+     * @param {number} hours - Forecast hour offset (0-384)
      */
     setForecastHour(hours) {
       this._forecastHour = Math.max(0, Math.min(384, hours));
@@ -183,7 +183,7 @@
     /** Returns a copy of the full layer catalogue. */
     getLayers() { return { ...GFS_LAYERS }; }
 
-    // ── Internal ──────────────────────────────────────────────────────────
+    // -- Internal ----------------------------------------------------------
 
     _buildWMSLayer(varName, meta) {
       // NOMADS WMS 'dir' param: tells the server which model run to use.
@@ -222,7 +222,7 @@
     }
   }
 
-  // ── Expose to window ─────────────────────────────────────────────────────
+  // -- Expose to window -----------------------------------------------------
   window.NomadsGFS    = NomadsGFS;
   window.GFS_LAYERS   = GFS_LAYERS;
   window.latestGFSRun = latestGFSRun;

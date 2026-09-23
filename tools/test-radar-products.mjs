@@ -43,7 +43,7 @@ const ok = (name, cond, extra) => {
   else { fail++; console.log('  FAIL ' + name + (extra ? '  <' + extra + '>' : '')); }
 };
 
-// ── Ground truth, read off the decoder itself ──────────────────────────────
+// -- Ground truth, read off the decoder itself ------------------------------
 // Two things have to agree for a product to work: the folder must exist AND
 // browser.js must import it, because the browser build has its own explicit
 // import list rather than the Node build's readdir. A folder that exists but

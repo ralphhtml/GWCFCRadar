@@ -3,7 +3,7 @@
  * The ?product= URL param (what /map drives) used to accept only ref, vel,
  * hc, accum and boha - a stale list that predated the real Level 2 dual-pol
  * menu (RADAR_L2_BUBBLES: ref, vel, cc, zdr, kdp, sw, phi) and the Level 3 /
- * Pi menu (RADAR_PI_BUBBLES, built from PR_PRODUCTS). Anything outside that
+ * parsing server menu (RADAR_PI_BUBBLES, built from PR_PRODUCTS). Anything outside that
  * stale list was silently ignored, console-warned, and left the map showing
  * whatever it already had - which is why a bot screenshot asking for a
  * product the URL reader did not know about came back wrong with no legend
@@ -23,7 +23,7 @@
  *
  * A STATION IS NEVER REQUIRED. Both the Level 2 branch (via
  * loadDualPolData/loadL3Data's own _nearestStation(map.getCenter())
- * fallback) and the new Level 3/Pi branch (via _nearestStation directly)
+ * fallback) and the new Level 3/parsing server branch (via _nearestStation directly)
  * decode whichever station is nearest wherever ?lat/?lon or ?place put the
  * camera, so a place name alone is always enough - a good thing, since
  * /map has no station option.
@@ -56,7 +56,7 @@ console.log('\n1. the Level 2 dual-pol set, matched against the site\'s own menu
      !/dual-pol[\s\S]{0,80}commented out of that row/.test(PAGE));
 }
 
-console.log('\n2. the Level 3 / Pi branch, station-free by design');
+console.log('\n2. the Level 3 / parsing server branch, station-free by design');
 {
   ok('an unrecognised radar product still falls through to the PR_PRODUCTS branch',
      /PR_PRODUCTS\[product\] && product !== 'hydrohybrid'/.test(PAGE));

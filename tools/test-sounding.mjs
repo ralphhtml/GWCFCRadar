@@ -6,7 +6,7 @@
  *
  * What was there before was a temperature line in a 320px box. This is a real
  * sounding - skew-T, hodograph, parcel theory, shear and helicity - and all of
- * it is worked out in the browser from the four fields the Pi ships.
+ * it is worked out in the browser from the four fields the parsing server ships.
  *
  * That makes it the most testable thing in the app and also the most dangerous
  * to get subtly wrong: a CAPE that is out by a factor, a helicity with the
@@ -303,7 +303,7 @@ console.log('\n6. the skew really skews');
 console.log('\n7. a small card by default, a big one when asked');
 {
   const r = await page.evaluate(async () => {
-    // Stand in a profile so the panel can be driven without a Pi.
+    // Stand in a profile so the panel can be driven without a parsing server.
     const rows = [
       { p: 1000, t: 29, rh: 78, u: 4, v: 2 }, { p: 925, t: 23, rh: 76, u: 10, v: -4 },
       { p: 850, t: 18, rh: 68, u: 20, v: -2 }, { p: 700, t: 7, rh: 55, u: 30, v: 6 },
@@ -370,7 +370,7 @@ console.log('\n7. a small card by default, a big one when asked');
      (r.body.match(/--/g) || []).length < 4, r.body.slice(0, 200));
   ok('the header names the point', /35\.40/.test(r.where), r.where);
   ok('and the forecast hour', /F\+000/.test(r.hourLbl), r.hourLbl);
-  ok('the hour slider spans the hours the Pi has', r.hourMax === 4, String(r.hourMax));
+  ok('the hour slider spans the hours the parsing server has', r.hourMax === 4, String(r.hourMax));
 }
 
 console.log('\n7b. expanding shows the hodograph and the full tables');
@@ -441,20 +441,20 @@ console.log('\n9. it closes, and says so plainly when it cannot read anything');
     const el = document.getElementById('snd-panel');
     el.querySelector('.snd-x').click();
     const closed = !_sndPanelIsOpen();
-    window._sndProfile = async () => { throw new Error('this Pi has no soundings'); };
+    window._sndProfile = async () => { throw new Error('this parsing server has no soundings'); };
     await openSounding(35, -97);
     await new Promise(r => setTimeout(r, 200));
     return { closed, err: el.querySelector('.snd-tables').textContent };
   });
   ok('the close button closes it', r.closed);
   // The message has to say what to DO. "could not read the sounding index"
-  // is true and useless: it does not distinguish a Pi that is off from one
+  // is true and useless: it does not distinguish a parsing server that is off from one
   // that simply is not building soundings, and those have different fixes.
-  ok('a Pi with no soundings says so, and says how to switch them on',
+  ok('a parsing server with no soundings says so, and says how to switch them on',
      /not building soundings/i.test(r.err) && /install\.sh/.test(r.err), r.err);
 }
 
-console.log('\n10. the Pi\'s SounderPy answer becomes the same kind of profile');
+console.log('\n10. the parsing server\'s SounderPy answer becomes the same kind of profile');
 {
   const r = await page.evaluate(() => {
     const body = {
@@ -484,7 +484,7 @@ console.log('\n10. the Pi\'s SounderPy answer becomes the same kind of profile')
       valid: prof.valid, short,
     };
   });
-  ok('it is marked as having come from the Pi\'s door', r.via === 'pi', r.via);
+  ok('it is marked as having come from the parsing server\'s door', r.via === 'pi', r.via);
   ok('every level arrives', r.n === 6, String(r.n));
   // The whole reason for this path: SounderPy sends the dew point itself, so
   // it must not be thrown away and recomputed from a humidity nobody sent.
@@ -614,7 +614,7 @@ console.log('\n12. SHARPpy\'s numbers replace the browser\'s, field by field');
      !r.plainHasEff && !r.plainHasShip);
 }
 
-console.log('\n13. a named model asks the Pi\'s door, and reports it when the '
+console.log('\n13. a named model asks the parsing server\'s door, and reports it when the '
           + 'door is shut');
 {
   const r = await page.evaluate(async () => {
@@ -629,7 +629,7 @@ console.log('\n13. a named model asks the Pi\'s door, and reports it when the '
       ({ hour: fhr || 0, run: '2026082012', lat, lon, via: 'levels', levels: rows });
     _sndManifest = { hours: [0, 6, 12, 18, 24], run: '2026082012' };
     _hdBase = 'https://pi.example';
-    // RAP, the default: straight at the Pi's SounderPy door.
+    // RAP, the default: straight at the parsing server's SounderPy door.
     _sndSource = 'rap'; _sndPiDown = false;
     localStorage.setItem('gwcfc_snd_source', 'rap');
 
@@ -672,7 +672,7 @@ console.log('\n13. a named model asks the Pi\'s door, and reports it when the '
       fell: !!el.querySelector('.snd-note').querySelector('.snd-fell'),
     };
 
-    // Now the Pi's door is gone, the way an older serve.py answers. This used
+    // Now the parsing server's door is gone, the way an older serve.py answers. This used
     // to be served from Open-Meteo without asking, so the panel drew a full
     // chart from a different provider while the picker still said RAP. It
     // reports the failure by name instead, and offers the switch.
@@ -737,7 +737,7 @@ console.log('\n13. a named model asks the Pi\'s door, and reports it when the '
     window.fetch = realFetch;
     return { good, refused, noRetry };
   });
-  ok('the named model asks the Pi\'s door', r.good.asked.length === 1,
+  ok('the named model asks the parsing server\'s door', r.good.asked.length === 1,
      JSON.stringify(r.good.asked));
   ok('with the point on the query string',
      /lat=35\.4000/.test(r.good.asked[0] || '') && /lon=-97\.6000/.test(r.good.asked[0] || ''),
@@ -764,13 +764,13 @@ console.log('\n13. a named model asks the Pi\'s door, and reports it when the '
   ok('the slider now reads as time, not as a forecast hour',
      r.good.hourLbl === 'now' && r.good.piMode, r.good.hourLbl);
 
-  // A Pi with no such door: the panel says which source could not answer,
+  // A parsing server with no such door: the panel says which source could not answer,
   // rather than drawing Open-Meteo's numbers under that source's name.
-  ok('a Pi with no such door is reported, by the name of the source picked',
-     /RAP analysis \(Pi\) could not answer/.test(r.refused.alert),
+  ok('a parsing server with no such door is reported, by the name of the source picked',
+     /RAP analysis \(parsing server\) could not answer/.test(r.refused.alert),
      r.refused.alert.slice(0, 120));
   // The specific reason, translated into what to do about it, rather than a
-  // generic "that did not work": this Pi's serve.py has no such door.
+  // generic "that did not work": this parsing server's serve.py has no such door.
   ok('and the reason is the real one, not a generic failure',
      /cannot fetch real profiles yet/.test(r.refused.alert)
      && /install\.sh/.test(r.refused.alert), r.refused.alert.slice(0, 200));
@@ -789,9 +789,9 @@ console.log('\n13. a named model asks the Pi\'s door, and reports it when the '
   ok('so the next click does not wait on it all over again', r.noRetry);
 }
 
-console.log('\n13b. the Pi sources are put away, not thrown out');
+console.log('\n13b. the parsing server sources are put away, not thrown out');
 {
-  // The Pi is off the air, so a menu that still offered seven ways to ask it
+  // The parsing server is off the air, so a menu that still offered seven ways to ask it
   // was offering seven ways to wait and then be told no. They are hidden.
   //
   // Hidden is the whole point of this section: NOTHING was deleted. The
@@ -842,11 +842,11 @@ console.log('\n13b. the Pi sources are put away, not thrown out');
     return { offered, known, hidden, siteOnly, forced,
              saved: localStorage.getItem('gwcfc_snd_source') };
   });
-  ok('the menu offers only the source that can answer without the Pi',
+  ok('the menu offers only the source that can answer without the parsing server',
      r.offered.join(',') === 'web', JSON.stringify(r.offered));
   // If this ever fails because an id vanished from SND_SOURCES, something was
   // deleted that was only meant to be put away.
-  ok('but every Pi source is still in the app, merely hidden',
+  ok('but every parsing server source is still in the app, merely hidden',
      r.known.join(',') === 'rap,obs,hrrr,nam,gfs,pisite,levels,web',
      JSON.stringify(r.known));
   ok('and all seven of them are the hidden ones',
@@ -854,21 +854,21 @@ console.log('\n13b. the Pi sources are put away, not thrown out');
      JSON.stringify(r.hidden));
   ok('a hidden source still works when it is asked for in code',
      r.siteOnly.tables === 4, String(r.siteOnly.tables));
-  ok('and the site images still do not touch the Pi\'s door',
+  ok('and the site images still do not touch the parsing server\'s door',
      r.siteOnly.asked === 0, String(r.siteOnly.asked));
   ok('a named SounderPy source still asks for that one by name',
      /source=obs/.test(r.forced.asked.join(' ')), r.forced.asked.join(' '));
   // It used to answer this from Open-Meteo and mention it in the note. It
-  // reports the refusal by name now, carrying the Pi's own words for it.
-  ok('and says so by name when that source refuses, with the Pi\'s reason',
-     /Observed balloon \(Pi\) could not answer/.test(r.forced.alert)
+  // reports the refusal by name now, carrying the parsing server's own words for it.
+  ok('and says so by name when that source refuses, with the parsing server\'s reason',
+     /Observed balloon \(parsing server\) could not answer/.test(r.forced.alert)
      && /no such hour yet/.test(r.forced.alert),
      r.forced.alert.slice(0, 200));
   ok('the menu choice is still remembered for next time',
      r.saved === 'web', String(r.saved));
 }
 
-console.log('\n13c. and there is a source that needs no Pi at all');
+console.log('\n13c. and there is a source that needs no parsing server at all');
 {
   const r = await page.evaluate(async () => {
     const el = document.getElementById('snd-panel');
@@ -908,18 +908,18 @@ console.log('\n13c. and there is a source that needs no Pi at all');
         return new Response(JSON.stringify({ elevation: 350, hourly }),
           { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
-      // Everything Pi shaped is dead, which is the whole point of this test.
+      // Everything parsing server shaped is dead, which is the whole point of this test.
       if (u.includes('/sounding?')) return new Response('gone', { status: 500 });
       return realFetch(url, opts);
     };
-    window._sndProfile = async () => { throw new Error('this Pi has no soundings'); };
+    window._sndProfile = async () => { throw new Error('this parsing server has no soundings'); };
     _hdBase = 'https://pi.example';
     _sndSource = 'rap'; _sndPiDown = false;
     localStorage.setItem('gwcfc_snd_source', 'rap');
 
     await openSounding(35.4, -97.6);
     await new Promise(res => setTimeout(res, 400));
-    // A dead Pi with a Pi source picked. This used to fire the request below
+    // A dead parsing server with a parsing server source picked. This used to fire the request below
     // and draw its answer under the RAP label; now it must not ask at all.
     const notAsked = {
       url: askedUrl,
@@ -954,9 +954,9 @@ console.log('\n13c. and there is a source that needs no Pi at all');
 
   ok('the web source is offered in the picker', r.ids.includes('web'),
      r.ids.join(','));
-  // The rule this section now enforces: a dead Pi does not become a request
+  // The rule this section now enforces: a dead parsing server does not become a request
   // to somebody else. Open-Meteo is a choice, not a substitution.
-  ok('a dead Pi does not reach for Open-Meteo on its own',
+  ok('a dead parsing server does not reach for Open-Meteo on its own',
      r.notAsked.url === null, String(r.notAsked.url).slice(0, 60));
   ok('and nothing is drawn from a source that was not chosen',
      r.notAsked.tables === 0, String(r.notAsked.tables));
@@ -967,7 +967,7 @@ console.log('\n13c. and there is a source that needs no Pi at all');
      String(r.auto.url).slice(0, 60));
   ok('and draws a real sounding', r.auto.tables === 4, String(r.auto.tables));
   ok('saying plainly that it came from the web source',
-     /without going through the Pi/.test(r.auto.note), r.auto.note.slice(0, 140));
+     /without going through the parsing server/.test(r.auto.note), r.auto.note.slice(0, 140));
   // No second request for the same point: the cache is what keeps this source
   // inside its free allowance, and it is worth asserting rather than
   // tolerating.
@@ -1011,7 +1011,7 @@ console.log('\n13c. and there is a source that needs no Pi at all');
   ok('and the speed survives the conversion',
      Math.abs(Math.hypot(sfc.u, sfc.v) - 8) < 0.1,
      String(Math.hypot(sfc.u, sfc.v).toFixed(2)));
-  ok('it is labelled as not having come from the Pi',
+  ok('it is labelled as not having come from the parsing server',
      r.prof.via === 'openmeteo' && r.prof.engine === 'browser',
      `${r.prof.via}, ${r.prof.engine}`);
 }
@@ -1162,7 +1162,7 @@ console.log("\n13c2. Open-Meteo cannot be asked often enough to be cut off");
      /rate limiting/.test(r.rateLimited.said || ''), r.rateLimited.said);
 }
 
-console.log('\n13d. the soundings the Pi rendered as images');
+console.log('\n13d. the soundings the parsing server rendered as images');
 {
   const r = await page.evaluate(async () => {
     const el = document.getElementById('snd-panel');
@@ -1260,7 +1260,7 @@ console.log('\n13d. the soundings the Pi rendered as images');
              ids: SND_SOURCES.map(x => x.id), oldStamp: fOld };
   });
 
-  ok('the picker offers the Pi site images', r.ids.includes('pisite'),
+  ok('the picker offers the parsing server site images', r.ids.includes('pisite'),
      r.ids.join(','));
   ok('the site images answer when the live door is dead', r.auto.tables === 4,
      String(r.auto.tables));
@@ -1270,7 +1270,7 @@ console.log('\n13d. the soundings the Pi rendered as images');
      /\d+ km from the point/.test(r.auto.note), r.auto.note.slice(0, 200));
   ok('the numbers on screen are SHARPpy\'s, from the saved file',
      /SHARPpy/.test(r.auto.note));
-  ok('the Pi\'s rendered PNG is shown in the panel',
+  ok('the parsing server\'s rendered PNG is shown in the panel',
      r.auto.img.includes('/soundings/OUN/') && r.auto.img.includes('skewt.png'),
      r.auto.img);
   ok('with the site named above it', /Norman OK/.test(r.auto.head), r.auto.head);
@@ -1336,7 +1336,7 @@ console.log('\n13e. the panel is four views, not one long column');
   ok('the eight views offered are the ones any source can fill',
      r.tabs.join(',') === 'chart,hodo,wind,numbers,thermo,srwind,advect,hazard',
      r.tabs.join(','));
-  // Image showed a picture only the Pi renders, so with the Pi sources hidden
+  // Image showed a picture only the parsing server renders, so with the parsing server sources hidden
   // it could only ever be blank. Hidden, not deleted, like everything else.
   ok('Image and Source are gone from the bar but still in the panel',
      !r.tabs.includes('image') && !r.tabs.includes('source')
@@ -1409,7 +1409,7 @@ console.log("\n13e2. the new views are free: switching asks Open-Meteo nothing")
      r.readText.slice(0, 100));
 }
 
-console.log('\n13f. the Pi says why it is empty, in the browser');
+console.log('\n13f. the parsing server says why it is empty, in the browser');
 {
   const r = await page.evaluate(async () => {
     const realFetch = window.fetch;
@@ -1433,7 +1433,7 @@ console.log('\n13f. the Pi says why it is empty, in the browser');
     let msg = '';
     try { await _sndPrebuilt(35.4, -97.6, 0); }
     catch (e) { msg = String(e.message || e); }
-    // And a healthy Pi says nothing at all.
+    // And a healthy parsing server says nothing at all.
     const quiet = _piStatusLine({ ok: true, reason: '' });
     const nothing = _piStatusLine(null);
     window.fetch = realFetch;
@@ -1441,13 +1441,13 @@ console.log('\n13f. the Pi says why it is empty, in the browser');
     if (typeof _piStatusCache !== 'undefined') _piStatusCache.clear();
     return { msg, quiet, nothing };
   });
-  // "The Pi has not built any soundings yet" is equally true of a first run,
+  // "The parsing server has not built any soundings yet" is equally true of a first run,
   // a missing package and a dead upstream. Only one of those has something
   // to do about it, and the person looking at the map cannot read the log.
   ok('a missing package is named rather than shrugged at',
      /matplotlib/.test(r.msg), r.msg);
   ok('with the command that fixes it', /pip install/.test(r.msg), r.msg);
-  ok('and a healthy Pi produces no noise', r.quiet === '' && r.nothing === '',
+  ok('and a healthy parsing server produces no noise', r.quiet === '' && r.nothing === '',
      `${JSON.stringify(r.quiet)} ${JSON.stringify(r.nothing)}`);
 }
 
@@ -1682,7 +1682,7 @@ console.log('\n13g4. the panel is painted in the radar\'s own colours');
      r.tabLit);
 }
 
-console.log('\n13h. a hanging Pi cannot hang the panel');
+console.log('\n13h. a hanging parsing server cannot hang the panel');
 {
   // The symptom this section exists for: the panel sat on "Building the
   // sounding" forever. Not one of the sounding fetches had a timeout, and an
@@ -1735,7 +1735,7 @@ console.log('\n13i. a source that cannot answer says so, instead of quietly '
           + 'becoming Open-Meteo');
 {
   // The behaviour this replaces: every branch of _sndFetchFor ended at
-  // Open-Meteo. Pick "RAP analysis (Pi)" with the Pi off and you got a full
+  // Open-Meteo. Pick "RAP analysis (parsing server)" with the parsing server off and you got a full
   // chart drawn from Open-Meteo's global blend, while the picker still read
   // RAP and the only hint was a line of small print under a table in a pane
   // that is hidden unless the Numbers tab is up. Reading CAPE off that chart
@@ -1754,7 +1754,7 @@ console.log('\n13i. a source that cannot answer says so, instead of quietly '
                         { p: 500, t: -10, td: -24, u: 30, v: 15, zMSL: 5800 },
                         { p: 300, t: -34, td: -50, u: 50, v: 20, zMSL: 9600 }] };
     };
-    const boom = async () => { throw new Error('the Pi is not answering'); };
+    const boom = async () => { throw new Error('the parsing server is not answering'); };
     _sndPiSounding = boom; _sndProfile = boom; _sndPrebuilt = boom;
     _sndPiModelSounding = boom;
     if (mode === 'pisite-recovers') {
@@ -1778,9 +1778,9 @@ console.log('\n13i. a source that cannot answer says so, instead of quietly '
   }, src);
 
   await setup('all-fail');
-  for (const [src, label] of [['rap', 'RAP analysis (Pi)'],
-                              ['levels', 'Pi model levels'],
-                              ['pisite', 'Pi site images (SounderPy)']]) {
+  for (const [src, label] of [['rap', 'RAP analysis (parsing server)'],
+                              ['levels', 'parsing server model levels'],
+                              ['pisite', 'parsing server site images (SounderPy)']]) {
     const r = await attempt(src);
     ok(`${src} fails as itself rather than becoming Open-Meteo`,
        r.threw === true && r.om === 0, JSON.stringify(r));
@@ -1806,15 +1806,15 @@ console.log('\n13i. a source that cannot answer says so, instead of quietly '
      rw.threw === false && rw.via === 'openmeteo' && rw.om === 1,
      JSON.stringify(rw));
 
-  // The one recovery kept: inside the Pi's own sounding source, from its
-  // rendered images to its level images. Same Pi, same data, and it says so.
+  // The one recovery kept: inside the parsing server's own sounding source, from its
+  // rendered images to its level images. Same parsing server, same data, and it says so.
   await setup('pisite-recovers');
   const rp = await page.evaluate(async () => {
     _sndSource = 'pisite';
     const r = await _sndFetchFor(document.createElement('div'), 35.3, -97.3, 0);
     return { via: r.prof.via, fellBack: r.fellBack, om: window.__om };
   });
-  ok('the Pi still recovers from its images to its levels, and announces it',
+  ok('the parsing server still recovers from its images to its levels, and announces it',
      rp.via === 'levels' && /not answering/.test(rp.fellBack || '')
      && rp.om === 0, JSON.stringify(rp));
 
@@ -1839,7 +1839,7 @@ console.log('\n13i. a source that cannot answer says so, instead of quietly '
       // opens on.
       insideHiddenPane: !!a.closest('.snd-pane'),
       onScreen: box.width > 0 && box.height > 0,
-      namesSource: /RAP analysis \(Pi\) could not answer/.test(a.textContent),
+      namesSource: /RAP analysis \(parsing server\) could not answer/.test(a.textContent),
       saysNotSwapped: /not a different model wearing/.test(a.textContent),
       offersWeb: !!a.querySelector('button.snd-fix-go'),
       offersRetry: a.querySelectorAll('.snd-fix button').length === 2,

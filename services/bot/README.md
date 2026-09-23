@@ -132,7 +132,7 @@ have to be true together, or the bot will not start at all:
 Asking for a privileged intent that has not been granted is a hard failure,
 not a degraded one, which is why this is opt-in and off by default.
 
-**What a ping cannot do.** The Pi decides, not the browser. Every relayed
+**What a ping cannot do.** The parsing server decides, not the browser. Every relayed
 message carries `allowed_mentions` with an empty `parse`, which is what makes
 `@everyone`, `@here` and role pings impossible whatever the message says,
 plus a `users` list holding only the ids the sender actually picked. Those ids
@@ -180,7 +180,7 @@ npx pm2 stop asturio      # stop it
 ```
 
 For genuine 24/7 uptime it wants a machine that's always on, a small VPS, or a
-Raspberry Pi. The same files work anywhere Node runs.
+parsing server. The same files work anywhere Node runs.
 
 ## If the Gemini key is refused
 

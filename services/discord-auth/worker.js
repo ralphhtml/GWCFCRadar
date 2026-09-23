@@ -26,7 +26,7 @@ const DISCORD_API = 'https://discord.com/api/v10';
 const TOKEN_TTL = 3600;
 const STATE_TTL_MS = 10 * 60 * 1000;   // a login not finished in 10 min is stale
 
-// ── small encoding helpers ──────────────────────────────────────────────────
+// -- small encoding helpers --------------------------------------------------
 const enc = new TextEncoder();
 const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf)))
   .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -51,7 +51,7 @@ function safeEqual(a, b) {
   return diff === 0;
 }
 
-// ── state: ties the callback to the request that started it ─────────────────
+// -- state: ties the callback to the request that started it -----------------
 // Signed rather than stored, so the Worker keeps no session of its own. Carries
 // where to return to, which is verified against the allow-list on the way back
 // as well as on the way out - otherwise this would be an open redirect handing
@@ -77,7 +77,7 @@ function allowedRedirect(env, url) {
   } catch { return null; }
 }
 
-// ── Firebase custom token ───────────────────────────────────────────────────
+// -- Firebase custom token ---------------------------------------------------
 // A JWT signed with the service account's private key. Firebase accepts it in
 // exchange for a real session, which is what makes the Discord identity a
 // first-class account rather than a second login system bolted alongside.
@@ -107,7 +107,7 @@ async function firebaseCustomToken(env, uid, claims) {
   return `${header}.${payload}.${sig}`;
 }
 
-// ── routes ──────────────────────────────────────────────────────────────────
+// -- routes ------------------------------------------------------------------
 function redirectUri(env, request) {
   return env.OAUTH_REDIRECT_URI || new URL('/callback', request.url).toString();
 }

@@ -68,7 +68,7 @@ const UA = { 'User-Agent': '(GWCFC Radar Discord bot, github.com/ralphhtml/GWCFC
 
 const withTimeout = (ms) => AbortSignal.timeout(ms);
 
-// ── Who is asking ─────────────────────────────────────────────────────────
+// -- Who is asking ---------------------------------------------------------
 // Every lookup here is best effort. Asturio should still answer if Discord or
 // Firestore is having a bad minute, just with less to go on.
 
@@ -125,7 +125,7 @@ async function getRecentMessages(channel, limit = 6) {
   }
 }
 
-// ── Live context ──────────────────────────────────────────────────────────
+// -- Live context ----------------------------------------------------------
 // Everything here is best effort. A source being down should cost that one
 // section, never the whole reply, so each returns a placeholder on failure.
 
@@ -410,18 +410,18 @@ function explainApiError(msg) {
   return msg;
 }
 
-// ── Photographing the map ──────────────────────────────────────────────────
+// -- Photographing the map --------------------------------------------------
 // The site takes its view from the URL (?lat, ?lon, ?z, ?basemap, ?layers,
 // ?overlays, ?shot=1), so a screenshot is a matter of opening the right link
 // in a headless browser and waiting for it to say it has settled.
 //
 // puppeteer-core, not puppeteer: the full package downloads its own ~200 MB
-// Chromium, which on a Pi is a slow download onto an SD card for a browser the
+// Chromium, which on a parsing server is a slow download onto an SD card for a browser the
 // system already has. This drives the installed one instead.
 //
 // Imported lazily so a machine without it still runs every other command, and
 // /map is the only thing that reports the problem.
-// Where Chromium lives differs by distro, and on Raspberry Pi OS the package is
+// Where Chromium lives differs by distro, and on parsing server OS the package is
 // called chromium-browser while the binary is plain chromium. Rather than make
 // that a setting people have to discover from an error, look in the usual
 // places. CHROME_PATH still wins if it is set.
@@ -437,7 +437,7 @@ function findChrome() {
   for (const p of CHROME_CANDIDATES) if (existsSync(p)) return p;
   return null;
 }
-// Sized for a Pi rather than for a desktop. Every extra pixel is more tiles to
+// Sized for a parsing server rather than for a desktop. Every extra pixel is more tiles to
 // fetch and more canvas to rasterise on a machine with no GPU, and this is still
 // comfortably legible in Discord.
 const SHOT_W = Number(process.env.SHOT_WIDTH)  || 1000;
@@ -495,7 +495,7 @@ const PLACES = {
   atlantic:  { lat: 25.0,  lon: -60.0, z: 4 },
 };
 
-// Starting a browser is the single most expensive thing here, and on a Pi it is
+// Starting a browser is the single most expensive thing here, and on a parsing server it is
 // most of the wait. One is kept warm and reused instead, so only the first
 // screenshot after a restart pays for the launch.
 let _browser = null;
@@ -534,7 +534,7 @@ async function getBrowser() {
       headless: true,
       args: [
         '--no-sandbox',
-        // A Pi has little shared memory, and Chromium crashes rendering a large
+        // A parsing server has little shared memory, and Chromium crashes rendering a large
         // map without this.
         '--disable-dev-shm-usage',
         '--disable-gpu',
@@ -550,12 +550,12 @@ async function getBrowser() {
   } catch (e) {
     throw new Error(`Chromium at ${chrome} would not start: ${String(e.message).split('\n')[0]}`);
   }
-  // If it dies (Pi runs out of memory, say), do not keep handing out a corpse.
+  // If it dies (parsing server runs out of memory, say), do not keep handing out a corpse.
   _browser.on('disconnected', () => { _browser = null; });
   return _browser;
 }
 
-// One screenshot at a time. Two headless page loads at once on a Pi is how both
+// One screenshot at a time. Two headless page loads at once on a parsing server is how both
 // end up slower than either would have been alone, and how it runs out of memory.
 let _shotQueue = Promise.resolve();
 function queueShot(fn) {
@@ -659,7 +659,7 @@ function chunk(text, limit = DISCORD_LIMIT) {
   return out.length ? out : ['(empty response)'];
 }
 
-// ── Asturio's own replies, as embeds ─────────────────────────────────────
+// -- Asturio's own replies, as embeds -------------------------------------
 // Every answer Asturio gives in Discord, whether from /ask or from being
 // mentioned, goes out as an embed rather than plain chat text, so it reads
 // as Asturio speaking rather than an undecorated wall of text. An embed's
@@ -685,7 +685,7 @@ function askErrorEmbed(text, iconURL) {
     .setDescription(text);
 }
 
-// ── Linked-account chat history ───────────────────────────────────────────
+// -- Linked-account chat history -------------------------------------------
 // A linked user's Discord conversation is written into the same asturioChats
 // field the website reads, so a question asked here shows up in the panel and
 // vice versa. Same trimming rules as the site, for the same reason: the whole
@@ -709,7 +709,7 @@ async function saveHistory(discordId, question, answer) {
     .catch(e => console.warn('save history:', e.message));
 }
 
-// ── /economy: a weather-themed game, one save file per Discord user ────────
+// -- /economy: a weather-themed game, one save file per Discord user --------
 // The rules themselves live in economy.mjs, pure and untestable-by-hand no
 // more; this just reads and writes the Firestore record and turns the result
 // into embeds. A missing record is not an error, it is just a player who has
@@ -889,8 +889,8 @@ async function handleEconomy(i) {
   if (sub === 'leaderboard') return handleEconomyLeaderboard(i);
 }
 
-// ── Discord ───────────────────────────────────────────────────────────────
-// ── /map, built from what the site actually offers ─────────────────────────
+// -- Discord ---------------------------------------------------------------
+// -- /map, built from what the site actually offers -------------------------
 // The lists come from services/bot/map-options.json, which tools/extract-map-options.js
 // reads out of index.html. Typed by hand they had already drifted: the command
 // offered six radar products where the page shows five, and eight satellite
@@ -1137,7 +1137,7 @@ function validateMapOptions(opt) {
   return bad;
 }
 
-// ── /economy ─────────────────────────────────────────────────────────────
+// -- /economy -------------------------------------------------------------
 // The game itself lives in economy.mjs, pure and Discord-free. This just
 // shapes it into a slash command, exactly the way mapCommand() above shapes
 // map-options.json into /map. Pet type choices are written out by hand
@@ -1252,7 +1252,7 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-// ── The bot's own status ────────────────────────────────────────────────────
+// -- The bot's own status ----------------------------------------------------
 // Changed from Discord with /status, behind a password, and remembered here so
 // a restart does not quietly put the old one back.
 //
@@ -1307,7 +1307,7 @@ function loadStatus() {
   return { text: 'the radar', kind: 'watching', presence: 'online' };
 }
 
-// ── The face ──────────────────────────────────────────────────────────────
+// -- The face --------------------------------------------------------------
 // The bot answered as a default grey circle with a letter in it, which is
 // what an unconfigured bot looks like. It shares a brain and a name with the
 // assistant in the app, so it should share a face: assets/img/asturio-ai.png,
@@ -1421,7 +1421,7 @@ client.on(Events.InteractionCreate, async (i) => {
       await i.deferReply({ ephemeral: true });
       if (!STATUS_PASSWORD) {
         return i.editReply('This command is switched off: no STATUS_PASSWORD '
-          + 'is set in services/bot/.env on the Pi. Set one and restart the bot.');
+          + 'is set in services/bot/.env on the parsing server. Set one and restart the bot.');
       }
       if (!passwordOk(i.options.getString('password', true))) {
         console.warn(`status refused for ${i.user.tag}`);
@@ -1532,13 +1532,13 @@ client.on(Events.InteractionCreate, async (i) => {
   }
 });
 
-// ── CHAT BRIDGE: Discord -> radar ───────────────────────────────────────────
+// -- CHAT BRIDGE: Discord -> radar -------------------------------------------
 // Set CHAT_CHANNEL_ID to the channel that should be mirrored onto the map.
 // Everything said there (by people, not bots) is copied into Firestore, which
 // the website is listening to live.
 const CHAT_CHANNEL_ID = process.env.CHAT_CHANNEL_ID || '';
 
-// ── Who the website is allowed to ping ──────────────────────────────────────
+// -- Who the website is allowed to ping --------------------------------------
 //
 // The site has no Discord token and a webhook can only post, so it cannot ask
 // the server who is in it. The bot writes the list instead.

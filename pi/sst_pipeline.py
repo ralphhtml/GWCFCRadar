@@ -99,7 +99,7 @@ PRUNE_AT_PCT = float(os.environ.get("GWCFC_SST_PRUNE_PCT", "70"))
 SST_FLOOR_GB = float(os.environ.get("GWCFC_SST_FLOOR_GB", "2"))
 PRUNE_KEEP_DAYS = int(os.environ.get("GWCFC_SST_KEEP_DAYS", "3"))
 
-# ── What gets built ─────────────────────────────────────────────────────────
+# -- What gets built ---------------------------------------------------------
 #
 # `range` is the encode range, not a colour choice: it is the span the 65536
 # steps are laid across, so it has to cover everything the field can really
@@ -160,7 +160,7 @@ def variant_spec(source, variant):
     return VARIANTS.get(variant)
 
 
-# ── Fetching ────────────────────────────────────────────────────────────────
+# -- Fetching ----------------------------------------------------------------
 
 def oisst_urls(d: dt.date):
     """Both spellings of one day's file, final first.
@@ -260,7 +260,7 @@ def read_sst(source, path):
     return arr, lats, lons
 
 
-# ── The cached climatology, which is what makes this affordable ─────────────
+# -- The cached climatology, which is what makes this affordable -------------
 
 def _doy_key(source, month, day, kind):
     return os.path.join(CACHE_DIR, "clim", source, f"{month:02d}{day:02d}_{kind}.npy")
@@ -360,7 +360,7 @@ def climatology_for(source, month, day, deadline=None):
     return mean, rmax, rmin
 
 
-# ── The fields ──────────────────────────────────────────────────────────────
+# -- The fields --------------------------------------------------------------
 
 def anomaly_of(arr, mean):
     if mean is None or arr.shape != mean.shape:
@@ -476,7 +476,7 @@ def build_aoml(variant):
     return arr, lats, lons
 
 
-# ── Writing ─────────────────────────────────────────────────────────────────
+# -- Writing -----------------------------------------------------------------
 
 def out_path(source, variant, day):
     return os.path.join(OUT_DIR, source, variant, f"{day:%Y%m%d}.png")
@@ -546,7 +546,7 @@ def scan_frames(source, variant):
         return []
 
 
-# ── Housekeeping ────────────────────────────────────────────────────────────
+# -- Housekeeping ------------------------------------------------------------
 
 def disk_pct_used(path):
     try:
@@ -639,7 +639,7 @@ def prune():
     return dropped
 
 
-# ── The pass ────────────────────────────────────────────────────────────────
+# -- The pass ----------------------------------------------------------------
 
 def newest_day(source):
     """The most recent day worth trying, given the product's publish lag."""

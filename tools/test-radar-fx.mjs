@@ -323,7 +323,7 @@ console.log('\n6b. picture-only families hide the filter, raw families keep it')
      JSON.stringify(rows.raw));
 }
 
-console.log('\n6c. Model Colors: per-field custom palettes for Pi chart pictures');
+console.log('\n6c. Model Colors: per-field custom palettes for parsing server chart pictures');
 {
   const r = await page.evaluate(() => {
     localStorage.removeItem('gwcfc_model_colors');
@@ -422,7 +422,7 @@ console.log('\n6d. gradient editor: variable stop count, invert, presets, live p
      model.preset.join() === '#0d0887,#7e03a8,#cc4778,#f89441,#f0f921', model.preset.join());
 }
 
-console.log('\n7. the Pi reroute knows when raw data is required');
+console.log('\n7. the parsing server reroute knows when raw data is required');
 {
   const r = await page.evaluate(() => {
     _prSite = 'KTLX'; _prProduct = 'reflectivity'; _prTilt = 1;
@@ -440,7 +440,7 @@ console.log('\n7. the Pi reroute knows when raw data is required');
   });
   ok('a reflectivity filter demands raw at both levels',
      r.l2yes === true && r.l3yes === true, JSON.stringify(r));
-  ok('VIL keeps the Pi\'s paint, having no raw feed', r.vilL3 === false,
+  ok('VIL keeps the parsing server\'s paint, having no raw feed', r.vilL3 === false,
      String(r.vilL3));
   ok('a filter on one family leaves the others alone', r.velNo === false,
      String(r.velNo));
@@ -554,7 +554,7 @@ console.log('\n11. every product the menu offers can actually be coloured');
       (p.l3Tilts || (p.l3 ? [p.l3] : [])).forEach(c => codes.push({ k, c }));
       if (p.l2) codes.push({ k, c: p.l2 });
     });
-    // Only the ones the browser decodes itself. The Pi-painted pictures
+    // Only the ones the browser decodes itself. The parsing server-painted pictures
     // (VIL, the precip totals) have no raw numbers behind them by design.
     const picture = Object.keys(RADAR_PICTURE_FAMS || {});
     const raw = codes.filter(x => !picture.includes(x.k));

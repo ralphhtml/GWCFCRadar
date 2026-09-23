@@ -242,7 +242,7 @@ console.log('\n8. no webhook secrets in the page, ever again');
      !/discord(?:app)?\.com\/api\/(?:v\d+\/)?webhooks\/\d/.test(src),
      'a webhook URL is in the page source');
 
-  // And the feedback form posts through the Pi relay instead.
+  // And the feedback form posts through the parsing server relay instead.
   const r = await page.evaluate(async () => {
     window.__relayHits = [];
     const real = window.fetch;
@@ -261,7 +261,7 @@ console.log('\n8. no webhook secrets in the page, ever again');
     return { hits: window.__relayHits,
              status: document.getElementById('feedback-status').textContent };
   });
-  ok('feedback posts to the Pi relay, not to Discord',
+  ok('feedback posts to the parsing server relay, not to Discord',
      r.hits.length === 1 && r.hits[0].url === 'https://fake-pi.test/relay/feedback',
      JSON.stringify(r.hits.map(h => h.url)));
   ok('with the embed the relay expects',
@@ -402,7 +402,7 @@ console.log('\n8d. single-site raw playback dispatch');
 console.log('\n8e. following a moving tunnel address');
 {
   // The page reads the published address every few seconds and re-points the
-  // Pi features when it changes. We stub the fetch so no network is needed and
+  // parsing server features when it changes. We stub the fetch so no network is needed and
   // prove: a new address is adopted, an unchanged one is a no-op, and a junk
   // value is refused rather than blindly stored.
   const r = await page.evaluate(async () => {
@@ -474,14 +474,14 @@ console.log('\n8h. the performance pass: canvas alerts, warmed connections');
      r.isCanvas && r.samePane && r.sameAgain, JSON.stringify(r));
   ok('a canvas-drawn polygon still answers clicks',
      r.clicked === true && r.canvasInPane === true, JSON.stringify(r));
-  ok('the render-blocking CDN and the Pi lookup are preconnected',
+  ok('the render-blocking CDN and the parsing server lookup are preconnected',
      r.hasJsdelivr && r.hasFirestore, JSON.stringify(r));
 }
 
 console.log('\n8i. model sounding from the right-click menu');
 {
-  // The row exists only while a Pi model is on the map, names the model and
-  // the hour on screen, and clicking it asks the Pi for exactly that: a
+  // The row exists only while a parsing server model is on the map, names the model and
+  // the hour on screen, and clicking it asks the parsing server for exactly that: a
   // column through that run at that hour, not whatever the panel last showed.
   let sndCalls = [];
   let sourcesMode = 'list';
@@ -499,7 +499,7 @@ console.log('\n8i. model sounding from the right-click menu');
     }
     if (url.includes('/sounding?')) {
       sndCalls.push(url);
-      // The shape the Pi's model door really answers with: profile as
+      // The shape the parsing server's model door really answers with: profile as
       // parallel arrays, `levels` as a COUNT. The panel must convert it,
       // which is the bug this body is here to catch.
       return route.fulfill({ contentType: 'application/json',
@@ -520,16 +520,16 @@ console.log('\n8i. model sounding from the right-click menu');
     return route.abort();
   });
 
-  // With no Pi model on the map, the row must be absent, not greyed.
+  // With no parsing server model on the map, the row must be absent, not greyed.
   await page.evaluate(() => { _cmClose(); _hdOn = false; });
   await rclick(35.3, -97.3);
   const t0 = await menuText();
-  ok('without a Pi model on the map there is no model sounding row',
+  ok('without a parsing server model on the map there is no model sounding row',
      !/Model sounding/.test(t0) && /Sounding here/.test(t0), t0);
 
   // Put the GFS on, at slider stop 2 of hours [0, 6, 12, 18]: hour 12.
   //
-  // The base is set FIRST, then the model state: _hdSetBase re-points the Pi
+  // The base is set FIRST, then the model state: _hdSetBase re-points the parsing server
   // features, which includes switching the model layer off, so setting _hdOn
   // before it meant setting it twice and keeping neither. The address watcher
   // from 8e is also re-stubbed to hand out this same base, or its next poll
@@ -553,7 +553,7 @@ console.log('\n8i. model sounding from the right-click menu');
 
   await page.evaluate(() => { _cmModelSoundingHere(); });
   for (let i = 0; i < 120 && !sndCalls.length; i++) await page.waitForTimeout(100);
-  ok('clicking it asks the Pi for that model at that hour',
+  ok('clicking it asks the parsing server for that model at that hour',
      sndCalls.length > 0 && /source=model%3Agfs/.test(sndCalls[0])
      && /fhr=12/.test(sndCalls[0]), sndCalls[0] || 'no request went out');
 
@@ -586,7 +586,7 @@ console.log('\n8i. model sounding from the right-click menu');
      /GFS run 20260828\/00/.test(r1.note) && /forecast hour 12/.test(r1.note),
      r1.note);
 
-  // An older Pi without /sounding/sources: the map still knows the model, so
+  // An older parsing server without /sounding/sources: the map still knows the model, so
   // the click must still target it, with an entry built from the map's own
   // hours rather than silently answering from the default source.
   await page.evaluate(() => {
@@ -598,7 +598,7 @@ console.log('\n8i. model sounding from the right-click menu');
   await rclick(35.3, -97.3);
   await page.evaluate(() => { _cmModelSoundingHere(); });
   for (let i = 0; i < 120 && !sndCalls.length; i++) await page.waitForTimeout(100);
-  ok('an older Pi with no source list still gets asked for the model',
+  ok('an older parsing server with no source list still gets asked for the model',
      sndCalls.length > 0 && /source=model%3Agfs/.test(sndCalls[0]),
      sndCalls[0] || 'no request went out');
   const r2 = await page.evaluate(() => {

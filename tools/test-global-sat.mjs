@@ -48,8 +48,8 @@ const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', e => errors.push(e.message));
 
-// One fake manifest for the global/pacific sector, shaped the way the Pi
-// writes it, so the frames path can be walked without a Pi.
+// One fake manifest for the global/pacific sector, shaped the way the parsing server
+// writes it, so the frames path can be walked without a parsing server.
 const MANIFEST = {
   sat: 'global', sector: 'pacific',
   products: {
@@ -100,7 +100,7 @@ console.log('\n1. the catalogue holds together');
   });
   ok('a third kind, Global Mosaic, exists', r.kind);
   ok('with one category of its own', r.cats.length === 1, r.cats.join());
-  ok('four products, all served by the Pi',
+  ok('four products, all served by the parsing server',
      r.prods.length === 4 && r.prods.every(p => p.src === 'pi'),
      JSON.stringify(r.prods));
   ok('their recipes are the four the pipeline builds',
@@ -149,7 +149,7 @@ console.log('\n2. the two worlds of sectors never mix');
      r.onBand.region);
 }
 
-console.log('\n3. frames really come from the Pi\'s global folder');
+console.log('\n3. frames really come from the parsing server\'s global folder');
 {
   const r = await page.evaluate(async () => {
     const realBase = _hdBase;
@@ -335,7 +335,7 @@ console.log('\n8. the page and the pipeline agree on names');
   ok('the page asks for exactly those recipes',
      pageRecipes.length === 4 && pageRecipes.every(p => pipeProducts.includes(p)),
      `page: ${pageRecipes.join()}, pipe: ${pipeProducts.join()}`);
-  ok('no em dash anywhere in the pipeline', !pipe.includes('\u2014'));
+  ok('no em dash anywhere in the pipeline', !pipe.includes(String.fromCharCode(0x2014)));
 }
 
 console.log('\n9. nothing threw');

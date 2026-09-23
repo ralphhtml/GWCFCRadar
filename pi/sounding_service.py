@@ -204,7 +204,7 @@ def have_libs():
     return out
 
 
-# ── The GSD text format ────────────────────────────────────────────────────
+# -- The GSD text format ----------------------------------------------------
 #
 # Every line is a level, and the first number says what kind of level it is.
 # Types 4 through 9 carry data; the low numbers are headers. The columns are
@@ -416,7 +416,7 @@ def _as_list(x, unit=None):
         return []
 
 
-# ── Importing SounderPy on a machine that never draws anything ────────────
+# -- Importing SounderPy on a machine that never draws anything ------------
 #
 # This is the bug that kept the soundings dark, and it is not obvious from
 # any error anyone would see. SounderPy is installed with --no-deps, because
@@ -640,7 +640,7 @@ def _hours_before(stamp, n):
 LOOK_BACK_HOURS = 3
 
 
-# ── A sounding from one of the models on the map ───────────────────────────
+# -- A sounding from one of the models on the map ---------------------------
 # A source named "model:gfs" or "model:hrrr" means the column through the run
 # the models panel is drawing, rather than an analysis from SounderPy. It is
 # the same data, cut the other way: the panel takes one level across a map,

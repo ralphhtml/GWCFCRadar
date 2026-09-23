@@ -339,7 +339,7 @@ class CORSHandler(SimpleHTTPRequestHandler):
                 _ncei_cache.pop(next(iter(_ncei_cache)))
         self._reply_raw(200, body)
 
-    # ── The satellite archive doors ────────────────────────────────────────
+    # -- The satellite archive doors ----------------------------------------
     # GET /sat/archive/index and /sat/archive/frame, both backed by
     # sat_archive.py beside this file. Every field is checked against a shape
     # and the S3 key against NOAA's exact filename pattern, so this can only
@@ -448,7 +448,7 @@ class CORSHandler(SimpleHTTPRequestHandler):
             _sat_gate.release()
         self._reply_bytes(200, body, "image/png")
 
-    # ── The cloud-top height doors (Satellite 3D) ──────────────────────────
+    # -- The cloud-top height doors (Satellite 3D) --------------------------
     # GET /sat/cth/index and /sat/cth/frame, backed by sat_cth.py beside this
     # file. Same shape of guard as the archive doors above: a zone is four
     # checked numbers, a key must be one of NOAA's band 13 scan names, and

@@ -4,9 +4,9 @@
  *
  *     node tools/test-enscenters-panel.mjs
  *
- * The Pi half of this feature has its own suite (tools/test-enscenters.py),
+ * The parsing server half of this feature has its own suite (tools/test-enscenters.py),
  * which proves the detection finds real cyclones and refuses cold-core lows.
- * This is the other half: given a run the Pi has already built, does the page
+ * This is the other half: given a run the parsing server has already built, does the page
  * draw it, colour it honestly, and put it away again.
  *
  * Three things here are worth more than the rest.
@@ -48,7 +48,7 @@ const ok = (name, cond, extra) => {
   else { fail++; console.log('  FAIL ' + name + (extra ? '  <' + extra + '>' : '')); }
 };
 
-// ── the run the Pi is pretending to have built ──────────────────────────────
+// -- the run the parsing server is pretending to have built ------------------------------
 // Shaped exactly as enscenters_pipeline.build writes it: step_h, lat, lon,
 // mslp_hpa and vmax_kt per point, member on the track.
 const line = (member, pts) => ({ member, points: pts.map(([h, la, lo, p, v]) =>
@@ -77,7 +77,7 @@ const RUN = {
 const QUIET = { ...RUN, run: '20260825_06', tracks: [] };
 
 let serve = RUN;           // flipped between sections
-let missing = false;       // the Pi has not built anything at all
+let missing = false;       // the parsing server has not built anything at all
 
 const browser = await chromium.launch({
   executablePath: process.env.CHROME_PATH
@@ -115,7 +115,7 @@ await page.goto('file://' + join(ROOT, 'index.html'),
                 { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(4200);
 await page.evaluate(() => { if (typeof closeTutorial === 'function') closeTutorial(); });
-// Point the page at a Pi that does not exist, so nothing below depends on a
+// Point the page at a parsing server that does not exist, so nothing below depends on a
 // real one being up or on which GEFS run it happens to be holding.
 await page.evaluate(() => { _hdBase = 'https://example.invalid/wx'; });
 
@@ -233,7 +233,7 @@ console.log('\n5. two cyclone layers over one map, with separate lifetimes');
      after.keys.join(','));
   ok('the ensemble layer still reports itself as on', after.on === true);
 
-  // Focus reads the mapped point names. The Pi writes mslp_hpa and vmax_kt,
+  // Focus reads the mapped point names. The parsing server writes mslp_hpa and vmax_kt,
   // the shared readout wants mslp and wind, and a rename that never happened
   // shows up here as a readout full of "undefined".
   await page.evaluate(() => {
@@ -278,7 +278,7 @@ console.log('\n7. a run that found nothing, which is a quiet tropics');
      /quiet tropics/i.test(s.status), s.status);
 }
 
-console.log('\n8. no run at all, which is the Pi not having got to it yet');
+console.log('\n8. no run at all, which is the parsing server not having got to it yet');
 {
   missing = true;
   await fresh();
@@ -289,7 +289,7 @@ console.log('\n8. no run at all, which is the Pi not having got to it yet');
   ok('the layer stays off', s.on === false);
   ok('the status says no run has arrived', /No ensemble run/.test(s.status),
      s.status);
-  ok('and says how often the Pi looks', /four times a day/.test(s.status),
+  ok('and says how often the parsing server looks', /four times a day/.test(s.status),
      s.status);
   missing = false;
 }
@@ -342,7 +342,7 @@ console.log('\n10. house rules');
   ok('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 }
 
-console.log('\n11. the Pi noticing it is missing a unit, run as the shell runs it');
+console.log('\n11. the parsing server noticing it is missing a unit, run as the shell runs it');
 {
   // The self-updater asks for a reinstall when the installer defines a service
   // this box does not have. That check used to name one unit by hand, so every

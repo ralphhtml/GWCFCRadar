@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 /*
- * Finding the Pi, and surviving a published address that lies.
+ * Finding the parsing server, and surviving a published address that lies.
  *
  *     npm i playwright && node tools/test-pi-address.mjs
  *
- * On 2026-08-27 the site reported the Pi unreachable for a day while the Pi
+ * On 2026-08-27 the site reported the parsing server unreachable for a day while the parsing server
  * answered every request put to it. Nothing was broken in the way anyone
  * looked for. The chain was:
  *
- *   - the Pi's quick tunnel rotated its name, as quick tunnels do
- *   - a database rule change meant the Pi could no longer publish the new one
+ *   - the parsing server's quick tunnel rotated its name, as quick tunnels do
+ *   - a database rule change meant the parsing server could no longer publish the new one
  *   - so the shared document went on naming an address dead for hours
  *   - and the site believed it, because believing it was the whole design
  *
- * Two defences, and this is what tests them. The Pi has a permanent hostname
+ * Two defences, and this is what tests them. The parsing server has a permanent hostname
  * that cannot rotate. And no candidate address is believed on its word: they
  * are asked, and the first that answers wins. An address that does not answer
  * is not an address, however officially it was published.
@@ -133,7 +133,7 @@ console.log('\n2. the ordinary day: the published address answers, and wins');
     return window.__resolve();
   }, { nu: TUNNEL_NEW });
   ok('the published address is used', r2.base === TUNNEL_NEW, r2.base);
-  ok('and the permanent name is not preferred over a deployment\'s own Pi',
+  ok('and the permanent name is not preferred over a deployment\'s own parsing server',
      r2.base !== FIXED, r2.base);
 }
 

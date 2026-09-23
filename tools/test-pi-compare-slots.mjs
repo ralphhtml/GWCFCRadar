@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /*
- * The Pi's models work in the comparison slots.
+ * The parsing server's models work in the comparison slots.
  *
  *     node tools/test-pi-compare-slots.mjs
  *
  * The Compare button splits the map into strips, and until now the extra
- * strips could only show five outside WMS services: the Pi's own twenty-odd
+ * strips could only show five outside WMS services: the parsing server's own twenty-odd
  * models, the ones this app actually builds, were not in the slot dropdown
- * at all. So "compare the Pi's GFS run against its previous run" was simply
+ * at all. So "compare the parsing server's GFS run against its previous run" was simply
  * not a thing the panel could say.
  *
- * This drives the real page in a browser with a stubbed Pi (a fake index and
+ * This drives the real page in a browser with a stubbed parsing server (a fake index and
  * a fetch that answers the manifest URLs), because the whole feature is glue:
  * dropdown -> slot state -> manifest fetch -> image overlay in the right pane
  * with the right URL and the right ground under it. Each link is asserted
@@ -32,11 +32,11 @@ const ok = (name, cond, extra) => {
 
 console.log('\n1. the source agrees with itself');
 {
-  ok('slots have a Pi render branch',
+  ok('slots have a parsing server render branch',
      /function _sevRenderPiSlot/.test(PAGE)
      && /startsWith\('pi:'\)\) \{ _sevRenderPiSlot/.test(PAGE));
-  ok('the slot dropdown gets a Pi optgroup',
-     /GWCFC Pi Models/.test(PAGE));
+  ok('the slot dropdown gets a parsing server optgroup',
+     /GWCFC parsing server Models/.test(PAGE));
   ok('a saved group carries the region',
      /section: s\.section, var: s\.var, run: s\.run, region: s\.piRegion/.test(PAGE));
   ok('and the loader hands it back',
@@ -47,7 +47,7 @@ console.log('\n1. the source agrees with itself');
      && !readFileSync(join(ROOT, 'tools/test-pi-compare-slots.mjs'), 'utf8').includes(EM));
 }
 
-console.log('\n2. in a real browser, against a stubbed Pi');
+console.log('\n2. in a real browser, against a stubbed parsing server');
 let chromium;
 try { ({ chromium } = await import('playwright')); } catch { /* below */ }
 if (!chromium) {
@@ -84,7 +84,7 @@ if (!chromium) {
 
   const r = await p.evaluate(async () => {
     const out = {};
-    // A Pi that answers instantly: one single-region model, one two-region
+    // A parsing server that answers instantly: one single-region model, one two-region
     // model, two archived runs each. Bare assignment on purpose: these are
     // top-level lets, and window.X would make a shadow copy the page ignores.
     _hdBase = 'https://pi.test';
@@ -129,13 +129,13 @@ if (!chromium) {
     await tick(50);
     const slot = _sevExtraSlots[0];
 
-    // The dropdown itself offers the Pi's models.
+    // The dropdown itself offers the parsing server's models.
     const sel = document.querySelector('#sev-slots-container select');
     out.piOptions = sel
-      ? [...sel.querySelectorAll('optgroup[label="GWCFC Pi Models"] option')]
+      ? [...sel.querySelectorAll('optgroup[label="GWCFC parsing server Models"] option')]
           .map(o => o.value) : [];
 
-    // Pick the Pi's GFS: defaults come from the index, then the manifest
+    // Pick the parsing server's GFS: defaults come from the index, then the manifest
     // arrives and the overlay goes up.
     _sevSetSlotSection(slot.id, 'pi:gfs');
     await tick(150);
@@ -185,7 +185,7 @@ if (!chromium) {
     out.alaskaUrl = slot.layer && slot.layer._url;
     out.alaskaNorth = slot.layer && slot.layer._bounds && slot.layer._bounds.getNorth();
 
-    // The on-map label speaks the Pi's own names, both run spellings.
+    // The on-map label speaks the parsing server's own names, both run spellings.
     out.labelSlot = _sevCompareLabelText('pi:gfs', 't2m', '20260831_06');
     out.labelA = _sevCompareLabelText('pi:gfs', 't2m', '2026083106');
 
@@ -203,7 +203,7 @@ if (!chromium) {
   });
   await b.close();
 
-  ok('the slot dropdown lists the Pi models',
+  ok('the slot dropdown lists the parsing server models',
      JSON.stringify(r.piOptions) === JSON.stringify(['pi:gfs', 'pi:nam']),
      JSON.stringify(r.piOptions));
   ok('picking one lands on its first built product', r.var0 === 'refc'
@@ -243,7 +243,7 @@ if (!chromium) {
      || /GFS · .+ · 08\/31 06z/.test(r.labelSlot || ''), String(r.labelSlot));
   ok('whichever way the run was spelled',
      /08\/31 06z/.test(r.labelA || ''), String(r.labelA));
-  ok('a saved group brings the Pi slot back, region and all',
+  ok('a saved group brings the parsing server slot back, region and all',
      r.groupBack && r.groupBack.section === 'pi:nam'
      && r.groupBack.region === 'alaska', JSON.stringify(r.groupBack));
   ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));

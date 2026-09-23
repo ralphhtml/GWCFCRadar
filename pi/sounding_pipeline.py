@@ -183,7 +183,7 @@ def wanted_valid(now=None):
     return t
 
 
-# ── The picture ────────────────────────────────────────────────────────────
+# -- The picture ------------------------------------------------------------
 #
 # One PNG per site per hour: skew-T with both traces and the surface parcel
 # shaded, wind barbs at sensible spacing, a hodograph coloured by height, and
@@ -388,7 +388,7 @@ def render_skewt(body, out_png):
     return True
 
 
-# ── One site, end to end ───────────────────────────────────────────────────
+# -- One site, end to end ---------------------------------------------------
 
 def build_site(site_id, name, lat, lon, valid):
     """Fetch, analyse, render and write one site for one valid hour."""

@@ -34,7 +34,7 @@ say() { printf '\n\033[1;36m==\033[0m %s\n' "$*"; }
 ok()  { printf '   \033[32mok\033[0m %s\n' "$*"; }
 warn(){ printf '   \033[33m!!\033[0m %s\n' "$*"; }
 
-# ── 0. the disk, checked before anything is downloaded ──────────────────────
+# -- 0. the disk, checked before anything is downloaded ----------------------
 # A full SD card is the one failure here that does not look like itself. apt
 # reports a write error against a Debian mirror, pip reports an OSError about
 # a package directory, and git reports "unable to write loose object file".
@@ -66,7 +66,7 @@ else
   ok "enough room for the full three day window"
 fi
 
-# ── 1. system packages ──────────────────────────────────────────────────────
+# -- 1. system packages ------------------------------------------------------
 say "System packages"
 NEED=()
 for p in python3-venv python3-numpy python3-scipy python3-pillow python3-requests libeccodes-tools ffmpeg; do
@@ -88,7 +88,7 @@ else
   ok "already present"
 fi
 
-# ── 2. python environment ───────────────────────────────────────────────────
+# -- 2. python environment ---------------------------------------------------
 # A virtual environment because current Raspberry Pi OS refuses pip into the
 # system Python. --system-site-packages so numpy and Pillow come from apt,
 # which is far faster than pip building them on an ARM board.
@@ -124,7 +124,7 @@ if ! "$VENV/bin/python" -c "import matplotlib" >/dev/null 2>&1; then
   "$VENV/bin/pip" install --quiet matplotlib || \
     warn "matplotlib would not install; sounding images will not build"
 fi
-# ── SounderPy and SHARPpy, installed WITHOUT their dependency lists ─────
+# -- SounderPy and SHARPpy, installed WITHOUT their dependency lists -----
 #
 # Both were tried the ordinary way first and both failed, and neither failure
 # was about the package itself:
@@ -223,7 +223,7 @@ sys.exit(0 if all(v == "ok" for v in mods.values()) else 1)
 PY
 } || warn "something above is missing; the parts that need it will not build"
 
-# ── 3. cloudflared ──────────────────────────────────────────────────────────
+# -- 3. cloudflared ----------------------------------------------------------
 # Always refreshed to the latest release, not just installed once. Cloudflare
 # retires old client versions on the quick-tunnel edge: a stale binary still
 # registers a tunnel and prints a URL, but the edge answers 404 for it, which
@@ -249,7 +249,7 @@ fi
 
 mkdir -p "$DATA/models" "$UNITS"
 
-# ── 4. services ─────────────────────────────────────────────────────────────
+# -- 4. services -------------------------------------------------------------
 # User services rather than system ones: nothing here needs root, and this way
 # the whole thing lives in the home directory and can be removed by deleting it.
 say "Services"
@@ -642,7 +642,7 @@ EOF
 # Keeping itself current. Without this the Pi runs whatever was cloned until
 # somebody remembers to pull, which is how it ends up an hour of debugging away
 # from a bug that was fixed days ago.
-# ── NWRchive: the weather radio recorder ────────────────────────────────────
+# -- NWRchive: the weather radio recorder ------------------------------------
 # Records NOAA Weather Radio streams around the clock, files alert moments
 # permanently, and writes the JSON indexes the nwrchive.html site reads.
 # Storage lives in the home directory and is published through serve.py by a
@@ -880,7 +880,7 @@ systemctl --user disable --now gwcfc-obs.timer gwcfc-obs.service >/dev/null 2>&1
 rm -f "$UNITS/gwcfc-obs.service" "$UNITS/gwcfc-obs.timer"
 ok "serve, tunnel, publish, models, radar, cyclones, ensemble centres and self-update are running"
 
-# ── 5. the address ──────────────────────────────────────────────────────────
+# -- 5. the address ----------------------------------------------------------
 say "Public address"
 URL=""
 # A pinned address is the answer already and there is nothing to wait for.
@@ -902,7 +902,7 @@ else
   done
 fi
 
-# ── 6. first build ──────────────────────────────────────────────────────────
+# -- 6. first build ----------------------------------------------------------
 # Started through systemd rather than run here. Run from the script it belongs
 # to the terminal, so closing the window or a stray Ctrl+C kills a build that
 # takes ten minutes. As a service it belongs to the machine and survives both,

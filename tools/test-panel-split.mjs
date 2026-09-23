@@ -38,7 +38,7 @@ const ok = (name, cond, extra) => {
   else { fail++; console.log('  FAIL ' + name + (extra ? '  <' + extra + '>' : '')); }
 };
 
-// ── fixtures ────────────────────────────────────────────────────────────────
+// -- fixtures ----------------------------------------------------------------
 const P = (tau, lat, lon, vmax, mslp) => ({ tau, lat, lon, vmax, mslp });
 const mkStorm = (id, name, lat, lon) => ({
   id, atcf: id.toUpperCase().replace(/(\d{4})$/, '$1'), name,
@@ -83,7 +83,7 @@ const INDEX = {
     { id: 'al042026', atcf: 'AL042026', name: 'DEXTER', basin: 'al',
       path: 'al042026.json', cycle: '2026081200', tier: 'full', active: false,
       lat: 35.0, lon: -50.0, vmax: 40, mslp: 1000, n_aids: 2, n_tracks: 2 },
-    // No active flag at all, the shape an older Pi wrote. One is happening
+    // No active flag at all, the shape an older parsing server wrote. One is happening
     // now, one died two weeks ago and would otherwise fan stale guidance
     // across a quiet map for the rest of the season.
     { id: 'al112026', atcf: 'AL112026', name: 'HERMINE', basin: 'al',
@@ -295,7 +295,7 @@ console.log('\n2. only current storms draw, until the chip says otherwise');
 console.log('\n2b. a deck with no active flags still hides dead storms');
 {
   // The exact shape that produced a season of dead storms on a live map: an
-  // index written by a Pi from before the flag existed. Trusting "no flag"
+  // index written by a parsing server from before the flag existed. Trusting "no flag"
   // as "current" showed every storm the a-deck still carried, so the age of
   // the storm's own cycle stamp decides instead.
   const s = await page.evaluate(() => {
@@ -312,7 +312,7 @@ console.log('\n2b. a deck with no active flags still hides dead storms');
      s.names.join(','));
   ok('one with no flag and a long-dead cycle does not', s.staleDropped,
      s.names.join(','));
-  ok('and the flag still wins wherever the Pi did record one',
+  ok('and the flag still wins wherever the parsing server did record one',
      s.flaggedDeadStillDropped && s.flaggedLiveStillKept, s.names.join(','));
   // Past storms on: everything comes back, however it was judged.
   const withPast = await page.evaluate(() => {
@@ -609,7 +609,7 @@ console.log('\n7. house rules');
      /extreme:.*#ff44ff/.test(html) && /'Tornado Warning': '#ff0000'/.test(html));
   // The rules file that has to be pasted in the Firebase console must carry
   // everything both apps depend on: outlooks was the block whose absence
-  // silently refused every publish, and piEndpoint is what the Pi's address
+  // silently refused every publish, and piEndpoint is what the parsing server's address
   // discovery needs, so a paste of this file must never break either.
   const rules = readFileSync(join(ROOT, 'firebase', 'firestore.rules'), 'utf8');
   ok('the rules file has the outlooks block', /match \/outlooks\//.test(rules));
@@ -629,7 +629,7 @@ console.log('\n7. house rules');
      !rules.includes("data.get('role'"));
   ok('the radar has the owner-side switch that grants the role',
      /staffSetForecaster/.test(html) && /forecasterSetBy/.test(html));
-  ok('the piEndpoint block the Pi depends on is in the same file',
+  ok('the piEndpoint block the parsing server depends on is in the same file',
      /match \/piEndpoint\//.test(rules));
   ok('every collection the apps write is covered by a rule',
      ['users', 'chat', 'guests', 'cloudcam', 'discordLinks', 'asturioSync',

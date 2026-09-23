@@ -5,7 +5,7 @@ function ok(name, cond, extra) {
 }
 
 (async () => {
-  console.log('\n1. picking a Pi model');
+  console.log('\n1. picking a parsing server model');
   await _sevSetSection('pi:hrrr');
   ok('base resolved from Firestore', _hdBase === 'https://pi.test', _hdBase);
   ok('model is the one asked for, not the first listed', _hdModel === 'hrrr', _hdModel);
@@ -31,7 +31,7 @@ function ok(name, cond, extra) {
   console.log('\n4. the playbar drag path (calls _sevRender directly)');
   const before = iemRendered;
   _sevFrame = 2; _sevRender();
-  ok('drag render stayed on the Pi', iemRendered === before, iemRendered);
+  ok('drag render stayed on the parsing server', iemRendered === before, iemRendered);
   ok('drag render drew hour 2', added[added.length-1].url.includes('t2m_f002.png'), added[added.length-1].url);
 
   console.log('\n5. switching product');
@@ -52,24 +52,24 @@ function ok(name, cond, extra) {
   ok('precip starts at F+003, not F+000', u.includes('apcp_f003.png'), u);
   ok('header agrees', _sevFcastDateTime(0).flbl === 'F+003', _sevFcastDateTime(0).flbl);
 
-  console.log('\n8. leaving the Pi');
+  console.log('\n8. leaving the parsing server');
   await _sevSetSection('hrrr');
-  ok('Pi turned off', _hdOn === false, _hdOn);
+  ok('parsing server turned off', _hdOn === false, _hdOn);
   ok('picker flag cleared', _hdFromPicker === false, _hdFromPicker);
-  ok('Pi image removed from the map', added.length === 0, added.length);
+  ok('parsing server image removed from the map', added.length === 0, added.length);
   _sevUpdateProducts();
   ok('product list is the normal fixed one again',
      document.getElementById('sev-var-sel').innerHTML === 'FIXED-LIST',
      document.getElementById('sev-var-sel').innerHTML);
 
-  console.log('\n9. the pill turning it off mid-Pi');
+  console.log('\n9. the pill turning it off mid-parsing server');
   await _sevSetSection('pi:gfs');
   _hdDisable();
   ok('picker flag cleared by the pill too', _hdFromPicker === false, _hdFromPicker);
   const n = iemRendered; _sevRender();
   ok('render goes back to the normal path', iemRendered === n + 1, iemRendered);
 
-  console.log('\n10. a new run appearing on the Pi');
+  console.log('\n10. a new run appearing on the parsing server');
   await _sevSetSection('pi:gfs');
   const oldUrl = added[added.length-1].url;
   RUN = '20260814_18';
@@ -80,7 +80,7 @@ function ok(name, cond, extra) {
   ok('picked up the new run', newUrl.includes('20260814_18'), newUrl);
   ok('and it is a different url than before', newUrl !== oldUrl);
 
-  console.log('\n11. the Pi being unreachable');
+  console.log('\n11. the parsing server being unreachable');
   const realFetch = global.fetch;
   global.fetch = async () => ({ ok:false });
   _hdBase = null; _hdIndex = null; _hdIndexAt = 0; _hdManifest = null; _hdModel = null; _hdOn = false;
@@ -98,17 +98,17 @@ function ok(name, cond, extra) {
      _hdBase === 'https://pi.test' && added.length > 0, _hdBase + ' / ' + added.length);
 
 
-  console.log('\n12. the Model list builds itself from the Pi');
+  console.log('\n12. the Model list builds itself from the parsing server');
   _hdIndexAt = 0;
   await _hdFreshIndex();
   const group = document.getElementById('sev-pi-group');
   const vals = group.children.map(o => o.value);
-  ok('every model the Pi has is offered', vals.length === 5, vals.join(','));
+  ok('every model the parsing server has is offered', vals.length === 5, vals.join(','));
   ok('regions are not listed as models', !vals.some(v => v.includes('trop')), vals.join(','));
-  ok('models added on the Pi appeared with no edit to the page',
+  ok('models added on the parsing server appeared with no edit to the page',
      vals.includes('pi:nbm') && vals.includes('pi:rtma'), vals.join(','));
   ok('labels carry the resolution',
-     group.children.find(o => o.value === 'pi:nbm').textContent === 'NBM (Pi, 2.5 km blend)',
+     group.children.find(o => o.value === 'pi:nbm').textContent === 'NBM (parsing server, 2.5 km blend)',
      group.children.find(o => o.value === 'pi:nbm').textContent);
 
   console.log('\n13. an analysis, which has only one frame');
@@ -176,7 +176,7 @@ function ok(name, cond, extra) {
 
 
   console.log('\n19. an index from before regions existed');
-  // Exactly the state a Pi that has not rebuilt yet is in. It must still draw
+  // Exactly the state a parsing server that has not rebuilt yet is in. It must still draw
   // rather than offering a list of models that all fail to open.
   useOldIndex = true;
   _hdBase = null; _hdIndex = null; _hdIndexAt = 0;
@@ -284,11 +284,11 @@ function ok(name, cond, extra) {
   _cycDisable();
   await _spagCycGenesis('cumulative');
 
-  // The Inspector reads a Pi model chart by turning the pixel color back
+  // The Inspector reads a parsing server model chart by turning the pixel color back
   // into the number it was painted from. That inversion is pure math, so it
   // is checked here without a canvas: paint a known value into a color with
-  // the same tables the Pi uses, hand the color back, expect the value.
-  console.log('\n21c. the Inspector reads the Pi model colors back into numbers');
+  // the same tables the parsing server uses, hand the color back, expect the value.
+  console.log('\n21c. the Inspector reads the parsing server model colors back into numbers');
   {
     const hdModelWas = typeof _hdModel !== 'undefined' ? _hdModel : null;
     const hdManifestWas = typeof _hdManifest !== 'undefined' ? _hdManifest : null;
@@ -342,12 +342,12 @@ function ok(name, cond, extra) {
     _hdModel = hdModelWas; _hdManifest = hdManifestWas; _hdField = hdFieldWas;
   }
 
-  console.log('\n22. Pi radar, drawn from the newest volume');
+  console.log('\n22. parsing server radar, drawn from the newest volume');
   _prClear();
   _hdBase = 'https://pi.test';
   await _prEnable();
   ok('the radar layer is on', _prOn === true);
-  ok('it drew one site, not every site the Pi has',
+  ok('it drew one site, not every site the parsing server has',
      _prLayers.length === 1, _prLayers.length);
   const rl = _prLayers[_prLayers.length-1];
   ok('from the newest frame, not the older one',
@@ -365,10 +365,10 @@ function ok(name, cond, extra) {
      vl && vl.url.endsWith('/vel.png'), vl && vl.url);
   await _prSetProduct('reflectivity');
 
-  // The fake Pi has Level 2 but no Level 3. Asking for Level 3 must fall back
+  // The fake parsing server has Level 2 but no Level 3. Asking for Level 3 must fall back
   // rather than clear the map, since an empty map is the worse answer.
   await _prSetLevel('l3');
-  ok('asking for a level the Pi has not built falls back to the one it has',
+  ok('asking for a level the parsing server has not built falls back to the one it has',
      _prLayers.length === 1, _prLayers.length);
   const fb = _prLayers[_prLayers.length - 1];
   ok('and that fallback is still Level 2',
@@ -391,7 +391,7 @@ function ok(name, cond, extra) {
   ok('and the remembered site is corrected to match the map',
      _prSite === 'KFWS' || _prSite === 'KTLX', _prSite);
 
-  // The Pi's Level 3 row, against a Pi that has built all eleven products.
+  // The parsing server's Level 3 row, against a parsing server that has built all eleven products.
   // "None of L3 works" has to be checkable on our half: each product bubble
   // must fetch its own PNG out of the frame the manifest describes.
   usePiL3 = true;

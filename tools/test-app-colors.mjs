@@ -412,7 +412,7 @@ else {
     }
     odd.remove();
 
-    // ── Transparency ──
+    // -- Transparency --
     out.fullyOpaqueStaysSixDigit = _themeWithAlpha('#112233', 100) === '#112233';
     out.halfAlphaHex = _themeWithAlpha('#112233', 50);
     out.alphaOfHalf = _themeAlphaOf(out.halfAlphaHex);

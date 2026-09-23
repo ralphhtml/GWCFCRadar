@@ -74,7 +74,7 @@ const savePng = (name, dataUrl) => {
   return true;
 };
 
-// ── which sites actually have weather in them right now ────────────────────
+// -- which sites actually have weather in them right now --------------------
 // A clear-air radar draws almost nothing, and nothing is not a colour that
 // can be judged. Probe a spread of sites and keep the busiest.
 async function busiest(cands, product, tilt) {
@@ -111,7 +111,7 @@ const NEXRAD = (nx[0] && nx[0].px > 0) ? nx[0].site : 'KTLX';
 const TDWR = (td[0] && td[0].px > 0) ? td[0].site : 'TDAL';
 console.log(`\nusing NEXRAD ${NEXRAD}, terminal ${TDWR}\n`);
 
-// ── the live shots ─────────────────────────────────────────────────────────
+// -- the live shots ---------------------------------------------------------
 const shots = [];
 async function shoot(site, product, tilt, tag) {
   const r = await page.evaluate(async ([s, p, t]) => {
@@ -176,7 +176,7 @@ await shoot(TDWR, 'reflectivity', 5, 'tdwr');   // the long range sweep
 console.log('\nterminal, asked for something it cannot make');
 await shoot(TDWR, 'corrcoeff', 1, 'tdwr');
 
-// ── the ramps: value to colour, read straight off the canvas ───────────────
+// -- the ramps: value to colour, read straight off the canvas ---------------
 console.log('\nbuilding value-to-colour ramps');
 const ramps = await page.evaluate(() => {
   const OUT = {};

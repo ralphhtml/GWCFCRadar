@@ -75,12 +75,12 @@ const inv = await p.evaluate(async () => {
     });
   };
 
-  // ── 1. the left menu, top level ────────────────────────────────────────
+  // -- 1. the left menu, top level ----------------------------------------
   document.querySelectorAll('#sub-bubbles .sub-bubble')
     .forEach(e => { if (shown(e)) push(out.bubbles, e.textContent); });
   try { (BASE_BUBBLES || []).forEach(x => push(out.bubbles, x.label)); } catch (e) {}
 
-  // ── 2. every bubble's sub-rows, one level down ─────────────────────────
+  // -- 2. every bubble's sub-rows, one level down -------------------------
   // These are the names that only exist after a tap, which is exactly what
   // the old audit could not see.
   const openers = [
@@ -113,7 +113,7 @@ const inv = await p.evaluate(async () => {
       } catch (e) {}
     });
 
-  // ── 3. the overlay launcher, opened ────────────────────────────────────
+  // -- 3. the overlay launcher, opened ------------------------------------
   try { toggleOverlayLauncher(); } catch (e) {}
   await wait(220);
   document.querySelectorAll('#overlay-pills-row .ov-rowname')
@@ -126,7 +126,7 @@ const inv = await p.evaluate(async () => {
   });
   try { toggleOverlayLauncher(); } catch (e) {}
 
-  // ── 4. Settings, every tab ─────────────────────────────────────────────
+  // -- 4. Settings, every tab ---------------------------------------------
   try { lqmOpenSettings(); } catch (e) {}
   await wait(400);
   document.querySelectorAll('#lqm-set-content .lqm-settings-category')
@@ -148,7 +148,7 @@ const inv = await p.evaluate(async () => {
     try { document.getElementById('lqm-settings-modal').style.display = 'none'; } catch (e2) {}
   }
 
-  // ── 5. the model panels ────────────────────────────────────────────────
+  // -- 5. the model panels ------------------------------------------------
   ['MODELS_SUB_BUBBLES', 'HD_FIELDS', 'HD_MODELS', 'PR_MODELS', 'SPAG_MODELS',
    'ENS_MODELS', 'MODEL_LIST', 'AIC_MODELS']
     .forEach(n => {
@@ -173,7 +173,7 @@ const inv = await p.evaluate(async () => {
     } catch (e) {}
   }
 
-  // ── 6. the tool rail, the toolbars, the animation bar ──────────────────
+  // -- 6. the tool rail, the toolbars, the animation bar ------------------
   document.querySelectorAll('#right-menu .tool-btn').forEach(e =>
     push(out.tools, (e.getAttribute('title') || '').split(' , ')[0]));
   // The map style menu carries its names as bare text, no title attribute,
@@ -184,7 +184,7 @@ const inv = await p.evaluate(async () => {
     .forEach(e => push(out.tools, e.getAttribute('title') || e.textContent));
   document.querySelectorAll('.dtb-label').forEach(e => push(out.tools, e.textContent));
 
-  // ── 7. the logo quick menu and the search bar ──────────────────────────
+  // -- 7. the logo quick menu and the search bar --------------------------
   try { lqmOpenMenu(); } catch (e) {}
   await wait(300);
   document.querySelectorAll('#logo-quick-menu .lqm-label')
@@ -192,12 +192,12 @@ const inv = await p.evaluate(async () => {
   document.querySelectorAll('#lqm-search-star, #lqm-search-btn, #lqm-nav-btn')
     .forEach(e => push(out.misc, e.getAttribute('title') || e.getAttribute('aria-label')));
 
-  // ── 8. panels that exist, and the shortcuts that are bound ─────────────
+  // -- 8. panels that exist, and the shortcuts that are bound -------------
   document.querySelectorAll('[id$="-panel"], [id$="-modal"], [id$="-toolbar"], [id$="-overlay"]')
     .forEach(e => push(out.panels, e.id));
   try { (KBD_ACTIONS || []).forEach(a => push(out.shortcuts, a.label)); } catch (e) {}
 
-  // ── 9. anything else with a title attribute that is on screen now ──────
+  // -- 9. anything else with a title attribute that is on screen now ------
   document.querySelectorAll('[title]').forEach(e => {
     if (!shown(e)) return;
     push(out.misc, (e.getAttribute('title') || '').split(' - ')[0].split(' , ')[0]);
@@ -206,7 +206,7 @@ const inv = await p.evaluate(async () => {
 });
 await b.close();
 
-// ── the tutorial's own claims: every bolded term ────────────────────────
+// -- the tutorial's own claims: every bolded term ------------------------
 const start = PAGE.indexOf('<div id="tut-modal-body">');
 const stop = PAGE.indexOf('function openTutorial', start);
 const tut = PAGE.slice(start, stop > 0 ? stop : start + 90000);

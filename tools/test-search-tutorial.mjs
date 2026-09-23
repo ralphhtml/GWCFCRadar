@@ -40,7 +40,7 @@ const ok = (name, cond, extra) => {
 const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
 
 console.log('\n1. the source');
-ok('no em dash anywhere in the page', !html.includes('\u2014'));
+ok('no em dash anywhere in the page', !html.includes(String.fromCharCode(0x2014)));
 // The old catalogue was thirty-seven hand-typed entries, twenty-two of which
 // called a function whose buttons no longer exist anywhere in the interface.
 ok('the catalogue is derived, not hand-typed',

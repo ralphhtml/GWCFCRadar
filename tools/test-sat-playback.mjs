@@ -51,7 +51,7 @@ console.log('\n1. the machinery is in the page');
   ok('the live refresh skips rebuilding an unchanged frame list',
      /cur\[cur\.length - 1\]\.timeStr === fresh\[fresh\.length - 1\]\.timeStr\) return;/.test(PAGE)
      && /_goesSwapFrames\(fresh\);/.test(PAGE));
-  ok('a Pi composite refresh asks first and keeps the picture on a failed or empty answer',
+  ok('a parsing server composite refresh asks first and keeps the picture on a failed or empty answer',
      /if \(_goesIsPi\(\)\) \{ _goesRefreshPiFrames\(\); return; \}/.test(PAGE)
      && /async function _goesRefreshPiFrames\(\) \{[\s\S]*?if \(!frames \|\| !frames\.length\) return;/.test(PAGE));
   ok('the swap holds the old picture until the new current frame has loaded',

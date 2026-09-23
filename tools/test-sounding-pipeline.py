@@ -70,7 +70,7 @@ ok("it asks for the hour just gone, which has published",
 ok("on the hour exactly, so every site in a pass shares one stamp",
    v.minute == 0 and v.second == 0)
 
-# ── The stubs: a fetch that answers instantly, a renderer that writes a
+# -- The stubs: a fetch that answers instantly, a renderer that writes a
 # byte. What is under test is everything around them.
 CALLS = {"fetch": [], "fail": set()}
 

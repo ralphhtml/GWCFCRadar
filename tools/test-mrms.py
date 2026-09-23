@@ -61,7 +61,7 @@ def _base_names(source):
     return ns
 
 
-# ── Pull the catalogue out as real Python without importing the module ──
+# -- Pull the catalogue out as real Python without importing the module --
 catalogue = None
 for node in tree.body:
     if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "MRMS_PRODUCTS":
@@ -76,7 +76,7 @@ if catalogue is None:
     print("could not find MRMS_PRODUCTS")
     sys.exit(1)
 
-# ── And the throttle, compiled on its own with only what it needs ──
+# -- And the throttle, compiled on its own with only what it needs --
 due_src = None
 for node in tree.body:
     if isinstance(node, ast.FunctionDef) and node.name == "_mrms_due":

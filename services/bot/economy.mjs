@@ -13,11 +13,11 @@
 // the feed cost curve - is something a plain Node test can drive directly
 // against the exact numbers that ship, not a paraphrase of them.
 
-// ── The currency ─────────────────────────────────────────────────────────
+// -- The currency ---------------------------------------------------------
 export const CURRENCY_NAME = 'CAPE';
 export const CURRENCY_EMOJI = '⚡';
 
-// ── Pets ──────────────────────────────────────────────────────────────────
+// -- Pets ------------------------------------------------------------------
 // Three options, as asked, and each one grows through the scale chasers
 // actually use for that exact phenomenon rather than a made-up level number.
 // Supercells have no official public intensity scale of their own (EF and
@@ -59,7 +59,7 @@ export function petIsMaxed(type, stage) { return stage >= petMaxStage(type); }
 // finish, so late stages actually mean something. 50, 100, 150, 200...
 export function feedCost(stage) { return 50 + Math.max(0, stage) * 50; }
 
-// ── The daily chase ───────────────────────────────────────────────────────
+// -- The daily chase -------------------------------------------------------
 // Once per cooldown, a person "goes chasing" and the day's outcome is rolled
 // from a weighted table. More busts than anything else, because that is
 // true to the actual hobby: most chase days ARE a bust, and a bot where

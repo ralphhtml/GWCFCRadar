@@ -43,7 +43,7 @@ const ok = (name, cond, extra) => {
   else { fail++; console.log('  FAIL ' + name + (extra ? '  <' + extra + '>' : '')); }
 };
 
-console.log('\n1. the Pi asks the model, not the Hurricane Center');
+console.log('\n1. the parsing server asks the model, not the Hurricane Center');
 {
   ok('there is a bucket listing for the storm list',
      /def _storms_from_bucket\(m, date_str, cyc\)/.test(PIPE));
@@ -94,7 +94,7 @@ console.log('\n2. two grids per storm');
 
 console.log('\n3. the moving nest keeps its own bounds per frame');
 {
-  ok('the Pi records bounds per forecast hour when the domain moves',
+  ok('the parsing server records bounds per forecast hour when the domain moves',
      /if m\.get\("moving"\):\n\s+#[\s\S]{0,200}frame_bounds\.setdefault\(fhr, bounds_seen\)/
        .test(PIPE));
   ok('and writes them into the manifest keyed as strings',
@@ -155,7 +155,7 @@ if (!chromium) {
 
   const r = await p.evaluate(async () => {
     const out = {};
-    // A Pi index shaped exactly as the pipeline now writes one: seven storms
+    // A parsing server index shaped exactly as the pipeline now writes one: seven storms
     // for HAFS-A, two grids each, and frame bounds on the nest that move.
     const storms = ['04l', '11e', '12e', '94w', '95e', '96w', '97l'];
     const regions = {};

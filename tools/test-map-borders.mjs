@@ -39,7 +39,7 @@ const ok = (name, cond, extra) => {
 
 console.log('\n1. the source');
 const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-ok('no em dash anywhere in the page', !html.includes('\u2014'));
+ok('no em dash anywhere in the page', !html.includes(String.fromCharCode(0x2014)));
 // The old implementation, gone rather than merely bypassed.
 // The old code built the selector as 'border-' + borderType and hid whatever
 // it found. Matching the bare words would also hit the comments that explain
@@ -62,7 +62,7 @@ const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', e => errors.push(e.message));
 
-// ── Stubbed sources ───────────────────────────────────────────────────────
+// -- Stubbed sources -------------------------------------------------------
 // A square of state line across Florida, four "counties" spread far enough
 // apart that viewport thinning has something to thin, and five cities whose
 // populations span the whole zoom ladder.

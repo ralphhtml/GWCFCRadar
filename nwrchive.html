@@ -44,7 +44,7 @@
     code, kbd, pre, samp { font-family: var(--font); }
     a { color: var(--blue2); }
 
-    /* ── NAV (same family as the GWCFC.net home page) ── */
+    /* -- NAV (same family as the GWCFC.net home page) -- */
     nav {
       display: flex;
       align-items: center;
@@ -206,7 +206,7 @@
     .thanks a img { width: 22px; height: 22px; border-radius: 50%; }
     .thanks a:hover { transform: scale(1.1); border-color: var(--gold); }
 
-    /* ── LAYOUT ── */
+    /* -- LAYOUT -- */
     /* Sized up across the board: on a desktop the old 1080px column with
        17px card titles left most of the screen empty and the archive
        looking like a sidebar. The type scales with the viewport (clamp),
@@ -257,7 +257,7 @@
       border-color: var(--accent2); color: #fff;
     }
 
-    /* ── DAY VIEW ── */
+    /* -- DAY VIEW -- */
     .player {
       position: sticky; top: 72px; z-index: 50;
       background: var(--bg2);
@@ -322,7 +322,7 @@
     }
     .notice.demo { border-color: rgba(232,184,0,0.5); background: rgba(232,184,0,0.08); }
 
-    /* ── ABOUT ── */
+    /* -- ABOUT -- */
     .about p { margin-bottom: 14px; line-height: 1.7; font-size: clamp(15px, 1.3vw, 17px); }
 
     footer {
@@ -415,7 +415,7 @@
 <script>
 'use strict';
 
-// ── WHERE THE ARCHIVE LIVES ────────────────────────────────────────────────
+// -- WHERE THE ARCHIVE LIVES ------------------------------------------------
 // The recordings sit on the GWCFC homelab, produced by nwr_archiver.py, and
 // pi/nwr_index.py writes the JSON tables of contents this page reads:
 //   <BASE>/index.json                the station list with per-day counts
@@ -438,7 +438,7 @@ function nwrBase() {
   return NWR_DEFAULT_BASE;
 }
 
-// ── DEMO DATA ──────────────────────────────────────────────────────────────
+// -- DEMO DATA --------------------------------------------------------------
 // With no archive URL configured the site still has to be browsable, so it
 // falls back to a small built-in sample and says so plainly at the top.
 const DEMO_INDEX = { generated: '2026-08-24T00:00:00Z', stations: [
@@ -454,7 +454,7 @@ const DEMO_DAY = { chunks: ['120000', '120200', '120400', '130000', '131400'],
       transcript: 'The National Weather Service in Tampa Bay has issued a tornado warning for Highlands County in south central Florida until 145 PM Eastern Daylight Time.' },
   ] };
 
-// ── STATE / REGION TABLES ──────────────────────────────────────────────────
+// -- STATE / REGION TABLES --------------------------------------------------
 const REGIONS = {
   'Northeast': ['ME','NH','VT','MA','RI','CT','NY','NJ','PA'],
   'Mideast':   ['DE','MD','DC','VA','WV','KY','TN','NC'],
@@ -504,7 +504,7 @@ const REGION_ICONS = { Northeast: icArrow(45), Mideast: icArrow(90),
   Southeast: icArrow(135), Midwest: icArrow(270), Southwest: icArrow(225),
   Northwest: icArrow(315) };
 
-// ── STATE ──────────────────────────────────────────────────────────────────
+// -- STATE ------------------------------------------------------------------
 let INDEX = null;       // the fetched (or demo) index
 let DEMO = false;
 let dayCache = {};      // 'id/date' -> day json
@@ -556,7 +556,7 @@ function fmtT(t) {
   return ((hh % 12) || 12) + ':' + mm + ' ' + (hh < 12 ? 'AM' : 'PM') + ' UTC';
 }
 
-// ── DATA LOADING ───────────────────────────────────────────────────────────
+// -- DATA LOADING -----------------------------------------------------------
 async function loadIndex() {
   const base = nwrBase();
   if (!base) { DEMO = true; INDEX = DEMO_INDEX; return; }
@@ -587,7 +587,7 @@ async function loadDay(id, date) {
   }
 }
 
-// ── ROUTER ─────────────────────────────────────────────────────────────────
+// -- ROUTER -----------------------------------------------------------------
 function route() {
   const h = decodeURIComponent(location.hash || '#/').replace(/^#/, '');
   const p = h.split('/').filter(Boolean);
@@ -617,7 +617,7 @@ function demoBanner() {
     + '<code>?base=https://your-archive-url</code> once, and it remembers.</div>';
 }
 
-// ── VIEWS ──────────────────────────────────────────────────────────────────
+// -- VIEWS ------------------------------------------------------------------
 function viewHome() {
   const el = document.getElementById('app');
   const total = (INDEX.stations || []).length;
@@ -774,7 +774,7 @@ async function viewDay(id, date) {
   wireAudio();
 }
 
-// ── PLAYBACK ───────────────────────────────────────────────────────────────
+// -- PLAYBACK ---------------------------------------------------------------
 // The archive is two-minute opus files; "playing the day" means playing them
 // in order. When one ends the next starts, so a listener can put a whole
 // afternoon on like a podcast.
@@ -824,7 +824,7 @@ function setHlFilter(f) {
   setFilter('hl', f);   // setFilter redraws, so the day page follows along
 }
 
-// ── FILTER ─────────────────────────────────────────────────────────────────
+// -- FILTER -----------------------------------------------------------------
 function toggleFilter(ev) {
   if (ev) ev.stopPropagation();
   const p = document.getElementById('filter-panel');
@@ -866,7 +866,7 @@ function syncFilterUi() {
   if (r) r.checked = true;
 }
 
-// ── SEARCH ─────────────────────────────────────────────────────────────────
+// -- SEARCH -----------------------------------------------------------------
 function doSearch() {
   const q = (document.getElementById('q').value || '').trim().toLowerCase();
   const box = document.getElementById('q-results');
@@ -894,7 +894,7 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('.filter-wrap')) hideFilter();
 });
 
-// ── ABOUT ──────────────────────────────────────────────────────────────────
+// -- ABOUT ------------------------------------------------------------------
 function viewAbout() {
   document.getElementById('app').innerHTML =
     crumbs([['Stations', '#/'], ['About']])
@@ -922,7 +922,7 @@ function viewAbout() {
     + '</div>';
 }
 
-// ── WHERE "HOME" IS ────────────────────────────────────────────────────────
+// -- WHERE "HOME" IS --------------------------------------------------------
 // The centre's website, always, spelled out in full rather than as a
 // neighbouring index.html.
 //
@@ -934,7 +934,7 @@ function viewAbout() {
 const GWCFC_HOME = 'https://gwcfc.net/';
 function homeHref() { return GWCFC_HOME; }
 
-// ── BOOT ───────────────────────────────────────────────────────────────────
+// -- BOOT -------------------------------------------------------------------
 (async function boot() {
   syncFilterUi();
   const href = homeHref();

@@ -4,7 +4,7 @@
  *
  *     node tools/test-sat-3d.mjs
  *
- * The Pi is stubbed: /sat/cth/index and /sat/cth/frame answer with a
+ * The parsing server is stubbed: /sat/cth/index and /sat/cth/frame answer with a
  * synthetic anvil (a round cloud 11 km tall in the middle of the box, clear
  * ground around it) that drifts east scan by scan. Checks that the map
  * menu's drawing opens this panel (not Radar 3D), that the frames land on
@@ -35,12 +35,12 @@ console.log('\n1. the page carries the panel, the menu row and the doors');
      && /<span class="xs-title">Satellite 3D<\/span>/.test(PAGE));
   ok('the map menu has a row for it, beside Radar 3D\'s',
      /_cmSat3DDraw\(\)[^\n]*Draw a 3D satellite zone/.test(PAGE));
-  ok('it asks the Pi\'s cloud-top doors', PAGE.includes('/sat/cth/index?') && PAGE.includes('/sat/cth/frame?'));
+  ok('it asks the parsing server\'s cloud-top doors', PAGE.includes('/sat/cth/index?') && PAGE.includes('/sat/cth/frame?'));
   ok('it has a Radar inside switch and a height stretch', PAGE.includes('id="s3d-radar"') && PAGE.includes('id="s3d-exag"'));
   ok('no WebGL anywhere in it', !/getContext\(['"]webgl/.test(PAGE));
   ok('the changelog announces it', /id: '2026-09-23-b'[^\n]*\n[^\n]*Satellite 3D/.test(PAGE));
   const EM = String.fromCharCode(0x2014);
-  const a = PAGE.indexOf('// ── Satellite 3D ─'), b = PAGE.indexOf('(function _r3dWireInfo');
+  const a = PAGE.indexOf('// -- Satellite 3D -'), b = PAGE.indexOf('(function _r3dWireInfo');
   ok('no em dashes in the feature or this test', a > 0 && b > a && !PAGE.slice(a, b).includes(EM)
      && !readFileSync(join(ROOT, 'tools/test-sat-3d.mjs'), 'utf8').includes(EM));
 }
@@ -53,7 +53,7 @@ if (!chromium) {
   process.exit(fail ? 1 : 0);
 }
 
-// ── The stubbed Pi ───────────────────────────────────────────────────────
+// -- The stubbed parsing server -------------------------------------------------------
 const GW = 60, GH = 40;
 const T0 = Date.UTC(2026, 8, 23, 18, 1, 17);
 const frameTimes = [0, 1, 2, 3, 4, 5].map(i => T0 + i * 300000);
@@ -335,7 +335,7 @@ console.log('\n7. closing hands everything back; opening Radar 3D closes this');
      && r.closed.src !== 's3d', JSON.stringify(r.closed));
   ok('and stops any radar still being built for it', r.closed.alive === false);
   ok('opening Radar 3D closes Satellite 3D (one owns the bar at a time)', r.opened && !r.swapped.s3d && r.swapped.r3d);
-  ok('a box bigger than the Pi will build, or a sliver, is refused', r.tooBig === false && r.tiny === false && !r.on);
+  ok('a box bigger than the parsing server will build, or a sliver, is refused', r.tooBig === false && r.tiny === false && !r.on);
 }
 
 console.log('\n8. nothing above threw');

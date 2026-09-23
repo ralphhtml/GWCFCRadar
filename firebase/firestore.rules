@@ -49,7 +49,7 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
 
-    // ── EXISTING - unchanged ──────────────────────────────────────────────
+    // -- EXISTING - unchanged ----------------------------------------------
 
     match /cloudcam/{doc} {
       allow read: if true;
@@ -69,7 +69,7 @@ service cloud.firestore {
       allow update: if request.resource.data.count == resource.data.count + 1;
     }
 
-    // ── USERS - now protects the role fields ──────────────────────────────
+    // -- USERS - now protects the role fields ------------------------------
     // This replaces the previous blanket "the owner of the document may write
     // anything in it" rule. People still control their whole profile; the only
     // difference is they can no longer hand themselves a staff role.
@@ -168,7 +168,7 @@ service cloud.firestore {
       allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
     }
 
-    // ── NEW ───────────────────────────────────────────────────────────────
+    // -- NEW ---------------------------------------------------------------
 
     // Anonymous visit counter. Visitors are not signed in, so this stays open;
     // each document is only its own session id. There was no rule for this
@@ -238,7 +238,7 @@ service cloud.firestore {
       allow delete: if isStaff();
     }
 
-    // ── THE PINGABLE ROSTER ───────────────────────────────────────────────
+    // -- THE PINGABLE ROSTER -----------------------------------------------
     //
     // Who the map's chat is allowed to offer as a ping target: Discord id,
     // the name that person goes by, and their avatar. The bot writes it,
@@ -274,7 +274,7 @@ service cloud.firestore {
       allow write: if isSignedIn();
     }
 
-    // ── THE DISCORD ECONOMY ───────────────────────────────────────────────
+    // -- THE DISCORD ECONOMY -----------------------------------------------
     //
     // A weather-themed economy for the Discord bot's /economy command: a
     // CAPE balance and an optional pet (supercell, tornado or hurricane)
@@ -396,7 +396,7 @@ service cloud.firestore {
       allow delete: if isOwner();
     }
 
-    // ── THE PUBLISHED OUTLOOK ─────────────────────────────────────────────
+    // -- THE PUBLISHED OUTLOOK ---------------------------------------------
     // The Forecasting Portal writes here: outlooks/latest is the current
     // outlook and every issuance is also added as its own document. The site
     // reads latest (without signing in) to draw the GWCFC Outlook and GWCFC
@@ -426,7 +426,7 @@ service cloud.firestore {
       allow delete: if isOwner();
     }
 
-    // ── DIRECT MESSAGES ───────────────────────────────────────────────────
+    // -- DIRECT MESSAGES ---------------------------------------------------
     //
     // Private mail between two radar accounts. The thread's document id IS
     // its membership: the two uids joined with '__', lower uid first. That

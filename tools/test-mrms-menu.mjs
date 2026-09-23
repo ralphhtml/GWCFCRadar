@@ -16,7 +16,7 @@
  * the menu the way a person does - open, descend, toggle, go back - and check
  * what is on screen at each step.
  *
- * The Pi is mocked, because the menu is built from whatever the Pi says it
+ * The parsing server is mocked, because the menu is built from whatever the parsing server says it
  * really has rather than from a list in the page.
  */
 
@@ -176,7 +176,7 @@ console.log('\n3. every group opens, and between them they hold everything');
   ok('no product appears in two groups',
      all.length === new Set(all).size,
      JSON.stringify(all.filter((v, i) => all.indexOf(v) !== i)));
-  ok('and between them they cover every product the Pi advertises',
+  ok('and between them they cover every product the parsing server advertises',
      Object.keys(MANIFEST.products).every(k => all.includes(k)),
      JSON.stringify(Object.keys(MANIFEST.products).filter(k => !all.includes(k))));
 }
@@ -248,7 +248,7 @@ console.log('\n6. turning them off again cleans up');
      r.timer === null, String(r.timer));
 }
 
-console.log('\n7. a Pi with nothing built says so instead of showing empty groups');
+console.log('\n7. a parsing server with nothing built says so instead of showing empty groups');
 {
   await page.route('**mrms.json**', route =>
     route.fulfill({ contentType: 'application/json', body: '{"products":{}}' }));

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /*
- * Exercises the Pi-models block in index.html without a browser.
+ * Exercises the parsing server-models block in index.html without a browser.
  *
  *     node tools/test-models.js
  *
  * The block is lifted straight out of the page between two markers and run
- * against stubs: a fake DOM, a fake Leaflet, a fake map, and a fake Pi that
+ * against stubs: a fake DOM, a fake Leaflet, a fake map, and a fake parsing server that
  * answers with an index and manifests. Nothing is copied, so the code under
  * test is the code that ships.
  *
@@ -22,13 +22,13 @@ const page = fs.readFileSync(
 const from = page.findIndex(l => l.includes('const HD_BASE_KEY'));
 const to   = page.findIndex(l => l.includes('POLYGON SPATIAL FILTER'));
 if (from < 0 || to < 0) {
-  console.error('Could not find the Pi-models block in index.html. If it moved, '
+  console.error('Could not find the parsing server-models block in index.html. If it moved, '
               + 'update the two markers at the top of this file.');
   process.exit(2);
 }
 const block = page.slice(from, to - 2).join('\n');
 
-// ── Stubs ──────────────────────────────────────────────────────────────────
+// -- Stubs ------------------------------------------------------------------
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -118,7 +118,7 @@ function toggleOverlayPill(id){}
 function _soundingPanelIsOpen(){ return false; }
 function closeSoundingPanel(){} function openSoundingPanel(){}
 
-// ── the fake Pi ─────────────────────────────────────────────────────────────
+// -- the fake parsing server -------------------------------------------------------------
 let RUN = '20260814_12';
 const reg = (m, r) => ({ run: RUN, path: `${m}/${r}/${RUN}/manifest.json` });
 const INDEX = () => ({ models: {
@@ -160,7 +160,7 @@ const MANIFESTS = () => ({
             bounds:[[15,-71],[22,-60]],
             fields: { refc:{hours:[0,3],min:-10,max:75} } },
 });
-// An index written before regions existed, which is what a Pi that has not
+// An index written before regions existed, which is what a parsing server that has not
 // rebuilt yet is still serving.
 const OLD_INDEX = () => ({ models: {
   gfstrop: { label:'GFS Tropical', res:'0.25 deg', run: RUN,
@@ -185,10 +185,10 @@ global.fetch = async (url) => {
   const m = url.match(/models\/(\w+)\/(\w+)\/[\d_]+\/manifest\.json/);
   if (m) { const man = MANIFESTS()[m[1] + '/' + m[2]];
            return man ? { ok:true, json: async()=>man } : { ok:false }; }
-  // A fake Pi radar: Level 2 has two frames, Level 3 is absent, so the
+  // A fake parsing server radar: Level 2 has two frames, Level 3 is absent, so the
   // fallback and the newest-frame pick are both exercised.
   // A cyclone run, so the model picker has something to offer. Two variants,
-  // each with a mean and its members, which is the shape the Pi writes.
+  // each with a mean and its members, which is the shape the parsing server writes.
   if (url.split('?')[0].endsWith('cyclones/latest.json'))
     return { ok:true, json: async () => ({ run:'2026_08_16T00_00',
       path:'2026_08_16T00_00/manifest.json' }) };
@@ -234,7 +234,7 @@ global.fetch = async (url) => {
   const r3 = url.split('?')[0].match(/radar\/l3\/(\w+)\/([\d_]+)\/manifest\.json/);
   if (r3) return { ok:true, json: async () => ({ site:r3[1], level:3, time:r3[2],
      bounds:[[33,-99],[37,-95]],
-     // Every product the Pi builds, which is what the row offers.
+     // Every product the parsing server builds, which is what the row offers.
      fields: Object.fromEntries(['n0q','n0u','n0c','n0x','n0k','n0h',
        'ohp','stp','dvl','eet','ncr'].map(f => [f, {min:0,max:1}])) }) };
   const rm = url.split('?')[0].match(/radar\/l2\/(\w+)\/([\d_]+)\/manifest\.json/);
@@ -246,7 +246,7 @@ global.fetch = async (url) => {
   return { ok:false };
 };
 
-// ── Checks ─────────────────────────────────────────────────────────────────
+// -- Checks -----------------------------------------------------------------
 
 // The checks live next door rather than in here, because they have to run in
 // the same scope as the block that was just lifted out of the page: the whole

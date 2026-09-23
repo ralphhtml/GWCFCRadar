@@ -51,8 +51,8 @@ console.log('\n1. the source keeps the shape of the feature');
      && /return mk\('nws', _nwsLoop\.frames/.test(PAGE));                          // _animSource
   ok('the Inspector reads the layer honestly',
      /function _inspNwsRow/.test(PAGE) && /_inspNwsRow\(cx, cy\)/.test(PAGE));
-  ok('the Pi handshake is warmed when a menu opens, not on the click',
-     /_nwsWarm\(\);   \/\/ the Pi handshake starts NOW/.test(PAGE)
+  ok('the parsing server handshake is warmed when a menu opens, not on the click',
+     /_nwsWarm\(\);   \/\/ the parsing server handshake starts NOW/.test(PAGE)
      && /function _nwsWarm/.test(PAGE));
   ok('RTMA manifests are fetched in parallel',
      /Promise\.all\(regionNames\.map/.test(PAGE));
@@ -69,7 +69,7 @@ console.log('\n1. the source keeps the shape of the feature');
   ok('an RTMA domain without the field sits the variable out',
      /if \(x\.man\.fields && !x\.man\.fields\[field\]\) return;/.test(PAGE));
   ok('and a field no domain built fails with an honest message',
-     /err\.userMsg = 'The Pi has not built this ' \+ NAME \+ ' product yet\./.test(PAGE)
+     /err\.userMsg = 'The parsing server has not built this ' \+ NAME \+ ' product yet\./.test(PAGE)
      && /\(e && e\.userMsg\) \|\|/.test(PAGE));
   ok('the analyses play by opacity swap on pooled overlays, never a URL swap',
      /_nwsBuildPiAnalysis/.test(PAGE)
