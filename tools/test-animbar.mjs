@@ -8,7 +8,7 @@
  *
  * The bar only ever knew about two of the things that can animate: the
  * national mosaic and satellite. Everything else - a Level 2 single-site
- * loop, the Level 3 bucket loop, the Pi's own product loop, velocity,
+ * loop, the Level 3 bucket loop, the parsing server's own product loop, velocity,
  * dual-pol - moved the slider without ever rewriting the times underneath it.
  * So a loop could be playing perfectly while the bar underneath showed one
  * leftover timestamp from a layer switched off minutes ago, and an empty bar

@@ -56,7 +56,7 @@ console.log('\n1. the machines are wired the way the site expects');
   ok('the badge joins the stacked time-machine badges',
      /\['tm-badge', 'tm-badge-mosaic', 'tm-badge-sat', 'tm-badge-htm'\]/.test(PAGE));
   ok('the archive floor is the real one', /HTM_FLOOR = '1763-01-01'/.test(PAGE));
-  ok('the Pi grows a scoped NCEI door, never a general proxy',
+  ok('the parsing server grows a scoped NCEI door, never a general proxy',
      /def _relay_ncei\(self\):/.test(SERVE)
      && /NCEI_DATASETS = \{"daily-summaries", "normals-daily"\}/.test(SERVE)
      && /urlencode\(\{/.test(SERVE));

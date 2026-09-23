@@ -45,13 +45,13 @@ function entries(text) {
   return out;
 }
 
-// ── Layers, from the object that tracks which are on ───────────────────────
+// -- Layers, from the object that tracks which are on -----------------------
 const layersRaw = html.match(/(?:let|const|var)\s+activeLayers\s*=\s*\{([\s\S]*?)\n\s*\}/);
 const layers = layersRaw
   ? [...live(layersRaw[1]).matchAll(/(\w+)\s*:/g)].map(m => m[1])
   : [];
 
-// ── Overlays, from the pills themselves ────────────────────────────────────
+// -- Overlays, from the pills themselves ------------------------------------
 // Read off the markup rather than a list, because the markup is what a visitor
 // actually clicks. The title attribute is the description the site shows on
 // hover, which makes a good Discord description too.
@@ -68,7 +68,7 @@ for (const m of html.matchAll(/data-ovid="([^"]+)"/g)) {
   }
 }
 
-// ── Products, one family at a time ─────────────────────────────────────────
+// -- Products, one family at a time -----------------------------------------
 const families = {
   wind:        entries(block('const WIND_SUB_BUBBLES')),
   temperature: entries(block('const TEMPERATURE_SUB_BUBBLES')),
@@ -77,9 +77,9 @@ const families = {
   pressure:    entries(block('const PRESSURE_SUB_BUBBLES')),
 };
 
-// ── Radar, the real menu structure rather than one flat list ───────────────
+// -- Radar, the real menu structure rather than one flat list ---------------
 // Level 2 comes straight from RADAR_L2_BUBBLES, the site's own single-station
-// dual-pol row. Level 3 / Pi comes from PR_PRODUCTS, an object rather than an
+// dual-pol row. Level 3 / parsing server comes from PR_PRODUCTS, an object rather than an
 // array (a different shape needs its own reader, not the entries() helper).
 // A key already offered at Level 2 (kdp, phi share the exact same short code
 // as their Level 2 entry) is left out of Level 3: the URL reader tries the
@@ -120,9 +120,9 @@ families.radar = {
   composite: [{ value: 'mrms', name: 'Composite Reflectivity (national mosaic)' }],
 };
 
-// ── Satellite products, all of them ────────────────────────────────────────
+// -- Satellite products, all of them ----------------------------------------
 // Used to keep only the 16 ABI bands (id 'chNN'); the page has since grown
-// the Pi-built RGB composites and the global mosaic, all reachable through
+// the parsing server-built RGB composites and the global mosaic, all reachable through
 // the same satproduct URL id, so every entry goes to the bot now. Bands keep
 // their channel number in the name; the composites' labels stand alone.
 const satellite = [];
@@ -139,7 +139,7 @@ const satellite = [];
   }
 }
 // The id itself already says which of the three menus a product belongs to
-// (chNN a band, rgb- a Pi composite, glb- a global mosaic product), so the
+// (chNN a band, rgb- a parsing server composite, glb- a global mosaic product), so the
 // split costs nothing beyond reading the prefix back off the list above.
 const satelliteTypes = {
   band:      satellite.filter(p => /^ch\d+$/.test(p.value)),
@@ -147,7 +147,7 @@ const satelliteTypes = {
   global:    satellite.filter(p => p.value.startsWith('glb-')),
 };
 
-// ── Satellite regions ──────────────────────────────────────────────────────
+// -- Satellite regions ------------------------------------------------------
 // The view the satellite is drawn over: CONUS east/west, Alaska, the meso
 // boxes, full disk, and the global mosaic's own sectors. Same shape as the
 // row on the page; the satregion URL parameter takes the id.
@@ -162,7 +162,7 @@ const satregions = [];
   }
 }
 
-// ── CPC outlook types ──────────────────────────────────────────────────────
+// -- CPC outlook types ------------------------------------------------------
 // The four extended-range outlooks the CPC overlay can show. Their ids are
 // terse ('6_10_temp'), so the names spell them out for the Discord picker.
 const cpctypes = [];
@@ -179,7 +179,7 @@ const cpctypes = [];
   }
 }
 
-// ── Basemaps ─────────────────────────────────────────────────────────────
+// -- Basemaps -------------------------------------------------------------
 // Used to be one onclick="setMapType('x')" button per style; that became a
 // single <select id="lqm-set-maptype"> at some point and this regex, still
 // hunting for the old buttons, quietly stopped finding anything - a bot

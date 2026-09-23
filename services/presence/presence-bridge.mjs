@@ -28,7 +28,7 @@ const PORT = Number(process.env.PRESENCE_BRIDGE_PORT || 32473);
 const IMAGE_KEY = process.env.DISCORD_PRESENCE_IMAGE_KEY || 'gwcfc';
 const ALLOWED_ORIGIN = process.env.PRESENCE_ALLOWED_ORIGIN || '*';
 
-// ── The pipe Discord's desktop app listens on ──────────────────────────────
+// -- The pipe Discord's desktop app listens on ------------------------------
 // Discord tries discord-ipc-0 through discord-ipc-9 in order (a second
 // running instance takes the next number), so every candidate is worth a
 // try rather than assuming 0. platform/env are parameters, not read
@@ -155,7 +155,7 @@ export class DiscordIpc {
   }
 }
 
-// ── The local HTTP side the website actually talks to ─────────────────────
+// -- The local HTTP side the website actually talks to ---------------------
 // Exported as a factory, taking the ipc client and the moment the bridge
 // started, so a test can hand in a fake ipc client instead of a real
 // Discord connection and still exercise every HTTP code path.

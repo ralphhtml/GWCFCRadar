@@ -36,7 +36,7 @@ import numpy as np
 import requests
 from PIL import Image
 
-# ── Configuration ───────────────────────────────────────────────────────────
+# -- Configuration -----------------------------------------------------------
 
 # Where the finished PNGs go. This is what the tunnel serves, so it must match
 # the directory the web server was pointed at. Deliberately under the home
@@ -294,7 +294,7 @@ MODELS = {
             },
         },
     },
-    # ── Same-directory variants of models already proven to build ──────────
+    # -- Same-directory variants of models already proven to build ----------
     # These carry the strongest evidence available without probing NOAA: the
     # directory itself is one this pipeline already fetches from successfully
     # every cycle, and only the filename changes, following NOAA's own
@@ -583,7 +583,7 @@ MODELS = {
             },
         },
     },
-    # ── Tropical ────────────────────────────────────────────────────────────
+    # -- Tropical ------------------------------------------------------------
     # The same GFS file, cropped somewhere else and asked different questions.
     # A tropical chart is not a CONUS chart moved south: what matters is
     # moisture, shear and sea temperature rather than the two metre
@@ -629,7 +629,7 @@ MODELS = {
             },
         },
     },
-    # ── Two more opinions at 3 km ───────────────────────────────────────────
+    # -- Two more opinions at 3 km -------------------------------------------
     # The High Resolution Window: the same box run by two different models,
     # ARW and FV3. Their value is precisely that they are not HRRR, so when
     # all three put a storm in the same place that is worth more than any one
@@ -657,9 +657,9 @@ MODELS = {
         "step": 3, "out": 48,
     },
 
-    # ── The places the main box leaves out ──────────────────────────────────
+    # -- The places the main box leaves out ----------------------------------
 
-    # ── Not from NOAA ───────────────────────────────────────────────────────
+    # -- Not from NOAA -------------------------------------------------------
     # ECMWF, which is generally the best global model there is, and which has
     # published a free 0.25 degree forecast since 2024. It is fetched
     # differently from everything above: there is no service to crop it, so
@@ -681,7 +681,7 @@ MODELS = {
                     "tropics": {"out": 240, "shear": True}},
     },
 
-    # ── More of the same, from your list ────────────────────────────────────
+    # -- More of the same, from your list ------------------------------------
     "href": {
         # The convection allowing ensemble: HRRR, NAM Nest and the window
         # models run together and averaged. For "will a storm actually happen
@@ -788,7 +788,7 @@ MODELS = {
         "regions": {"conus": {}, "tropics": {"shear": True}},
     },
 
-    # ── Not from NOAA and not from ECMWF ────────────────────────────────────
+    # -- Not from NOAA and not from ECMWF ------------------------------------
     "gem": {
         # Environment Canada's global model. Published on a plain latitude and
         # longitude grid, which most global models are not, so it needs no
@@ -903,7 +903,7 @@ MODELS = {
         ],
         "step": 3, "out": 72,
     },
-    # ── The rest of the list, where it is free and fits ─────────────────────
+    # -- The rest of the list, where it is free and fits ---------------------
     "rrfssub": {
         "fetch": "range", "fields": FINE_FIELDS,
         "label": "RRFS Sub-Hourly", "res": "3 km", "cycle_h": 1, "lag_h": 2,
@@ -1051,7 +1051,7 @@ MODELS = {
         "regions": {"conus": {}, "tropics": {"shear": True}},
     },
 
-    # ── Twelve more, every address checked against the live buckets ─────────
+    # -- Twelve more, every address checked against the live buckets ---------
     # These go to NOAA's open data mirrors on S3 by full URL rather than to
     # NOMADS by path. NOMADS rate limits with a redirect to a throttle page,
     # which reads as a missing file, and a build that adds twelve models to
@@ -1256,7 +1256,7 @@ MODELS = {
         "regions": {"conus": {}, "tropics": {"out": 240, "shear": True}},
     },
 
-    # ── Live-verified additions ─────────────────────────────────────────────
+    # -- Live-verified additions ---------------------------------------------
     # Every entry below was checked against its real address on NOAA's AWS
     # open-data mirror before being written here, at a forecast hour and cycle
     # the pipeline would actually ask for, and each returned a real GRIB
@@ -1542,7 +1542,7 @@ MODELS = {
     },
 }
 
-# ── Full reach ──────────────────────────────────────────────────────────────
+# -- Full reach --------------------------------------------------------------
 #
 # Every model runs to the last forecast hour its publisher actually writes.
 # These used to stop early (GFS at 120 of its 384, HAFS at 72 of its 126,
@@ -1732,7 +1732,7 @@ OFF_BY_DEFAULT = [
                   # lat-lon grid and stays on, so ICON is still represented.
                   "icon"]
 
-# ── Soundings ───────────────────────────────────────────────────────────────
+# -- Soundings ---------------------------------------------------------------
 # A sounding is a vertical profile, so it needs the same variables at many
 # pressure levels rather than one surface field.
 #
@@ -2128,7 +2128,7 @@ FIELDS = {
     "wind":  {"short": ("10si", "ws"), "levtype": ("heightAboveGround",), "level": 10,
               "convert": lambda a: a * 1.94384, "range": (0, 80),   "ramp": "wind"},
 
-    # ── Tropical ────────────────────────────────────────────────────────────
+    # -- Tropical ------------------------------------------------------------
     # Precipitable water: all the water vapour in the column, as the depth of
     # rain it would make if it all fell. The first thing to look at for a
     # tropical system, because a storm moving into dry air weakens whatever
@@ -2160,7 +2160,7 @@ FIELDS = {
               "convert": lambda a: a * 1.94384, "range": (0, 60),
               "ramp": "shear", "derive": "shear"},
 
-    # ── Waves ───────────────────────────────────────────────────────────────
+    # -- Waves ---------------------------------------------------------------
     # Significant wave height, which is the average of the highest third, so
     # the biggest waves in a sea are noticeably larger than this number. Swell
     # from a hurricane reaches a coast days before the storm does, and is what
@@ -2174,7 +2174,7 @@ FIELDS = {
     "perpw": {"short": ("perpw", "pp1d"), "levtype": ("surface",), "level": (0, 1),
               "convert": lambda a: a,           "range": (0, 20), "ramp": "heat"},
 
-    # ── Air quality ─────────────────────────────────────────────────────────
+    # -- Air quality ---------------------------------------------------------
     # Ozone and fine particulate, the two the health advisories are written
     # against. Scaled to where the advisories change rather than to the range
     # the data happens to span, so the colour changing means something.
@@ -2187,7 +2187,7 @@ FIELDS = {
               "convert": lambda a: a,           "range": (0, 150),
               "ramp": "heat"},
 
-    # ── Everyday fields most models carry, at levels already being asked for ─
+    # -- Everyday fields most models carry, at levels already being asked for -
     # Nothing here needs a new request: these live at 2 m, 10 m, the surface or
     # the whole column, which is what every fetch already covers. They were
     # simply never read out of the files that were already being downloaded.
@@ -2246,7 +2246,7 @@ FIELDS = {
               "convert": lambda a: a,           "range": (0, 1000),
               "ramp": "heat"},
 
-    # ── Storm surge ─────────────────────────────────────────────────────────
+    # -- Storm surge ---------------------------------------------------------
     # Water above the normal tide, which is what actually floods a coast. A
     # hurricane's wind is the number it is named for and this is the number
     # that does most of the killing.
@@ -2255,7 +2255,7 @@ FIELDS = {
               "convert": lambda a: a,           "range": (0, 4),
               "ramp": "precip"},
 
-    # ── Upper air ───────────────────────────────────────────────────────────
+    # -- Upper air -----------------------------------------------------------
     # Everything above here is read at the ground, at head height, or through
     # the whole column, which is one slice of the atmosphere and the one the
     # weather is felt in. These are read at pressure levels: the layers a
@@ -3198,7 +3198,7 @@ def fetch_hour_range(m, date_str, cyc, fhr, path):
     return True
 
 
-# ── Sources that are not NOAA and not ECMWF ────────────────────────────────
+# -- Sources that are not NOAA and not ECMWF --------------------------------
 # Both of these publish one file per field per forecast hour rather than one
 # file holding everything, so there is no index to range-request against and
 # nothing to crop server side. The whole field arrives and the box is cut out
@@ -3859,7 +3859,7 @@ def log(msg):
     print(f"{datetime.now(timezone.utc):%H:%M:%S} {msg}", flush=True)
 
 
-# ── The disk, which is the one resource that does not fail gracefully ───────
+# -- The disk, which is the one resource that does not fail gracefully -------
 #
 # Everything else here degrades: a model that will not download leaves the
 # last one on screen, a radar site that times out is skipped, a product that
@@ -3927,7 +3927,7 @@ def disk_ok(path, need_mb=None):
     return free_mb(path) >= need
 
 
-# ── Colour ramps ────────────────────────────────────────────────────────────
+# -- Colour ramps ------------------------------------------------------------
 # Kept here rather than pulled from matplotlib, because matplotlib would be a
 # figure, axes and a savefig per image: 328 of those is minutes of work on a Pi
 # for something that is a lookup table applied to an array. It is also the
@@ -4037,7 +4037,7 @@ def build_lut(name):
 LUTS = {name: build_lut(name) for name in RAMPS}
 
 
-# ── Radar bands, which are not a ramp ───────────────────────────────────────
+# -- Radar bands, which are not a ramp ---------------------------------------
 # Radar has been drawn in discrete bands since it was drawn on paper, and that
 # is not tradition for its own sake. A forecaster reads a band EDGE as a
 # threshold: 35 dBZ is about where a shower becomes a storm, 50 is where hail
@@ -4135,7 +4135,7 @@ def lut_for(ramp, lo, hi):
     return _BAND_LUTS[key]
 
 
-# ── NOAA ────────────────────────────────────────────────────────────────────
+# -- NOAA --------------------------------------------------------------------
 
 def fhours_for(m, cyc=None):
     """
@@ -4425,7 +4425,7 @@ def fetch_hour(m, date_str, cyc, fhr, path):
     return False
 
 
-# ── Decode and render ───────────────────────────────────────────────────────
+# -- Decode and render -------------------------------------------------------
 
 def open_fields(grib_path, regrid_box=None):
     """
@@ -4841,7 +4841,7 @@ def render_png(values, lats, spec, out_path, bounds=None):
     return float(np.nanmin(data)), float(np.nanmax(data))
 
 
-# ── Housekeeping ────────────────────────────────────────────────────────────
+# -- Housekeeping ------------------------------------------------------------
 
 def render_data_png(values, lats, lo, hi, out_path):
     """
@@ -5191,7 +5191,7 @@ class Lock:
             pass
 
 
-# ── Main ────────────────────────────────────────────────────────────────────
+# -- Main --------------------------------------------------------------------
 
 NHC_STORMS = "https://www.nhc.noaa.gov/CurrentStorms.json"
 _storms_cache = {}
@@ -5351,7 +5351,7 @@ def split_storm_region(key):
     return key, "parent"
 
 
-# ── Failure backoff ─────────────────────────────────────────────────────────
+# -- Failure backoff ---------------------------------------------------------
 #
 # THE QUEUE HAD A PLUG IN IT, and this is the unplugging. Jobs are sorted
 # stalest-first, which is right, but a model that CANNOT build (its address
@@ -5762,7 +5762,7 @@ def main(models=None):
     if skipped_backoff:
         log(f"{skipped_backoff} sitting out a failure backoff this pass")
 
-    # ── The build, on a small crew rather than a queue of one ──────────────
+    # -- The build, on a small crew rather than a queue of one --------------
     #
     # This loop used to be sequential, and that was the arithmetic behind the
     # staleness: one worker, a 40 minute window per hour, and a fleet whose

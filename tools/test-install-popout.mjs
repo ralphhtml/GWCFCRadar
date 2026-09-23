@@ -31,7 +31,7 @@ const ok = (name, cond, extra) => {
   else { fail++; console.log('  FAIL ' + name + (extra ? '  <' + extra + '>' : '')); }
 };
 
-// ── The manifest, read as a browser would ─────────────────────────────────
+// -- The manifest, read as a browser would ---------------------------------
 console.log('\n1. the app can be installed to a home screen');
 const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
 const head = html.slice(0, 8000);
@@ -96,7 +96,7 @@ const sw = readFileSync(join(ROOT, 'sw.js'), 'utf8');
 ok('the service worker caches the manifest and the icons',
    /webmanifest/.test(sw) && /\/icons\//.test(sw));
 
-// ── The pop-out windows, driven in a real browser ─────────────────────────
+// -- The pop-out windows, driven in a real browser -------------------------
 const browser = await chromium.launch({
   executablePath: process.env.CHROME_PATH
     || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',

@@ -44,7 +44,7 @@ const ok = (name, cond, extra) => {
 
 console.log('\n1. the source');
 const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-ok('no em dash anywhere in the page', !html.includes('\u2014'));
+ok('no em dash anywhere in the page', !html.includes(String.fromCharCode(0x2014)));
 ok('the StormStream gold is gold, and the yellow is gone',
    /--ss-gold:\s*#e8b800/.test(html) && !html.includes('#f5cf12'));
 ok('the panel wash carries the top-lit sheen',

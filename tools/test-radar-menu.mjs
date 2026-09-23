@@ -11,7 +11,7 @@
  *   - every station id in NEXRAD_STATIONS is lower case, and the Cloudflare
  *     Worker refuses anything that is not four capitals, so every Level 2
  *     request came back HTTP 400 and the panel said "fetch failed"
- *   - the Level 3 row awaited the Pi before drawing itself, so tapping it left
+ *   - the Level 3 row awaited the parsing server before drawing itself, so tapping it left
  *     the previous row on screen and read as the menu doing nothing
  *
  * Neither is visible without opening the page and clicking. So this opens the
@@ -151,15 +151,15 @@ const url = await page.evaluate(async () => {
 ok('station is upper case, which is all the Worker accepts',
    /[?&]station=[A-Z]{4}$/.test(url || ''), url);
 
-console.log('\n6. Level 3 answers immediately, even with no Pi');
+console.log('\n6. Level 3 answers immediately, even with no parsing server');
 await page.evaluate(() => { toggleRadarPiSub('l3'); });
 const l3now = await row();
-ok('the row is replaced at once rather than after the Pi answers',
+ok('the row is replaced at once rather than after the parsing server answers',
    l3now.includes('Back') && l3now.includes('1-Hr Precip'), l3now.join(','));
 await page.waitForTimeout(1200);
 const l3 = await row();
-ok('and an unreachable Pi says so instead of leaving an empty row',
-   l3.some(t => /No Pi radar/.test(t)), l3.join(','));
+ok('and an unreachable parsing server says so instead of leaving an empty row',
+   l3.some(t => /No parsing server radar/.test(t)), l3.join(','));
 
 console.log('\n7. the map station pills mean the same thing as the row');
 // A pill on the map is the other way to say "this radar", and it has to reach
@@ -198,9 +198,9 @@ ok('the national mosaic is no longer wedged in among them',
 
 // It moved into the Composite menu, so this is the half of the move that can
 // actually break: the row above only proves it is gone, not that it arrived.
-// That menu reads the Pi's manifest, which is not reachable here, so the check
+// That menu reads the parsing server's manifest, which is not reachable here, so the check
 // is that the mosaic is drawn WITHOUT it, which is also the behaviour that
-// matters on a day the Pi is down.
+// matters on a day the parsing server is down.
 //
 // The two names are checked together on purpose, because getting one right and
 // the other wrong is exactly what happened. The SOURCE bubble is Composite:
@@ -219,7 +219,7 @@ console.log('\n8a. the source bubble is Composite, and holds MRMS 1 km');
   ok('and no longer calls itself MRMS', !/MRMS/i.test(src || ''), src);
 
   const mrms = await page.evaluate(() => {
-    // Deliberately not awaited. toggleMrmsSub goes to the Pi for the product
+    // Deliberately not awaited. toggleMrmsSub goes to the parsing server for the product
     // list, which is not reachable from here, and the mosaic is drawn before
     // that request is even made. Reading the row now is what proves it.
     toggleMrmsSub();

@@ -47,7 +47,7 @@ DEG = "\\u00b0"
 # "Instability" told you nothing; "Lifted Index" is what it is called.
 # The order here is the order the buttons appear in.
 META = [
-    # ── Temperature and moisture at the ground ──────────────────────────────
+    # -- Temperature and moisture at the ground ------------------------------
     ("t2m",     "Surface",     "Temperature (2m)",        DEG + "C"),
     ("apt",     "Surface",     "Feels Like (2m)",         DEG + "C"),
     ("tmax",    "Surface",     "High Temperature (2m)",   DEG + "C"),
@@ -62,7 +62,7 @@ META = [
     ("dswrf",   "Surface",     "Incoming Solar",          "W/m2"),
     ("olr",     "Surface",     "Outgoing Infrared (satellite look)", "W/m2"),
 
-    # ── Wind ────────────────────────────────────────────────────────────────
+    # -- Wind ----------------------------------------------------------------
     ("wind",    "Wind",        "Wind Speed (10m)",        "kt"),
     ("gust",    "Wind",        "Wind Gust",               "kt"),
     ("wdir",    "Wind",        "Wind Direction (10m)",    "deg"),
@@ -74,7 +74,7 @@ META = [
     ("wind300", "Wind",        "Wind 300mb",              "kt"),
     ("wind250", "Wind",        "Wind 250mb (jet stream)", "kt"),
 
-    # ── Precipitation ───────────────────────────────────────────────────────
+    # -- Precipitation -------------------------------------------------------
     ("apcp",    "Precipitation", "Precipitation Total",   "mm"),
     ("prate",   "Precipitation", "Rain Rate",             "mm/h"),
     ("refc",    "Precipitation", "Composite Reflectivity", "dBZ"),
@@ -87,7 +87,7 @@ META = [
     ("weasd",   "Precipitation", "Snow Water Equivalent", "mm"),
     ("frzlvl",  "Precipitation", "Freezing Level Height", "m"),
 
-    # ── Cloud and visibility ────────────────────────────────────────────────
+    # -- Cloud and visibility ------------------------------------------------
     ("tcc",     "Cloud & Visibility", "Total Cloud Cover", "%"),
     ("lcdc",    "Cloud & Visibility", "Low Cloud Cover",   "%"),
     ("mcdc",    "Cloud & Visibility", "Mid Cloud Cover",   "%"),
@@ -99,7 +99,7 @@ META = [
     ("vis",     "Cloud & Visibility", "Surface Visibility", "km"),
     ("hpbl",    "Cloud & Visibility", "Mixing Height",     "m"),
 
-    # ── Severe weather ──────────────────────────────────────────────────────
+    # -- Severe weather ------------------------------------------------------
     ("cape",    "Severe",      "CAPE (storm fuel)",       "J/kg"),
     ("cin",     "Severe",      "Convective Inhibition (the cap)", "J/kg"),
     ("lftx",    "Severe",      "Lifted Index",            "K"),
@@ -112,7 +112,7 @@ META = [
     ("tcoli",   "Severe",      "Vertically Integrated Ice", "kg/m2"),
     ("echotop", "Severe",      "Echo Top Height",         "km"),
 
-    # ── Upper air ───────────────────────────────────────────────────────────
+    # -- Upper air -----------------------------------------------------------
     ("gh850",   "Upper Air",   "850mb Height",            "dam"),
     ("gh700",   "Upper Air",   "700mb Height",            "dam"),
     ("gh500",   "Upper Air",   "500mb Height (steering flow)", "dam"),
@@ -128,13 +128,13 @@ META = [
     ("vort500", "Upper Air",   "500mb Vorticity (spin)",  "1e-5/s"),
     ("w700",    "Upper Air",   "700mb Vertical Motion",   "ubar/s"),
 
-    # ── Tropical ────────────────────────────────────────────────────────────
+    # -- Tropical ------------------------------------------------------------
     ("pwat",    "Tropical",    "Precipitable Water",      "mm"),
     ("shear",   "Tropical",    "Deep Layer Shear (850-200mb)", "kt"),
     ("sst",     "Tropical",    "Sea Surface Temperature", DEG + "C"),
     ("surge",   "Tropical",    "Storm Surge",             "m"),
 
-    # ── Marine ──────────────────────────────────────────────────────────────
+    # -- Marine --------------------------------------------------------------
     ("swh",     "Marine",      "Significant Wave Height", "m"),
     ("perpw",   "Marine",      "Peak Wave Period",        "s"),
     ("wvhgt",   "Marine",      "Wind Wave Height",        "m"),
@@ -151,7 +151,7 @@ META = [
     ("wvdir",   "Marine",      "Wind Wave Direction",     "deg"),
     ("icec",    "Marine",      "Sea Ice Cover",           "%"),
 
-    # ── Air quality ─────────────────────────────────────────────────────────
+    # -- Air quality ---------------------------------------------------------
     ("ozone",   "Air Quality", "Surface Ozone",           "ppb"),
     ("pm25",    "Air Quality", "Fine Particulate (PM2.5)", "ug/m3"),
     ("smoke",   "Air Quality", "Surface Smoke",           "ug/m3"),

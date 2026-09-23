@@ -109,7 +109,7 @@ console.log('\n2. the frame builder ends where it is told');
 console.log('\n3. the Composite menu offers the row, and the modal names the mosaic');
 {
   const r = await p.evaluate(() => {
-    toggleMrmsSub();           // the row is placed before the Pi is even asked
+    toggleMrmsSub();           // the row is placed before the parsing server is even asked
     const row = document.getElementById('sub-mosaic-timemachine');
     const out = { row: !!row, label: row ? row.textContent.trim() : '' };
     row.click();

@@ -33,11 +33,11 @@ const ok = (name, cond, extra) => {
   else { fail++; console.log('  FAIL ' + name + (extra ? '  <' + String(extra).slice(0, 300) + '>' : '')); }
 };
 
-// ── Source-level checks, before a browser is involved ─────────────────────
+// -- Source-level checks, before a browser is involved ---------------------
 console.log('\n1. the source itself');
 const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
 
-ok('there is no em dash anywhere in the page', !html.includes('\u2014'));
+ok('there is no em dash anywhere in the page', !html.includes(String.fromCharCode(0x2014)));
 ok('the desk is reachable from the Alerts settings card',
    /_adUiOpen\(\)/.test(html) && /Write an Alert/.test(html));
 ok('StormStream has its own toggle for including your products',
@@ -45,7 +45,7 @@ ok('StormStream has its own toggle for including your products',
 ok('renderAlerts folds desk products in rather than drawing them separately',
    /_adMergeIntoAlerts\(features\)/.test(html));
 
-// ── In a real browser ─────────────────────────────────────────────────────
+// -- In a real browser -----------------------------------------------------
 const browser = await chromium.launch({
   executablePath: process.env.CHROME_PATH
     || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',

@@ -5,10 +5,10 @@
  *
  *     node tools/test-world-cities.mjs
  *
- * The Pi's tiles are served from this file's route table, so the whole
+ * The parsing server's tiles are served from this file's route table, so the whole
  * loader runs offline: tile keys, the per-screen cap with biggest places
  * first, dots for gazetteer towns, and the fallback to the built-in
- * CITIES list the moment the Pi has nothing to say.
+ * CITIES list the moment the parsing server has nothing to say.
  */
 
 import { readFileSync } from 'node:fs';
@@ -26,7 +26,7 @@ const ok = (name, cond, extra) => {
 
 console.log('\n1. the shape of the thing');
 {
-  ok('the page loads 5-degree tiles from the Pi',
+  ok('the page loads 5-degree tiles from the parsing server',
      /const CITY_TILE_DEG = 5;/.test(PAGE)
      && /\/cities\/t_\$\{key\}\.json/.test(PAGE));
   ok('a fixed cap per screen, biggest places first',
@@ -150,14 +150,14 @@ console.log('\n2. the gazetteer feeds the dots, capped, biggest first');
   ok('dots appear from the gazetteer, and never more than the cap',
      r.count > 0 && r.count <= r.cap, `${r.count} vs cap ${r.cap}`);
   ok('the biggest place always makes the screen', r.hasBiggest);
-  ok('tiles were actually asked of the Pi', tileHits > 0, String(tileHits));
+  ok('tiles were actually asked of the parsing server', tileHits > 0, String(tileHits));
 }
 
-console.log('\n3. no Pi yet: the web mirror carries towns right now');
+console.log('\n3. no parsing server yet: the web mirror carries towns right now');
 {
   const r = await p.evaluate(async () => {
     const out = {};
-    // Tokyo: the fake Pi has no tile there, so the loader must fall
+    // Tokyo: the fake parsing server has no tile there, so the loader must fall
     // through to the web mirror, surviving the dead first mirror and the
     // string lat/lng shape of the second.
     map.setView([35.62, 139.7], 9, { animate: false });
@@ -179,11 +179,11 @@ console.log('\n3. no Pi yet: the web mirror carries towns right now');
      !r.tips.some(t => t.includes('Broken Town')));
 }
 
-console.log('\n4. no Pi, no mirror: the built-in list carries the dots');
+console.log('\n4. no parsing server, no mirror: the built-in list carries the dots');
 {
   const r = await p.evaluate(async () => {
     const out = {};
-    // Somewhere the fake Pi has no tile for: the loader must fall back.
+    // Somewhere the fake parsing server has no tile for: the loader must fall back.
     _cityTileCache.clear();
     map.setView([48.85, 2.35], 7, { animate: false });   // Paris
     await new Promise(res => setTimeout(res, 150));

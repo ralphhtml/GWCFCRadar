@@ -11,7 +11,7 @@ const NOTIF_CACHE  = 'gwcfc-notif-seen-v1'; // tracks alert IDs already notified
 // Every data answer the app has ever seen, kept as the offline fallback.
 // Online, nothing changes: the network answers first and a copy is saved in
 // the background. Offline, the copy answers instead - which is what lets
-// alerts, forecasts, satellite, models and the Pi's products all replay
+// alerts, forecasts, satellite, models and the parsing server's products all replay
 // with no connection, rather than each one failing its own way.
 const DATA_CACHE   = 'gwcfc-data-v1';
 const DATA_MAX      = 1600;              // entries before a prune
@@ -19,7 +19,7 @@ const DATA_TRIM     = 1200;              // entries kept after one
 const DATA_BODY_CAP = 8 * 1024 * 1024;   // a Level 2 volume is not a cache line
 let _dataPuts = 0;
 
-// ── Radar tile caches ────────────────────────────────────────
+// -- Radar tile caches ----------------------------------------
 const IEM_L3_RE = /\/cache\/tile\.py\/1\.0\.0\/nexrad-n0q-\d{12}\//;
 const RV_TILE_RE = /\/v2\/radar\/\d+\//;
 
@@ -91,13 +91,13 @@ const TILE_CACHE_MAX  = 900;
 const TILE_CACHE_TRIM = 700;
 let _putsSincePrune = 0;
 
-// ── Home location + GPS coords (sent from page via postMessage) ──
+// -- Home location + GPS coords (sent from page via postMessage) --
 let _swLocation = null;
 let _swCoords   = null;   // { lat, lon } for rain detection
 let _swTileKey  = null;   // current IEM radar tileKey (e.g. "202406191800")
 let _swRainWas  = false;
 
-// ── Lifecycle ────────────────────────────────────────────────
+// -- Lifecycle ------------------------------------------------
 self.addEventListener('install', () => self.skipWaiting());
 
 self.addEventListener('activate', e => e.waitUntil(
@@ -110,7 +110,7 @@ self.addEventListener('activate', e => e.waitUntil(
     .then(() => clients.claim())
 ));
 
-// ── Message from page: receive home location + GPS coords ────
+// -- Message from page: receive home location + GPS coords ----
 self.addEventListener('message', e => {
   if (e.data && e.data.type === 'SET_LOCATION') {
     _swLocation = e.data.location || null;
@@ -119,12 +119,12 @@ self.addEventListener('message', e => {
   }
 });
 
-// ── Periodic background sync (Chrome Android) ────────────────
+// -- Periodic background sync (Chrome Android) ----------------
 self.addEventListener('periodicsync', e => {
   if (e.tag === 'check-alerts') e.waitUntil(_checkAndNotify());
 });
 
-// ── Push event (FCM - fires even when browser is closed) ─────
+// -- Push event (FCM - fires even when browser is closed) -----
 self.addEventListener('push', e => {
   let payload = {};
   try { payload = e.data ? e.data.json() : {}; } catch {}
@@ -148,7 +148,7 @@ self.addEventListener('push', e => {
   );
 });
 
-// ── Notification tap: focus or open app ─────────────────────
+// -- Notification tap: focus or open app ---------------------
 self.addEventListener('notificationclick', e => {
   e.notification.close();
   const data    = e.notification.data || {};
@@ -170,7 +170,7 @@ self.addEventListener('notificationclick', e => {
   );
 });
 
-// ── Fetch: app shell, static libraries, radar tiles ─────────
+// -- Fetch: app shell, static libraries, radar tiles ---------
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   let url;
@@ -204,7 +204,7 @@ self.addEventListener('fetch', e => {
 
   if (!CACHE_HOSTS.has(url.hostname)) {
     // Everything else the app asks for over the network: NWS alerts and
-    // forecasts, the Pi's manifests and rendered frames, satellite, model
+    // forecasts, the parsing server's manifests and rendered frames, satellite, model
     // charts, the archive buckets' listings, all of it. Network-first, so
     // online behaviour is exactly what it was; the copy saved in the
     // background is what answers when there is no network at all.
@@ -364,7 +364,7 @@ async function _maybePruneTiles(cache) {
   } catch (e) { /* a failed prune costs nothing but disk */ }
 }
 
-// ── Severity maps (mirrored from page JS) ────────────────────
+// -- Severity maps (mirrored from page JS) --------------------
 const _SW_NWS_SEV_RANK = { Extreme:4, Severe:3, Moderate:2, Minor:1, Unknown:0 };
 const _SW_EAS_TYPE_SEV = {
   TOR:4, SVR:3, EWW:3, FFW:3, SMW:2, TOA:3, SVA:2, FFA:2,
@@ -378,7 +378,7 @@ const _SW_EAS_TYPE_LABELS = {
   BZW:'Blizzard Warning', WSW:'Winter Storm Warning',
 };
 
-// ── Background alert check (both NWS + EAS + Rain) ───────────
+// -- Background alert check (both NWS + EAS + Rain) -----------
 async function _checkAndNotify() {
   const loc = _swLocation;
   const terms = loc
@@ -415,7 +415,7 @@ async function _checkAndNotify() {
     });
   }
 
-  // ── NWS Weather Alerts ──
+  // -- NWS Weather Alerts --
   try {
     const nwsUrl = locationSet
       ? 'https://api.weather.gov/alerts/active?status=actual&message_type=alert'
@@ -452,7 +452,7 @@ async function _checkAndNotify() {
     }
   } catch(e) { /* NWS fetch failed */ }
 
-  // ── EAS Alerts ──
+  // -- EAS Alerts --
   const EAS_PROXIES_SW = [
     u => u,
     u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
@@ -498,7 +498,7 @@ async function _checkAndNotify() {
     }
   }
 
-  // ── Rain Near Me - read the IEM radar tile already in the SW cache ──
+  // -- Rain Near Me - read the IEM radar tile already in the SW cache --
   if (_swCoords && _swTileKey) {
     try {
       const { lat, lon } = _swCoords;

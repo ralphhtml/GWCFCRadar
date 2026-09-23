@@ -8,7 +8,7 @@
  *
  * A raw ABI band is served by the WMS, which publishes eleven real
  * sectors (CONUS east/west, Alaska, Hawaii, Caribbean, both Full Disks,
- * all four mesoscale boxes). An RGB composite is built on the Pi instead,
+ * all four mesoscale boxes). An RGB composite is built on the parsing server instead,
  * which only ever builds eight of those (no Alaska, Hawaii or Caribbean,
  * which are the WMS's own reprojections rather than ABI products it
  * scans). The sector row used to always judge itself against strip A's
@@ -120,10 +120,10 @@ console.log('\n2. browsing a kind shows THAT kind\'s own real sectors, not strip
       .map(b => b.dataset.regionId);
     return { rgbRegions, abiRegions };
   });
-  ok('RGB Composites never offers Alaska, Hawaii or the Caribbean - the Pi cannot build them',
+  ok('RGB Composites never offers Alaska, Hawaii or the Caribbean - the parsing server cannot build them',
      !r.rgbRegions.includes('alaska') && !r.rgbRegions.includes('hawaii') && !r.rgbRegions.includes('caribbean'),
      JSON.stringify(r.rgbRegions));
-  ok('RGB Composites does offer the sectors the Pi genuinely builds',
+  ok('RGB Composites does offer the sectors the parsing server genuinely builds',
      ['east', 'west', 'efulldisk', 'wfulldisk', 'emeso1', 'emeso2', 'wmeso1', 'wmeso2']
        .every(id => r.rgbRegions.includes(id)),
      JSON.stringify(r.rgbRegions));

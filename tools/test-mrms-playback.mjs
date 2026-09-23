@@ -4,11 +4,11 @@
  *
  *     node tools/test-mrms-playback.mjs
  *
- * MRMS drew one picture: whatever the Pi had built most recently. A still
+ * MRMS drew one picture: whatever the parsing server had built most recently. A still
  * cannot be scrubbed or played, so MRMS was the one radar product with no
  * history at all, and the animation bar did not know it existed.
  *
- * The Pi keeps three days of frames now. Three days is roughly nine hundred
+ * The parsing server keeps three days of frames now. Three days is roughly nine hundred
  * frames, which is far too many to download before showing anything, so the
  * frame LIST is loaded up front and the frame PICTURES are fetched around
  * wherever the scrub head is. That split is the whole design and it is what
@@ -41,10 +41,10 @@ const ok = (name, cond, extra) => {
   else { fail++; console.log('  FAIL ' + name + (extra ? '  <' + extra + '>' : '')); }
 };
 
-// Frames the way the Pi writes them: rotation every 5 minutes, hail every 5,
+// Frames the way the parsing server writes them: rotation every 5 minutes, hail every 5,
 // and a freezing level on the hourly lane. The mismatch is the point -
 // products are on different cadences and must still line up in time. The
-// rotation lane carries the Pi's full FOUR days (three playable days plus
+// rotation lane carries the parsing server's full FOUR days (three playable days plus
 // the disposal-buffer day the pruner has not yet thrown away); playback must
 // trim that fourth day off rather than quietly showing it.
 const BOUNDS = [[20, -130], [55, -60]];

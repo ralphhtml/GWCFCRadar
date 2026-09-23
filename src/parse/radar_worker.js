@@ -79,7 +79,7 @@ const buildPolygon = (project, sinAz1, cosAz1, sinAz2, cosAz2, r1, r2) => {
     return [p1, p2, p3, p4];
 };
 
-// ── How far out to draw, and at what detail ───────────────────────────────
+// -- How far out to draw, and at what detail -------------------------------
 //
 // A NEXRAD reflectivity sweep reaches 460 km. At super-resolution it is
 // sampled every 250 m, so that is 1832 cells on each of 720 radials: 1.3

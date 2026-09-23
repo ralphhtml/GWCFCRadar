@@ -69,7 +69,7 @@ await page.waitForTimeout(4000);
 await page.evaluate(() => { if (typeof closeTutorial === 'function') closeTutorial(); });
 
 // Stand in an MRMS manifest so the MRMS menus have something to build from
-// without a Pi. The labels are real ones off the catalogue.
+// without a parsing server. The labels are real ones off the catalogue.
 await page.evaluate(() => {
   _mrmsManifest = { products: {
     rotation:   { label: 'Rotation Tracks', unit: 's-1', min: 0, max: 0.01 },
@@ -82,7 +82,7 @@ await page.evaluate(() => {
     ltgdensity: { label: 'Lightning Density', unit: '', min: 0, max: 10 },
     h0c:        { label: 'Freezing Level Height', unit: 'm', min: 0, max: 5000 },
   } };
-  // The MRMS menu reads its catalogue off the Pi, and there is no Pi here.
+  // The MRMS menu reads its catalogue off the parsing server, and there is no parsing server here.
   // Hand it the stub above rather than letting it fall back to "No MRMS
   // built yet", which is a status line and not a menu to walk.
   window._mrmsFetchManifest = async () => _mrmsManifest;

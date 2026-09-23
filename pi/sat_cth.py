@@ -195,7 +195,7 @@ def decode_heights(b64, nx, ny):
     return np.frombuffer(base64.b64decode(b64), dtype="<u2").reshape(ny, nx)
 
 
-# ── Reading the files ───────────────────────────────────────────────────────
+# -- Reading the files -------------------------------------------------------
 
 def _window(x, y, lon0, H, req, rpol, bbox, margin=0.6):
     """Index ranges of a scan's grid that cover bbox, found on a coarse pass.

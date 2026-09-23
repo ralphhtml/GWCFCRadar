@@ -194,7 +194,7 @@ console.log('\n3c. the coastline, and its two detail levels');
 console.log('\n3d. models are their own layer, under the borders');
 {
   ok('there is a model pane', /map\.createPane\('modelPane'\)/.test(PAGE));
-  ok('the Pi model charts draw in it, not in the radar pane',
+  ok('the parsing server model charts draw in it, not in the radar pane',
      /opacity: modelOpacity, interactive: false, pane: 'modelPane'/.test(PAGE));
   ok('and all four WMS models are given it too, instead of no pane at all',
      (PAGE.match(/opts\.pane = 'modelPane';/g) || []).length === 4,

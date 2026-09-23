@@ -29,7 +29,7 @@ const ok = (name, cond, extra) => {
   else { fail++; console.log('  FAIL ' + name + (extra ? '  <' + extra + '>' : '')); }
 };
 
-// ── NOAA's catalogue ───────────────────────────────────────────────────────
+// -- NOAA's catalogue -------------------------------------------------------
 // The bucket carries an elevation suffix that the NCEP web server drops, so
 // both spellings count as the same product.
 const catalogue = readFileSync(join(ROOT, 'tools/mrms-catalogue.txt'), 'utf8')
@@ -49,7 +49,7 @@ ok('and the ones this app leans on are among them',
    ['MergedReflectivityQCComposite_00.50', 'MESH_Max_60min_00.50',
     'PrecipRate_00.00'].every(p => catalogue.includes(p)));
 
-// ── What the pipeline asks for ─────────────────────────────────────────────
+// -- What the pipeline asks for ---------------------------------------------
 const py = readFileSync(join(ROOT, 'pi/radar_pipeline.py'), 'utf8');
 const start = py.indexOf('MRMS_PRODUCTS = {');
 const end = py.indexOf('\n}\n', start);

@@ -180,7 +180,7 @@ ok("install.sh writes a gwcfc-feeds service", "gwcfc-feeds.service" in inst)
 ok("and its timer", "gwcfc-feeds.timer" in inst)
 ok("running feeds_pipeline.py", "feeds_pipeline.py" in inst)
 src = io.open(os.path.join(ROOT, "pi", "feeds_pipeline.py"), encoding="utf-8").read()
-ok("no em dash anywhere in the pipeline", "\u2014" not in src)
+ok("no em dash anywhere in the pipeline", chr(0x2014) not in src)
 ok("writes are atomic: tmp file then replace",
    "os.replace" in src and ".tmp" in src)
 

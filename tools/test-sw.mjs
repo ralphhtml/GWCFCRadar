@@ -34,7 +34,7 @@ const ok = (name, cond, extra) => {
   else { fail++; console.log('  FAIL ' + name + (extra ? '  <' + extra + '>' : '')); }
 };
 
-// ── The mocked worker scope ────────────────────────────────────────────────
+// -- The mocked worker scope ------------------------------------------------
 
 class MockCache {
   constructor() { this.m = new Map(); }
@@ -91,7 +91,7 @@ function dispatchFetch(request) {
 const GET = (url, mode) => ({ url, method: 'GET', mode: mode || 'no-cors',
   headers: { get: () => null } });
 
-// ── Scenes ─────────────────────────────────────────────────────────────────
+// -- Scenes -----------------------------------------------------------------
 
 const TILE = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-202608190000/6/14/25.png';
 

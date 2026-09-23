@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 /*
- * The whole Level 3 journey against a fake Pi, in a real browser with real
- * Leaflet. Serves the answers the Pi would give (index, manifest, png) from
+ * The whole Level 3 journey against a fake parsing server, in a real browser with real
+ * Leaflet. Serves the answers the parsing server would give (index, manifest, png) from
  * intercepted routes, then drives the menu and the map pills the way a person
  * does, and checks the picture actually lands on the map.
  *
  *     node tools/test-pi-l3.mjs
  *
  * Three scenes:
- *   1. healthy Pi   - open Level 3, product row fills, overlay draws, a pill
+ *   1. healthy parsing server   - open Level 3, product row fills, overlay draws, a pill
  *                     click on a built site redraws, a pill click on any other
  *                     site explains itself
- *   2. unreachable  - every Pi fetch fails; the toast must blame the address,
- *                     not claim the Pi has built nothing
- *   3. empty index  - the Pi answers but has no sites; that one IS "no radar
+ *   2. unreachable  - every parsing server fetch fails; the toast must blame the address,
+ *                     not claim the parsing server has built nothing
+ *   3. empty index  - the parsing server answers but has no sites; that one IS "no radar
  *                     built yet"
  *
  * The stale-site case is baked into scene 1: localStorage starts with the
@@ -95,7 +95,7 @@ const browser = await chromium.launch({
 });
 
 // One page per scene, so localStorage and module state start clean each time.
-// piMode: 'up' serves everything, 'down' fails every Pi fetch, 'empty' serves
+// piMode: 'up' serves everything, 'down' fails every parsing server fetch, 'empty' serves
 // an index with no sites in it.
 async function boot(piMode) {
   const page = await browser.newPage();
@@ -142,7 +142,7 @@ async function boot(piMode) {
         return route.fulfill({ status: 404, body: 'nope' });
       }
       // What Cloudflare's edge really says when the tunnel process is dead:
-      // it answers, with an error, and the Pi never saw the request.
+      // it answers, with an error, and the parsing server never saw the request.
       if (piMode === 'edge530')
         return route.fulfill({ status: 530, body: 'tunnel down' });
       if (url.includes('latest_l3.json'))
@@ -159,7 +159,7 @@ async function boot(piMode) {
             mesh:     { file: 'mesh.png', label: 'Hail Swaths',
                         bounds: [[20, -130], [55, -60]] },
           } }) });
-      // The models half of the Pi, enough for the Inspector scene: one model,
+      // The models half of the parsing server, enough for the Inspector scene: one model,
       // one field, one hour. The ACAO header is what pi/serve.py really
       // sends, and it is what lets the page read the image's pixels back.
       if (url.includes('models/latest.json'))
@@ -214,7 +214,7 @@ const row = p => p.evaluate(() =>
   [...document.querySelectorAll('#sub-bubbles .sub-bubble')]
     .map(e => e.textContent.trim()));
 
-console.log('\n1. a healthy Pi, seen from the page');
+console.log('\n1. a healthy parsing server, seen from the page');
 {
   const { page, errors } = await boot('up');
   ok('the page boots with real Leaflet', errors.length === 0, errors[0]);
@@ -250,8 +250,8 @@ console.log('\n1. a healthy Pi, seen from the page');
      ['Reflectivity', '1-Hr Precip', 'Echo Tops'].every(l =>
        labels.some(t => t.startsWith(l))),
      labels.join(','));
-  ok('and does not claim there is no Pi radar',
-     !labels.some(t => /No Pi radar/.test(t)), labels.join(','));
+  ok('and does not claim there is no parsing server radar',
+     !labels.some(t => /No parsing server radar/.test(t)), labels.join(','));
 
   // The map pill for the other built site: a real Leaflet event, the same
   // path a finger takes, then the popup's View button, which is where the
@@ -269,10 +269,10 @@ console.log('\n1. a healthy Pi, seen from the page');
      pill.layers === 1 && /KFWS/.test(pill.url || ''), pill.url);
   ok('without complaining', pill.toasts.length === 0, pill.toasts.join(' | '));
 
-  // A pill the Pi does not build is no longer a refusal: it is decoded in the
+  // A pill the parsing server does not build is no longer a refusal: it is decoded in the
   // browser from the Level 3 bucket. Offline, as here, that cannot land, and
   // what matters is that it tried and said why rather than telling anyone to
-  // go and edit a config file on the Pi.
+  // go and edit a config file on the parsing server.
   await page.evaluate(() => { window.__toasts.length = 0;
                               _nexradSiteMarkers['kdyx'].label.fire('click');
                               _sitePopView(); });
@@ -283,7 +283,7 @@ console.log('\n1. a healthy Pi, seen from the page');
      other.toasts.some(t => /^KDYX N0B:/.test(t)) &&
      !other.toasts.some(t => /is not one of the radars/.test(t)),
      other.toasts.join(' | '));
-  // Back to null, which is "the Pi's own pictures", the state before the click.
+  // Back to null, which is "the parsing server's own pictures", the state before the click.
   ok('and a site that could not be read does not stay selected',
      other.stuck === null, String(other.stuck));
 
@@ -340,7 +340,7 @@ console.log('\n1. a healthy Pi, seen from the page');
 
   // The severe overlays. These used to be two fixed pills on the overlay row;
   // MRMS now carries the whole 2D catalogue, so it has its own sub-bubble
-  // built from whatever the Pi says it actually has, and the products are
+  // built from whatever the parsing server says it actually has, and the products are
   // toggled from there. The two old pill names still work as shortcuts, and
   // open that menu rather than drawing anything themselves.
   await page.evaluate(() => { window.__toasts.length = 0;
@@ -353,9 +353,9 @@ console.log('\n1. a healthy Pi, seen from the page');
     on: [!!_mrmsOn.rotation, !!_mrmsOn.mesh],
     toasts: window.__toasts,
   }));
-  ok('rotation tracks draw from the Pi',
+  ok('rotation tracks draw from the parsing server',
      /\/radar\/mrms\/rotation\.png/.test(sev.rot || ''), sev.rot);
-  ok('hail swaths draw from the Pi',
+  ok('hail swaths draw from the parsing server',
      /\/radar\/mrms\/mesh\.png/.test(sev.hail || ''), sev.hail);
   ok('both products register as on', sev.on.every(Boolean), sev.on.join(','));
   ok('with no complaints', sev.toasts.length === 0, sev.toasts.join(' | '));
@@ -410,11 +410,11 @@ console.log('\n1. a healthy Pi, seen from the page');
   await page.close();
 }
 
-console.log('\n1b. the Inspector reads a Pi model chart into a number');
+console.log('\n1b. the Inspector reads a parsing server model chart into a number');
 {
   const { page, errors } = await boot('up');
 
-  // Paint the chart the way the Pi would: 20 C on the temperature scale
+  // Paint the chart the way the parsing server would: 20 C on the temperature scale
   // lands on entry 180 of the 256-color temp ramp. The page's own tables
   // pick the color, so the scene cannot drift from the code it tests.
   const dataUrl = await page.evaluate(() => {
@@ -434,7 +434,7 @@ console.log('\n1b. the Inspector reads a Pi model chart into a number');
       && _hdLayer.getElement && _hdLayer.getElement();
     return !!(img && img.complete && img.naturalWidth);
   }, { timeout: 20000 }).then(() => true).catch(() => false);
-  ok('the model chart draws from the fake Pi', up, 'overlay never loaded');
+  ok('the model chart draws from the fake parsing server', up, 'overlay never loaded');
 
   // Park the crosshair inside the chart and switch the Inspector on.
   await page.evaluate(() => { map.setView([35, -97], 5); toggleInspector(); });
@@ -456,12 +456,12 @@ console.log('\n1b. the Inspector reads a Pi model chart into a number');
   await page.close();
 }
 
-console.log('\n1c. a value filter means the Pi paint steps aside for raw data');
+console.log('\n1c. a value filter means the parsing server paint steps aside for raw data');
 {
   // A filter runs on numbers, and a pre-painted PNG has none left. With a
-  // reflectivity filter saved, opening the Pi radar must NOT paste the Pi's
+  // reflectivity filter saved, opening the parsing server radar must NOT paste the parsing server's
   // picture: it must go for the raw feed instead (which fails offline here,
-  // loudly and honestly), and clearing the filter must bring the Pi's own
+  // loudly and honestly), and clearing the filter must bring the parsing server's own
   // pictures straight back.
   const { page } = await boot('up');
   await page.evaluate(() => {
@@ -484,12 +484,12 @@ console.log('\n1c. a value filter means the Pi paint steps aside for raw data');
     await new Promise(r => setTimeout(r, 1500));
     return { layers: _prLayers.length, rerouted: _fxRerouted };
   });
-  ok('clearing the filter hands the screen back to the Pi pictures',
+  ok('clearing the filter hands the screen back to the parsing server pictures',
      back.layers === 1 && back.rerouted === false, JSON.stringify(back));
   await page.close();
 }
 
-console.log('\n1d. scrubbing through the Pi\'s own frame history');
+console.log('\n1d. scrubbing through the parsing server\'s own frame history');
 {
   const { page } = await boot('up');
   await page.evaluate(() => toggleRadarSub());
@@ -534,11 +534,11 @@ console.log('\n1d. scrubbing through the Pi\'s own frame history');
   const stepped = await page.evaluate(() => ({
     idx: _prLoop.idx, url: _prLayers[0] && _prLayers[0]._url,
   }));
-  ok('stepFrame advances exactly one frame within the Pi loop',
+  ok('stepFrame advances exactly one frame within the parsing server loop',
      stepped.idx === 1 && (stepped.url || '').includes(FRAME_MID),
      JSON.stringify(stepped));
 
-  // The Pi answers with a new frame while the view is scrubbed into history:
+  // The parsing server answers with a new frame while the view is scrubbed into history:
   // the position must hold, not jump to the new newest out from under
   // someone looking at an hour-old cell.
   const held = await page.evaluate(() => {
@@ -561,7 +561,7 @@ console.log('\n1d. scrubbing through the Pi\'s own frame history');
   await page.close();
 }
 
-console.log('\n2. a Pi that cannot be reached');
+console.log('\n2. a parsing server that cannot be reached');
 {
   const { page } = await boot('down');
   await page.evaluate(() => toggleRadarSub());
@@ -571,12 +571,12 @@ console.log('\n2. a Pi that cannot be reached');
     layers: _prLayers.length }));
   ok('the toast blames the address, not the radar builds',
      st.toasts.some(t => /could not reach/i.test(t)), st.toasts.join(' | '));
-  ok('and does not pretend the Pi has built nothing',
+  ok('and does not pretend the parsing server has built nothing',
      !st.toasts.some(t => /no radar built/i.test(t)), st.toasts.join(' | '));
   ok('nothing is drawn', st.layers === 0, String(st.layers));
 
   // Clicking a pill while unreachable used to say the radar was not one the
-  // Pi builds, for every single pill, which read as no data existing at all.
+  // parsing server builds, for every single pill, which read as no data existing at all.
   await page.evaluate(() => { window.__toasts.length = 0;
                               _nexradSiteMarkers['ktlx'].label.fire('click');
                               _sitePopView(); });
@@ -603,7 +603,7 @@ console.log('\n2b. the tunnel edge answering for a dead tunnel');
   await page.close();
 }
 
-console.log('\n3. a Pi that answers with nothing built');
+console.log('\n3. a parsing server that answers with nothing built');
 {
   const { page } = await boot('empty');
   await page.evaluate(() => toggleRadarSub());

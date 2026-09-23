@@ -74,7 +74,7 @@ ${inner}
 `;
 }
 
-/* ── Hurricane ────────────────────────────────────────────────────────────
+/* -- Hurricane ------------------------------------------------------------
    Logarithmic spiral bands, which is the shape a real cyclone actually
    makes: r grows by a constant factor per turn, so the bands open out as
    they go rather than staying the same width like a clock spring. */
@@ -111,7 +111,7 @@ function hurricane() {
        <feGaussianBlur stdDeviation="18"/></filter>`);
 }
 
-/* ── Baseball field ───────────────────────────────────────────────────────
+/* -- Baseball field -------------------------------------------------------
    The diamond as geometry rather than as a photograph: the infield square,
    the base paths, the pitcher's circle and the outfield arc, which is the
    set of lines that make the shape recognisable from across a room. */
@@ -156,7 +156,7 @@ function diamond() {
      </filter>`);
 }
 
-/* ── Geometric ────────────────────────────────────────────────────────────
+/* -- Geometric ------------------------------------------------------------
    Triangles in the three colours, overlapping with a screen blend so the
    overlaps make new colours rather than just stacking. This is the one the
    ask named directly: shapes, in red and gold and blue. */
@@ -190,7 +190,7 @@ function geometric() {
   return wrap(`<g style="mix-blend-mode:screen">\n  ${out.join('\n  ')}\n</g>`);
 }
 
-/* ── Radar sweep ──────────────────────────────────────────────────────────
+/* -- Radar sweep ----------------------------------------------------------
    The instrument this whole thing grew out of: range rings, bearing spokes,
    a lit sector, and a scatter of returns. */
 function sweep() {
@@ -229,7 +229,7 @@ function sweep() {
      </radialGradient>`);
 }
 
-/* ── Circuit ──────────────────────────────────────────────────────────────
+/* -- Circuit --------------------------------------------------------------
    Traces that turn at right angles and forty five degrees, which is what
    makes a drawing read as a board rather than as a maze. */
 function circuit() {
@@ -258,7 +258,7 @@ function circuit() {
   return wrap(out.join('\n  '));
 }
 
-/* ── Contours ─────────────────────────────────────────────────────────────
+/* -- Contours -------------------------------------------------------------
    Topographic lines from a sum of sine hills, which is how a contour map is
    actually made: pick a height, trace where the surface crosses it. Done
    here by marching a coarse grid, which is plenty at this scale. */
@@ -305,7 +305,7 @@ function contours() {
   return wrap(out.join('\n  '));
 }
 
-/* ── Embers ───────────────────────────────────────────────────────────────
+/* -- Embers ---------------------------------------------------------------
    Soft drifting light, for when the picture behind the words should be
    almost nothing at all. The quietest of the set on purpose: a background
    that competes with the text has stopped being a background. */

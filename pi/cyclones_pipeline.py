@@ -111,7 +111,7 @@ def get(url, timeout=120):
         return None
 
 
-# ── Tracks ──────────────────────────────────────────────────────────────────
+# -- Tracks ------------------------------------------------------------------
 
 # The verified spellings first (Triple-A Tropics read them off the live
 # files), the old guesses kept behind them as fallbacks so a renamed column
@@ -229,7 +229,7 @@ def parse_tracks(raw):
     return tracks, header
 
 
-# ── Genesis probability ─────────────────────────────────────────────────────
+# -- Genesis probability -----------------------------------------------------
 
 def _read_netcdf(raw):
     """
@@ -312,7 +312,7 @@ def render_genesis(grid, lat, lon, out_path):
     return bounds_from(lats, lo)
 
 
-# ── Building ────────────────────────────────────────────────────────────────
+# -- Building ----------------------------------------------------------------
 
 def build(models, stamp, run_dir):
     man = {"run": stamp, "tracks": {}, "genesis": {},

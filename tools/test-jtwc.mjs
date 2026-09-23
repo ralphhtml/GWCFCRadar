@@ -279,7 +279,7 @@ console.log("\n8. the URL it actually asks for, which is what broke");
     // The server's own copy is tried before any relay now, so for this
     // section - which is about the relay URL's spelling - the server is
     // made absent and its cache dropped, the way it is for someone whose
-    // Pi is off. The relay chain is then the first thing asked. Bare
+    // parsing server is off. The relay chain is then the first thing asked. Bare
     // assignments, not window.*: these globals are let-bound, so the
     // window property would be a decoy the code never reads.
     const realResolve = _hdResolveBase;

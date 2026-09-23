@@ -23,7 +23,7 @@ const errs = [];
 p.on('pageerror', e => errs.push(String(e).slice(0, 180)));
 await p.addInitScript(() => { try { localStorage.setItem('gwcfc_tutorial_seen', '1'); } catch (e) {} });
 
-// ── A fake chunk bucket for station KTST ──────────────────────────────────
+// -- A fake chunk bucket for station KTST ----------------------------------
 // 999 volume directories. The newest is 300: times climb 301..999, then
 // 1..300, so the rollover sits between 300 and 301, the way the real feed
 // numbers volumes. Each volume is 20 chunks of 200 KB.
@@ -254,7 +254,7 @@ console.log('\n9c. a radar quiet for hours falls back to the day-wide look');
 console.log('\n10. the hover warm reads the hour, and the product probe waits for the picture');
 {
   ok('the warm asks for this hour and the last', /_arcHourKeys\(site, cd, Date\.now\(\)\);\s*_arcHourKeys\(site, cd, Date\.now\(\) - 3600e3\);/.test(PAGE));
-  const show = PAGE.slice(PAGE.indexOf('async function _l3BucketShow('), PAGE.indexOf('// ── ROTATION TRACKS'));
+  const show = PAGE.slice(PAGE.indexOf('async function _l3BucketShow('), PAGE.indexOf('// -- ROTATION TRACKS'));
   const probeAt = show.indexOf('_l3ProbeSite(SITE)'), renderAt = show.indexOf('_renderMesh(result');
   ok('inside _l3BucketShow the probe comes after the render', probeAt > renderAt && renderAt > 0, JSON.stringify([renderAt, probeAt]));
   ok('the Level 2 click decodes the first sweep first', /_l2FirstBytes\(product\)/.test(PAGE) && /two\.split\) rest = restP/.test(PAGE));

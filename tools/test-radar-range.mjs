@@ -36,7 +36,7 @@ const ok = (name, cond, extra) => {
   else { fail++; console.log('  FAIL ' + name + (extra ? '  <' + extra + '>' : '')); }
 };
 
-// ── Bundle the decoder so its internals can be called directly ─────────────
+// -- Bundle the decoder so its internals can be called directly -------------
 const entry = join(ROOT, 'src', 'parse', '__range_test_entry.js');
 const outDir = mkdtempSync(join(tmpdir(), 'gwcfc-range-'));
 const out = join(outDir, 'worker.mjs');

@@ -17,7 +17,7 @@
  * The frame images are counted as they are requested, because the preload is
  * the half of this that is easy to get wrong and impossible to see: without
  * it the first pass through a loop is a slideshow at network speed, and with
- * it running twice it is a burst of duplicate downloads off the Pi.
+ * it running twice it is a burst of duplicate downloads off the parsing server.
  */
 
 import { readFileSync } from 'fs';
@@ -78,7 +78,7 @@ await page.waitForTimeout(4200);
 await page.evaluate(() => { if (typeof closeTutorial === 'function') closeTutorial(); });
 
 // Stand the panel up on a forecast that does not exist, so nothing here
-// depends on the Pi being reachable or on which run it happens to be on.
+// depends on the parsing server being reachable or on which run it happens to be on.
 await page.evaluate(() => {
   if (!_hdPanel) _hdBuildPanel();
   _hdOn = true;
@@ -253,7 +253,7 @@ console.log('\n9. closing the panel stops the timer');
   ok('playing', await playing());
   await page.evaluate(() => _hdDisable());
   ok('closing the panel stops it, rather than leaving a timer pulling '
-     + 'pictures off the Pi', !(await playing()));
+     + 'pictures off the parsing server', !(await playing()));
 }
 
 console.log('\n10. the page did not throw doing any of that');

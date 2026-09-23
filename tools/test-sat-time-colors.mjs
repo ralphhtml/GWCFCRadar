@@ -12,7 +12,7 @@
  * with total confidence.
  *
  * COLOURS. One CSS custom property, --sat-filter, is supposed to reach every
- * satellite surface: the WMS band tiles (via .wx-photo), the Pi composites
+ * satellite surface: the WMS band tiles (via .wx-photo), the parsing server composites
  * and the global mosaic (via the satPhotoPane). That claim is tested in a
  * real browser by applying a preset and reading the COMPUTED filter off an
  * element in each place, because a selector list is exactly the kind of
@@ -81,10 +81,10 @@ console.log('\n2. the satellite machine is its own, with its own clock');
   ok('the frame list reads the satellite clock, not the radar one',
      /_buildGoesFrames\(\) \{[\s\S]{0,1400}_tmSatAt === 'number'/.test(PAGE)
      && !/function _buildGoesFrames\(\) \{[\s\S]{0,1600}typeof _tmAt ===/.test(PAGE));
-  // The Pi composites keep three days. Promising a picture beyond that would
+  // The parsing server composites keep three days. Promising a picture beyond that would
   // be the one way this feature could lie.
-  ok('a Pi composite past its window says so instead of showing the wrong day',
-     /Pi composites keep 3 days\. Pick a plain band for older imagery\./.test(PAGE));
+  ok('a parsing server composite past its window says so instead of showing the wrong day',
+     /parsing server composites keep 3 days\. Pick a plain band for older imagery\./.test(PAGE));
   // Matched on one literal's worth: the sentence is split across two
   // concatenated strings in the source, and a phrase spanning the join
   // matches nothing however true it is on screen.
@@ -192,7 +192,7 @@ if (!chromium) {
      r.defaultPane === 'none', r.defaultPane);
   ok('vivid writes saturate and contrast into the variable',
      /saturate\(1\.6\)/.test(r.var) && /contrast\(1\.15\)/.test(r.var), r.var);
-  ok('the Pi composite pane computes that filter',
+  ok('the parsing server composite pane computes that filter',
      /saturate/.test(r.paneAfter), r.paneAfter);
   ok('the WMS band surface computes it too',
      /saturate/.test(r.wmsAfter), r.wmsAfter);

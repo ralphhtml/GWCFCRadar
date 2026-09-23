@@ -88,7 +88,7 @@ body, button, input, select, textarea, table, code, kbd, pre,
 .legend-title { font-size: clamp(10px, 3.65vh, 31px); }
 .chip       { font-size: clamp(10px, 3.43vh, 29px); }
 
-/* ── THE OUTLOOK FORMAT ─────────────────────────────────────────────────
+/* -- THE OUTLOOK FORMAT -------------------------------------------------
    The PDF page itself, exported with its background removed, floats over
    a full-bleed map. Nothing here is redrawn: the title, the pills, the
    legends and their gold work are the design's own pixels. Only the two
@@ -117,7 +117,7 @@ body, button, input, select, textarea, table, code, kbd, pre,
 .leaflet-top.leaflet-left { top: 21.5%; }
 #live-fcstr { left: 66.18%; top: 12.35%; width: 30.76%; height: 8.15%; }
 
-/* ── LEGENDS ────────────────────────────────────────────────────────────── */
+/* -- LEGENDS -------------------------------------------------------------- */
 #legends { flex: none; display: flex; gap: 12px; align-items: flex-start;
            flex-wrap: wrap; }
 .legend { display: flex; flex-direction: column; gap: 5px; }
@@ -146,7 +146,7 @@ body, button, input, select, textarea, table, code, kbd, pre,
   white-space: nowrap;
 }
 
-/* ── TOP-RIGHT CONTROLS ─────────────────────────────────────────────────── */
+/* -- TOP-RIGHT CONTROLS --------------------------------------------------- */
 /* The buttons are the workshop, not the graphic, so they float inside the
    map frame instead of sitting across the title the way they were. */
 #topright {
@@ -172,7 +172,7 @@ body, button, input, select, textarea, table, code, kbd, pre,
 #whoami { font-size: 12px; color: var(--muted); }
 #whoami b { color: var(--gold); }
 
-/* ── FLOATING MENUS (the palette that pops over the format) ─────────────── */
+/* -- FLOATING MENUS (the palette that pops over the format) --------------- */
 .panel {
   position: absolute; z-index: 600;
   width: 300px;
@@ -259,7 +259,7 @@ body, button, input, select, textarea, table, code, kbd, pre,
 .item .del:hover { color: var(--accent2); }
 .empty { color: var(--muted); font-style: italic; font-size: 12px; padding: 8px 2px; }
 
-/* ── SIGN IN ────────────────────────────────────────────────────────────── */
+/* -- SIGN IN -------------------------------------------------------------- */
 #gate {
   position: absolute; inset: 0; z-index: 900;
   background: rgba(6,6,10,0.93);
@@ -282,7 +282,7 @@ body, button, input, select, textarea, table, code, kbd, pre,
 .gate-alt { margin-top: 12px; font-size: 12px; color: var(--muted); }
 .gate-alt a { color: var(--blue2); cursor: pointer; text-decoration: none; }
 
-/* ── STATUS + TOAST ─────────────────────────────────────────────────────── */
+/* -- STATUS + TOAST ------------------------------------------------------- */
 #testbar {
   position: absolute; left: 50%; transform: translateX(-50%);
   top: 6px; z-index: 940;
@@ -349,9 +349,9 @@ body, button, input, select, textarea, table, code, kbd, pre,
   .panel { width: min(300px, calc(100vw - 24px)); }
 }
 
-/* ══ VERBATIM FROM THE RADAR APP: toolbar chrome, the Storm Cone tool,
+/* == VERBATIM FROM THE RADAR APP: toolbar chrome, the Storm Cone tool,
    and the Alert Desk, so the portal runs the app's real tools rather
-   than imitations of them. ══ */
+   than imitations of them. == */
 .tool-btn { display: none; }
 .svgi { width: 1em; height: 1em; }
 .dtb-btn {
@@ -369,7 +369,7 @@ body, button, input, select, textarea, table, code, kbd, pre,
 }
 .dtb-btn:active { background:rgba(255,255,255,0.18); }
 .dtb-btn.active { background:rgba(170,0,0,0.65); border-color:#AA0000; color:#fff; box-shadow:0 0 8px rgba(170,0,0,0.45); }
-/* ── STORM CONE TOOLBAR (same look as draw-toolbar/text-toolbar) ──
+/* -- STORM CONE TOOLBAR (same look as draw-toolbar/text-toolbar) --
    The city-results list opens as a popover directly above this bar,
    same technique as the font/color popovers on the Text tool, so the
    two stay visually attached without turning into a separate panel. */
@@ -459,7 +459,7 @@ body, button, input, select, textarea, table, code, kbd, pre,
 }
 #sc-mode-sel option { background: #1a1a22; color: #fff; }
 
-/* ── ALERT DESK: compose and issue your own practice warnings ──
+/* -- ALERT DESK: compose and issue your own practice warnings --
    Everything issued here is a simulated product. The styling leans on that
    deliberately: the dashed polygon, the amber SIM chips and the standing
    corner badge exist so a screenshot of this app can never be mistaken for
@@ -841,7 +841,7 @@ body, button, input, select, textarea, table, code, kbd, pre,
 <svg id="icon-sprite-defs" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden"><defs><symbol id="ic-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.6 9.6 0 0 1-2.9-.4L3 21l1.6-4.6A8.2 8.2 0 0 1 3 11.5 8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z"/></symbol><symbol id="ic-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></symbol><symbol id="ic-refresh-ccw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 3v4.3h4.3"/></symbol><symbol id="ic-refresh-cw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 3v4.3h-4.3"/></symbol><symbol id="ic-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h14M13 4l4 4-4 4"/><path d="M21 16H7M11 20l-4-4 4-4"/></symbol><symbol id="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol><symbol id="ic-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4.5 4.5 0 0 1-1-8.9A5.5 5.5 0 0 1 16.7 7 4 4 0 0 1 17 15H7z"/></symbol><symbol id="ic-cloud-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="7" r="3"/><path d="M16 2v1.4M20.6 7h-1.4M12.6 3.8l1 1M19.4 10.2l1 1"/><path d="M6 19a4 4 0 0 1-.7-7.9A5 5 0 0 1 15 9.4 3.6 3.6 0 0 1 14.6 16H6z"/></symbol><symbol id="ic-cloud-rain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15a4 4 0 0 1-.6-7.9A5 5 0 0 1 15 9.2 3.6 3.6 0 0 1 14.6 16H6z"/><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3"/></symbol><symbol id="ic-storm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 13a4 4 0 0 1-.6-7.9A5 5 0 0 1 15 7.2 3.6 3.6 0 0 1 14.6 14H6z"/><path d="M13 14l-3 5h3l-2 4"/></symbol><symbol id="ic-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></symbol><symbol id="ic-snow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M4.5 7l15 10M19.5 7l-15 10"/></symbol><symbol id="ic-cloud-snow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12a4 4 0 0 1-.6-7.9A5 5 0 0 1 15 6.2 3.6 3.6 0 0 1 14.6 13H6z"/><path d="M9 17v4M7 18l4 2M13 18l-4 2M15 17v4"/></symbol><symbol id="ic-fog" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h18M3 12h18M3 16h12"/></symbol><symbol id="ic-wind" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h15a3 3 0 1 0-2.5-4.6"/><path d="M2 12h18a3 3 0 1 1-2.5 4.6"/><path d="M2 17h12"/></symbol><symbol id="ic-tornado" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18M5 8h14M7 12h10M9 16h6M10.5 20h3"/></symbol><symbol id="ic-rainbow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18a10 10 0 0 1 20 0"/><path d="M6 18a6 6 0 0 1 12 0"/></symbol><symbol id="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></symbol><symbol id="ic-drop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 7 6 11a6 6 0 1 1-12 0c0-4 6-11 6-11z"/></symbol><symbol id="ic-ice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="1"/><path d="M5 12h14M12 5v14M7 7l10 10M17 7L7 17"/></symbol><symbol id="ic-temp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a2 2 0 0 0-2 2v9.5a4 4 0 1 0 4 0V5a2 2 0 0 0-2-2z"/><circle cx="12" cy="17.5" r="2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-cyclone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h14a2 2 0 1 1-2 3H6M4 12h10a2 2 0 1 1-2 3H8M4 18h6"/></symbol><symbol id="ic-antenna" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15a9 9 0 0 1 9-9"/><path d="M4 15l7 7"/><path d="M11 15a4 4 0 0 0 4-4"/><circle cx="11" cy="15" r="1.3" fill="currentColor" stroke="none"/><path d="M18 4l2 2-9 9-2-2z"/></symbol><symbol id="ic-satellite" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="6" height="6" rx="1"/><line x1="2" y1="6" x2="7" y2="11"/><line x1="2" y1="12" x2="7" y2="7"/><line x1="22" y1="6" x2="17" y2="11"/><line x1="22" y1="12" x2="17" y2="7"/><line x1="12" y1="15" x2="12" y2="21"/><path d="M9 21h6"/></symbol><symbol id="ic-siren" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 21v-4"/><path d="M5 17a7 7 0 0 1 14 0z"/><path d="M12 6V3M6.5 8L4.5 6M17.5 8l2-2"/></symbol><symbol id="ic-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"/><path d="M12 10v4"/><circle cx="12" cy="17.3" r="0.9" fill="currentColor" stroke="none"/></symbol><symbol id="ic-fire" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a7 7 0 0 0 7-7c0-3-2-5-3-7 0 2-1 3-2 3 0-3-1-5-3-8-1 4-5 6-5 12a6 6 0 0 0 6 7z"/></symbol><symbol id="ic-wave" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8c1.5 1.5 3 1.5 4.5 0S9 6.5 10.5 8s3 1.5 4.5 0 3-1.5 4.5 0 3 1.5 4.5 0"/><path d="M2 14c1.5 1.5 3 1.5 4.5 0S9 12.5 10.5 14s3 1.5 4.5 0 3-1.5 4.5 0 3 1.5 4.5 0"/><path d="M2 20c1.5 1.5 3 1.5 4.5 0S9 18.5 10.5 20s3 1.5 4.5 0 3-1.5 4.5 0 3 1.5 4.5 0"/></symbol><symbol id="ic-target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-compass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 9l-2 6-6 2 2-6z" fill="currentColor" stroke="none"/></symbol><symbol id="ic-map" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></symbol><symbol id="ic-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-7.6 7-12.5A7 7 0 1 0 5 9.5C5 14.4 12 22 12 22z"/><circle cx="12" cy="9.5" r="2.3" fill="currentColor" stroke="none"/></symbol><symbol id="ic-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></symbol><symbol id="ic-car" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16l1.5-5A2 2 0 0 1 7.4 9.5h9.2A2 2 0 0 1 18.5 11L20 16"/><rect x="3" y="16" width="18" height="3" rx="1"/><circle cx="7.5" cy="19" r="1.3" fill="currentColor" stroke="none"/><circle cx="16.5" cy="19" r="1.3" fill="currentColor" stroke="none"/></symbol><symbol id="ic-building" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10 21v-3h4v3"/></symbol><symbol id="ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="1.5"/><path d="M8 11V7a4 4 0 1 1 8 0v4"/></symbol><symbol id="ic-unlock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 7.5-1.9"/></symbol><symbol id="ic-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.5M12 18.5V21M4.4 7.5l2.2 1.3M17.4 15.2l2.2 1.3M4.4 16.5l2.2-1.3M17.4 8.8l2.2-1.3M3 12h2.5M18.5 12H21"/></symbol><symbol id="ic-palette" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 8 0 1 0 0 16c1.2 0 1.6-.7 1.2-1.6-.4-.9 0-1.9 1-1.9H16a5 5 0 0 0 5-5c0-4.1-4-7.5-9-7.5z"/><circle cx="7.5" cy="10.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="11" cy="7.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.1" fill="currentColor" stroke="none"/></symbol><symbol id="ic-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M10.5 19h3"/></symbol><symbol id="ic-desktop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="1"/><path d="M8 20h8M12 16v4"/></symbol><symbol id="ic-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-5-5"/></symbol><symbol id="ic-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol><symbol id="ic-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></symbol><symbol id="ic-speaker" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9v6h4l5 4V5L7 9z"/><path d="M17 9a4 4 0 0 1 0 6M19.5 6.5a8 8 0 0 1 0 11"/></symbol><symbol id="ic-dice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="8.5" cy="15.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><rect x="8" y="3" width="6" height="5"/><rect x="7" y="14" width="10" height="6"/></symbol><symbol id="ic-chart-bar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="20" x2="5" y2="13"/><line x1="12" y1="20" x2="12" y2="8"/><line x1="19" y1="20" x2="19" y2="4"/><line x1="2" y1="20" x2="22" y2="20"/></symbol><symbol id="ic-chart-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-9"/><path d="M15 6h6v6"/></symbol><symbol id="ic-chart-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l6 6 4-4 8 9"/><path d="M15 18h6v-6"/></symbol><symbol id="ic-radio" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="11" rx="2"/><circle cx="8" cy="14.5" r="2"/><path d="M13 14h5M13 17h3"/><path d="M7 9l3-5 3 5"/></symbol><symbol id="ic-robot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="9" width="14" height="10" rx="2"/><circle cx="9.5" cy="14" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="14" r="1.2" fill="currentColor" stroke="none"/><path d="M12 9V5M9 5h6"/></symbol><symbol id="ic-dot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7" fill="currentColor" stroke="none"/></symbol><symbol id="ic-hex" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z"/></symbol><symbol id="ic-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5l14 14M19 5L5 19"/></symbol><symbol id="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6"/></symbol><symbol id="ic-blocked" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.5 5.5l13 13"/></symbol><symbol id="ic-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></symbol><symbol id="ic-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></symbol><symbol id="ic-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17H6z"/><path d="M15 2v3h3"/><path d="M9 11h6M9 15h6"/></symbol><symbol id="ic-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="18" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M8 11h8M8 15h8"/></symbol><symbol id="ic-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></symbol><symbol id="ic-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1-5L16 4l4 4L9 19z"/><path d="M13 7l4 4"/></symbol><symbol id="ic-tools" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 1 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4l-3-3-1.4 1.4z"/></symbol><symbol id="ic-ruler" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="6" rx="1"/><path d="M7 9v3M11 9v3M15 9v3M19 9v3"/></symbol><symbol id="ic-paperclip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12V6a4 4 0 0 1 8 0v10a3 3 0 1 1-6 0V9"/></symbol><symbol id="ic-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M4 17l5-5 3 3 4-5 4 5"/></symbol><symbol id="ic-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M4 6l8 7 8-7"/></symbol><symbol id="ic-megaphone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10v4h3l6 4V6l-6 4z"/><path d="M14 9a4 4 0 0 1 0 6"/></symbol><symbol id="ic-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 0-2 2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 1 2 2z"/></symbol><symbol id="ic-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></symbol><symbol id="ic-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol><symbol id="ic-sparkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/></symbol><symbol id="ic-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 6.5 7 .8-5.2 4.8 1.4 6.9L12 17.7l-6.2 3.3 1.4-6.9L2 9.3l7-.8z"/></symbol><symbol id="ic-microscope" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20h8M12 20v-4M8 16h6a3 3 0 0 0 0-6H8"/><path d="M8 10V4l3 2 3-2v6"/><circle cx="8" cy="12" r="1" fill="currentColor" stroke="none"/></symbol><symbol id="ic-telescope" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15l14-6 2 4-14 6z"/><path d="M12 12l2 6-4 1.5"/><circle cx="6" cy="18" r="1.5"/></symbol><symbol id="ic-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M17 6h3M4 12h4M11 12h9M4 18h13M20 18h0"/><circle cx="14" cy="6" r="2" fill="currentColor" stroke="none"/><circle cx="8" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="17" cy="18" r="2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-signal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20v-3M9 20v-6M14 20v-9M19 20V4"/></symbol><symbol id="ic-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a13 13 0 0 1 0 18M12 3a13 13 0 0 0 0 18"/></symbol><symbol id="ic-trophy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10v6a5 5 0 0 1-10 0z"/><path d="M7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3"/><path d="M10 19h4M12 15v4M9 21h6"/></symbol><symbol id="ic-mountain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20l6-11 4 6 3-4 7 9z"/></symbol><symbol id="ic-leaf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20C4 10 12 4 20 4c0 8-6 16-16 16z"/><path d="M6 18C9 13 12 10 18 6"/></symbol><symbol id="ic-flag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v18"/><path d="M5 4h13l-3 4 3 4H5"/></symbol><symbol id="ic-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="18" r="2.2" fill="currentColor" stroke="none"/><circle cx="17" cy="16" r="2.2" fill="currentColor" stroke="none"/><path d="M9.2 18V5l10-2v13"/></symbol><symbol id="ic-fullscreen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol><symbol id="ic-gauge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4-5"/><circle cx="12" cy="16" r="1.2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-sunrise" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18h20"/><path d="M6 18a6 6 0 0 1 12 0"/><path d="M12 8v3M6.5 11.5l1.8 1.8M17.5 11.5l-1.8 1.8"/></symbol><symbol id="ic-noodles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7c2 2 4-2 6 0s4-2 6 0 4-2 6 0"/><path d="M3 12c2 2 4-2 6 0s4-2 6 0 4-2 6 0"/><path d="M3 17c2 2 4-2 6 0s4-2 6 0 4-2 6 0"/></symbol><symbol id="ic-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/></symbol><symbol id="ic-bulb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3 11c1 .6 1 1 1 2h4c0-1 0-1.4 1-2a6 6 0 0 0-3-11z"/></symbol><symbol id="ic-numbers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9h14M5 15h14M9 4L7 20M17 4l-2 16"/></symbol><symbol id="ic-plane" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13l20-6-7 7 2 7-4-4-4 4-1-7z"/></symbol><symbol id="ic-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l14 8-14 8z" fill="currentColor" stroke="none"/></symbol><symbol id="ic-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/></symbol><symbol id="ic-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" stroke="none"/></symbol><symbol id="ic-stopwatch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 13V9"/><path d="M9 2h6"/><path d="M12 2v2"/></symbol><symbol id="ic-hourglass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12M6 21h12M7 3c0 5 3 6 5 8-2 2-5 3-5 8M17 3c0 5-3 6-5 8 2 2 5 3 5 8"/></symbol><symbol id="ic-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="7.5" r="0.9" fill="currentColor" stroke="none"/><path d="M12 11v6"/></symbol><symbol id="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="1.5"/><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></symbol><symbol id="ic-grip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="18" r="1.4" fill="currentColor" stroke="none"/></symbol><symbol id="ic-external" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-8 8"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol></defs></svg>
 
 
-<!-- ══ THE FORMAT: the PDF page over a full-bleed map ═════════════════ -->
+<!-- == THE FORMAT: the PDF page over a full-bleed map ================= -->
 <div id="format">
   <div id="mapwrap"><div id="map"></div></div>
 
@@ -963,9 +963,9 @@ body, button, input, select, textarea, table, code, kbd, pre,
 <div id="armnote"></div>
 <div id="toast"></div>
 
-<!-- ══ CONTROLS ══════════════════════════════════════════════════════════ -->
+<!-- == CONTROLS ========================================================== -->
 
-<!-- ══ TOOL PALETTE (the menu that pops up over the format) ══════════════ -->
+<!-- == TOOL PALETTE (the menu that pops up over the format) ============== -->
 <div class="panel" id="p-tools" style="top:26vh; right:22px;">
   <div class="panel-head">Outlook Tools
     <button class="x" onclick="togglePanel('p-tools')"><svg class="ic"><use href="#ic-close"></use></svg></button></div>
@@ -987,7 +987,7 @@ body, button, input, select, textarea, table, code, kbd, pre,
   </div>
 </div>
 
-<!-- ══ SIGN IN GATE ══════════════════════════════════════════════════════ -->
+<!-- == SIGN IN GATE ====================================================== -->
 <div id="gate">
   <div class="gatecard">
     <h2>GWCFC <span class="gold">Forecasting Portal</span></h2>
@@ -1013,7 +1013,7 @@ body, button, input, select, textarea, table, code, kbd, pre,
 <script>
 'use strict';
 
-// ══ WHAT THE OUTLOOK IS MADE OF ═════════════════════════════════════════
+// == WHAT THE OUTLOOK IS MADE OF =========================================
 // Three vocabularies, straight off the design: storm strength 1 to 5, how
 // likely a disturbance is to develop, and how serious the alert is. Every
 // colour here is read by both the legend and the tools, so the key under the
@@ -1053,7 +1053,7 @@ function stormSVG(cat, size) {
     + ' style="width:' + s + 'px;height:' + s + 'px" draggable="false">';
 }
 
-// ══ THE OUTLOOK BEING EDITED ════════════════════════════════════════════
+// == THE OUTLOOK BEING EDITED ============================================
 // One plain object. It is what gets drawn, and it is exactly what gets
 // published, so what a forecaster sees is what readers get.
 let OUTLOOK = { storms: [], areas: [], cones: [], alerts: [],
@@ -1072,13 +1072,13 @@ function toast(msg, ms) {
   toast._t = setTimeout(() => { t.style.display = 'none'; }, ms || 3200);
 }
 
-// ══ LEGENDS ═════════════════════════════════════════════════════════════
+// == LEGENDS =============================================================
 function buildLegends() {
   // The keys are the PDF's own pixels inside icons/two-frame.png now;
   // nothing is rebuilt here.
 }
 
-// ══ TOOLS ═══════════════════════════════════════════════════════════════
+// == TOOLS ===============================================================
 function buildTools() {
   document.getElementById('tool-syms').innerHTML = CATS.map(c =>
     '<button class="symbtn" data-cat="' + c.n + '" onclick="armStorm(' + c.n + ')"'
@@ -1154,7 +1154,7 @@ function armArea(type, id) {
 }
 
 
-// ══ ZONES: the areas an outlook actually talks about ════════════════════
+// == ZONES: the areas an outlook actually talks about ====================
 // A chance or an alert covers ground, not a point, so both are drawn as a
 // polygon the forecaster clicks out. The National Hurricane Center fills its
 // areas with diagonal hatching rather than flat colour, so the map underneath
@@ -1316,7 +1316,7 @@ function zoneDraw(a) {
   }
 }
 
-// ══ COUNTIES AND PROVINCES ══════════════════════════════════════════════
+// == COUNTIES AND PROVINCES ==============================================
 // Two sources, because the two questions have two answers. A US county comes
 // from the Weather Service, which is the authority on the boundaries warnings
 // are actually issued for. A province or state comes from Natural Earth's
@@ -1441,7 +1441,7 @@ function zoneBarUndo() {
 }
 function zoneBarCancel() { if (PICK) pickCancel(); else zoneCancel(); }
 
-// ══ MAP ═════════════════════════════════════════════════════════════════
+// == MAP =================================================================
 function initMap() {
   map = L.map('map', { zoomControl: true, worldCopyJump: true })
          .setView([22, -62], 4);           // the Atlantic basin, as the NHC frames it
@@ -1520,7 +1520,7 @@ function renderLists() {
 
 }
 
-// ══ PANELS: open, close, and drag by the header ═════════════════════════
+// == PANELS: open, close, and drag by the header =========================
 function togglePanel(id) {
   const p = document.getElementById(id);
   if (!p) return;
@@ -1551,7 +1551,7 @@ function togglePanel(id) {
   });
 })();
 
-// ══ THE HEADER STAMP ════════════════════════════════════════════════════
+// == THE HEADER STAMP ====================================================
 // The design sets the title at 48pt on a 1440 wide page. A window narrower
 // than that cannot hold those letters, and a clipped title is worse than a
 // slightly smaller one, so it is measured and stepped down until it fits.
@@ -1591,7 +1591,7 @@ function stampHeader() {
   fitPills();
 }
 
-// ══ ACCOUNTS ════════════════════════════════════════════════════════════
+// == ACCOUNTS ============================================================
 // The same Firebase project the radar app uses, so a GWCFC Radar account is
 // the account here. Signing in is not enough to publish: the profile has to
 // carry the forecaster flag, which is set by an administrator rather than
@@ -1604,7 +1604,7 @@ const GWCFC_FB_CONFIG = {
   messagingSenderId: "771831294871",
   appId:             "1:771831294871:web:370f3a4d7617f460cdb2d2",
 };
-// ── TESTING MODE ────────────────────────────────────────────────────────
+// -- TESTING MODE --------------------------------------------------------
 // While the portal is being built there is one person using it, and a sign
 // in wall between them and the thing they are testing helps nobody. With
 // this true the gate never appears and the tools are live. Set it to false
@@ -1669,7 +1669,7 @@ function friendlyAuthError(e) {
   if (/popup-closed/.test(c)) return 'The Google window was closed.';
   return (e && e.message) || 'Sign in failed.';
 }
-// ══ THE SAME JOB, OVER THE REAL DATA ════════════════════════════════════
+// == THE SAME JOB, OVER THE REAL DATA ====================================
 // This portal composes over a plain basemap. The radar app composes over
 // radar, satellite, models and the live alert feed, which is a different job:
 // a warning polygon drawn around the storm you are looking at is not the same
@@ -1750,7 +1750,7 @@ function setEditable(on) {
   if (!on) clearArm();
 }
 
-// ══ PUBLISH ═════════════════════════════════════════════════════════════
+// == PUBLISH =============================================================
 // Published outlooks are written to Firestore, one document per issuance plus
 // a "latest" pointer, so the site (and anything else that reads the project)
 // can show the current outlook without knowing how it was made.
@@ -1849,7 +1849,7 @@ async function loadLatest() {
   } catch (e) {}
 }
 
-// ══ BOOT ════════════════════════════════════════════════════════════════
+// == BOOT ================================================================
 function loadFirebase() {
   return new Promise((resolve) => {
     const libs = ['firebase-app-compat.js', 'firebase-auth-compat.js',
@@ -1900,7 +1900,7 @@ if (document.readyState === 'loading') {
 </script>
 
 <script>
-// ══ THE RADAR APP'S OWN TOOLS ═══════════════════════════════════════════
+// == THE RADAR APP'S OWN TOOLS ===========================================
 // Everything below the shim block is copied verbatim from index.html: the
 // Storm Cone tool (drag or multi-point cones, per-dot category icons and
 // speeds, style editor, city list, animation, PNG save) and the Alert Desk
@@ -1909,7 +1909,7 @@ if (document.readyState === 'loading') {
 // portal already has, so the code itself runs unchanged.
 'use strict';
 
-// ── Shims: the app surface the tools expect ─────────────────────────────
+// -- Shims: the app surface the tools expect -----------------------------
 function showToast(msg, ms) { toast(msg, ms); }
 const _RADIUS_COLORS = ['#008CBA','#ff4d4d','#4dff91','#ffcc00','#cc44ff','#ff8c00'];
 let _radiusNextId = 1;
@@ -1949,7 +1949,7 @@ let _ssCfg = {};
 function _ssSave() {}
 function _ssPlayChime() {}
 
-// ── Verbatim from the radar app ─────────────────────────────────────────
+// -- Verbatim from the radar app -----------------------------------------
 const ALERT_COLORS = {
   'Tornado Emergency':                  { color: '#8b0000', cls: 'tor' },
   'Tornado Warning':                    { color: '#ff0000', cls: 'tor' },
@@ -2038,7 +2038,7 @@ function _ptInPoly(lat, lng, poly) {
   return inside;
 }
 const CITIES = [
-  // ── USA: Northeast ──
+  // -- USA: Northeast --
   { name: 'New York, NY', lat: 40.7128, lon: -74.006 },
   { name: 'Boston, MA', lat: 42.3601, lon: -71.0589 },
   { name: 'Philadelphia, PA', lat: 39.9526, lon: -75.1652 },
@@ -2056,7 +2056,7 @@ const CITIES = [
   { name: 'Wilmington, DE', lat: 39.7447, lon: -75.5484 },
   { name: 'Syracuse, NY', lat: 43.0481, lon: -76.1474 },
   { name: 'Rochester, NY', lat: 43.1566, lon: -77.6088 },
-  // ── USA: Southeast ──
+  // -- USA: Southeast --
   { name: 'Miami, FL', lat: 25.7617, lon: -80.1918 },
   { name: 'Orlando, FL', lat: 28.5383, lon: -81.3792 },
   { name: 'Tampa, FL', lat: 27.9506, lon: -82.4572 },
@@ -2091,7 +2091,7 @@ const CITIES = [
   { name: 'Shreveport, LA', lat: 32.5252, lon: -93.7502 },
   { name: 'Little Rock, AR', lat: 34.7465, lon: -92.2896 },
   { name: 'Fayetteville, AR', lat: 36.0626, lon: -94.1574 },
-  // ── USA: Midwest ──
+  // -- USA: Midwest --
   { name: 'Chicago, IL', lat: 41.8781, lon: -87.6298 },
   { name: 'Springfield, IL', lat: 39.7817, lon: -89.6501 },
   { name: 'Peoria, IL', lat: 40.6936, lon: -89.589 },
@@ -2122,7 +2122,7 @@ const CITIES = [
   { name: 'Topeka, KS', lat: 39.0558, lon: -95.6894 },
   { name: 'Sioux Falls, SD', lat: 43.5446, lon: -96.7311 },
   { name: 'Fargo, ND', lat: 46.8772, lon: -96.7898 },
-  // ── USA: South / Texas ──
+  // -- USA: South / Texas --
   { name: 'Houston, TX', lat: 29.7604, lon: -95.3698 },
   { name: 'Dallas, TX', lat: 32.7767, lon: -96.797 },
   { name: 'San Antonio, TX', lat: 29.4241, lon: -98.4936 },
@@ -2139,7 +2139,7 @@ const CITIES = [
   { name: 'Beaumont, TX', lat: 30.086, lon: -94.1018 },
   { name: 'Oklahoma City, OK', lat: 35.4676, lon: -97.5164 },
   { name: 'Tulsa, OK', lat: 36.154, lon: -95.9928 },
-  // ── USA: West ──
+  // -- USA: West --
   { name: 'Los Angeles, CA', lat: 34.0522, lon: -118.2437 },
   { name: 'San Francisco, CA', lat: 37.7749, lon: -122.4194 },
   { name: 'San Diego, CA', lat: 32.7157, lon: -117.1611 },
@@ -2181,7 +2181,7 @@ const CITIES = [
   { name: 'Cheyenne, WY', lat: 41.14, lon: -104.8202 },
   { name: 'Casper, WY', lat: 42.8666, lon: -106.3131 },
   { name: 'Rapid City, SD', lat: 44.0805, lon: -103.2310 },
-  // ── Canada ──
+  // -- Canada --
   { name: 'Toronto', lat: 43.6532, lon: -79.3832 },
   { name: 'Vancouver', lat: 49.2827, lon: -123.1207 },
   { name: 'Montreal', lat: 45.5017, lon: -73.5673 },
@@ -2193,7 +2193,7 @@ const CITIES = [
   { name: 'Halifax', lat: 44.6488, lon: -63.5752 },
   { name: 'Victoria', lat: 48.4284, lon: -123.3656 },
   { name: 'Saskatoon', lat: 52.1579, lon: -106.6702 },
-  // ── Mexico ──
+  // -- Mexico --
   { name: 'Mexico City', lat: 19.4326, lon: -99.1332 },
   { name: 'Guadalajara', lat: 20.6597, lon: -103.3496 },
   { name: 'Monterrey', lat: 25.6866, lon: -100.3161 },
@@ -2201,7 +2201,7 @@ const CITIES = [
   { name: 'Cancún', lat: 21.1619, lon: -86.8515 },
   { name: 'Puebla', lat: 19.0414, lon: -98.2063 },
   { name: 'Mérida', lat: 20.9674, lon: -89.5926 },
-  // ── Central America & Caribbean ──
+  // -- Central America & Caribbean --
   { name: 'Guatemala City', lat: 14.6349, lon: -90.5069 },
   { name: 'San José, CR', lat: 9.9281, lon: -84.0907 },
   { name: 'Panama City', lat: 8.9936, lon: -79.5197 },
@@ -2210,7 +2210,7 @@ const CITIES = [
   { name: 'Nassau', lat: 25.0480, lon: -77.3554 },
   { name: 'Santo Domingo', lat: 18.4861, lon: -69.9312 },
   { name: 'San Juan, PR', lat: 18.4655, lon: -66.1057 },
-  // ── South America ──
+  // -- South America --
   { name: 'Bogotá', lat: 4.711, lon: -74.0721 },
   { name: 'Medellín', lat: 6.2442, lon: -75.5812 },
   { name: 'Caracas', lat: 10.4806, lon: -66.9036 },
@@ -2231,7 +2231,7 @@ const CITIES = [
   { name: 'Valparaíso', lat: -33.0472, lon: -71.6127 },
   { name: 'Asunción', lat: -25.2867, lon: -57.647 },
   { name: 'Montevideo', lat: -34.9011, lon: -56.1645 },
-  // ── Europe ──
+  // -- Europe --
   { name: 'London', lat: 51.5074, lon: -0.1278 },
   { name: 'Manchester', lat: 53.4808, lon: -2.2426 },
   { name: 'Birmingham', lat: 52.4862, lon: -1.8904 },
@@ -2298,7 +2298,7 @@ const CITIES = [
   { name: 'Ankara', lat: 39.9334, lon: 32.8597 },
   { name: 'Izmir', lat: 38.4192, lon: 27.1287 },
   { name: 'Reykjavik', lat: 64.1355, lon: -21.8954 },
-  // ── Africa ──
+  // -- Africa --
   { name: 'Cairo', lat: 30.0444, lon: 31.2357 },
   { name: 'Alexandria', lat: 31.2001, lon: 29.9187 },
   { name: 'Casablanca', lat: 33.5731, lon: -7.5898 },
@@ -2327,7 +2327,7 @@ const CITIES = [
   { name: 'Durban', lat: -29.8587, lon: 31.0218 },
   { name: 'Pretoria', lat: -25.7461, lon: 28.1881 },
   { name: 'Antananarivo', lat: -18.9137, lon: 47.5361 },
-  // ── Middle East ──
+  // -- Middle East --
   { name: 'Dubai', lat: 25.2048, lon: 55.2708 },
   { name: 'Abu Dhabi', lat: 24.4539, lon: 54.3773 },
   { name: 'Sharjah', lat: 25.3462, lon: 55.4211 },
@@ -2346,7 +2346,7 @@ const CITIES = [
   { name: 'Isfahan', lat: 32.6539, lon: 51.6660 },
   { name: 'Tel Aviv', lat: 32.0853, lon: 34.7818 },
   { name: 'Jerusalem', lat: 31.7683, lon: 35.2137 },
-  // ── Central & South Asia ──
+  // -- Central & South Asia --
   { name: 'Karachi', lat: 24.8607, lon: 67.0011 },
   { name: 'Lahore', lat: 31.5497, lon: 74.3436 },
   { name: 'Islamabad', lat: 33.6844, lon: 73.0479 },
@@ -2368,7 +2368,7 @@ const CITIES = [
   { name: 'Chittagong', lat: 22.3569, lon: 91.7832 },
   { name: 'Colombo', lat: 6.9271, lon: 79.8612 },
   { name: 'Kathmandu', lat: 27.7172, lon: 85.3240 },
-  // ── Southeast Asia ──
+  // -- Southeast Asia --
   { name: 'Kuala Lumpur', lat: 3.139, lon: 101.6869 },
   { name: 'Penang', lat: 5.4141, lon: 100.3288 },
   { name: 'Singapore', lat: 1.3521, lon: 103.8198 },
@@ -2390,7 +2390,7 @@ const CITIES = [
   { name: 'Yangon', lat: 16.8409, lon: 96.1735 },
   { name: 'Naypyidaw', lat: 19.7633, lon: 96.0785 },
   { name: 'Bandar Seri Begawan', lat: 4.9031, lon: 114.9398 },
-  // ── East Asia ──
+  // -- East Asia --
   { name: 'Beijing', lat: 39.9042, lon: 116.4074 },
   { name: 'Shanghai', lat: 31.2304, lon: 121.4737 },
   { name: 'Guangzhou', lat: 23.1291, lon: 113.2644 },
@@ -2423,7 +2423,7 @@ const CITIES = [
   { name: 'Incheon', lat: 37.4563, lon: 126.7052 },
   { name: 'Ulaanbaatar', lat: 47.8864, lon: 106.9057 },
   { name: 'Pyongyang', lat: 39.0392, lon: 125.7625 },
-  // ── Oceania ──
+  // -- Oceania --
   { name: 'Sydney', lat: -33.8688, lon: 151.2093 },
   { name: 'Melbourne', lat: -37.8136, lon: 144.9631 },
   { name: 'Brisbane', lat: -27.4698, lon: 153.0251 },
@@ -2440,7 +2440,7 @@ const CITIES = [
   { name: 'Suva', lat: -18.1416, lon: 178.4419 },
   { name: 'Port Moresby', lat: -9.4438, lon: 147.1803 },
 
-  // ── USA: More Northeast towns ──
+  // -- USA: More Northeast towns --
   { name: 'Scranton, PA', lat: 41.4090, lon: -75.6624 },
   { name: 'Allentown, PA', lat: 40.6023, lon: -75.4714 },
   { name: 'Reading, PA', lat: 40.3356, lon: -75.9269 },
@@ -2470,7 +2470,7 @@ const CITIES = [
   { name: 'Atlantic City, NJ', lat: 39.3643, lon: -74.4229 },
   { name: 'Camden, NJ', lat: 39.9259, lon: -75.1196 },
 
-  // ── USA: More Southeast towns ──
+  // -- USA: More Southeast towns --
   { name: 'Macon, GA', lat: 32.8407, lon: -83.6324 },
   { name: 'Columbus, GA', lat: 32.4610, lon: -84.9877 },
   { name: 'Albany, GA', lat: 31.5785, lon: -84.1557 },
@@ -2516,7 +2516,7 @@ const CITIES = [
   { name: 'Jonesboro, AR', lat: 35.8423, lon: -90.7043 },
   { name: 'Fort Smith, AR', lat: 35.3859, lon: -94.3985 },
 
-  // ── USA: More Midwest towns ──
+  // -- USA: More Midwest towns --
   { name: 'Aurora, IL', lat: 41.7606, lon: -88.3201 },
   { name: 'Rockford, IL', lat: 42.2711, lon: -89.0940 },
   { name: 'Joliet, IL', lat: 41.5250, lon: -88.0817 },
@@ -2563,7 +2563,7 @@ const CITIES = [
   { name: 'Grand Forks, ND', lat: 47.9253, lon: -97.0329 },
   { name: 'Minot, ND', lat: 48.2325, lon: -101.2963 },
 
-  // ── USA: More South / Texas towns ──
+  // -- USA: More South / Texas towns --
   { name: 'Tyler, TX', lat: 32.3513, lon: -95.3011 },
   { name: 'Plano, TX', lat: 33.0198, lon: -96.6989 },
   { name: 'Irving, TX', lat: 32.8140, lon: -96.9489 },
@@ -2584,7 +2584,7 @@ const CITIES = [
   { name: 'Broken Arrow, OK', lat: 36.0526, lon: -95.7908 },
   { name: 'Enid, OK', lat: 36.3956, lon: -97.8784 },
 
-  // ── USA: More West towns ──
+  // -- USA: More West towns --
   { name: 'Stockton, CA', lat: 37.9577, lon: -121.2908 },
   { name: 'Riverside, CA', lat: 33.9533, lon: -117.3962 },
   { name: 'Modesto, CA', lat: 37.6391, lon: -120.9969 },
@@ -2651,7 +2651,7 @@ const CITIES = [
   { name: 'Jackson, WY', lat: 43.4799, lon: -110.7624 },
   { name: 'Laramie, WY', lat: 41.3114, lon: -105.5911 },
 
-  // ── More Europe ──
+  // -- More Europe --
   { name: 'Leeds', lat: 53.8008, lon: -1.5491 },
   { name: 'Sheffield', lat: 53.3811, lon: -1.4701 },
   { name: 'Liverpool', lat: 53.4084, lon: -2.9916 },
@@ -2737,7 +2737,7 @@ const CITIES = [
   { name: 'Vladivostok', lat: 43.1332, lon: 131.9113 },
   { name: 'Irkutsk', lat: 52.2978, lon: 104.2964 },
 
-  // ── More Africa ──
+  // -- More Africa --
   { name: 'Kigali', lat: -1.9441, lon: 30.0619 },
   { name: 'Bujumbura', lat: -3.3869, lon: 29.3644 },
   { name: 'Kampala', lat: 0.3476, lon: 32.5825 },
@@ -2779,7 +2779,7 @@ const CITIES = [
   { name: 'Lilongwe', lat: -13.9626, lon: 33.7741 },
   { name: 'Blantyre', lat: -15.7861, lon: 35.0058 },
 
-  // ── More Asia ──
+  // -- More Asia --
   { name: 'Peshawar', lat: 34.0151, lon: 71.5249 },
   { name: 'Faisalabad', lat: 31.4187, lon: 73.0791 },
   { name: 'Rawalpindi', lat: 33.5651, lon: 73.0169 },
@@ -2857,7 +2857,7 @@ const CITIES = [
   { name: 'Ashgabat', lat: 37.9601, lon: 58.3261 },
   { name: 'Samarkand', lat: 39.6542, lon: 66.9597 },
 
-  // ── More Oceania & Pacific ──
+  // -- More Oceania & Pacific --
   { name: 'Townsville', lat: -19.2576, lon: 146.8178 },
   { name: 'Newcastle, AU', lat: -32.9267, lon: 151.7789 },
   { name: 'Wollongong', lat: -34.4278, lon: 150.8931 },
@@ -2880,7 +2880,7 @@ const CITIES = [
   { name: 'Papeete', lat: -17.5334, lon: -149.5667 },
   { name: 'Noumea', lat: -22.2758, lon: 166.4580 },
 
-  // ── More Caribbean & Central America ──
+  // -- More Caribbean & Central America --
   { name: 'Port-au-Prince', lat: 18.5944, lon: -72.3074 },
   { name: 'San Salvador', lat: 13.6929, lon: -89.2182 },
   { name: 'Tegucigalpa', lat: 14.0723, lon: -87.2020 },
@@ -2895,7 +2895,7 @@ const CITIES = [
   { name: 'Montego Bay', lat: 18.4762, lon: -77.8939 },
   { name: 'Willemstad', lat: 12.1092, lon: -68.9350 },
 
-  // ── More South America ──
+  // -- More South America --
   { name: 'Barranquilla', lat: 10.9639, lon: -74.7964 },
   { name: 'Cali', lat: 3.4516, lon: -76.5320 },
   { name: 'Cartagena', lat: 10.3910, lon: -75.4794 },
@@ -2928,7 +2928,7 @@ const CITIES = [
   { name: 'Asunción', lat: -25.2867, lon: -57.647 },
   { name: 'Cayambe', lat: -0.0432, lon: -78.1437 },
 
-  // ── USA: Even more cities & towns ──
+  // -- USA: Even more cities & towns --
   { name: 'Huntsville, AL', lat: 34.7304, lon: -86.5861 },
   { name: 'Anniston, AL', lat: 33.6598, lon: -85.8316 },
   { name: 'Gadsden, AL', lat: 34.0143, lon: -86.0066 },
@@ -3289,7 +3289,7 @@ const CITIES = [
   { name: 'Gillette, WY', lat: 44.2911, lon: -105.5025 },
   { name: 'Rock Springs, WY', lat: 41.5875, lon: -109.2029 },
 
-  // ── More Canada ──
+  // -- More Canada --
   { name: 'Mississauga', lat: 43.5890, lon: -79.6441 },
   { name: 'Brampton', lat: 43.7315, lon: -79.7624 },
   { name: 'Hamilton, ON', lat: 43.2557, lon: -79.8711 },
@@ -3334,7 +3334,7 @@ const CITIES = [
   { name: 'Yellowknife', lat: 62.4540, lon: -114.3718 },
   { name: 'Iqaluit', lat: 63.7467, lon: -68.5170 },
 
-  // ── More Mexico ──
+  // -- More Mexico --
   { name: 'León', lat: 21.1221, lon: -101.6824 },
   { name: 'Juárez', lat: 31.6904, lon: -106.4245 },
   { name: 'Zapopan', lat: 20.7214, lon: -103.3908 },
@@ -3361,7 +3361,7 @@ const CITIES = [
   { name: 'La Paz, MX', lat: 24.1426, lon: -110.3128 },
   { name: 'Los Cabos', lat: 22.8905, lon: -109.9167 },
 
-  // ── More Europe (smaller towns) ──
+  // -- More Europe (smaller towns) --
   { name: 'Inverness', lat: 57.4778, lon: -4.2247 },
   { name: 'Aberdeen', lat: 57.1497, lon: -2.0943 },
   { name: 'Dundee', lat: 56.4620, lon: -2.9707 },
@@ -3463,7 +3463,7 @@ const CITIES = [
   { name: 'Yuzhno-Sakhalinsk', lat: 46.9592, lon: 142.7381 },
   { name: 'Petropavlovsk-Kamchatsky', lat: 53.0450, lon: 158.6522 },
 
-  // ── More Middle East ──
+  // -- More Middle East --
   { name: 'Medina', lat: 24.4686, lon: 39.6142 },
   { name: 'Dammam', lat: 26.4207, lon: 50.0888 },
   { name: 'Hofuf', lat: 25.3833, lon: 49.5833 },
@@ -3489,7 +3489,7 @@ const CITIES = [
   { name: 'Homs', lat: 34.7324, lon: 36.7234 },
   { name: 'Latakia', lat: 35.5351, lon: 35.7918 },
 
-  // ── More Asia (India deeper) ──
+  // -- More Asia (India deeper) --
   { name: 'Chandigarh', lat: 30.7333, lon: 76.7794 },
   { name: 'Amritsar', lat: 31.6340, lon: 74.8723 },
   { name: 'Ludhiana', lat: 30.9010, lon: 75.8573 },
@@ -3567,7 +3567,7 @@ const CITIES = [
   { name: 'Yinchuan', lat: 38.4872, lon: 106.2309 },
   { name: 'Lanzhou', lat: 36.0594, lon: 103.7922 },
 
-  // ── More Oceania ──
+  // -- More Oceania --
   { name: 'Rockhampton', lat: -23.3791, lon: 150.5100 },
   { name: 'Mackay', lat: -21.1555, lon: 149.1653 },
   { name: 'Gladstone', lat: -23.8427, lon: 151.2562 },
@@ -3586,7 +3586,7 @@ const CITIES = [
   { name: 'Invercargill', lat: -46.4132, lon: 168.3538 },
   { name: 'New Plymouth', lat: -39.0556, lon: 174.0752 },
 
-  // ── Pacific Island capitals ──
+  // -- Pacific Island capitals --
   { name: 'Tarawa', lat: 1.3291, lon: 172.9790 },
   { name: 'Funafuti', lat: -8.5243, lon: 179.1942 },
   { name: 'Majuro', lat: 7.1167, lon: 171.3667 },
@@ -3594,7 +3594,7 @@ const CITIES = [
   { name: 'Hagåtña', lat: 13.4443, lon: 144.7937 },
   { name: 'Saipan', lat: 15.1778, lon: 145.7500 },
 
-  // ── More Africa (smaller cities) ──
+  // -- More Africa (smaller cities) --
   { name: 'Bloemfontein', lat: -29.1210, lon: 26.2140 },
   { name: 'Port Elizabeth', lat: -33.9608, lon: 25.6022 },
   { name: 'East London', lat: -33.0153, lon: 27.9116 },
@@ -3635,7 +3635,7 @@ const CITIES = [
   { name: 'Toamasina', lat: -18.1492, lon: 49.4023 },
   { name: 'Fianarantsoa', lat: -21.4537, lon: 47.0861 },
 
-  // ── More Africa (West & Central) ──
+  // -- More Africa (West & Central) --
   { name: 'Abuja', lat: 9.0579, lon: 7.4951 },
   { name: 'Kano', lat: 12.0022, lon: 8.5920 },
   { name: 'Ibadan', lat: 7.3776, lon: 3.9470 },
@@ -3709,7 +3709,7 @@ const CITIES = [
   { name: 'Toliara', lat: -23.3568, lon: 43.6917 },
   { name: 'Diego Suarez', lat: -12.3568, lon: 49.2969 },
 
-  // ── More Middle East & North Africa ──
+  // -- More Middle East & North Africa --
   { name: 'Riyadh', lat: 24.7136, lon: 46.6753 },
   { name: 'Jeddah', lat: 21.5433, lon: 39.1728 },
   { name: 'Mecca', lat: 21.3891, lon: 39.8579 },
@@ -3760,7 +3760,7 @@ const CITIES = [
   { name: 'Haifa', lat: 32.7940, lon: 34.9896 },
   { name: 'Beer Sheva', lat: 31.2518, lon: 34.7913 },
 
-  // ── South Asia deeper ──
+  // -- South Asia deeper --
   { name: 'Mumbai', lat: 19.0760, lon: 72.8777 },
   { name: 'Delhi', lat: 28.7041, lon: 77.1025 },
   { name: 'Bangalore', lat: 12.9716, lon: 77.5946 },
@@ -3823,7 +3823,7 @@ const CITIES = [
   { name: 'Kandahar', lat: 31.6289, lon: 65.7372 },
   { name: 'Mazar-i-Sharif', lat: 36.7069, lon: 67.1100 },
 
-  // ── Central Asia deeper ──
+  // -- Central Asia deeper --
   { name: 'Almaty', lat: 43.2220, lon: 76.8512 },
   { name: 'Nursultan', lat: 51.1801, lon: 71.4460 },
   { name: 'Shymkent', lat: 42.3000, lon: 69.6000 },
@@ -3839,7 +3839,7 @@ const CITIES = [
   { name: 'Ulaanbaatar', lat: 47.8864, lon: 106.9057 },
   { name: 'Darkhan', lat: 49.4698, lon: 105.9706 },
 
-  // ── Southeast Asia deeper ──
+  // -- Southeast Asia deeper --
   { name: 'Bangkok', lat: 13.7563, lon: 100.5018 },
   { name: 'Chiang Mai', lat: 18.7883, lon: 98.9853 },
   { name: 'Pattaya', lat: 12.9236, lon: 100.8825 },
@@ -3892,7 +3892,7 @@ const CITIES = [
   { name: 'Bandar Seri Begawan', lat: 4.9410, lon: 114.9480 },
   { name: 'Dili', lat: -8.5569, lon: 125.5789 },
 
-  // ── East Asia deeper ──
+  // -- East Asia deeper --
   { name: 'Beijing', lat: 39.9042, lon: 116.4074 },
   { name: 'Shanghai', lat: 31.2304, lon: 121.4737 },
   { name: 'Guangzhou', lat: 23.1291, lon: 113.2644 },
@@ -3950,7 +3950,7 @@ const CITIES = [
   { name: 'Hong Kong', lat: 22.3193, lon: 114.1694 },
   { name: 'Macau', lat: 22.1987, lon: 113.5439 },
 
-  // ── Europe deeper ──
+  // -- Europe deeper --
   { name: 'London', lat: 51.5074, lon: -0.1278 },
   { name: 'Birmingham, UK', lat: 52.4862, lon: -1.8904 },
   { name: 'Manchester', lat: 53.4808, lon: -2.2426 },
@@ -4113,7 +4113,7 @@ const CITIES = [
   { name: 'Baku', lat: 40.4093, lon: 49.8671 },
   { name: 'Ganja', lat: 40.6828, lon: 46.3606 },
 
-  // ── South America deeper ──
+  // -- South America deeper --
   { name: 'São Paulo', lat: -23.5505, lon: -46.6333 },
   { name: 'Rio de Janeiro', lat: -22.9068, lon: -43.1729 },
   { name: 'Brasília', lat: -15.7975, lon: -47.8919 },
@@ -4191,7 +4191,7 @@ const CITIES = [
   { name: 'Oranjestad', lat: 12.5246, lon: -70.0269 },
   { name: 'Willemstad', lat: 12.1084, lon: -68.9335 },
 
-  // ── Oceania & Pacific deeper ──
+  // -- Oceania & Pacific deeper --
   { name: 'Sydney', lat: -33.8688, lon: 151.2093 },
   { name: 'Melbourne', lat: -37.8136, lon: 144.9631 },
   { name: 'Brisbane', lat: -27.4698, lon: 153.0251 },
@@ -4236,7 +4236,7 @@ const CITIES = [
   { name: 'Lihue', lat: 21.9811, lon: -159.3711 },
   { name: 'Kahului', lat: 20.8893, lon: -156.4729 },
 
-  // ── Canada deeper ──
+  // -- Canada deeper --
   { name: 'Toronto', lat: 43.6532, lon: -79.3832 },
   { name: 'Montreal', lat: 45.5017, lon: -73.5673 },
   { name: 'Vancouver', lat: 49.2827, lon: -123.1207 },
@@ -4266,7 +4266,7 @@ const CITIES = [
   { name: 'Whitehorse', lat: 60.7212, lon: -135.0568 },
   { name: 'Dawson City', lat: 64.0600, lon: -139.4333 },
 
-  // ── Mexico & Central America deeper ──
+  // -- Mexico & Central America deeper --
   { name: 'Mexico City', lat: 19.4326, lon: -99.1332 },
   { name: 'Guadalajara', lat: 20.6597, lon: -103.3496 },
   { name: 'Monterrey', lat: 25.6866, lon: -100.3161 },
@@ -4307,7 +4307,7 @@ const CITIES = [
   { name: 'Port-au-Prince', lat: 18.5944, lon: -72.3074 },
   { name: 'Nassau', lat: 25.0480, lon: -77.3554 },
 
-  // ── Arctic & Remote stations ──
+  // -- Arctic & Remote stations --
   { name: 'Longyearbyen', lat: 78.2232, lon: 15.6267 },
   { name: 'Nuuk', lat: 64.1835, lon: -51.7216 },
   { name: 'Thule (Qaanaaq)', lat: 77.4667, lon: -69.2167 },
@@ -4364,7 +4364,7 @@ function _aiLoadHtml2canvas() {
     document.head.appendChild(s);
   });
 }
-// ── STORM CONE TOOL ──────────────────────────────────────────────────────
+// -- STORM CONE TOOL ------------------------------------------------------
 // Drag once on the map to draw a threat cone (direction + spread based on
 // the drag), then list every city from CITIES that falls inside it, with
 // distance/ETA/arrival based on an editable storm speed. Single cone at a
@@ -4695,7 +4695,7 @@ function _scGetSpeedMph() {
   return Number.isFinite(v) && v > 0 ? v : SC_DEFAULT_SPEED_MPH;
 }
 
-// ── DRAW MODE (drag vs multi-point) ─────────────────────────────────────
+// -- DRAW MODE (drag vs multi-point) -------------------------------------
 function _scSetMode(mode) {
   _scMode = mode === 'multi' ? 'multi' : 'drag';
   try { localStorage.setItem('gwcfc_sc_mode', _scMode); } catch (e) {}
@@ -4949,7 +4949,7 @@ function _scRenderCone() {
   _scRenderPointsPanel();
 }
 
-// ── CONE STYLE (colors + opacity) ────────────────────────────────────────────
+// -- CONE STYLE (colors + opacity) --------------------------------------------
 function _scSetStyle(key, value) {
   _scStyle[key] = (key === 'outlineOpacity' || key === 'fillOpacity') ? Number(value) : value;
   if (_scTrack) _scRenderCone();
@@ -4992,7 +4992,7 @@ function _scCloseStylePanel() {
   _scStyleOpen = false;
 }
 
-// ── PER-POINT CURVE EDITING ───────────────────────────────────────────────
+// -- PER-POINT CURVE EDITING -----------------------------------------------
 // Each rendered dot corresponds to one entry in _scTrack.pointCurves (see
 // _scBuildTrack). This popover lists every currently-shown dot with its
 // curve value, lets you type a new value for any of them, and clicking a
@@ -5306,7 +5306,7 @@ function _scRenderResults(matches, speed) {
   `).join('');
 }
 
-// ── ANIMATE STORM ALONG THE CONE ─────────────────────────────────────────────
+// -- ANIMATE STORM ALONG THE CONE ---------------------------------------------
 // Ported from the old Track Maker's animate feature, but timing now comes
 // from the real per-dot speeds via _scCumulativeTimes instead of one fixed
 // duration per leg - segments the storm covers faster animate faster.
@@ -5503,8 +5503,8 @@ function _scClearAll() {
   _scRebuildConeList();
 }
 
-// ── MULTI-CONE LIST (same row/select/delete pattern as the Radius Tool's
-// #rtb-list) ─────────────────────────────────────────────────────────────
+// -- MULTI-CONE LIST (same row/select/delete pattern as the Radius Tool's
+// #rtb-list) -------------------------------------------------------------
 function _scRebuildConeList() {
   const el = document.getElementById('sc-tb-list');
   if (!el) return;
@@ -5586,7 +5586,7 @@ function _scDeleteCone(id) {
 }
 
 
-// ── ALERT DESK ──────────────────────────────────────────────────────────
+// -- ALERT DESK ----------------------------------------------------------
 // Sit at the desk and write the product yourself: pick the warning, draw or
 // click the area, set how bad each hazard is, and issue it. What comes out
 // behaves like every other alert this app already knows how to handle - it
@@ -5604,9 +5604,9 @@ function _scDeleteCone(id) {
 const AD_KEY = 'gwcfc_alertdesk';
 const AD_SIM_LINE = 'SIMULATED PRODUCT. NOT ISSUED BY THE NATIONAL WEATHER SERVICE.';
 
-// ══════════════════════════════════════════════════════════════════════════
-// ── GWCFC PRODUCT TEMPLATES ───────────────────────────────────────────────
-// ══════════════════════════════════════════════════════════════════════════
+// ==========================================================================
+// -- GWCFC PRODUCT TEMPLATES -----------------------------------------------
+// ==========================================================================
 // The office's own product format: 18 hazards, each issuable as a Watch, a
 // Warning or an Emergency, each of those at a Base, Severe or Extreme tier.
 // 162 products.
@@ -5861,7 +5861,7 @@ function gwcfcGuessTier(text) {
   return 'base';
 }
 
-// ── Somebody else's text, in our format ───────────────────────────────────
+// -- Somebody else's text, in our format -----------------------------------
 // The reformatter used to emit the Weather Service's own bullet layout, which
 // was the right answer when this office had no format of its own. It has one
 // now, so pasted text is read for what it says and written out as a GWCFC
@@ -5969,7 +5969,7 @@ function gwcfcReformat(raw, opts) {
 }
 
 
-// ── The intensity scale ───────────────────────────────────────────────────
+// -- The intensity scale ---------------------------------------------------
 // Five stops, shared by every hazard. Level 0 means the hazard is not part of
 // this product and writes nothing at all. Everything below hangs off this one
 // table, so replacing the scale later is a matter of editing these arrays and
@@ -6057,7 +6057,7 @@ const AD_HAZARDS = {
   },
 };
 
-// ── What you can issue ────────────────────────────────────────────────────
+// -- What you can issue ----------------------------------------------------
 // `event` is the plain product name because that string is what the rest of
 // the app colours, sorts and prioritises by, so a Tornado Warning from the
 // desk paints the same red a real one does. `haz` lists which hazards the
@@ -6100,7 +6100,7 @@ function _adEsc(s) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-// ── Stored state ──────────────────────────────────────────────────────────
+// -- Stored state ----------------------------------------------------------
 function _adLoad() {
   let raw = {};
   try { raw = JSON.parse(localStorage.getItem(AD_KEY) || '{}') || {}; } catch (e) {}
@@ -6139,7 +6139,7 @@ function _adNewDraft(code) {
   };
 }
 
-// ── Text ──────────────────────────────────────────────────────────────────
+// -- Text ------------------------------------------------------------------
 function _adFmtClock(ms) {
   try {
     return new Date(ms).toLocaleTimeString('en-US',
@@ -6260,7 +6260,7 @@ function _adSeverity(a) {
   return m >= 3 ? 'Moderate' : 'Minor';
 }
 
-// ── Turning a desk product into the alert shape the app already speaks ─────
+// -- Turning a desk product into the alert shape the app already speaks -----
 function _adToFeature(a) {
   const iso = ms => new Date(ms).toISOString();
   return {
@@ -6286,7 +6286,7 @@ function _adToFeature(a) {
   };
 }
 
-// ── The join with the real alert feed ─────────────────────────────────────
+// -- The join with the real alert feed -------------------------------------
 // renderAlerts is handed the live NWS list. This keeps that list aside so a
 // re-render triggered by the desk does not have to wait for the next poll,
 // then hands back the combined set. Desk products go first so they sort to
@@ -6338,7 +6338,7 @@ function _adSimBadge() {
   el.classList.toggle('on', live);
 }
 
-// ── Area: drawing on the map ──────────────────────────────────────────────
+// -- Area: drawing on the map ----------------------------------------------
 let _adPreviewLayer = null;
 let _adDrawPts = [];
 let _adDrawLayer = null;
@@ -6433,7 +6433,7 @@ async function _adDrawDone(e) {
   }
 }
 
-// ── Area: counties and forecast zones ─────────────────────────────────────
+// -- Area: counties and forecast zones -------------------------------------
 const _adZoneInfoCache = new Map();
 function _adZoneInfo(ugc) {
   if (_adZoneInfoCache.has(ugc)) return _adZoneInfoCache.get(ugc);
@@ -6606,7 +6606,7 @@ function _adDraftAreaDesc() {
   return (d.areaName || '').trim();
 }
 
-// ── Issuing ───────────────────────────────────────────────────────────────
+// -- Issuing ---------------------------------------------------------------
 function _adCanIssue() {
   return !!_adDraftGeometry();
 }
@@ -6655,7 +6655,7 @@ function _adAnnounce(a) {
   } catch (e) {}
 }
 
-// ── Follow-up statements ──────────────────────────────────────────────────
+// -- Follow-up statements --------------------------------------------------
 // A warning does not just stop. It is continued, extended or cancelled, and
 // each of those is its own statement in real life. These write that statement
 // into the product's own record so the history reads like a sequence rather
@@ -6732,7 +6732,7 @@ function _adReuse(uid) {
   _adOpen();
 }
 
-// ── The panel ─────────────────────────────────────────────────────────────
+// -- The panel -------------------------------------------------------------
 function _adOpen() {
   let el = document.getElementById('ad-modal');
   if (!el) { el = _adBuild(); document.body.appendChild(el); }
@@ -6983,7 +6983,7 @@ function _adSyncDraftUi() {
   }
 }
 
-// ── Writing the product text by hand ──────────────────────────────────────
+// -- Writing the product text by hand --------------------------------------
 // The desk generates a product from the boxes above, which is the fast path
 // and the right one most of the time. But a forecaster sometimes needs to say
 // something the boxes cannot express, so the generated text is a starting
@@ -7052,7 +7052,7 @@ function _adSyncBodyUi() {
   if (ta && !manual && open && open.display !== 'none') ta.value = _adCurrentText();
 }
 
-// ── Reformatting somebody else's text into ours ───────────────────────────
+// -- Reformatting somebody else's text into ours ---------------------------
 // Takes a product written anywhere else and rewrites it in this desk's
 // format. Real warning text states its fields as "* WHAT...", one bullet
 // each, with the field's text sometimes running over several lines, and ends
@@ -7275,7 +7275,7 @@ _adSimBadge();
 
 <script>
 
-// ── Wiring the tools into the portal ────────────────────────────────────
+// -- Wiring the tools into the portal ------------------------------------
 // The Cone button behaves like the app's toolbar button: on when drawing.
 setInterval(() => { try { _adExpireSweep(); } catch (e) {} }, 60000);
 setTimeout(() => { try { _adExpireSweep(false); renderAlerts(); } catch (e) {} }, 800);

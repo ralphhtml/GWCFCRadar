@@ -10,10 +10,10 @@
  * writes a PNG per scan. That means the page now has two completely different
  * kinds of satellite frame, and almost everything that can go wrong here is
  * one of them being treated as the other: a picture asked for as tiles, a
- * sector offered that the Pi does not build, a manifest landing after the
+ * sector offered that the parsing server does not build, a manifest landing after the
  * user has moved on and repainting the map with the wrong product.
  *
- * The Pi is mocked, because there is no Pi here. What is not mocked is the
+ * The parsing server is mocked, because there is no parsing server here. What is not mocked is the
  * page: these drive the real menu, the real frame builder and the real layer
  * pool, and read what actually ended up on the map.
  */
@@ -95,7 +95,7 @@ await page.route('**://**', route => {
   if (m) {
     asked.push(`${m[1]}/${m[2]}`);
     // Only CONUS and the mesoscale boxes are built here; Full Disk is on
-    // demand only on the Pi and is genuinely absent most of the time.
+    // demand only on the parsing server and is genuinely absent most of the time.
     if (m[2] === 'fulldisk')
       return route.fulfill({ status: 404, body: 'not built' });
     return route.fulfill({ contentType: 'application/json',
@@ -110,7 +110,7 @@ await page.route('**://**', route => {
 await page.goto('file://' + join(ROOT, 'index.html'), { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(4200);
 await page.evaluate(() => { if (typeof closeTutorial === 'function') closeTutorial(); });
-// Point the page at the mock Pi, the same way a real resolve would.
+// Point the page at the mock parsing server, the same way a real resolve would.
 await page.evaluate(pi => { _hdBase = pi; }, PI);
 
 console.log('\n1. the composites are their own branch of the menu');
@@ -155,15 +155,15 @@ console.log('\n1. the composites are their own branch of the menu');
   ok('which are named in words, not ids',
      r.catLabels.every(l => /[a-z]/.test(l) && l.length > 3), JSON.stringify(r.catLabels));
   ok('a real set of composites, not one token entry', r.count >= 7, String(r.count));
-  ok('every one is marked as coming from the Pi, with a recipe named', r.allPi);
+  ok('every one is marked as coming from the parsing server, with a recipe named', r.allPi);
   ok('every one has an info description', r.described.length === 0, r.described.join(','));
   ok('and every one is reachable by walking the menu',
      r.missing.length === 0, r.missing.join(','));
-  ok('and no plain band was turned into a Pi product by accident',
+  ok('and no plain band was turned into a parsing server product by accident',
      r.bandsUntouched === 0, String(r.bandsUntouched));
 }
 
-console.log('\n2. choosing one reads the Pi, not the WMS');
+console.log('\n2. choosing one reads the parsing server, not the WMS');
 {
   asked.length = 0;
   const r = await page.evaluate(async () => {
@@ -181,12 +181,12 @@ console.log('\n2. choosing one reads the Pi, not the WMS');
       srcId: _animSource().id,
     };
   });
-  ok('the page knows this product is a Pi one', r.isPi === true);
-  ok('it asked the Pi for the right satellite and sector',
+  ok('the page knows this product is a parsing server one', r.isPi === true);
+  ok('it asked the parsing server for the right satellite and sector',
      asked.includes('east/conus'), JSON.stringify(asked));
   ok('every frame in the manifest became a frame on the bar',
      r.frames === 5, String(r.frames));
-  ok('the frames point at the Pi, one folder per scan',
+  ok('the frames point at the parsing server, one folder per scan',
      /\/satellite\/east\/conus\/20260820_120000\/airmass\.png$/.test(r.firstUrl || ''),
      r.firstUrl);
   ok('oldest first, so the timeline reads left to right',
@@ -243,7 +243,7 @@ console.log('\n4. playback works the same as it does for a band');
   ok('and the labels are the composite\'s own times', /12/.test(r.labels), r.labels);
 }
 
-console.log('\n5. only sectors the Pi actually builds are offered');
+console.log('\n5. only sectors the parsing server actually builds are offered');
 {
   const r = await page.evaluate(() => {
     _setGoesProduct('rgb-airmass');
@@ -286,7 +286,7 @@ console.log('\n6. switching to a composite from a sector it cannot do lands some
      JSON.stringify(r.target));
 }
 
-console.log('\n7. a product the Pi has not built says so instead of going blank');
+console.log('\n7. a product the parsing server has not built says so instead of going blank');
 {
   const r = await page.evaluate(async () => {
     activeLayers.satellite = true;

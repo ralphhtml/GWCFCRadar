@@ -577,7 +577,7 @@ console.log('\n16. the prediction log');
 console.log('\n17. a full scan runs end to end without network');
 {
   const r = await page.evaluate(async () => {
-    // No Pi, no feeds: every fetch fails. The scan still has to complete and
+    // No parsing server, no feeds: every fetch fails. The scan still has to complete and
     // report what it could not reach, because that is exactly the state a
     // phone on a bad connection is in.
     _fxHistory = [];

@@ -8,7 +8,7 @@
  * The idea (and the 10/20/30/40 minute steps) comes from wxtools.org.
  * There is no network call to hold down anywhere in this feature - a
  * decoded mesh is read directly, and a picture-only radar (the Normal
- * mosaic, a single site's own picture, MRMS, the Pi's Level 3 picture) is
+ * mosaic, a single site's own picture, MRMS, the parsing server's Level 3 picture) is
  * read back by colour straight off the tiles this page has already drawn -
  * so this drives every path directly: a synthetic mesh for the decoded
  * side, and a synthetic tile painted into radarPane for the picture side.
@@ -357,14 +357,14 @@ console.log('\n9. a single site\'s own picture, and MRMS, read the exact same wa
   ok('MRMS is its own scope, checked ahead of the site picture', mrms === 'mrms', mrms);
 }
 
-console.log('\n10. the Pi\'s own Level 3 picture is a picture too, not a decoded mesh');
+console.log('\n10. the parsing server\'s own Level 3 picture is a picture too, not a decoded mesh');
 {
   const r = await p.evaluate(() => {
     _mrmsActive = false; _refStation = null;
     _radarSource = 'l3'; _prOn = true; _prBucketSite = null; _prProduct = 'reflectivity'; _prSite = 'KTLX';
     const meshScope = (() => {
       // The same live-state guard _tstScopeKey uses: Level 3 without a
-      // bucket site is the Pi's own picture, never a decoded mesh.
+      // bucket site is the parsing server's own picture, never a decoded mesh.
       return _radarSource === 'l3' && !!_prBucketSite;
     })();
     return { scope: _tstScopeKey(), meshActiveWouldBe: meshScope };

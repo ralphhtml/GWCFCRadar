@@ -61,7 +61,7 @@ svc_tree = ast.parse(svc_src)
 serve_src = open(SERVE, encoding="utf-8").read()
 
 
-# ── 1. the service can be read without the libraries it uses ────────────────
+# -- 1. the service can be read without the libraries it uses ----------------
 print("\n1. it needs nothing that has to be installed")
 top_imports = set()
 for node in svc_tree.body:
@@ -96,7 +96,7 @@ ok("both are reported on, rather than guessed about",
    set(svc.have_libs()) == {"sounderpy", "sharppy"}, str(svc.have_libs()))
 
 
-# ── 2. units are converted, not assumed ─────────────────────────────────────
+# -- 2. units are converted, not assumed -------------------------------------
 print("\n2. the text format is read in the units it is written in")
 # The single thing most likely to be got wrong here. GSD writes pressure in
 # TENTHS of a millibar and both temperatures in TENTHS of a degree, so a
@@ -244,7 +244,7 @@ ok("the key is safe to use as a filename",
    all(ch.isalnum() or ch == "_" for ch in a), a)
 
 
-# ── 4. failures are sentences ───────────────────────────────────────────────
+# -- 4. failures are sentences -----------------------------------------------
 print("\n4. every failure says what to do about it")
 raises = [n for n in ast.walk(svc_tree) if isinstance(n, ast.Raise)]
 # Fewer than before on purpose: the whole surface of "the library is not\n# installed" went away with the library.\nok("there are failures to check", len(raises) >= 2, str(len(raises)))
@@ -280,7 +280,7 @@ ok("the real reason is carried rather than just the exception name",
 ok("nothing raises a bare Exception with no message",
    not any(m.strip() in ("raise", "raise Exception") for m in msgs))
 
-# ── 5. SHARPpy returns nothing rather than exploding ────────────────────────
+# -- 5. SHARPpy returns nothing rather than exploding ------------------------
 print("\n5. no SHARPpy is a smaller answer, not a failure")
 fn = next(n for n in svc_tree.body
           if isinstance(n, ast.FunctionDef) and n.name == "sharppy_params")
@@ -303,7 +303,7 @@ ok("and calling it right now, with nothing installed, returns None",
                                    "Td": [15], "u": [0], "v": [0]}}) is None)
 
 
-# ── 6. the door itself, on a real socket ────────────────────────────────────
+# -- 6. the door itself, on a real socket ------------------------------------
 print("\n6. the door answers, on a real socket")
 
 # A stand-in service, swapped in before serve.py's handler imports it. The
@@ -686,7 +686,7 @@ ok("and an hour before new year is the previous year",
    svc._hours_before("2026010100", 3) == "2025123121")
 
 
-# ── The cache, which used to raise on every hit ───────────────────────────
+# -- The cache, which used to raise on every hit ---------------------------
 # CACHE_SECS was named in two places and defined in none, so _cache_read threw
 # NameError the moment a cache file actually existed. The miss path was safe,
 # because getmtime raises OSError first and that IS caught, which is exactly

@@ -355,10 +355,10 @@ console.log('\n11. it closes, and says so when there is nothing loaded');
      + 'charts', /spaghetti models/i.test(r.empty), r.empty.slice(0, 120));
 }
 
-console.log('\nZ. a run the Pi does not have leaves the button honest');
+console.log('\nZ. a run the parsing server does not have leaves the button honest');
 {
   const r = await page.evaluate(async () => {
-    // The failure people actually hit: the Pi has no run yet. This used to
+    // The failure people actually hit: the parsing server has no run yet. This used to
     // set _cycOn true before finding that out, so the button read "Hide
     // tracks" over an empty map and the NEXT press disabled rather than
     // retrying. Pressing again and again alternated between two kinds of

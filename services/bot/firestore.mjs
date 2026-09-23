@@ -63,7 +63,7 @@ async function call(path, init = {}) {
   return j;
 }
 
-// ── Firestore's typed value format ──
+// -- Firestore's typed value format --
 function toValue(v) {
   if (v === null || v === undefined) return { nullValue: null };
   if (typeof v === 'string')  return { stringValue: v };
@@ -87,7 +87,7 @@ function fromFields(f) {
   return Object.fromEntries(Object.entries(f || {}).map(([k, v]) => [k, fromValue(v)]));
 }
 
-// ── Linking ─────────────────────────────────────────────────────────────────
+// -- Linking -----------------------------------------------------------------
 // This used to search the whole users collection for a code, which the rules
 // refuse: users/{uid} is readable only by the account it belongs to, and this
 // bot is an anonymous visitor. It could not have worked.
@@ -154,7 +154,7 @@ export async function patchUser(uid, fields) {
   });
 }
 
-// ── Live chat bridge ────────────────────────────────────────────────────────
+// -- Live chat bridge --------------------------------------------------------
 // A Discord webhook can only post INTO Discord; there is no way to read a
 // channel with one. So the website posts to the webhook directly, and this is
 // the other direction: the bot sees a Discord message and drops it into the
@@ -192,7 +192,7 @@ export async function addChatMessage({ text, name, discordId, avatar, mentions }
   });
 }
 
-// ── The pingable roster ─────────────────────────────────────────────────────
+// -- The pingable roster -----------------------------------------------------
 // The website cannot ask Discord who is in the server: it has no token, and a
 // webhook can only post, never read. So the bot writes down everyone it sees
 // and the website reads that list.
@@ -218,7 +218,7 @@ export async function upsertRosterEntry({ id, name, avatar }) {
   });
 }
 
-// ── Shared Asturio conversation ─────────────────────────────────────────────
+// -- Shared Asturio conversation ---------------------------------------------
 // The account's own asturioChats field cannot be used from here: users/{uid} is
 // readable and writable only by its owner, and this bot is an anonymous
 // visitor, so every attempt came back 403 and Discord conversations were never
@@ -285,7 +285,7 @@ export async function getUser(uid) {
   }
 }
 
-// ── The Discord economy ─────────────────────────────────────────────────────
+// -- The Discord economy -----------------------------------------------------
 // Keyed by Discord id, in its own collection, deliberately separate from
 // users/{uid}: the economy is a Discord thing, and playing it should never
 // require linking a GWCFC Radar account. Same PATCH-with-mask upsert shape as

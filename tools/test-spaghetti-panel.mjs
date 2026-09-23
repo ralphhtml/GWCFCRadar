@@ -4,8 +4,8 @@
  *
  *     node tools/test-spaghetti-panel.mjs
  *
- * The Pi half has its own suite (tools/test-spaghetti.py) proving the a-deck
- * parses honestly. This is the page's half: given a guidance document the Pi
+ * The parsing server half has its own suite (tools/test-spaghetti.py) proving the a-deck
+ * parses honestly. This is the page's half: given a guidance document the parsing server
  * already built, does the panel draw the right lines in the right colours,
  * prefer a raw run over its interpolated twin, keep thirty-one GEFS members
  * behind a chip instead of on by default, and does the track animation
@@ -38,7 +38,7 @@ const ok = (name, cond, extra) => {
   else { fail++; console.log('  FAIL ' + name + (extra ? '  <' + extra + '>' : '')); }
 };
 
-// ── the guidance the Pi is pretending to have built ─────────────────────────
+// -- the guidance the parsing server is pretending to have built -------------------------
 const P = (tau, lat, lon, vmax, mslp) => ({ tau, lat, lon, vmax, mslp });
 const STORM = {
   id: 'al092026', atcf: 'AL092026', name: 'GABRIELLE',
@@ -367,7 +367,7 @@ console.log('\n8. hiding the guidance puts everything away');
      await page.evaluate(() => _spagUserOff === true));
 }
 
-console.log('\n9. a quiet Atlantic and a missing Pi both say what they are');
+console.log('\n9. a quiet Atlantic and a missing parsing server both say what they are');
 {
   await page.evaluate(() => { _spagIndex = { at: Date.now(),
     idx: { updated: 'now', storms: [] } }; _spagUserOff = false; });
@@ -381,8 +381,8 @@ console.log('\n9. a quiet Atlantic and a missing Pi both say what they are');
   await page.evaluate(() => _spagToggle());
   await page.waitForTimeout(300);
   s = await st();
-  ok('no Pi reads as the Pi not having updated yet',
-     s.on === false && /No guidance from the Pi/.test(s.status), s.status);
+  ok('no parsing server reads as the parsing server not having updated yet',
+     s.on === false && /No guidance from the parsing server/.test(s.status), s.status);
 }
 
 console.log('\n10. house rules, credit, and the section head');

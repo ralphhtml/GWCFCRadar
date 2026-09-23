@@ -228,7 +228,7 @@ L3_PRODUCTS = {
             "ramp": "velocity", "label": "Storm Rel. Velocity Tilt 2", "unit": "kt"},
 }
 
-# ── TDWR Level 3, the terminal radars' own dialect ──────────────────────────
+# -- TDWR Level 3, the terminal radars' own dialect --------------------------
 # The airport radars (T sites) publish the same kinds of products under their
 # own names, which AtticRadar's tables document: TZ0 and TZ1 are the base
 # reflectivity tilts, TV0 and TV1 the velocity tilts, TZL the long range
@@ -273,7 +273,7 @@ def is_tdwr(site):
 EARTH_R = 6371000.0
 
 
-# ── Finding files ───────────────────────────────────────────────────────────
+# -- Finding files -----------------------------------------------------------
 
 NS = "{http://s3.amazonaws.com/doc/2006-03-01/}"
 
@@ -520,7 +520,7 @@ def fetch_l3_tdwr(site, spec, path):
     return None
 
 
-# ── Turning polar sweeps into map coordinates ───────────────────────────────
+# -- Turning polar sweeps into map coordinates -------------------------------
 
 def gate_latlon(site_lat, site_lon, azimuths, ranges, elevation_deg=0.5):
     """
@@ -555,7 +555,7 @@ def gate_latlon(site_lat, site_lon, azimuths, ranges, elevation_deg=0.5):
     return lat, lon
 
 
-# ── Decoding ────────────────────────────────────────────────────────────────
+# -- Decoding ----------------------------------------------------------------
 
 def _metpy():
     """
@@ -671,7 +671,7 @@ def read_l3(path):
     return data, lat, lon, (site_lat, site_lon)
 
 
-# ── Rendering ───────────────────────────────────────────────────────────────
+# -- Rendering ---------------------------------------------------------------
 
 def _fill_ray_gaps(arr, passes=3):
     """
@@ -770,7 +770,7 @@ def render(data, lat, lon, spec, out_path):
     return bounds_from(lats, lons)
 
 
-# ── Housekeeping ────────────────────────────────────────────────────────────
+# -- Housekeeping ------------------------------------------------------------
 
 def prune(site_dir, hours=KEEP_HOURS, cap=None):
     """Drop frames past the retention window, and past the count ceiling.
@@ -813,7 +813,7 @@ def prune(site_dir, hours=KEEP_HOURS, cap=None):
             shutil.rmtree(full, ignore_errors=True)
 
 
-# ── Building ────────────────────────────────────────────────────────────────
+# -- Building ----------------------------------------------------------------
 
 def build_site_l2(site, frames=1):
     """Fetch and render the newest Level 2 volumes for one site."""
@@ -994,7 +994,7 @@ def write_index(level, sites):
     return index
 
 
-# ── MRMS national severe products ───────────────────────────────────────────
+# -- MRMS national severe products -------------------------------------------
 # Rotation tracks and hail swaths, the two derived products people pay other
 # apps for, straight from NOAA's own MRMS feed. One small gzipped GRIB each,
 # published every two minutes, covering the whole CONUS at 1 km: where storms
@@ -1038,7 +1038,7 @@ REFL3D_BASE = "https://mrms.ncep.noaa.gov/data/3DRefl"
 # minute timer and a pass that runs 210 seconds leaves them ninety.
 MRMS_PASS_SECS = float(os.environ.get("GWCFC_MRMS_PASS_SECS", "150"))
 MRMS_PASS_MAX = int(os.environ.get("GWCFC_MRMS_PASS_MAX", "30"))
-# ── The MRMS catalogue ──────────────────────────────────────────────────────
+# -- The MRMS catalogue ------------------------------------------------------
 # Every entry is one national grid published at a fixed address, so adding a
 # product is a dict entry and nothing else: build_mrms below reads, shrinks,
 # colours and writes whatever is listed here. A path that turns out to be
@@ -1055,7 +1055,7 @@ MRMS_PASS_MAX = int(os.environ.get("GWCFC_MRMS_PASS_MAX", "30"))
 # MRMS's missing/no-coverage marker. Temperature is the obvious one, and
 # treating -3 C as "no coverage" would erase half a winter map.
 MRMS_PRODUCTS = {
-    # ── Rotation: where a mesocyclone travelled. The floor hides the weak
+    # -- Rotation: where a mesocyclone travelled. The floor hides the weak
     # shear speckle covering every map, so what stays drawn is worth looking
     # at. Mid level is the classic; low level is nearer the ground and so
     # nearer the question everyone is actually asking.
@@ -1077,7 +1077,7 @@ MRMS_PRODUCTS = {
     "rotationll30": {"path": "RotationTrack30min", "label": "Low-Level Rotation 30m",
                      "unit": "s^-1", "range": (0.002, 0.014), "ramp": "heat",
                      "floor": 0.003, "every": 5},
-    # ── Hail. MESH is the algorithm's largest hail, in millimetres; 6 mm is
+    # -- Hail. MESH is the algorithm's largest hail, in millimetres; 6 mm is
     # under pea size, the smallest worth drawing at all.
     "mesh":     {"path": "MESH_Max_60min", "label": "Hail Swaths 60m",
                  "unit": "mm", "range": (0, 100), "ramp": "radar",
@@ -1161,7 +1161,7 @@ MRMS_PRODUCTS = {
     "h60abovem20": {"path": "H60_Above_-20C", "label": "60 dBZ above -20 C",
                     "unit": "km", "range": (0, 6), "ramp": "heat",
                     "floor": 0.2, "every": 5},
-    # ── The national radar picture, merged from every site.
+    # -- The national radar picture, merged from every site.
     "composite": {"path": "MergedReflectivityQCComposite",
                   "label": "Composite Reflectivity", "unit": "dBZ",
                   "range": (-10, 75), "ramp": "radar", "floor": 5.0, "every": 5},
@@ -1211,7 +1211,7 @@ MRMS_PRODUCTS = {
     "hsrheight": {"path": "SeamlessHSRHeight", "label": "Hybrid Scan Height",
                   "unit": "km", "range": (0, 12), "ramp": "viridis",
                   "floor": 0.05, "every": 15},
-    # ── How tall the storms are, and how much they hold aloft.
+    # -- How tall the storms are, and how much they hold aloft.
     "echotop18": {"path": "EchoTop_18", "label": "Echo Top 18 dBZ",
                   "unit": "km", "range": (0, 20), "ramp": "viridis",
                   "floor": 0.5, "every": 5},
@@ -1230,14 +1230,14 @@ MRMS_PRODUCTS = {
     "vii":       {"path": "VII", "label": "Vertically Integrated Ice",
                   "unit": "kg/m2", "range": (0, 50), "ramp": "heat",
                   "floor": 0.5, "every": 5},
-    # ── What is falling, and how hard.
+    # -- What is falling, and how hard.
     "preciprate": {"path": "PrecipRate", "label": "Precip Rate",
                    "unit": "mm/hr", "range": (0, 50), "ramp": "precip",
                    "floor": 0.2, "every": 5},
     "preciptype": {"path": "PrecipFlag", "label": "Precip Type",
                    "unit": "", "range": (0, 10), "ramp": "viridis",
                    "floor": 0.5, "every": 5},
-    # ── Rainfall totals. Slow moving by nature, so slow lanes.
+    # -- Rainfall totals. Slow moving by nature, so slow lanes.
     "qpe01": {"path": "RadarOnly_QPE_01H", "label": "Rainfall 1 hr",
               "unit": "mm", "range": (0, 50), "ramp": "precip",
               "floor": 0.3, "every": 15},
@@ -1302,7 +1302,7 @@ MRMS_PRODUCTS = {
     "qpeari24": {"path": "QPE_ARI24H", "base": FLASH_BASE, "label": "24 hr rain, ARI",
                  "unit": "yr", "range": (0, 100), "ramp": "heat",
                  "floor": 1.0, "every": 60},
-    # ── Lightning.
+    # -- Lightning.
     "ltgprob30": {"path": "LightningProbabilityNext30minGrid",
                   "label": "Lightning Prob. 30 min", "unit": "%",
                   "range": (0, 100), "ramp": "heat", "floor": 5.0, "every": 5},
@@ -1327,7 +1327,7 @@ MRMS_PRODUCTS = {
     "ltgjump": {"path": "LtgJumpGrid", "label": "Lightning Jump",
                 "unit": "", "range": (0, 10), "ramp": "heat",
                 "floor": 0.5, "every": 5},
-    # ── Winter and the melting layer: where rain becomes snow, and the
+    # -- Winter and the melting layer: where rain becomes snow, and the
     # temperatures that decide it. These are the signed ones.
     "brightband": {"path": "BrightBandTopHeight", "label": "Melting Layer Top",
                    "unit": "m", "range": (0, 5000), "ramp": "viridis",
@@ -1335,7 +1335,7 @@ MRMS_PRODUCTS = {
     # The bottom of the melting layer matters as much as the top: rain
     # reaching the ground rather than snow depends on how far below the layer
     # the ground is, and the top alone does not say that.
-    # ── Flooding, which radar only answers half of ─────────────────────
+    # -- Flooding, which radar only answers half of ---------------------
     #
     # Rainfall is not flooding. An inch on dry sand does nothing and an inch
     # on saturated clay above a small catchment is a wall of water, so the
@@ -1393,7 +1393,7 @@ MRMS_PRODUCTS = {
     "h0c": {"path": "Model_0degC_Height", "label": "Freezing Level",
             "unit": "m", "range": (0, 5000), "ramp": "viridis",
             "floor": 1.0, "every": 15},
-    # ── Added after enumerating NOAA's own MRMS bucket (noaa-mrms-pds) and
+    # -- Added after enumerating NOAA's own MRMS bucket (noaa-mrms-pds) and
     # diffing it against this table. Everything below is a product MRMS
     # genuinely publishes and this pipeline was not asking for.
     #

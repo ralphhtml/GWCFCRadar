@@ -186,7 +186,7 @@ RGB_RECIPES = {
         ],
     },
 
-    # ── The wider published set ─────────────────────────────────────────────
+    # -- The wider published set ---------------------------------------------
     # Every recipe below is a CIRA or EUMETSAT quick-guide standard, with the
     # published ranges and gammas rather than tuned-by-eye numbers, so a
     # forecaster who knows these products from anywhere else reads ours the
@@ -746,7 +746,7 @@ def build_sector(sat_key, sector, only=None, now=None):
     return built
 
 
-# ── The global mosaic: GMGSI ────────────────────────────────────────────────
+# -- The global mosaic: GMGSI ------------------------------------------------
 # NOAA's Global Mosaic of Geostationary Satellite Imagery: every operational
 # geostationary satellite - GOES East and West, Himawari over the Pacific,
 # Meteosat over Africa and the Indian Ocean - blended into one worldwide

@@ -232,7 +232,7 @@ console.log('\n2b. the menu offers what the site actually measures');
        kRow.some(t => t.startsWith(l))), kRow.join(','));
 }
 
-console.log('\n3. Level 3 from the bucket, for radars the Pi does not build');
+console.log('\n3. Level 3 from the bucket, for radars the parsing server does not build');
 let echoSite = null;    // whichever site turns out to have echoes; 3b reuses it
 {
   // A plain NEXRAD nobody configured: this is the whole point of the fallback.
@@ -346,7 +346,7 @@ let echoSite = null;    // whichever site turns out to have echoes; 3b reuses it
   await clearDraw();
 }
 
-console.log('\n3c. the Pi being unreachable is not a dead end any more');
+console.log('\n3c. the parsing server being unreachable is not a dead end any more');
 {
   // The bug this guards: _prEnable failed on a dead tunnel, left _prOn
   // raised, and the next tap on a product bubble hit the "already showing,

@@ -177,7 +177,7 @@ def log(msg):
     print(f"[spag] {msg}", flush=True)
 
 
-# ── ATCF field parsing: each sentinel resolved HERE so it cannot leak ────────
+# -- ATCF field parsing: each sentinel resolved HERE so it cannot leak --------
 def int_or_none(raw):
     """An ATCF integer cell. 0, -99 and -999 are all MISSING, not values."""
     raw = (raw or "").strip()
@@ -258,7 +258,7 @@ def label(tech):
     return tech
 
 
-# ── Deck parsing ─────────────────────────────────────────────────────────────
+# -- Deck parsing -------------------------------------------------------------
 def parse_deck(text, keep_non_forecast=False):
     """One a-deck or b-deck -> (rows, qc dict). Same layout for both.
 
@@ -369,7 +369,7 @@ def consensus_membership(present, basin):
     return out
 
 
-# ── Fetching ─────────────────────────────────────────────────────────────────
+# -- Fetching -----------------------------------------------------------------
 def http_get(url, timeout=REQUEST_TIMEOUT):
     last = None
     for attempt in range(RETRIES):
@@ -453,7 +453,7 @@ def discover_storms(year):
     return sorted(found)
 
 
-# ── The per-storm document ───────────────────────────────────────────────────
+# -- The per-storm document ---------------------------------------------------
 def build_document(adeck_text, bdeck_text, basin, cy, year):
     """The published guidance document for one storm. Pure, no I/O."""
     rows, qc = parse_deck(adeck_text)

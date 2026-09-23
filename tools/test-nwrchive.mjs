@@ -356,7 +356,7 @@ console.log('\n5. search and about');
 }
 
 console.log('\n6. nothing threw');
-// ── The centre's own name, and where Home goes ──────────────────────────────
+// -- The centre's own name, and where Home goes ------------------------------
 // Both were wrong at once: the footer called the network by a name it does
 // not have, and Home pointed at a relative index.html, which in THIS
 // repository is the radar app rather than the centre's website.

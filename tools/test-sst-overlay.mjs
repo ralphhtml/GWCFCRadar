@@ -5,7 +5,7 @@
  *
  *     node tools/test-sst-overlay.mjs
  *
- * The Pi's SST fields are not pictures: they are measurements encoded two
+ * The parsing server's SST fields are not pictures: they are measurements encoded two
  * bytes to a pixel, so the tests here decode a PNG this file builds itself
  * and check the numbers that come back, not the colours. That is the whole
  * reason the Inspector can report a real temperature rather than a swatch.
@@ -97,7 +97,7 @@ console.log('\n2. the Waves row opens a source row, not a layer');
                        || e.children.length > 2),
     };
   });
-  ok('Open-Meteo is offered first, because it needs no Pi',
+  ok('Open-Meteo is offered first, because it needs no parsing server',
      /Open-Meteo/.test(r.labels)
      && r.labels.indexOf('Open-Meteo') < r.labels.indexOf('OISST'), r.labels);
   ok('all four sources are there',
@@ -160,7 +160,7 @@ console.log('\n4. an anomaly converts as a difference, a temperature does not');
 
 console.log('\n5. a frame decodes back to the numbers that went into it');
 {
-  // Build a PNG the way the Pi does: value split high byte into red, low byte
+  // Build a PNG the way the parsing server does: value split high byte into red, low byte
   // into green, over a stated range, alpha 0 for land. Then read it back
   // through the page's own decoder and check the numbers survive the trip.
   const r = await page.evaluate(async () => {
@@ -185,7 +185,7 @@ console.log('\n5. a frame decodes back to the numbers that went into it');
     ctx.putImageData(img, 0, 0);
     const url = cv.toDataURL('image/png');
 
-    // Point the page's loader at that picture rather than at a Pi.
+    // Point the page's loader at that picture rather than at a parsing server.
     const realBase = _hdBase;
     _hdBase = 'http://test.invalid';
     _sstIndex = { sources: { oisst: { label: 'OISST', variants: { anomaly: {
@@ -437,7 +437,7 @@ console.log('\n11. the Inspector rows for the layers it used to walk past');
 console.log('\n12. MRMS reads a real number back out of the colour');
 {
   const r = await page.evaluate(() => {
-    // The Pi paints MRMS by looking a value up in a 256-step ramp. Take a
+    // The parsing server paints MRMS by looking a value up in a 256-step ramp. Take a
     // known step of the reflectivity ramp, hand the Inspector that colour,
     // and the value that comes back has to be the one that produced it.
     const scale = { ramp: 'radar', lo: -10, hi: 75 };
@@ -452,7 +452,7 @@ console.log('\n12. MRMS reads a real number back out of the colour');
     // A stand-in for the overlay: the row only ever asks for one pixel.
     _mrmsOv = { ref: { _image: null } };
     const noImg = _inspMrmsRows(0, 0);
-    // An older Pi that never wrote a ramp name has to degrade, not break.
+    // An older parsing server that never wrote a ramp name has to degrade, not break.
     _mrmsManifest.products.ref.ramp = undefined;
     const legacy = _inspMrmsRow('ref', 0, 0);
     _mrmsOn = {}; _mrmsOv = {}; _mrmsManifest = null;
@@ -497,7 +497,7 @@ console.log('\n13. the ocean colours in Settings recolour without refetching');
      r.garbage === r.stock, r.garbage);
 }
 
-console.log('\n14. with no Pi, it says what still works instead of nothing');
+console.log('\n14. with no parsing server, it says what still works instead of nothing');
 {
   const r = await page.evaluate(async () => {
     const toasts = [];
@@ -511,8 +511,8 @@ console.log('\n14. with no Pi, it says what still works instead of nothing');
     window.showToast = real;
     return toasts;
   });
-  ok('a missing Pi is named as the problem', /Pi/.test(r[0]), r[0]);
-  ok('and Open-Meteo is offered, because it needs no Pi',
+  ok('a missing parsing server is named as the problem', /parsing server/.test(r[0]), r[0]);
+  ok('and Open-Meteo is offered, because it needs no parsing server',
      /Open-Meteo/.test(r[0]), r[0]);
   ok('a source that has not built the field yet says which one',
      /OISST/.test(r[1]) && /anomaly/.test(r[1]), r[1]);
@@ -582,7 +582,7 @@ console.log('\n16. the picture is bent into Mercator before land is cut');
 
 console.log('\n17. Greenwich-first grids are rolled into the map\'s world');
 {
-  // OISST and AOML count longitude 0 to 360, so the Pi rectangle came
+  // OISST and AOML count longitude 0 to 360, so the parsing server rectangle came
   // out inside-out (east at -0.125, west at 0.125) and the whole eastern
   // hemisphere rendered over the Pacific: Africa and India land gaps
   // punched into the user ocean. The client heals such frames: columns
@@ -617,7 +617,7 @@ console.log('\n17. Greenwich-first grids are rolled into the map\'s world');
      /const \{ vals, bounds \} = _sstUnwrapGrid\(raw, w, h, meta\.bounds\);/.test(PAGE17));
   ok('and the overlay rectangle unwraps the manifest bounds the same way',
      /_sstDisplayBounds\(_sstUnwrapBounds\(/.test(PAGE17));
-  ok('the Pi rolls its own grids too, so new builds arrive already sane',
+  ok('the parsing server rolls its own grids too, so new builds arrive already sane',
      /def normalize_lons\(values, lons\):/.test(
        readFileSync(join(ROOT, 'pi/sst_pipeline.py'), 'utf8')));
 }

@@ -5,11 +5,11 @@
  *     node tools/test-sat-time-machine.mjs
  *
  * Three things made it look dead. It refused to travel until a product had
- * been picked, and the Satellite bubble no longer picks one for you; the Pi
+ * been picked, and the Satellite bubble no longer picks one for you; the parsing server
  * composites and the global mosaic ignored the travelled moment and showed
  * the newest frames regardless; and a moment the archive does not hold
  * drew blank tiles with no word about it. Each is pinned here in a real
- * browser with the network off and the Pi stubbed.
+ * browser with the network off and the parsing server stubbed.
  */
 
 import { readFileSync } from 'node:fs';
@@ -30,17 +30,17 @@ console.log('\n1. the fixes are in the page');
   ok('a jump with the satellite off switches it on at the moment',
      PAGE.includes('if (!_tmSatActive()) _setGoesProduct(_goesProductId);')
      && !PAGE.includes("showToast('Pick a satellite product first, then travel to a time.'"));
-  ok('the Pi frame list ends at the travelled moment',
+  ok('the parsing server frame list ends at the travelled moment',
      /list = list\.filter\(f => f\.time\.getTime\(\) <= _tmSatAt\);/.test(PAGE));
   ok('an empty travelled list says why, not "not built yet"',
-     PAGE.includes('The Pi keeps three days of composites and has none for that moment.'));
+     PAGE.includes('The parsing server keeps three days of composites and has none for that moment.'));
   ok('a blank archive moment is watched and reported once',
      /function _goesTmWatch\(layer, graceMs\)/.test(PAGE)
      && PAGE.includes('if (!f.url) _goesTmWatch(l);')
      && PAGE.includes('No satellite imagery is archived for that moment.'));
   ok('the modal tells the truth about what a jump will do',
      /Choose a moment and the satellite switches on there/.test(PAGE));
-  ok('a travelled band routes to the Pi archive door, back to July 2017',
+  ok('a travelled band routes to the parsing server archive door, back to July 2017',
      PAGE.includes('const SAT_ARC_FLOOR = Date.UTC(2017, 6, 10);')
      && /function _goesArcOk\(\)/.test(PAGE)
      && PAGE.includes('fetch(`${base}/sat/archive/index?${qs}`')
@@ -128,7 +128,7 @@ console.log('\n2. a jump with nothing on switches the satellite on, at that mome
      JSON.stringify(r.toasts));
 }
 
-console.log('\n3. the Pi composites end their loop at the moment too');
+console.log('\n3. the parsing server composites end their loop at the moment too');
 {
   const r = await p.evaluate(async () => {
     const stamp = ms => {
@@ -170,7 +170,7 @@ console.log('\n3. the Pi composites end their loop at the moment too');
   ok('live, every kept frame is offered', r.liveCount === 24, String(r.liveCount));
   ok('travelled, the loop stops at the moment', r.cutCount === 11 && r.cutAllBefore
      && /_100000$/.test(r.cutLast), JSON.stringify({ n: r.cutCount, last: r.cutLast }));
-  ok('a moment older than the Pi keeps gets nothing', r.tooOld === 0, String(r.tooOld));
+  ok('a moment older than the parsing server keeps gets nothing', r.tooOld === 0, String(r.tooOld));
   ok('and says so, with the fix, instead of "not built yet"',
      /keeps three days of composites and has none for that moment/.test(r.toast)
      && /plain band/.test(r.toast), r.toast.slice(0, 100));
@@ -222,7 +222,7 @@ console.log('\n4. a moment the WMS archive does not hold is reported once');
   ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
 }
 
-console.log('\n5. a travelled band asks NOAA\'s archive through the Pi, and falls back honestly');
+console.log('\n5. a travelled band asks NOAA\'s archive through the parsing server, and falls back honestly');
 {
   const r = await p.evaluate(async () => {
     const sleep = ms => new Promise(res => setTimeout(res, ms));
@@ -271,7 +271,7 @@ console.log('\n5. a travelled band asks NOAA\'s archive through the Pi, and fall
     _tmSatAt = null; _disableSatellite();
     return out;
   });
-  ok('the frames come from the Pi archive door, oldest first, with their rectangle',
+  ok('the frames come from the parsing server archive door, oldest first, with their rectangle',
      r.n === 6 && r.piUrls && r.ascending && /14\.5/.test(r.bounds), JSON.stringify(r));
   ok('the index was asked for band 13, east CONUS, at the moment',
      /post=east&band=13&sector=conus&at=\d+&n=\d+/.test(r.indexQs), r.indexQs);

@@ -16,8 +16,8 @@
  * budget below is therefore: manifest, first frame drawn, bar spanning the
  * whole window - all inside ten seconds, with the rest arriving behind it.
  *
- * The Pi is mocked WITH LATENCY, because a mock that answers instantly proves
- * nothing about a Pi at the end of a Cloudflare tunnel. Every response here is
+ * The parsing server is mocked WITH LATENCY, because a mock that answers instantly proves
+ * nothing about a parsing server at the end of a Cloudflare tunnel. Every response here is
  * held back by a realistic delay before it is served, so what is measured is
  * the number of round trips the design needs, which is the thing actually
  * under our control.
@@ -44,7 +44,7 @@ const ok = (name, cond, extra) => {
   else { fail++; console.log('  FAIL ' + name + (extra ? '  <' + extra + '>' : '')); }
 };
 
-// What a Pi at the end of a home tunnel actually costs per request. Generous
+// What a parsing server at the end of a home tunnel actually costs per request. Generous
 // on purpose: if the budget holds at these numbers it holds in practice.
 const LATENCY_JSON = 220;      // ms before a manifest starts arriving
 const LATENCY_IMG = 140;       // ms before a picture starts arriving
@@ -67,7 +67,7 @@ const series = (stepMin, hours, name) => {
   return out;
 };
 
-// Three full days of everything, at the cadences the Pi really builds at.
+// Three full days of everything, at the cadences the parsing server really builds at.
 const mrmsFrames = series(5, 72, 'rotation');
 const MRMS = {
   updated: '2026-08-20T12:00:00+00:00', keep_hours: 72,
@@ -185,7 +185,7 @@ console.log('\n1. MRMS: three days on the bar, and a picture, inside the budget'
   ok('and comfortably so, not just scraping in',
      r.painted < BUDGET_MS / 2, `${Math.round(r.painted)} ms`);
   ok('the bar already spans three days', r.spanH >= 71, r.spanH.toFixed(1) + ' h');
-  ok('over every frame the Pi has', r.barSpans === r.frames,
+  ok('over every frame the parsing server has', r.barSpans === r.frames,
      `${r.barSpans} vs ${r.frames}`);
   // This is the point of the whole design. Nine hundred frames on the bar
   // must NOT mean nine hundred requests before anything is drawn.

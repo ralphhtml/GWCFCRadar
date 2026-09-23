@@ -37,7 +37,7 @@ const ok = (name, cond, extra) => {
 
 console.log('\n1. the source: Location left Units, GPS arrived');
 const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-ok('no em dash anywhere in the page', !html.includes('\u2014'));
+ok('no em dash anywhere in the page', !html.includes(String.fromCharCode(0x2014)));
 ok('the Units tab is called Units now, nothing about location',
    /data-merge-label="Units"/.test(html) && !/data-merge-label="Units & Location"/.test(html));
 ok('there is no Location card in the units merge any more',

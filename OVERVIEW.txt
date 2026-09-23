@@ -15,7 +15,7 @@ hardcoded, that is said explicitly.
 ================================================================================
 
 A browser weather application. One HTML page, 78,116 lines, no build step, no
-framework. It runs from GitHub Pages and talks to a Raspberry Pi that does the
+framework. It runs from GitHub Pages and talks to a parsing server that does the
 heavy decoding and model rendering. Free, no accounts required for the map, no
 paid tier, no advertising.
 
@@ -26,7 +26,7 @@ Four separate front ends ship from the same repository:
   nwrchive.html           The NOAA Weather Radio archive
   assistant.html          The standalone AI assistant
 
-Plus 18 Python pipelines on the Pi and a Discord bot in Node.
+Plus 18 Python pipelines on the parsing server and a Discord bot in Node.
 
 
 ================================================================================
@@ -66,10 +66,10 @@ the bucket listing at runtime rather than hardcoded, so a new site appears
 without a code change.
 
 --------------------------------------------------------------------------------
-2.3 LEVEL 3 (single site, Pi-decoded)
+2.3 LEVEL 3 (single site, parsing server-decoded)
 --------------------------------------------------------------------------------
 
-14 products, decoded on the Pi and served as georeferenced frames:
+14 products, decoded on the parsing server and served as georeferenced frames:
 
   Reflectivity              Velocity
   Correlation Coefficient   Differential Reflectivity
@@ -87,7 +87,7 @@ range reflectivity and velocity.
 2.4 COMPOSITE (MRMS national mosaic)
 --------------------------------------------------------------------------------
 
-163 MRMS products decoded on the Pi, the widest part of the application. They
+163 MRMS products decoded on the parsing server, the widest part of the application. They
 are grouped seven ways in the menu:
 
   WINTER
@@ -200,7 +200,7 @@ drag handle.
   GLOBAL (GMGSI, 4)
     Infrared, Visible, Water Vapor, Shortwave IR
 
-RGB composites are built on the Pi from raw ABI radiances by
+RGB composites are built on the parsing server from raw ABI radiances by
 satellite_pipeline.py. Satellite has its own preloaded frame pool for
 playback rather than mutating a single layer.
 
@@ -328,7 +328,7 @@ Its own panel and menu entry. Google DeepMind Weather Lab tracks, cross
 referenced against NHC names so a track carries the name a person would use.
 FNV3 large-ensemble views. GEFS ensemble centres combined into the display.
 GEFS, ECMWF ENS and AIFS-ENS all wired in, with ensemble cyclone detection
-running on the Pi.
+running on the parsing server.
 
 --------------------------------------------------------------------------------
 5.3 TROPICAL OVERLAYS
@@ -345,7 +345,7 @@ western Pacific and Indian Ocean.
 A full SHARPpy-style panel, opened from the right-click menu anywhere on the
 map. Six tabs: Chart, Hodograph, Wind, Numbers, Image, Source.
 
-Backed by sounding_pipeline.py on the Pi (SounderPy fetch, SHARPpy parameters,
+Backed by sounding_pipeline.py on the parsing server (SounderPy fetch, SHARPpy parameters,
 rendered skew-T PNGs per site) with Open-Meteo model soundings as a fallback.
 
 
@@ -417,7 +417,7 @@ anomaly and record variants, and land masking.
 
 NWS SOURCES INSIDE THE BUBBLES
   Each bubble's variables offer their sources: Open-Meteo (live global grid),
-  RTMA (the 2.5 km analysis of right now, rendered by the Pi over CONUS,
+  RTMA (the 2.5 km analysis of right now, rendered by the parsing server over CONUS,
   Alaska, Hawaii and Puerto Rico at once), HRRR analysis (the newest hourly
   HRRR runs at their starting hour, 3 km, including an HRRR Reflectivity row
   under Radar), and NDFD (the official human-made forecast). The analyses
@@ -580,7 +580,7 @@ Worker, so no API key lives on the machine.
   @Asturio            Same as /ask, by mention
 
 It also publishes a roster to Firestore so the website's chat can offer real @
-mentions. Pings are constrained on the Pi: allowed_mentions carries an empty
+mentions. Pings are constrained on the parsing server: allowed_mentions carries an empty
 parse, which makes @everyone, @here and role pings impossible whatever the
 message says, plus a users allowlist of at most 8 validated ids.
 

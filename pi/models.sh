@@ -167,7 +167,7 @@ if [ "$MODE" = "look" ]; then
   exit 0
 fi
 
-# ── Building ───────────────────────────────────────────────────────────────
+# -- Building ---------------------------------------------------------------
 # Run through systemd rather than calling the pipeline directly, so it gets
 # the same environment, the same limits and the same log as the timer does.
 # A build started by hand in a terminal dies with the terminal; this one does

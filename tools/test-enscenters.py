@@ -86,7 +86,7 @@ ens = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ens)
 
 
-# ── A world to put storms in ─────────────────────────────────────────────────
+# -- A world to put storms in -------------------------------------------------
 # Half a degree, the grid GEFS actually publishes on, and latitude descending
 # the way GRIB writes it, so the descending-axis handling is exercised rather
 # than assumed.

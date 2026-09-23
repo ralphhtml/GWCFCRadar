@@ -9,8 +9,8 @@
  * network. A row must do one of three honest things when tapped: open a
  * deeper level (with a Back row that is only a Back row), light up (and go
  * dark again on the second tap), or open its modal. The only rows allowed to
- * do none of those are the ones that need the Pi, which is unreachable here
- * and says so in a toast: RTMA, and the Pi-built sea temperature fields.
+ * do none of those are the ones that need the parsing server, which is unreachable here
+ * and says so in a toast: RTMA, and the parsing server-built sea temperature fields.
  */
 
 import { readFileSync } from 'node:fs';
@@ -163,10 +163,10 @@ const walk = await p.evaluate(async () => {
   ok('none of them threw', subs.every(r => !r.err) && errs.length === 0,
      JSON.stringify(subs.filter(r => r.err).slice(0, 3)) + ' ' + errs.slice(0, 2).join(' | '));
   // A row that neither opened a level, nor lit, nor opened a modal, must be
-  // one that needs the Pi: RTMA (id sub-nws-*, or the RTMA choice on a
-  // two-source screen) or a Pi-built sea temperature field (sub-sstvar-*).
+  // one that needs the parsing server: RTMA (id sub-nws-*, or the RTMA choice on a
+  // two-source screen) or a parsing server-built sea temperature field (sub-sstvar-*).
   // HRRR analysis rows joined RTMA's exemption when the HRRR analysis
-  // layer shipped: both are built by the Pi, so in this sandbox neither
+  // layer shipped: both are built by the parsing server, so in this sandbox neither
   // can light.
   const needsPi = r => /^sub-nws-/.test(r.id) || /^sub-sstvar-/.test(r.id)
     || /> RTMA$/.test(r.name) || /> HRRR$/.test(r.name)
@@ -239,13 +239,13 @@ console.log('\n4. a sea temperature variant row keeps the product-row bargain');
     const src = Object.keys(SST_VARIANT_ROW).find(k => (SST_VARIANT_ROW[k] || []).length > 1);
     const realEnable = _sstEnable, realDisable = _sstDisable;
     const out = { src };
-    // The Pi has nothing: the row must stay dark.
+    // The parsing server has nothing: the row must stay dark.
     _sstEnable = async () => { _sstOn = false; };
     toggleSstVariantSub(src);
     let row = document.querySelector('#sub-bubbles [id^="sub-sstvar-"]');
     row.click(); await sleep(60);
     out.darkWhenNothingDrawn = !row.classList.contains('active');
-    // The Pi answers: the row lights, and a second tap turns it off.
+    // The parsing server answers: the row lights, and a second tap turns it off.
     _sstEnable = async (s, v) => { _sstOn = true; _sstSource = s; _sstVariant = v; };
     let disables = 0;
     _sstDisable = () => { disables++; _sstOn = false; };

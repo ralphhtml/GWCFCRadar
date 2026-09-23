@@ -42,7 +42,7 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 
-# ── Which satellite stood at which post, when ──────────────────────────────
+# -- Which satellite stood at which post, when ------------------------------
 # NOAA keeps one bucket per spacecraft, and the spacecraft standing in a post
 # has changed: GOES-16 was East from late 2017 until GOES-19 took over on
 # 7 April 2025; GOES-17 was West from February 2019 until GOES-18 took over on

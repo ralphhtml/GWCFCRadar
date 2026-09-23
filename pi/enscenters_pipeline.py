@@ -126,7 +126,7 @@ def log(msg):
     print(f"[enscenters] {msg}", flush=True)
 
 
-# ── Wind from pressure ───────────────────────────────────────────────────────
+# -- Wind from pressure -------------------------------------------------------
 # Atkinson-Holliday: the standard way to put a wind on a cyclone when all you
 # have is its central pressure. Not a measurement and not the model's own wind,
 # which is why the output labels it as an estimate.
@@ -172,7 +172,7 @@ def _parabolic_offset(a, b, c):
     return max(-0.5, min(0.5, 0.5 * (a - c) / denom))
 
 
-# ── Step one: closed lows ────────────────────────────────────────────────────
+# -- Step one: closed lows ----------------------------------------------------
 def detect_centers(mslp_hpa, lats, lons,
                    min_footprint_deg=2.5, closed_threshold_hpa=2.0,
                    search_radius_km=500.0, n_azimuth=16, n_radial=12,
@@ -269,7 +269,7 @@ def detect_centers(mslp_hpa, lats, lons,
             for pc, lat, lon in out]
 
 
-# ── Step two: is it tropical ─────────────────────────────────────────────────
+# -- Step two: is it tropical -------------------------------------------------
 def thickness_anomaly(thk, dlat, dlon, bg_box_deg=10.0):
     """Thickness with the smooth background taken out.
 
@@ -375,7 +375,7 @@ def filter_warm(centers, thk, lats, lons, max_lat=50.0, subtrop_lat=25.0):
     return kept
 
 
-# ── Step three: tracks ───────────────────────────────────────────────────────
+# -- Step three: tracks -------------------------------------------------------
 # A storm moves. Twelve hours apart, two centres four hundred kilometres apart
 # are almost certainly the same system; two thousand kilometres apart are not,
 # however tempting the nearest neighbour is. 40 kt of forward speed is a
@@ -423,7 +423,7 @@ def stitch(by_step, step_h):
     return [t for t in tracks if len(t["points"]) >= 2]
 
 
-# ── Fetching ─────────────────────────────────────────────────────────────────
+# -- Fetching -----------------------------------------------------------------
 def http_get(url, headers=None, timeout=REQUEST_TIMEOUT):
     last = None
     for attempt in range(RETRIES):
@@ -531,7 +531,7 @@ def decode(path):
     return got["mslp"], thk, lats, lons
 
 
-# ── Run ──────────────────────────────────────────────────────────────────────
+# -- Run ----------------------------------------------------------------------
 def newest_cycle(now=None):
     now = now or dt.datetime.now(dt.timezone.utc)
     t = now - dt.timedelta(hours=LAG_H)
