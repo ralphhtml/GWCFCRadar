@@ -103,8 +103,9 @@ console.log('\n2. the Waves row opens a source row, not a layer');
   ok('all four sources are there',
      /Open-Meteo/.test(r.labels) && /OISST/.test(r.labels)
      && /Coral Reef Watch/.test(r.labels) && /Ocean Heat/.test(r.labels), r.labels);
+  // Five since Ocean Depth (HYCOM) joined the row.
   ok('every source bubble carries an info button',
-     r.info.length === 4 && r.info.every(Boolean), JSON.stringify(r.info));
+     r.info.length === 5 && r.info.every(Boolean), JSON.stringify(r.info));
 }
 
 console.log('\n3. every source and variant has a written description');
