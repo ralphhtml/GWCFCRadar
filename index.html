@@ -68484,6 +68484,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-n', date: 'Sep 23, 2026',
+    text: 'Fixed 3D mode for the weather layers. When the elevation tiles could not be reached, the 3D panel sat empty with an error instead of showing anything. It now tries three places for the ground heights (two addresses for the same public tiles, then Mapterhorn, then the home server), remembers whichever one works, and if none of them answer it still shows the layer in 3D on flat ground and tells you why. Layers whose pictures the page was not allowed to read back, like MRMS, now drape too: a readable copy of the same picture is fetched in the background and used instead.' },
   { id: '2026-09-23-m', date: 'Sep 23, 2026',
     text: 'Smoother panning and zooming with radar or satellite playing. The preloaded playback frames you cannot see yet no longer re-fetch their map tiles on every step of a drag, they catch up when you let go, and the browser no longer spends time drawing them. After a zoom, satellite brings its frames back nearest first in spare moments instead of all at once, which was the freeze right after zooming. The time labels under the animation bar stopped re-measuring the page on every frame, the lat/lon grid stopped rebuilding its canvas on every move, and resizing the window is lighter too. The labels now also refit when the bar changes size while paused.' },
   { id: '2026-09-23-l', date: 'Sep 23, 2026',
@@ -84584,6 +84586,37 @@ function _l3dDecodeTile(img) {
   for (let k = 0; k < 65536; k++) h[k] = px[k * 4] * 256 + px[k * 4 + 1] + px[k * 4 + 2] / 256 - 32768;
   return h;
 }
+// Where the heights can come from, tried in turn. The same public Terrarium
+// set is reachable two ways, and Mapterhorn serves the same encoding. The
+// first one that answers readably is remembered and tried first from then
+// on; one that keeps failing (a network that blocks it, or no permission for
+// a page to read its pixels) is skipped for the rest of the visit. The
+// parsing server's own copy (/terrain) is the last resort.
+const L3D_TERRAIN_SOURCES = [
+  { name: 'Terrarium tiles', url: (k) => L3D_TERRAIN_URL + k + '.png' },
+  { name: 'Terrarium tiles', url: (k) => 'https://elevation-tiles-prod.s3.amazonaws.com/terrarium/' + k + '.png' },
+  { name: 'Mapterhorn tiles', url: (k) => 'https://tiles.mapterhorn.com/' + k + '.webp' },
+];
+const _l3dSrcFails = L3D_TERRAIN_SOURCES.map(() => 0);
+let _l3dSrcFirst = 0;
+async function _l3dFetchTile(key) {
+  const order = [_l3dSrcFirst, ...L3D_TERRAIN_SOURCES.map((_, i) => i).filter(i => i !== _l3dSrcFirst)];
+  for (const i of order) {
+    if (_l3dSrcFails[i] >= 4) continue;
+    try {
+      const h = _l3dDecodeTile(await _s3dLoadImg(L3D_TERRAIN_SOURCES[i].url(key)));
+      _l3dSrcFails[i] = 0;
+      _l3dSrcFirst = i;
+      return { h, server: false, src: L3D_TERRAIN_SOURCES[i].name };
+    } catch (e) { _l3dSrcFails[i]++; }
+  }
+  // The public tiles are out of reach: the parsing server keeps its own copy.
+  try {
+    const base = await _s3dBase();
+    if (base) return { h: _l3dDecodeTile(await _s3dLoadImg(`${base}/terrain/${key}.png`)), server: true, src: 'the parsing server' };
+  } catch (e) {}
+  return null;
+}
 function _l3dTile(z, x, y) {
   const key = z + '/' + x + '/' + y;
   if (_l3dTileMemo.has(key)) {
@@ -84591,15 +84624,7 @@ function _l3dTile(z, x, y) {
     _l3dTileMemo.delete(key); _l3dTileMemo.set(key, hit);
     return hit;
   }
-  const p = (async () => {
-    try { return { h: _l3dDecodeTile(await _s3dLoadImg(L3D_TERRAIN_URL + key + '.png')), server: false }; } catch (e) {}
-    // The public tiles are out of reach: the parsing server keeps its own copy.
-    try {
-      const base = await _s3dBase();
-      if (base) return { h: _l3dDecodeTile(await _s3dLoadImg(`${base}/terrain/${key}.png`)), server: true };
-    } catch (e) {}
-    return null;
-  })();
+  const p = _l3dFetchTile(key);
   _l3dTileMemo.set(key, p);
   p.then(v => { if (!v) _l3dTileMemo.delete(key); });   // a miss is tried again next time
   while (_l3dTileMemo.size > 300) _l3dTileMemo.delete(_l3dTileMemo.keys().next().value);
@@ -84632,8 +84657,8 @@ async function _l3dTerrain(zone, nx, ny) {
     }
   }
   await Promise.all(jobs);
-  let server = false, missing = 0;
-  tiles.forEach(t => { if (!t) missing++; else if (t.server) server = true; });
+  let server = false, missing = 0, src = '';
+  tiles.forEach(t => { if (!t) missing++; else { if (t.server) server = true; src = src || t.src; } });
   const at = (gx, gy) => {
     const tx = Math.floor(gx / 256), ty = Math.floor(gy / 256);
     const t = tiles.get(tx + ',' + ty);
@@ -84660,7 +84685,7 @@ async function _l3dTerrain(zone, nx, ny) {
       if (v > maxM) maxM = v;
     }
   }
-  return { m, z, server, missing, holes, minM, maxM, tiles: tiles.size };
+  return { m, z, server, missing, holes, minM, maxM, tiles: tiles.size, src };
 }
 
 // A relief map's colours, by true height in metres: deep water navy through
@@ -84710,6 +84735,27 @@ function _l3dLayerEls(spec) {
 // keeps both straight), then each picture read once for the part the box
 // covers. Returns rgba per cell (alpha 0 where the layer shows nothing),
 // which cells were on screen at all, and whether a picture could not be read.
+// A picture put on the map without asking for permission to read it back
+// (MRMS, some model charts) cannot be read off the screen at all: its
+// pixels are locked to the page. A second copy of the same picture, asked
+// for with that permission, is readable whenever its server allows it (the
+// parsing server always does). Loaded once in the background and then read
+// in place of the locked one; the Inspector's pixel cache shares it too.
+const _l3dCorsCopies = new Map();   // src -> { img, ready, failed }
+function _l3dCorsCopy(src) {
+  if (!src || /^(data|blob):/.test(src)) return null;
+  let e = _l3dCorsCopies.get(src);
+  if (e) return e.ready ? e.img : null;
+  e = { ready: false, failed: false, img: null };
+  _l3dCorsCopies.set(src, e);
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => { e.ready = true; e.img = img; };
+  img.onerror = () => { e.failed = true; };
+  img.src = src;
+  while (_l3dCorsCopies.size > 60) _l3dCorsCopies.delete(_l3dCorsCopies.keys().next().value);
+  return null;
+}
 function _l3dSampleDrape(spec, zone, nx, ny) {
   const n = nx * ny;
   const rgba = new Uint8ClampedArray(n * 4);
@@ -84749,15 +84795,20 @@ function _l3dSampleDrape(spec, zone, nx, ny) {
     const sxOf = (X) => Math.max(0, Math.min(W - 1, Math.floor((X - r.left) / r.width * W)));
     const syOf = (Y) => Math.max(0, Math.min(H - 1, Math.floor((Y - r.top) / r.height * H)));
     const px0 = sxOf(colX[i0]), px1 = sxOf(colX[i1]), py0 = syOf(rowY[j0]), py1 = syOf(rowY[j1]);
-    let data;
+    let data = null;
     try {
       const ctx = isImg ? _inspPixelCanvas(el).ctx : el.getContext('2d', { willReadFrequently: true });
       if (!ctx) continue;
       data = ctx.getImageData(px0, py0, px1 - px0 + 1, py1 - py0 + 1).data;
     } catch (e) {
-      out.tainted = true;
       if (isImg && typeof _inspPxForget === 'function') { try { _inspPxForget(el); } catch (err) {} }
-      continue;
+      // Locked: read the readable copy instead, once it has arrived.
+      const copy = isImg ? _l3dCorsCopy(el.currentSrc || el.src) : null;
+      if (copy && copy.naturalWidth === W && copy.naturalHeight === H) {
+        try { data = _inspPixelCanvas(copy).ctx.getImageData(px0, py0, px1 - px0 + 1, py1 - py0 + 1).data; }
+        catch (err) { data = null; }
+      }
+      if (!data) { out.tainted = true; continue; }
     }
     const dw = px1 - px0 + 1;
     const op = el._l3dOp == null ? 1 : el._l3dOp;
@@ -84970,8 +85021,10 @@ class Layer3DPanel {
     try { g = await _l3dTerrain(z, this.nx, this.ny); } catch (e) { g = null; }
     if (gen !== this.gen || !this.on) return;
     if (!g || g.missing >= g.tiles) {
-      this.say('could not reach the elevation tiles or the parsing server', 'bad');
-      return;
+      // No heights anywhere: the layer still goes up in 3D on flat ground
+      // at sea level, rather than the panel sitting empty.
+      const n = this.nx * this.ny;
+      g = { m: new Float32Array(n), minM: 0, maxM: 0, server: false, flat: true, missing: 0, tiles: 0, src: '' };
     }
     this.ground = g; this._fk = null;
     const relief = (this.highKm() - this.lowKm());
@@ -85024,7 +85077,8 @@ class Layer3DPanel {
     if (!this.on) return;
     if (!this.ground) return;
     const on = _l3dIsOn(this.spec.id);
-    const src = this.ground.server ? 'ground from the parsing server' : 'ground from Terrarium tiles';
+    const src = this.ground.flat ? 'no elevation could be reached, so the ground is flat'
+      : 'ground from ' + (this.ground.src || (this.ground.server ? 'the parsing server' : 'Terrarium tiles'));
     if (!on) { this.say('turn ' + this.spec.label + ' on to drape it · ' + src, 'bad'); return; }
     if (this.tainted && !this.painted) { this.say('this layer’s pictures cannot be read here · ' + src, 'bad'); return; }
     if (this.visible < 0.5) { this.say('move the map back over the box to follow playback · ' + src); return; }

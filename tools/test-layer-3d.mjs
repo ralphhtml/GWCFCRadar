@@ -66,7 +66,7 @@ await p.addInitScript(() => { try { localStorage.setItem('gwcfc_tutorial_seen', 
 // to 1500 m on the east half. Encoded by the page itself on first use.
 let TILE = null;
 const tileHits = { aws: 0, server: 0 };
-let awsDown = false;
+let awsDown = false, allDown = false, vhostDown = false;
 await p.route('**://**', async route => {
   const url = route.request().url();
   if (url.startsWith('file://')) return route.continue();
@@ -76,10 +76,19 @@ await p.route('**://**', async route => {
     return route.fulfill({ contentType: 'text/css', body: readFileSync(join(LEAFLET, 'leaflet.css'), 'utf8') });
   if (url.includes('elevation-tiles-prod/terrarium/')) {
     tileHits.aws++;
-    if (awsDown || !TILE) return route.abort();
+    if (awsDown || allDown || !TILE) return route.abort();
+    return route.fulfill({ contentType: 'image/png', body: TILE, headers: { 'Access-Control-Allow-Origin': '*' } });
+  }
+  if (url.startsWith('http://locked.test/')) {
+    return route.fulfill({ contentType: 'image/png', body: TILE, headers: { 'Access-Control-Allow-Origin': '*' } });
+  }
+  if (url.includes('elevation-tiles-prod.s3.amazonaws.com/terrarium/')) {
+    tileHits.vhost = (tileHits.vhost || 0) + 1;
+    if (allDown || vhostDown || !TILE) return route.abort();
     return route.fulfill({ contentType: 'image/png', body: TILE, headers: { 'Access-Control-Allow-Origin': '*' } });
   }
   if (url.startsWith('http://pi.test/terrain/')) {
+    if (allDown) return route.abort();
     tileHits.server++;
     return route.fulfill({ contentType: 'image/png', body: TILE, headers: { 'Access-Control-Allow-Origin': '*' } });
   }
@@ -298,10 +307,11 @@ console.log('\n6. the controls');
   ok('only the MRMS panel carries a Time Machine button', !r.tm && r.mrmsTm === 'mosaic');
 }
 
-console.log('\n7. the parsing server answers when the public tiles do not');
+console.log('\n7. another source answers when one cannot be reached');
 {
   awsDown = true;
   const before = tileHits.server;
+  await p.evaluate(() => { _l3dSrcFails.fill(0); });
   const r = await p.evaluate(async () => {
     _hdBase = 'http://pi.test';
     _l3dTileMemo.clear();
@@ -311,10 +321,77 @@ console.log('\n7. the parsing server answers when the public tiles do not');
     for (let i = 0; i < 100 && !P.ground; i++) await new Promise(res => setTimeout(res, 50));
     return { ground: !!P.ground, server: P.ground && P.ground.server, status: P.el('status').textContent };
   });
-  ok('the ground still arrives', r.ground, JSON.stringify(r));
-  ok('from the parsing server\'s /terrain door', r.server === true && tileHits.server > before, JSON.stringify(tileHits));
-  ok('and the status says so', /parsing server/.test(r.status), r.status);
+  ok('the ground still arrives when the first public address is blocked', r.ground, JSON.stringify(r));
+  ok('from the next public source before the parsing server', r.server === false && tileHits.vhost > 0 && /Terrarium/.test(r.status),
+     JSON.stringify({ tileHits, status: r.status }));
+  vhostDown = true;
+  const r2 = await p.evaluate(async () => {
+    _l3dTileMemo.clear(); _l3dSrcFails.fill(0);
+    const P = _l3dPanels.waves;
+    const z = P.zone;
+    P.openBounds(z.s + 0.05, z.w + 0.05, z.n - 0.05, z.e - 0.05);
+    for (let i = 0; i < 200 && !P.ground; i++) await new Promise(res => setTimeout(res, 50));
+    return { server: P.ground && P.ground.server, status: P.el('status').textContent };
+  });
+  ok('with every public source blocked, the parsing server\'s /terrain door answers',
+     r2.server === true && tileHits.server > before && /parsing server/.test(r2.status), JSON.stringify(r2));
+  vhostDown = false;
   awsDown = false;
+}
+
+console.log('\n7b. with every source out of reach, the layer still stands on flat ground');
+{
+  allDown = true;
+  const r = await p.evaluate(async () => {
+    _l3dTileMemo.clear(); _l3dSrcFails.fill(0);
+    const P = _l3dPanels.waves;
+    const z = P.zone;
+    P.openBounds(z.s + 0.05, z.w + 0.05, z.n - 0.05, z.e - 0.05);
+    for (let i = 0; i < 200 && !P.ground; i++) await new Promise(res => setTimeout(res, 50));
+    await new Promise(res => setTimeout(res, 300));
+    P.dirty = true; await P.renderIdle();
+    const cv = P.el('canvas');
+    const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+    let lit = 0;
+    for (let k = 0; k < d.length; k += 16) if (d[k] + d[k + 1] + d[k + 2] > 60) lit++;
+    return { ground: !!P.ground, flat: !!(P.ground && P.ground.flat), status: P.el('status').textContent, lit };
+  });
+  ok('the panel is not left empty: flat ground stands in', r.ground && r.flat, JSON.stringify(r));
+  ok('with the layer drawn on it', r.lit > 500, String(r.lit));
+  ok('and the status says why the ground is flat', /flat/.test(r.status), r.status);
+  allDown = false;
+  await p.evaluate(() => { _l3dTileMemo.clear(); _l3dSrcFails.fill(0); });
+}
+
+console.log('\n7c. a picture the page may not read is draped from a readable copy');
+{
+  const r = await p.evaluate(async () => {
+    // A model chart put on the map WITHOUT asking to read it back (the way
+    // MRMS is), so the picture itself is locked.
+    const pane = map.getPane('modelPane');
+    const im = new Image();
+    await new Promise(res => { im.onload = res; im.onerror = res; im.src = 'http://locked.test/chart.png'; });
+    const r0 = map.getContainer().getBoundingClientRect(), pr = pane.getBoundingClientRect();
+    Object.assign(im.style, { position: 'absolute', left: (r0.left - pr.left) + 'px', top: (r0.top - pr.top) + 'px',
+                              width: r0.width + 'px', height: r0.height + 'px' });
+    pane.appendChild(im);
+    window._iemModelLayer = { fake: true };
+    const Q = _l3dPanels.waves.zone;
+    const P = _l3dPanel('models');
+    P.openBounds(Q.s, Q.w, Q.n, Q.e);
+    // The first read happens as the panel opens, before any copy exists.
+    const locked = P.tainted;
+    for (let i = 0; i < 60; i++) {
+      await new Promise(res => setTimeout(res, 100));
+      P.resample(true);
+      if (P.painted > 1000 && !P.tainted) break;
+    }
+    const out = { firstLocked: locked, painted: P.painted, tainted: P.tainted };
+    P.close(); im.remove(); window._iemModelLayer = null;
+    return out;
+  });
+  ok('the picture really is locked on the map', r.firstLocked === true, JSON.stringify(r));
+  ok('and is draped anyway, from the readable copy', r.painted > 1000 && r.tainted === false, JSON.stringify(r));
 }
 
 console.log('\n8. Satellite 3D and Radar 3D can stand on the ground too');
