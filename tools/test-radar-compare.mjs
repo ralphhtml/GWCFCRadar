@@ -68,6 +68,11 @@ console.log('\n1. the pieces are in the page');
      && /_cmpLineHandles\(d, _rcToggleOrientation\);/.test(PAGE)
      && /_cmpLineHandles\(d, _scToggleOrientation\);/.test(PAGE)
      && /d\.title = 'Drag to resize the split';/.test(PAGE));
+  ok('the rotate handle is a real dial: it tracks the drag angle around its own centre, '
+     + 'and only commits past 45 degrees',
+     /function _cmpWireRotateHandle\(el, onRotate\) \{/.test(PAGE)
+     && /icon\.style\.transform = `rotate\(\$\{drag\.delta\}deg\)`;/.test(PAGE)
+     && /if \(!moved \|\| Math\.abs\(delta\) >= 45\) onRotate\(\);/.test(PAGE));
   ok('rotate transposes the split, so a side-by-side double becomes a stacked one',
      /function _rcToggleOrientation\(\) \{\s*\n\s*if \(!_rcOn \|\| !_rcGrid\) return;\s*\n\s*if \(!_rcSetGrid\(_rcGrid\.cols, _rcGrid\.rows\)\) return;/.test(PAGE));
   ok('the layer stack keeps the strips just above the radar',
@@ -304,14 +309,11 @@ console.log('\n4b. the rotate button transposes the split, and back');
     btn.click();   // back to side by side, for the tests after this one
     await new Promise(res => setTimeout(res, 50));
     const restored = { grid: { ..._rcGrid } };
-    // The rotate handle riding the line does the same as the button, and
-    // pressing it must not start a drag.
+    // A synthetic .click() with no pointer events at all - the screen
+    // reader / keyboard-activation path - still rotates.
     const line = _rcGridDividerEls.cols[0];
-    line.querySelector('.cmp-rot-h').dispatchEvent(
-      new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
-    const noDragStarted = _rcGridDrag === null;
     line.querySelector('.cmp-rot-h').click();
-    const viaHandle = { grid: { ..._rcGrid }, noDragStarted };
+    const viaHandle = { grid: { ..._rcGrid } };
     document.getElementById('rc-rotate-btn').click();   // back again
     await new Promise(res => setTimeout(res, 50));
     return { shownWhileComparing, before, after, restored, viaHandle };
@@ -328,9 +330,63 @@ console.log('\n4b. the rotate button transposes the split, and back');
      JSON.stringify(r.after));
   ok('a second click transposes it straight back',
      r.restored.grid.rows === 1 && r.restored.grid.cols === 2, JSON.stringify(r.restored));
-  ok('the rotate handle on the line itself transposes too, without starting a drag',
-     r.viaHandle.grid.rows === 2 && r.viaHandle.grid.cols === 1 && r.viaHandle.noDragStarted,
-     JSON.stringify(r.viaHandle));
+  ok('a synthetic click on the handle (no pointer events) transposes it too',
+     r.viaHandle.grid.rows === 2 && r.viaHandle.grid.cols === 1, JSON.stringify(r.viaHandle));
+  // The evaluate above already restored double (the "back again" click
+  // right after viaHandle), so nothing further is needed here.
+}
+
+console.log('\n4c. the rotate handle is a real dial: drag around it to rotate, release short and it springs back');
+{
+  const centerOf = async (sel) => p.evaluate((s) => {
+    const r = document.querySelector(s).getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }, sel);
+  const dragAngle = async (deg) => {
+    const c = await centerOf('.rc-divider .cmp-rot-h');
+    const rad = deg * Math.PI / 180, radius = 20;
+    await p.mouse.move(c.x, c.y);
+    await p.mouse.down();
+    // A handful of intermediate steps, the way a real drag sends them,
+    // sweeping from straight up around to the target angle.
+    const steps = 6;
+    for (let i = 1; i <= steps; i++) {
+      const a = (-90 + (deg - -90) * (i / steps)) * Math.PI / 180;
+      await p.mouse.move(c.x + Math.cos(a) * radius, c.y + Math.sin(a) * radius);
+    }
+    return c;
+  };
+
+  const before = await p.evaluate(() => ({ ..._rcGrid }));
+  // A short drag: well under the 45 degree commit threshold, released.
+  await dragAngle(10);
+  const midIcon = await p.evaluate(() => {
+    const svg = document.querySelector('.rc-divider .cmp-rot-h svg');
+    return svg && svg.style.transform;
+  });
+  await p.mouse.up();
+  await p.waitForTimeout(50);
+  const afterShort = await p.evaluate(() => ({ grid: { ..._rcGrid },
+    icon: (document.querySelector('.rc-divider .cmp-rot-h svg') || {}).style
+      && document.querySelector('.rc-divider .cmp-rot-h svg').style.transform,
+    dragStarted: _rcGridDrag !== null }));
+
+  // A real drag past 45 degrees, released: commits the rotation.
+  await dragAngle(70);
+  await p.mouse.up();
+  await p.waitForTimeout(50);
+  const afterLong = await p.evaluate(() => ({ ..._rcGrid }));
+  await p.evaluate(() => { document.getElementById('rc-rotate-btn').click(); });   // back to double
+
+  ok('the icon visibly follows the drag angle while held', /rotate\(/.test(midIcon || ''), String(midIcon));
+  ok('short of 45 degrees, letting go springs back: no rotation, the icon resets, no resize drag was started',
+     afterShort.grid.rows === before.rows && afterShort.grid.cols === before.cols
+     && afterShort.icon === '' && afterShort.dragStarted === false,
+     JSON.stringify({ before, afterShort }));
+  ok('past 45 degrees, letting go commits the rotation',
+     afterLong.rows !== before.rows || afterLong.cols !== before.cols,
+     JSON.stringify({ before, afterLong }));
+  ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
 }
 
 console.log('\n5. the split line follows the pointer, and stays put when the map is dragged');
