@@ -256,9 +256,11 @@ def decode_member(messages):
     return got["mslp"][thin], thk, lats[::2], lons[::2]
 
 
-def step_centers(session, date_str, cyc, step, members):
+def step_centers(session, date_str, cyc, step, members, all_out=None):
     """{member: [tropical centres]} for one forecast hour, or None when the
-    hour is not published. Downloads run in parallel; decoding does not."""
+    hour is not published. Downloads run in parallel; decoding does not.
+    all_out, when given, also collects every closed low per member (the
+    low tracks overlay), which the warm core test would otherwise discard."""
     base, rows = find_index(session, date_str, cyc, step)
     if not rows:
         return None
@@ -278,6 +280,8 @@ def step_centers(session, date_str, cyc, step, members):
                     continue
                 mslp, thk, lats, lons = got
                 centers = ens.detect_centers(mslp, lats, lons)
+                if all_out is not None:
+                    all_out[m] = centers
                 out[m] = ens.filter_warm(centers, thk, lats, lons)
             except Exception as e:                       # one member, not the hour
                 log(f"  m{m:02d} f{step:03d}: {e}")
@@ -377,9 +381,11 @@ def build(date_str, cyc, step_h, out_h, members, centers_fn=None, verbose=True):
     out_run = os.path.join(OUT_DIR, run)
     os.makedirs(out_run, exist_ok=True)
 
+    all_steps = {}                            # step -> {member: every closed low}
     if centers_fn is None:
         session = requests.Session()
-        centers_fn = lambda s: step_centers(session, date_str, cyc, s, members)  # noqa: E731
+        centers_fn = lambda s: step_centers(session, date_str, cyc, s, members,  # noqa: E731
+                                            all_out=all_steps.setdefault(s, {}))
 
     per_member = {}                           # member -> {step: [centres]}
     got_steps = []
@@ -443,6 +449,18 @@ def build(date_str, cyc, step_h, out_h, members, centers_fn=None, verbose=True):
         "built": built,
     }
     ens.write_json(os.path.join(OUT_DIR, "latest.json"), manifest)
+    # Every low, tropical or not, for the low tracks overlay.
+    lows_per_member = {}
+    for s, per in all_steps.items():
+        for m, centers in per.items():
+            lows_per_member.setdefault(m, {})[s] = centers
+    low_tracks = []
+    for m, by_step in lows_per_member.items():
+        for t in ens.stitch(by_step, step_h, ens.LOWS_MAX_KT):
+            low_tracks.append({"member": m, **t})
+    if low_tracks:
+        ens.write_lows("ecmwf-ens", "ECMWF ensemble", run, manifest["base"], n_members,
+                       step_h, last, low_tracks, "ensemble")
     log(f"{n_members} members, {len(all_tracks)} tracks, {len(products)} maps -> {out_run}")
     return manifest
 

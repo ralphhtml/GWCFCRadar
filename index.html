@@ -10548,7 +10548,7 @@ body.gwcfc-crosshair #map::after {
 }
 
 /* Shared panel shell - applied to all overlay panels */
-#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #ectc-controls, #meso-panel, #storm-reports-panel, #tornado-tracks-panel {
+#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #ectc-controls, #lows-controls, #meso-panel, #storm-reports-panel, #tornado-tracks-panel {
   position: static;
   transform: none;
   width: 180px;
@@ -10567,6 +10567,9 @@ body.gwcfc-crosshair #map::after {
 #cpc-controls { border: 1.5px solid rgba(0,180,80,0.45);  }
 #ec-controls  { border: 1.5px solid rgba(220,20,60,0.45);  }
 #ectc-controls { border: 1.5px solid rgba(255,64,255,0.45); }
+#lows-controls { border: 1.5px solid rgba(232,20,28,0.5); }
+#lows-controls .spc-picker-row { flex-wrap: wrap; }
+#lows-controls input[type=range] { width: 100%; accent-color: #e8141c; }
 .ectc-float-title {
   font-family: var(--display); font-weight: 700; font-size: 9px; letter-spacing: .6px;
   color: #ff7aff; text-align: center; text-transform: uppercase; margin-bottom: 1px; flex: 1;
@@ -32827,6 +32830,8 @@ function toggleOverlayPill(id) {
     }
   } else if (id === 'ecmwf-tc') {
     _ectcToggle();
+  } else if (id === 'low-tracks') {
+    _lowsToggle();
   } else if (id === 'atcf') {
     _atcfActive = !_atcfActive;
     const pill = document.getElementById('op-atcf');
@@ -43456,6 +43461,7 @@ function _inspRowsAt(center, cx, cy, light) {
   if (typeof _sstOn !== 'undefined' && _sstOn)                        rows.push(_inspSstRow(center));
   if (typeof _nwsOn !== 'undefined' && _nwsOn)                        rows.push(_inspNwsRow(cx, cy));
   if (typeof _ectcOn !== 'undefined' && _ectcOn && _ectcGrid)         rows.push(_inspEctcRow(center));
+  if (typeof _lowsOn !== 'undefined' && _lowsOn && _lowsData)         rows.push(_inspLowsRow(center));
   if (!light && typeof _mrmsAnyOn === 'function' && _mrmsAnyOn())     rows.push(..._inspMrmsRows(cx, cy));
   if (typeof activeLayers !== 'undefined' && activeLayers.lightning)  rows.push(_inspLightningRow(center));
   if (typeof spcOutlookLayer !== 'undefined' && spcOutlookLayer) {
@@ -69161,6 +69167,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-y', date: 'Sep 23, 2026',
+    text: 'New overlay: Low Tracks, in the overlay list beside ECMWF TC Probability. It shows where every low pressure centre goes, in each member of the GFS and ECMWF ensembles and in the regular GFS and ECMWF runs. Tracks shows every path, one colour per member; Centers shows an L with its pressure for each low at the forecast hour you pick with the slider, like the ensemble low maps forecasters share. Filter to only the deep lows, and the Inspector names the nearest one.' },
   { id: '2026-09-23-x', date: 'Sep 23, 2026',
     text: 'New: Ocean Depth, under Waves > Sea Surf. Temp. It shows the water temperature below the surface, from the US Navy\'s HYCOM ocean analysis, built on the parsing server. An Ocean column appears on the height slider: step down from the surface through 50, 100, 200, 300 and 500 m to 1,000 m to see warm eddies, cold upwelling and how deep the warm water under a hurricane really goes. Each depth gets its own colour span, and the Inspector reads the real temperature.' },
   { id: '2026-09-23-w', date: 'Sep 23, 2026',
@@ -70953,6 +70961,7 @@ document.addEventListener('DOMContentLoaded', () => {
   _makeDraggable(document.getElementById('spc-controls'),        document.getElementById('spc-drag'));
   _makeDraggable(document.getElementById('wpc-controls'),        document.getElementById('wpc-drag'));
   _makeDraggable(document.getElementById('ectc-controls'),       document.getElementById('ectc-drag'));
+  _makeDraggable(document.getElementById('lows-controls'),       document.getElementById('lows-drag'));
   _makeDraggable(document.getElementById('fw-controls'),         document.getElementById('fw-drag'));
   _makeDraggable(document.getElementById('cpc-controls'),        document.getElementById('cpc-drag'));
   _makeDraggable(document.getElementById('ec-controls'),         document.getElementById('ec-drag'));
@@ -71522,6 +71531,9 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
     <div class="ov-pill" id="op-ecmwf-tc" data-ovid="ecmwf-tc" title="ECMWF TC Probability - the chance a tropical depression, storm or hurricane passes within 120 km, from the 51 member ECMWF ensemble, including storms that have not formed yet">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('ecmwf-tc')">ECMWF TC Probability</span><span class="ov-drag" title="Drag to reorder">⠿</span>
+    </div>
+    <div class="ov-pill" id="op-low-tracks" data-ovid="low-tracks" title="Low Tracks - every low pressure centre in the GEFS and ECMWF ensembles, member by member, and in the GFS and ECMWF runs: tracks or L markers with pressures">
+      <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('low-tracks')">Low Tracks</span><span class="ov-drag" title="Drag to reorder">⠿</span>
     </div>
     <div class="ov-pill" id="op-ftm" data-ovid="ftm" title="Forecast Time Machine - pick any past date and every reporting station in view shows what the thermometer actually read, from NOAA's climate archive">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('ftm')">Forecast Time Machine</span><span class="ov-drag" title="Drag to reorder">⠿</span>
@@ -72253,6 +72265,23 @@ function _tlTickHTML(times, fmt) {
     <div id="ectc-note" class="ectc-cap" style="opacity:.75"></div>
   </div>
 
+  <div id="lows-controls">
+    <div class="ov-panel-header-row"><div class="dtb-drag" id="lows-drag" title="Drag to move">⠿</div><div class="ectc-float-title" style="color:#ff6b6b">Low Tracks</div></div>
+    <div class="spc-picker-row" id="lows-models"></div>
+    <div class="spc-picker-row">
+      <button class="spc-pick-btn active" id="lows-v-tracks" onclick="_lowsPick('view','tracks')" title="Every track, member by member">Tracks</button>
+      <button class="spc-pick-btn" id="lows-v-centers" onclick="_lowsPick('view','centers')" title="An L and its pressure for every low at the chosen hour">Centers</button>
+    </div>
+    <input type="range" id="lows-hour" min="0" max="120" step="6" value="0" oninput="_lowsPick('hour', this.value)" title="Forecast hour">
+    <div id="lows-hour-lbl" class="ectc-cap"></div>
+    <label class="ectc-cap" style="display:flex;align-items:center;gap:4px;justify-content:center">Deeper than
+      <select id="lows-max" class="xsec-sel" onchange="_lowsPick('max', this.value)" title="Only lows at or below this central pressure">
+        <option value="1015">any</option><option value="1005">1005</option><option value="1000">1000</option>
+        <option value="990">990</option><option value="980">980</option><option value="970">970</option>
+      </select> hPa</label>
+    <div id="lows-note" class="ectc-cap" style="opacity:.75"></div>
+  </div>
+
   <div id="fw-controls">
     <div class="ov-panel-header-row"><div class="dtb-drag" id="fw-drag" title="Drag to move">⠿</div><div class="fw-float-title"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-fire></use></svg> Fire Weather</div></div>
     <div class="spc-picker-row">
@@ -72858,6 +72887,7 @@ function _ccClose(){ _ccHideModal(); _ccAdminUnlocked=false; }
 const OV_DESCRIPTIONS = {
   'navigation':       'Turn-by-turn navigation with the weather drawn onto the route: each leg is coloured by the radar and conditions along it, so you can see where the drive gets bad before you are in it. Add stops by searching or tapping the map, get live guidance with voice, and report road weather for others. Drag the panel by its handle to put it anywhere.',
   'ecmwf-tc':         'ECMWF TC Probability: the chance that a tropical cyclone passes within 120 km of each place, from all 51 members of the ECMWF ensemble, the same maps ECMWF call strike probability and tropical cyclone activity. Pick the strength (tropical depression, tropical storm or hurricane), the time window, and whether to count every storm the ensemble makes, including ones that have not formed yet (All + genesis), or only the ones that already exist. Built on the parsing server from ECMWF\'s open data after each 00z and 12z run; strength comes from each storm\'s central pressure, so the hurricane map runs a little conservative. The Inspector reads the exact percentage.',
+  'low-tracks':       'Low Tracks: every low pressure centre the models forecast, not only tropical ones. Pick GEFS or EPS (the GFS and ECMWF ensembles, one line per member, each member its own colour) or the ordinary GFS or ECMWF run (one bold line). Tracks draws every path with a dot at each forecast point and a ring where the low is at the chosen hour; Centers draws an L with its central pressure for every low at that hour, the classic ensemble low map. Deeper than hides the weak lows. Found on the parsing server as closed lows in sea level pressure after each run, the same way for every model. The Inspector names the nearest low and its pressure.',
   'atcf':             'ATCF Updates: every active tropical system in the world, drawn straight from the Automated Tropical Cyclone Forecast feed. Hurricanes are coloured by category, storms and depressions by strength, and invests come dashed. Tap any system for the full advisory: class, winds in knots and mph, pressure, movement, fix time, basin, and the raw ATCF line itself. Re-checks the feed every 10 minutes while on.',
   'ftm':              'Forecast Time Machine: pick any past date, as far back as 1763 where station records reach, and every reporting station in view shows what the thermometer actually read that day, coloured red or blue by how far it ran above or below normal. Tap a station for the full daily report. Powered by NOAA\'s climate archive.',
   'ctm':              'Climate Time Machine: the same stations as the Forecast Time Machine, but showing what is NORMAL for that day of the year rather than any one reading. Switch the dots between high, low, rain and snowfall, and use the year-jump chips to hop 1 to 50 years back through the record.',
@@ -77408,7 +77438,7 @@ function closeCredits() {
 #ad-shell,
 #dtb-color-modal,
 #tutorial-modal-inner,
-#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #ectc-controls,
+#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #ectc-controls, #lows-controls,
 #meso-panel, #storm-reports-panel, #tornado-tracks-panel,
 .models-style-panel,
 .ss-firstrun-card,
@@ -78184,7 +78214,7 @@ body {
    The overlay LIST itself is deliberately not in here. That is a menu you
    drive the app from, not a thing laid over the weather, so it stays in the
    house colour with the rest of the chrome. */
-#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #ectc-controls,
+#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #ectc-controls, #lows-controls,
 #meso-panel, #storm-reports-panel, #tornado-tracks-panel {
   background-image: var(--grad-ink);
   box-shadow: var(--lift-3d), var(--edge-3d-ink);
@@ -78240,7 +78270,7 @@ body {
 :root[data-glass] #tutorial-modal-inner,
 :root[data-glass] #spc-controls, :root[data-glass] #wpc-controls,
 :root[data-glass] #fw-controls, :root[data-glass] #cpc-controls,
-:root[data-glass] #ec-controls, :root[data-glass] #ectc-controls, :root[data-glass] #meso-panel,
+:root[data-glass] #ec-controls, :root[data-glass] #ectc-controls, :root[data-glass] #lows-controls, :root[data-glass] #meso-panel,
 :root[data-glass] #storm-reports-panel, :root[data-glass] #tornado-tracks-panel,
 :root[data-glass] .models-style-panel,
 :root[data-glass] .ss-firstrun-card,
@@ -78318,7 +78348,7 @@ body {
    two weights of glass in one column would read as a mistake. */
 :root[data-glass] #spc-controls, :root[data-glass] #wpc-controls,
 :root[data-glass] #fw-controls, :root[data-glass] #cpc-controls,
-:root[data-glass] #ec-controls, :root[data-glass] #ectc-controls, :root[data-glass] #meso-panel,
+:root[data-glass] #ec-controls, :root[data-glass] #ectc-controls, :root[data-glass] #lows-controls, :root[data-glass] #meso-panel,
 :root[data-glass] #storm-reports-panel, :root[data-glass] #tornado-tracks-panel {
   background-color: transparent !important;
   background-image: linear-gradient(180deg,
@@ -86827,6 +86857,311 @@ function _inspEctcRow(center) {
   const p = g.data[j * g.w + i];
   return { label, value: p + '%', unit: 'days ' + _ectcWinLabel(a + '_' + b).replace('d', ''),
            color: _ectcColor(p) || 'rgba(150,150,150,0.55)' };
+}
+
+// -- LOW TRACKS: where the low pressure centres go, member by member ------------
+// Every closed low the parsing server finds in the GEFS and ECMWF ensembles
+// (each member) and in the ordinary GFS and ECMWF runs, stitched into tracks
+// (pi/enscenters_pipeline.py, ecmwf_tc_pipeline.py, lows_pipeline.py). Two
+// looks, like the ensemble low maps forecasters trade: Tracks (every member's
+// path, a spaghetti bundle) and Centers (an L and its pressure for every low
+// at one forecast hour).
+//
+// Drawn on ONE canvas, not a Leaflet line per track. An ensemble run is a few
+// thousand tracks and tens of thousands of points; as SVG or even as canvas
+// polylines that is exactly the projection and clipping load the iPhone
+// crash traces pointed at. Here each redraw walks only the tracks whose box is
+// on screen, once, after a pan or zoom ends, and the canvas hides mid-zoom.
+const LOWS_TTL = 20 * 60 * 1000;
+let _lowsOn = false;
+let _lowsIndex = null, _lowsIndexAt = 0;
+let _lowsModel = null;         // 'gefs' | 'ecmwf-ens' | 'gfs' | 'ecmwf'
+let _lowsView = 'tracks';      // 'tracks' | 'centers'
+let _lowsHour = 0;
+let _lowsMaxHpa = 1015;        // only lows at or below this pressure
+let _lowsData = null;          // { model, run, kind, step_h, out_h, tracks: [{m, p, box}] }
+let _lowsCanvas = null;
+let _lowsGen = 0;
+let _lowsTimer = null;
+
+(function _lowsRestore() {
+  try {
+    const v = JSON.parse(localStorage.getItem('gwcfc_lows') || 'null');
+    if (v && typeof v.m === 'string') _lowsModel = v.m;
+    if (v && ['tracks', 'centers'].includes(v.v)) _lowsView = v.v;
+    if (v && isFinite(v.x)) _lowsMaxHpa = Number(v.x);
+  } catch (e) {}
+})();
+function _lowsSave() {
+  try { localStorage.setItem('gwcfc_lows', JSON.stringify({ m: _lowsModel, v: _lowsView, x: _lowsMaxHpa })); } catch (e) {}
+}
+
+// A colour per ensemble member, spread around the hue wheel so neighbours
+// differ; the deterministic runs are drawn white on black instead.
+function _lowsMemberColor(m) {
+  const h = (m * 137.508) % 360;
+  return `hsl(${h.toFixed(0)},85%,62%)`;
+}
+
+async function _lowsBase() {
+  const base = (typeof _hdBase !== 'undefined' && _hdBase) || (typeof _hdResolveBase === 'function' ? await _hdResolveBase() : null);
+  if (base && typeof _hdBase !== 'undefined') _hdBase = base;
+  return base;
+}
+async function _lowsFetchIndex(force) {
+  if (!force && _lowsIndex && Date.now() - _lowsIndexAt < LOWS_TTL) return _lowsIndex;
+  const base = await _lowsBase();
+  if (!base) return _lowsIndex;
+  const idx = await fetch(`${base}/enscenters/lows/latest.json?t=${Date.now()}`, { cache: 'no-store' })
+    .then(r => r.ok ? r.json() : null).catch(() => null);
+  if (idx && idx.models) { _lowsIndex = idx; _lowsIndexAt = Date.now(); _lowsIndex._base = base; }
+  return _lowsIndex;
+}
+
+// Longitudes in -180..180, and a track that crosses the date line unwrapped
+// so it is one line rather than a stroke across the whole map.
+function _lowsPrepare(tracks) {
+  return (tracks || []).map(t => {
+    const p = [];
+    let prev = null;
+    (t.p || []).forEach(q => {
+      let lon = ((q[2] + 540) % 360) - 180;
+      if (prev != null) { while (lon - prev > 180) lon -= 360; while (prev - lon > 180) lon += 360; }
+      prev = lon;
+      p.push([q[0], q[1], lon, q[3]]);
+    });
+    let s = 90, n = -90, w = 540, e = -540;
+    p.forEach(q => { s = Math.min(s, q[1]); n = Math.max(n, q[1]); w = Math.min(w, q[2]); e = Math.max(e, q[2]); });
+    return { m: t.m || 0, p, box: [s, w, n, e] };
+  }).filter(t => t.p.length);
+}
+
+async function _lowsLoad(force) {
+  const gen = ++_lowsGen;
+  const idx = await _lowsFetchIndex(force);
+  if (gen !== _lowsGen || !_lowsOn) return;
+  if (!idx || !Object.keys(idx.models || {}).length) {
+    _lowsSay('No low tracks from the parsing server yet. They build after each GFS, GEFS and ECMWF run.');
+    _lowsData = null; _lowsRender(); _lowsDraw();
+    return;
+  }
+  if (!_lowsModel || !idx.models[_lowsModel]) _lowsModel = idx.models.gefs ? 'gefs' : Object.keys(idx.models)[0];
+  const ent = idx.models[_lowsModel];
+  if (!_lowsData || _lowsData.model !== _lowsModel || _lowsData.run !== ent.run || force) {
+    const d = await fetch(`${idx._base}/enscenters/${ent.path}?t=${encodeURIComponent(ent.run)}`)
+      .then(r => r.ok ? r.json() : null).catch(() => null);
+    if (gen !== _lowsGen || !_lowsOn) return;
+    if (!d) { _lowsSay('That run could not be loaded from the parsing server.'); _lowsRender(); return; }
+    _lowsData = { model: _lowsModel, run: ent.run, base: d.base || ent.base, kind: d.kind || ent.kind,
+                  label: d.label || ent.label, members: d.members, step_h: d.step_h || 6, out_h: d.out_h || 120,
+                  tracks: _lowsPrepare(d.tracks) };
+    _lowsHour = Math.min(_lowsHour, _lowsData.out_h);
+  }
+  _lowsRender();
+  _lowsDraw();
+}
+
+function _lowsSay(msg) { const el = document.getElementById('lows-note'); if (el) el.textContent = msg || ''; }
+
+function _lowsValidLabel(h) {
+  const d = _lowsData;
+  const t0 = d && Date.parse(d.base || '');
+  if (!isFinite(t0)) return `+${h} h`;
+  const t = new Date(t0 + h * 3600e3);
+  const day = t.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
+  return `+${h} h · ${day} ${String(t.getUTCHours()).padStart(2, '0')}z`;
+}
+
+// The panel: models from the index, the two views, the hour, the depth filter.
+function _lowsRender() {
+  const row = document.getElementById('lows-models');
+  const idx = _lowsIndex;
+  if (row) {
+    const order = ['gefs', 'ecmwf-ens', 'gfs', 'ecmwf'];
+    const names = { gefs: 'GEFS', 'ecmwf-ens': 'EPS', gfs: 'GFS', ecmwf: 'ECMWF' };
+    const have = idx ? Object.keys(idx.models || {}) : [];
+    const ids = order.filter(k => have.includes(k)).concat(have.filter(k => !order.includes(k)));
+    row.innerHTML = ids.map(k => `<button class="spc-pick-btn${k === _lowsModel ? ' active' : ''}" data-lm="${k}" `
+      + `title="${_ccEsc((idx.models[k].label || k) + ', ' + (idx.models[k].kind === 'ensemble' ? idx.models[k].members + ' members' : 'one run'))}">${names[k] || k}</button>`).join('')
+      || '<span style="font-size:9px;opacity:.6">no runs yet</span>';
+    row.querySelectorAll('[data-lm]').forEach(b => b.onclick = () => _lowsPick('model', b.dataset.lm));
+  }
+  const set = (id, on) => { const b = document.getElementById(id); if (b) b.classList.toggle('active', on); };
+  set('lows-v-tracks', _lowsView === 'tracks');
+  set('lows-v-centers', _lowsView === 'centers');
+  const sl = document.getElementById('lows-hour');
+  const lab = document.getElementById('lows-hour-lbl');
+  if (sl && _lowsData) {
+    sl.max = String(_lowsData.out_h); sl.step = String(_lowsData.step_h);
+    if (document.activeElement !== sl) sl.value = String(_lowsHour);
+  }
+  if (lab) lab.textContent = _lowsData ? _lowsValidLabel(_lowsHour) : '';
+  const mx = document.getElementById('lows-max');
+  if (mx) mx.value = String(_lowsMaxHpa);
+  if (_lowsData) {
+    const run = Date.parse(_lowsData.base || '');
+    const when = isFinite(run) ? `${String(new Date(run).getUTCHours()).padStart(2, '0')}z ${new Date(run).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}` : _lowsData.run;
+    _lowsSay(`${_lowsData.label} · ${when} run` + (_lowsData.kind === 'ensemble' ? ` · ${_lowsData.members} members` : ''));
+  }
+}
+
+function _lowsPick(what, v) {
+  if (what === 'model') { _lowsModel = v; _lowsData = null; }
+  else if (what === 'view') _lowsView = v;
+  else if (what === 'hour') _lowsHour = Number(v) || 0;
+  else if (what === 'max') _lowsMaxHpa = Number(v) || 1015;
+  _lowsSave();
+  if (what === 'model') { _lowsLoad(false); return; }
+  _lowsRender();
+  _lowsDraw();
+}
+
+function _lowsPane() {
+  if (!map.getPane('lowsPane')) {
+    const p = map.createPane('lowsPane');
+    p.style.zIndex = 455;
+    p.style.pointerEvents = 'none';
+  }
+  return map.getPane('lowsPane');
+}
+
+// One canvas, a bit larger than the screen so a short pan shows no edge,
+// placed in layer space so it rides a pan with the map and is redrawn when
+// the pan ends.
+const LOWS_PAD = 0.25;
+function _lowsDraw() {
+  if (!_lowsOn || typeof map === 'undefined' || !map) return;
+  const pane = _lowsPane();
+  if (!_lowsCanvas) {
+    _lowsCanvas = document.createElement('canvas');
+    _lowsCanvas.className = 'lows-canvas';
+    _lowsCanvas.style.position = 'absolute';
+    _lowsCanvas.style.pointerEvents = 'none';
+    pane.appendChild(_lowsCanvas);
+  }
+  const cv = _lowsCanvas;
+  const size = map.getSize();
+  const padX = Math.round(size.x * LOWS_PAD), padY = Math.round(size.y * LOWS_PAD);
+  const W = size.x + padX * 2, H = size.y + padY * 2;
+  const dpr = Math.min(2, window.devicePixelRatio || 1) * ((typeof _isIOS !== 'undefined' && _isIOS) ? 0.75 : 1);
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) {
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  }
+  const topLeft = map.containerPointToLayerPoint([-padX, -padY]);
+  L.DomUtil.setPosition(cv, topLeft);
+  cv.style.visibility = '';
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const d = _lowsData;
+  cv._drawn = { lines: 0, labels: 0 };
+  if (!d) return;
+  const b = map.getBounds().pad(LOWS_PAD);
+  const s = b.getSouth(), n = b.getNorth(), w = b.getWest(), e = b.getEast();
+  const pt = (lat, lon) => {
+    const c = map.latLngToContainerPoint([lat, lon]);
+    return [c.x + padX, c.y + padY];
+  };
+  // A track box can sit a world away (a longitude beyond 180 after unwrap),
+  // so each is tried at its own place and one world either side.
+  const shifts = [0, -360, 360];
+  const ens = d.kind === 'ensemble';
+  const hour = _lowsHour;
+  const labels = [];
+  for (const t of d.tracks) {
+    for (const sh of shifts) {
+      const [ts, tw, tn, te] = t.box;
+      if (tn < s || ts > n || te + sh < w || tw + sh > e) continue;
+      if (_lowsView === 'tracks') {
+        // Only lows that reach the chosen depth somewhere along the way.
+        if (!t.p.some(q => q[3] <= _lowsMaxHpa)) continue;
+        const col = ens ? _lowsMemberColor(t.m) : '#ffffff';
+        ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+        ctx.beginPath();
+        t.p.forEach((q, i) => { const [x, y] = pt(q[1], q[2] + sh); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+        if (!ens) { ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.lineWidth = 4.5; ctx.globalAlpha = 1; ctx.stroke(); }
+        ctx.strokeStyle = col; ctx.lineWidth = ens ? 1.4 : 2.4; ctx.globalAlpha = ens ? 0.8 : 1;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        cv._drawn.lines++;
+        // A dot at every forecast point, and a ring where the low is at the
+        // chosen hour.
+        t.p.forEach(q => {
+          const [x, y] = pt(q[1], q[2] + sh);
+          ctx.fillStyle = col;
+          ctx.beginPath(); ctx.arc(x, y, ens ? 1.6 : 2.4, 0, Math.PI * 2); ctx.fill();
+          if (q[0] === hour) {
+            ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.stroke();
+            ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.stroke();
+          }
+        });
+      } else {
+        const q = t.p.find(q => q[0] === hour);
+        if (!q || q[3] > _lowsMaxHpa) continue;
+        const [x, y] = pt(q[1], q[2] + sh);
+        if (x < -20 || y < -20 || x > W + 20 || y > H + 20) continue;
+        labels.push([x, y, q[3]]);
+      }
+    }
+  }
+  if (_lowsView === 'centers') {
+    // Deepest last, so it sits on top where members crowd together.
+    labels.sort((a, b2) => b2[2] - a[2]);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const [x, y, hpa] of labels) {
+      ctx.font = '900 17px Arial, sans-serif';
+      ctx.lineWidth = 3.5; ctx.strokeStyle = '#000'; ctx.strokeText('L', x, y);
+      ctx.fillStyle = '#e8141c'; ctx.fillText('L', x, y);
+      ctx.font = '700 10px Arial, sans-serif';
+      ctx.lineWidth = 3; ctx.strokeStyle = '#000'; ctx.strokeText(String(Math.round(hpa)), x, y + 13);
+      ctx.fillStyle = '#fff'; ctx.fillText(String(Math.round(hpa)), x, y + 13);
+    }
+    cv._drawn.labels = labels.length;
+  }
+}
+function _lowsOnZoomStart() { if (_lowsCanvas) _lowsCanvas.style.visibility = 'hidden'; }
+function _lowsOnMoveEnd() { _lowsDraw(); }
+
+function _lowsToggle() {
+  _lowsOn = !_lowsOn;
+  const pill = document.getElementById('op-low-tracks');
+  if (pill) pill.classList.toggle('active', _lowsOn);
+  const ctrl = document.getElementById('lows-controls');
+  if (ctrl) ctrl.style.display = _lowsOn ? 'flex' : 'none';
+  if (_lowsOn) {
+    map.on('zoomstart', _lowsOnZoomStart);
+    map.on('moveend', _lowsOnMoveEnd);
+    _lowsRender();
+    _lowsLoad(true);
+    clearInterval(_lowsTimer);
+    _lowsTimer = setInterval(() => _lowsLoad(false), LOWS_TTL);
+  } else {
+    _lowsGen++;
+    map.off('zoomstart', _lowsOnZoomStart);
+    map.off('moveend', _lowsOnMoveEnd);
+    clearInterval(_lowsTimer); _lowsTimer = null;
+    if (_lowsCanvas) { try { _lowsCanvas.remove(); } catch (e) {} _lowsCanvas = null; }
+    _lowsData = null;
+  }
+}
+
+// The Inspector: the nearest low at the chosen hour, within 300 km.
+function _inspLowsRow(center) {
+  const d = _lowsData;
+  if (!d) return null;
+  let best = null, bestD = 300;
+  for (const t of d.tracks) {
+    const q = t.p.find(q => q[0] === _lowsHour);
+    if (!q) continue;
+    const km = map.distance([center.lat, center.lng], [q[1], ((q[2] + 540) % 360) - 180]) / 1000;
+    if (km < bestD) { bestD = km; best = { q, m: t.m }; }
+  }
+  const label = `${(d.label || 'Low').replace(' ensemble', '')} low`;
+  if (!best) return { label, value: 'none within 300 km', color: 'rgba(150,150,150,0.55)' };
+  const who = d.kind === 'ensemble' ? (best.m === 0 ? 'control' : `member ${best.m}`) : '';
+  return { label, value: String(Math.round(best.q[3])), unit: `hPa ${Math.round(bestD)} km away${who ? ', ' + who : ''}`,
+           color: '#e8141c' };
 }
 
 // -- COMPARING LAYERS: THE CROSS-LAYER SPLIT --------------------------------

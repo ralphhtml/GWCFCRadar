@@ -383,7 +383,7 @@ def filter_warm(centers, thk, lats, lons, max_lat=50.0, subtrop_lat=25.0):
 MAX_SPEED_KT = 40.0
 
 
-def stitch(by_step, step_h):
+def stitch(by_step, step_h, max_kt=None):
     """Turn per forecast hour centre lists into tracks.
 
     by_step is {step_hours: [centre, ...]} for ONE member. Greedy nearest
@@ -395,7 +395,7 @@ def stitch(by_step, step_h):
     live = []          # (track index, last centre)
     for si, s in enumerate(steps):
         gap_h = (s - steps[si - 1]) if si else step_h
-        reach_km = MAX_SPEED_KT * 1.852 * max(gap_h, 1)
+        reach_km = (max_kt or MAX_SPEED_KT) * 1.852 * max(gap_h, 1)
         taken = set()
         nxt = []
         for ti, last in live:
@@ -555,6 +555,72 @@ def write_json(path, obj):
             pass
 
 
+# -- Every low, not just the tropical ones ----------------------------------------
+#
+# The centre finder above sees every closed low on the planet and then the warm
+# core test throws most of them away, because the cyclone panel only wants
+# tropical ones. A forecaster looking at where the lows GO (a nor'easter, a
+# Gulf low, a Pacific storm) wants exactly the ones thrown away. They cost
+# nothing extra to keep: the download and the detection already happened.
+#
+# Written compactly under lows/, one file per model and run, with an index the
+# site reads to list what is there. A point is [hour, lat, lon, hPa].
+LOWS_DIR = os.path.join(OUT_DIR, "lows")
+LOWS_KEEP_RUNS = 2
+# Mid latitude lows move faster than tropical ones (a nor'easter can run at
+# 50 kt), so the lows are stitched with a looser speed ceiling than the
+# tropical tracks; at 40 kt a fast storm broke into pieces.
+LOWS_MAX_KT = 60.0
+
+
+def compact_tracks(tracks):
+    out = []
+    for t in tracks:
+        pts = [[int(p["step_h"]), round(float(p["lat"]), 2), round(float(p["lon"]), 2),
+                round(float(p.get("mslp_hpa", 0.0)), 1)] for p in t["points"]]
+        out.append({"m": t.get("member", 0), "p": pts})
+    return out
+
+
+def write_lows(model, label, run, base_iso, members, step_h, out_h, tracks, kind, lows_dir=None):
+    """One model's lows for one run, and the index entry pointing at it.
+
+    kind is 'ensemble' (many members, drawn as a bundle) or 'deterministic'
+    (one run, drawn bold).
+    """
+    lows_dir = lows_dir or LOWS_DIR
+    os.makedirs(lows_dir, exist_ok=True)
+    name = f"{model}_{run}.json"
+    payload = {"model": model, "label": label, "run": run, "base": base_iso, "kind": kind,
+               "members": members, "step_h": step_h, "out_h": out_h,
+               "built": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+               "tracks": compact_tracks(tracks)}
+    write_json(os.path.join(lows_dir, name), payload)
+    idx_path = os.path.join(lows_dir, "latest.json")
+    try:
+        with open(idx_path) as fh:
+            idx = json.load(fh)
+    except (OSError, ValueError):
+        idx = {}
+    idx.setdefault("models", {})[model] = {
+        "label": label, "run": run, "base": base_iso, "kind": kind, "members": members,
+        "step_h": step_h, "out_h": out_h, "path": f"lows/{name}", "tracks": len(payload["tracks"]),
+        "updated": payload["built"]}
+    write_json(idx_path, idx)
+    # Keep the newest couple of runs per model; the rest is history nobody asks for.
+    try:
+        mine = sorted(f for f in os.listdir(lows_dir) if f.startswith(model + "_") and f.endswith(".json"))
+        for f in mine[:-LOWS_KEEP_RUNS]:
+            os.unlink(os.path.join(lows_dir, f))
+    except OSError:
+        pass
+    return payload
+
+
+def run_base_iso(date_str, cyc):
+    return f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}T{cyc}:00:00Z"
+
+
 def build(date_str, cyc, step_h, out_h, members, verbose=True):
     steps = list(range(0, out_h + 1, step_h))
     run = f"{date_str}_{cyc}"
@@ -562,9 +628,11 @@ def build(date_str, cyc, step_h, out_h, members, verbose=True):
     os.makedirs(out_run, exist_ok=True)
 
     all_tracks = []
+    low_tracks = []
     done = 0
     for member in members:
         by_step = {}
+        lows_by_step = {}
         for s in steps:
             with tempfile.NamedTemporaryFile(suffix=".grib2",
                                              delete=False) as tf:
@@ -577,6 +645,7 @@ def build(date_str, cyc, step_h, out_h, members, verbose=True):
                     continue
                 mslp, thk, lats, lons = got
                 centers = detect_centers(mslp, lats, lons)
+                lows_by_step[s] = centers
                 by_step[s] = filter_warm(centers, thk, lats, lons)
             except Exception as e:                    # one member, not the run
                 log(f"  {member} f{s:03d}: {e}")
@@ -590,6 +659,11 @@ def build(date_str, cyc, step_h, out_h, members, verbose=True):
         for t in stitch(by_step, step_h):
             t["member"] = member
             all_tracks.append(t)
+        # Members are numbered for the lows file: the control is 0.
+        mnum = 0 if member == "gec00" else int(member[3:])
+        for t in stitch(lows_by_step, step_h, LOWS_MAX_KT):
+            t["member"] = mnum
+            low_tracks.append(t)
         done += 1
         if verbose:
             log(f"  {member}: {len(by_step)} steps, "
@@ -610,6 +684,9 @@ def build(date_str, cyc, step_h, out_h, members, verbose=True):
                {"run": run, "path": f"{run}/gefs.json",
                 "model": "gefs", "members": done,
                 "updated": payload["built"]})
+    if low_tracks:
+        write_lows("gefs", "GEFS ensemble", run, run_base_iso(date_str, cyc), done,
+                   step_h, out_h, low_tracks, "ensemble")
     log(f"{done} members, {len(all_tracks)} tracks -> {out_run}/gefs.json")
     return payload
 
