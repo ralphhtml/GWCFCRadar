@@ -640,6 +640,35 @@ Persistent=true
 WantedBy=timers.target
 EOF
 
+# Low pressure tracks from the ordinary GFS and ECMWF runs (the ensembles'
+# lows come out of the two services above). One pressure record per forecast
+# hour, so this is light: a few minutes a run.
+cat > "$UNITS/gwcfc-lows.service" <<EOF
+[Unit]
+Description=Low pressure centres and tracks from the GFS and ECMWF runs
+
+[Service]
+Type=oneshot
+ExecStart=$VENV/bin/python $REPO/pi/lows_pipeline.py
+TimeoutStartSec=2700
+Nice=15
+EOF
+
+cat > "$UNITS/gwcfc-lows.timer" <<'EOF'
+[Unit]
+Description=Deterministic model low tracks, per run
+
+[Timer]
+# GFS lands about four hours after each cycle and ECMWF's long runs about
+# eight; a run already built is skipped, so checking every six hours catches
+# both soon after they are out.
+OnCalendar=*-*-* 04,10,16,22:50
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
 # Spaghetti model guidance from the ATCF a-decks. Text files, a few hundred
 # kilobytes per storm, so this is by far the lightest fetcher here.
 cat > "$UNITS/gwcfc-spag.service" <<EOF
@@ -863,6 +892,7 @@ systemctl --user enable --now gwcfc-cities.timer   >/dev/null 2>&1
 systemctl --user enable --now gwcfc-cyclones.timer >/dev/null 2>&1
 systemctl --user enable --now gwcfc-ens.timer      >/dev/null 2>&1
 systemctl --user enable --now gwcfc-ecmwf-tc.timer >/dev/null 2>&1
+systemctl --user enable --now gwcfc-lows.timer     >/dev/null 2>&1
 systemctl --user enable --now gwcfc-spag.timer     >/dev/null 2>&1
 systemctl --user enable --now gwcfc-feeds.timer    >/dev/null 2>&1
 systemctl --user enable --now gwcfc-update.timer   >/dev/null 2>&1
