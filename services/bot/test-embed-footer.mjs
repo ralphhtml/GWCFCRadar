@@ -34,28 +34,28 @@ if (!discordUrl) {
   const block = SRC.slice(from, to);
   const mod = await import('data:text/javascript,' + encodeURIComponent(
     `import { EmbedBuilder } from ${JSON.stringify(discordUrl)};\n`
-    + `const client = { user: { displayAvatarURL: () => 'https://cdn.test/asturio.png' } };\n`
+    + `const client = { user: { username: 'snowball_bot', globalName: 'Snowball', displayAvatarURL: () => 'https://cdn.test/asturio.png' } };\n`
     + `${block}\nexport { askEmbed, askErrorEmbed, botFooter, signEmbed, EmbedBuilder };`));
-  const snowball = { username: 'snowball_wx', globalName: 'Snowball' };
+  const ralph = { username: 'ralph_wx', globalName: 'Ralph' };
 
-  const one = mod.askEmbed('Storms by 4 PM.', snowball, 1, 1).toJSON();
+  const one = mod.askEmbed('Storms by 4 PM.', ralph, 1, 1).toJSON();
   ok('an answer has no author line at the top', !one.author, JSON.stringify(one.author));
-  ok('its footer names the bot and who asked', one.footer && one.footer.text === 'Asturio AI · requested by Snowball',
+  ok('its footer names the bot by its own Discord name, and who asked', one.footer && one.footer.text === 'Snowball · requested by Ralph',
      JSON.stringify(one.footer));
   ok('with the bot\'s own picture beside it', one.footer && one.footer.icon_url === 'https://cdn.test/asturio.png');
   ok('and the time it was answered', typeof one.timestamp === 'string' && !isNaN(Date.parse(one.timestamp)), one.timestamp);
 
-  const part = mod.askEmbed('...', snowball, 2, 3).toJSON();
+  const part = mod.askEmbed('...', ralph, 2, 3).toJSON();
   ok('a long answer keeps its "Part 2 of 3" in the same footer',
-     part.footer.text === 'Asturio AI · requested by Snowball · Part 2 of 3', part.footer.text);
+     part.footer.text === 'Snowball · requested by Ralph · Part 2 of 3', part.footer.text);
 
-  const err = mod.askErrorEmbed('Could not answer that.', snowball).toJSON();
-  ok('errors are signed the same way', !err.author && /requested by Snowball/.test(err.footer.text), JSON.stringify(err.footer));
+  const err = mod.askErrorEmbed('Could not answer that.', ralph).toJSON();
+  ok('errors are signed the same way', !err.author && /requested by Ralph/.test(err.footer.text), JSON.stringify(err.footer));
 
   const noGlobal = mod.botFooter({ username: 'plainuser' });
-  ok('someone with no display name is named by their username', noGlobal.text === 'Asturio AI · requested by plainuser', noGlobal.text);
-  const signed = mod.signEmbed(new mod.EmbedBuilder().setDescription('x'), snowball).toJSON();
-  ok('signEmbed adds the same footer to any embed', signed.footer.text === 'Asturio AI · requested by Snowball' && !!signed.timestamp);
+  ok('someone with no display name is named by their username', noGlobal.text === 'Snowball · requested by plainuser', noGlobal.text);
+  const signed = mod.signEmbed(new mod.EmbedBuilder().setDescription('x'), ralph).toJSON();
+  ok('signEmbed adds the same footer to any embed', signed.footer.text === 'Snowball · requested by Ralph' && !!signed.timestamp);
 }
 
 console.log('\n2. every embed the bot sends is signed at the foot');

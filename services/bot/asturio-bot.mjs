@@ -675,12 +675,19 @@ const ASK_CHUNK_LIMIT = 4000;          // a little headroom under the 4096 cap
 // the TOP as the embed's author line, a name and picture above the answer,
 // which read as the person speaking rather than the bot answering them; the
 // footer is where a bot's signature and "requested by" belong.
-const ASTURIO_NAME = 'Asturio AI';
+// The bot is named by its own Discord account (whatever the server knows it
+// as, e.g. Snowball), not a hard-coded "Asturio AI", so the footer matches
+// the name Discord prints above the message.
+const ASTURIO_NAME = 'Asturio AI';   // only if the account is not known yet
 function botFooter(user, extra) {
+  let botName = ASTURIO_NAME, iconURL;
+  try {
+    const me = client.user;
+    if (me) botName = me.globalName || me.username || ASTURIO_NAME;
+    iconURL = me?.displayAvatarURL() || undefined;
+  } catch { iconURL = undefined; }
   const who = user ? (user.globalName || user.username) : null;
-  const text = [ASTURIO_NAME, who ? `requested by ${who}` : null, extra].filter(Boolean).join(' \u00b7 ');
-  let iconURL;
-  try { iconURL = client.user?.displayAvatarURL() || undefined; } catch { iconURL = undefined; }
+  const text = [botName, who ? `requested by ${who}` : null, extra].filter(Boolean).join(' \u00b7 ');
   return { text, iconURL };
 }
 function signEmbed(embed, user, extra) {
