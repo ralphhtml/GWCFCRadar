@@ -12245,6 +12245,24 @@ const WZ_PX_PER_ZOOM_PINCH = 40;    // a trackpad pinch, which wants to be quick
 const WZ_LINE_PX           = 16;    // one "line" of scroll, for deltaMode 1
 const WZ_MAX_STEP          = 2;     // levels per event, so a flick cannot fly
 
+// How long the wheel has to be still before a gesture counts as finished and
+// the map commits to its new zoom (loads tiles, tells every layer).
+const WZ_SETTLE_MS         = 110;
+
+// A held scroll used to apply a full, non-animated zoom on every animation
+// frame. Each one was a real zoomend and moveend: every layer on the map
+// redrew and every tile layer abandoned the tiles it had just asked for and
+// asked for a new set. Measured: 2 seconds of scrolling fired 66 zoomends and
+// started 3,605 tile loads, of which 32 finished. That is the lag, and it is
+// why the tiles never seemed to arrive.
+//
+// So the wheel now zooms the way Leaflet's own two-finger pinch does. While
+// the fingers are moving the map is only MOVED (map._move): the tiles already
+// on screen are scaled like a picture, which costs next to nothing, and no
+// layer is told the zoom ended. Tile layers are also told to hold off loading
+// the in-between levels the gesture flies straight past. When the wheel has
+// been still for WZ_SETTLE_MS the zoom is committed once, the same way a
+// pinch ends: one zoomend, one set of tiles, for the level you stopped on.
 function _wireWheelZoom(m) {
   const el = m.getContainer && m.getContainer();
   if (!el) return;
@@ -12255,22 +12273,128 @@ function _wireWheelZoom(m) {
   let pending = 0;          // zoom levels accumulated but not yet applied
   let anchor = null;        // where the cursor was, in container pixels
   let frame = 0;
+  let gesture = null;       // { center, zoom, held } while a gesture runs
+  let settle = 0;
+  // A stand-in map (the tests) has no _move; it gets plain zoom steps.
+  const smooth = typeof m._move === 'function' && typeof m._moveStart === 'function'
+    && typeof m.project === 'function' && typeof m.unproject === 'function';
+
+  // Drop a tile layer's levels two or more away from the one it is on. Kept,
+  // they ride the gesture's zoom as CSS scale, so after ten levels of scroll
+  // a starting tile is drawn a thousand times its size, and the browser
+  // repaints that giant picture every frame. That, not the page's own code,
+  // was most of the stutter. One level either side stays as a backdrop.
+  const trim = (l, tz) => {
+    try {
+      for (const k in l._levels) {
+        const z = Number(k);
+        if (Math.abs(z - tz) < 2) continue;
+        L.DomUtil.remove(l._levels[z].el);
+        l._removeTilesAtZoom(z);
+        if (l._onRemoveLevel) l._onRemoveLevel(z);
+        delete l._levels[z];
+      }
+    } catch (e) {}
+  };
+
+  const begin = () => {
+    try { if (m._stop) m._stop(); } catch (e) {}
+    const held = [];
+    try {
+      m.eachLayer(l => {
+        if (typeof L !== 'undefined' && L.GridLayer && l instanceof L.GridLayer && l.options) {
+          // Remember what each layer had, so a layer that is always quiet
+          // during zooms (satellite) goes back to being quiet.
+          held.push({ l, was: l.options.updateWhenZooming });
+          l.options.updateWhenZooming = false;
+        }
+      });
+    } catch (e) {}
+    m._moveStart(true, false);
+    gesture = { center: m.getCenter(), zoom: m.getZoom(), held, tileZoom: Math.round(m.getZoom()) };
+  };
+
+  const commit = () => {
+    settle = 0;
+    const g = gesture;
+    if (!g) return;
+    if (m._animatingZoom) { settle = setTimeout(commit, 60); return; }
+    gesture = null;
+    g.held.forEach(h => { try { h.l.options.updateWhenZooming = h.was; } catch (e) {} });
+    // The map is already sitting at the final zoom, so there is nothing to
+    // animate: a plain move tells every tile layer to fetch this level (and
+    // clear the stretched ones once it lands), and moveEnd is the single
+    // zoomend the rest of the page hears. Leaflet's own animated finish would
+    // only wait out a 250 ms transition that moves nothing.
+    try {
+      m._move(g.center, g.zoom);
+      // _move only announces a zoom when the zoom changed, and the map has
+      // been sitting at this one since the last frame. Announced here by
+      // hand, so every tile layer switches to this level.
+      m.fire('zoom');
+      m._moveEnd(true);
+    } catch (e) {
+      try { m.setView(g.center, g.zoom, { animate: false }); } catch (err) {}
+    }
+  };
 
   const apply = () => {
     frame = 0;
     const step = pending;
-    pending = 0;
     if (!step) return;
+    if (smooth && m._animatingZoom) { frame = requestAnimationFrame(apply); return; }
+    pending = 0;
     try {
-      const want = m._limitZoom(m.getZoom() + step);
-      if (want === m.getZoom()) return;
-      // setZoomAround keeps the anchor point fixed, which is what makes
-      // zooming feel like it is aimed rather than centred. animate:false
-      // because the events are already arriving at screen rate; animating
-      // each one would queue easings on top of each other and lag behind
-      // the fingers.
-      if (anchor) m.setZoomAround(anchor, want, { animate: false });
-      else m.setZoom(want, { animate: false });
+      if (!smooth) {
+        const want = m._limitZoom(m.getZoom() + step);
+        if (want === m.getZoom()) return;
+        if (anchor) m.setZoomAround(anchor, want, { animate: false });
+        else m.setZoom(want, { animate: false });
+        return;
+      }
+      if (!gesture) begin();
+      const want = m._limitZoom(gesture.zoom + step);
+      if (want !== gesture.zoom) {
+        // Keep the point under the cursor under the cursor: find it at the
+        // old zoom, then put the centre wherever puts it back there at the
+        // new one. Pure projection arithmetic, so it does not depend on
+        // where the panes happen to sit mid-gesture.
+        const size = m.getSize(), half = size.divideBy(2);
+        const off = anchor ? L.point(anchor.x, anchor.y).subtract(half) : L.point(0, 0);
+        const under = m.unproject(m.project(gesture.center, gesture.zoom).add(off), gesture.zoom);
+        let center = m.unproject(m.project(under, want).subtract(off), want);
+        if (m.options && m.options.maxBounds && m._limitCenter) {
+          center = m._limitCenter(center, want, L.latLngBounds(m.options.maxBounds));
+        }
+        gesture.center = center;
+        gesture.zoom = want;
+        // A long scroll can cross many levels without a pause. Stretching
+        // the starting tiles the whole way reads as a smear, so each time
+        // the gesture crosses a whole level the held layers are let through
+        // for one step and fetch that level: one tile set per level crossed,
+        // instead of one per frame.
+        const tz = Math.round(want);
+        const refresh = tz !== gesture.tileZoom;
+        if (refresh) {
+          gesture.tileZoom = tz;
+          gesture.held.forEach(h => { try { h.l.options.updateWhenZooming = true; } catch (e) {} });
+        }
+        m._move(center, want, { pinch: true, round: false });
+        if (refresh) gesture.held.forEach(h => {
+          try { h.l.options.updateWhenZooming = false; } catch (e) {}
+          trim(h.l, tz);
+        });
+        // The drawn layers (alert polygons, borders, city dots) only redraw
+        // when a zoom ends and are stretched until then, the same giant
+        // picture problem. So at each whole level the gesture closes for an
+        // instant, letting everything settle at a scale of at most two, and
+        // reopens: one settle per level instead of one per frame.
+        if (refresh) {
+          try { m._moveEnd(true); m._moveStart(true, false); } catch (e) {}
+        }
+      }
+      clearTimeout(settle);
+      settle = setTimeout(commit, WZ_SETTLE_MS);
     } catch (e) {}
   };
 
@@ -12663,9 +12787,9 @@ function _initGraticule() {
   // felt - and this grid was the one layer still doing that. It used to
   // redraw on the live 'zoom' event too: every latitude and longitude line's
   // pixel position, plus a measured label for each, recomputed and repainted
-  // up to sixty times over a quarter-second animation - and worse under a
-  // held scroll-wheel or trackpad zoom, where each fractional step is its
-  // own instant zoom, not one shared animation. A faint reference grid
+  // up to sixty times over a quarter-second animation, and on every step of
+  // a held scroll-wheel or trackpad zoom (the wheel settles once per whole
+  // level crossed, see _wireWheelZoom). A faint reference grid
   // nobody is watching frame-by-frame just hides for that instant and
   // reappears correctly placed the moment the zoom settles.
   map.on('zoomstart', () => { canvas.style.visibility = 'hidden'; });
@@ -29502,7 +29626,7 @@ function _barbStart() {
     // the places they describe. Redrawing a couple of hundred glyphs, each
     // under a shadowed stroke (Canvas2D's most expensive per-shape cost), is
     // fine once - it is not fine sixty times over a quarter-second zoom, or
-    // once per fractional step of a held scroll-wheel zoom, which is exactly
+    // on every move of a held scroll-wheel zoom, which is exactly
     // the frame the old 'zoom' binding redrew on. The wind particles and the
     // radar tile pool already hide for the length of a zoom and pick back up
     // once it settles; the barbs get the same treatment here instead of
@@ -30485,9 +30609,10 @@ function _goesEnsureLayer(i) {
 // The satellite pool goes quiet during a zoom, the same way the radar pool
 // does (see the zoomstart/zoomend pair in initMap) and for the same reason:
 // a hidden tile layer still rides the zoom animation and then re-fetches
-// its whole viewport the instant the zoom ends. _wireWheelZoom applies a
-// held scroll as many small, non-animated zoom steps rather than one
-// smooth gesture, so every one of those steps was its own zoomend for up
+// its whole viewport the instant the zoom ends. _wireWheelZoom used to apply
+// a held scroll as many small, non-animated zoom steps (it now settles once
+// per whole level, then once at the end), so every one of those steps was
+// its own zoomend for up
 // to GOES_POOL_MAX pooled WMS layers at once - and a WMS tile is rendered
 // on the server on request rather than served from a pre-built pyramid, so
 // it is slower to begin with. That pile-up, repeating on every step of the
@@ -67550,6 +67675,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-d', date: 'Sep 23, 2026',
+    text: 'Zooming in with the scroll wheel or a trackpad is much smoother, and the map sharpens faster once you stop. It used to fully redraw the whole map on every frame of a scroll and throw away almost every map tile it had just asked for. Now it zooms like a pinch: the picture scales smoothly while you scroll, catches up once per zoom level, and loads just the tiles for where you stop.' },
   { id: '2026-09-23-c', date: 'Sep 23, 2026',
     text: 'Housekeeping: no em dashes, and nothing that looks like one, anywhere in the site or its code. The long line characters in the code comments and the en dashes in number ranges are now plain hyphens. The home server that builds the radar, satellite and model data is now called the parsing server everywhere on the site.' },
   { id: '2026-09-23-b', date: 'Sep 23, 2026',
