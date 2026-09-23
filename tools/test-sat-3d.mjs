@@ -57,7 +57,8 @@ if (!chromium) {
 const GW = 60, GH = 40;
 const T0 = Date.UTC(2026, 8, 23, 18, 1, 17);
 const frameTimes = [0, 1, 2, 3, 4, 5].map(i => T0 + i * 300000);
-const asked = { index: [], frame: [], wms: [] };
+const asked = { index: [], frame: [], wms: [], arcIndex: [], arcFrame: [] };
+let wmsDown = false;              // the WMS has nothing (a travelled moment)
 function synthFrame(t) {
   const shift = (t - T0) / 300000;                 // the anvil drifts a cell east a scan
   const h = Buffer.alloc(GW * GH * 2), g = Buffer.alloc(GW * GH);
@@ -125,8 +126,19 @@ await p.route('**://**', route => {
     const i = +(/k(\d)\.nc/.exec(decodeURIComponent(url)) || [0, 0])[1];
     return route.fulfill({ headers: CORS, contentType: 'application/json', body: JSON.stringify(synthFrame(frameTimes[i])) });
   }
+  if (url.startsWith('https://pi.test/sat/archive/index')) {
+    asked.arcIndex.push(url);
+    return route.fulfill({ headers: CORS, contentType: 'application/json', body: JSON.stringify({
+      bucket: 'noaa-goes19', bounds: [[20, -110], [50, -80]],
+      frames: [{ t: T0, stamp: 'a', key: 'ABI-L2-CMIPC/arc.nc' }] }) });
+  }
+  if (url.startsWith('https://pi.test/sat/archive/frame')) {
+    asked.arcFrame.push(url);
+    return route.fulfill({ headers: CORS, contentType: 'image/png', body: png(8, 8, [30, 60, 230, 255]) });
+  }
   if (url.includes('mesonet.agron.iastate.edu') && /REQUEST=GetMap/i.test(url) && /SRS=EPSG:4326/.test(url)) {
     asked.wms.push(url);
+    if (wmsDown) return route.fulfill({ status: 404, headers: CORS, body: 'no' });
     return route.fulfill({ headers: CORS, contentType: 'image/png', body: png(8, 8, [230, 30, 30, 255]) });
   }
   return route.abort();
@@ -262,6 +274,85 @@ console.log('\n5. the product on the map is draped over the relief');
      asked.wms[0]);
   ok('its colours replaced the grey', r.skin === 'Clean IR' && r.r > 200 && r.g < 60, JSON.stringify(r));
   ok('and the status names the product', /^Clean IR/.test(r.status), r.status);
+}
+
+console.log('\n5b. ANY satellite product drapes: every channel, composite and global mosaic');
+{
+  const r = await p.evaluate(async () => {
+    const menu = Array.from(document.querySelectorAll('#s3d-skin option')).map(o => o.value);
+    const z = _s3dZone;
+    // The parsing server's composite and mosaic pictures, stood in for by
+    // pictures drawn here: left half green, right half magenta, covering a
+    // box bigger than the zone, so the crop has to find the zone inside it.
+    const piCalls = [];
+    const real = _goesPiFramesFor;
+    const pic = (() => {
+      const c = document.createElement('canvas'); c.width = 200; c.height = 100;
+      const x = c.getContext('2d');
+      x.fillStyle = 'rgb(20,200,40)'; x.fillRect(0, 0, 100, 100);
+      x.fillStyle = 'rgb(220,20,220)'; x.fillRect(100, 0, 100, 100);
+      return c.toDataURL();
+    })();
+    const midLng = (z.w + z.e) / 2, spanLng = z.e - z.w, spanLat = z.n - z.s;
+    // Centred on the zone's middle so the colour change falls on its middle.
+    const bounds = [[z.s - spanLat, midLng - spanLng], [z.n + spanLat, midLng + spanLng]];
+    window._goesPiFramesFor = async (product, region) => {
+      piCalls.push(product.id + '@' + region);
+      return [{ time: new Date(_s3dFrames[_s3dIdx].t), url: pic, bounds }];
+    };
+    const fr = _s3dFrames[_s3dIdx];
+    const results = {};
+    for (const prod of GOES_PRODUCTS) {
+      _s3dSkinSel = prod.id;
+      _s3dPiFrameMemo.clear();
+      await _s3dSkin(fr, _s3dGen);
+      const d = fr.data, row = Math.floor(d.h / 2);
+      const L = row * d.w + 2, R = row * d.w + d.w - 3;
+      results[prod.id] = { skin: d.skin, left: [d.rgb[L * 3], d.rgb[L * 3 + 1], d.rgb[L * 3 + 2]],
+                           right: [d.rgb[R * 3], d.rgb[R * 3 + 1], d.rgb[R * 3 + 2]] };
+    }
+    _s3dSkinSel = 'ir';
+    await _s3dSkin(fr, _s3dGen);
+    const ir = { skin: fr.data.skin, grey: fr.data.rgb[0] === fr.data.rgb[1] && fr.data.rgb[1] === fr.data.rgb[2] };
+    // A composite with no picture over the zone at all: said, and the grey stays.
+    window._goesPiFramesFor = async () => [];
+    _s3dSkinSel = 'rgb-dust'; _s3dPiFrameMemo.clear();
+    await _s3dSkin(fr, _s3dGen); _s3dSayFrame();
+    const miss = { skin: fr.data.skin, status: document.getElementById('s3d-status').textContent };
+    window._goesPiFramesFor = real;
+    return { menu, ids: GOES_PRODUCTS.map(p => p.id), results, piCalls, ir, miss };
+  });
+  ok('the Picture menu offers every satellite product there is, plus the map\'s and plain infrared',
+     r.ids.every(id => r.menu.includes(id)) && r.menu.includes('map') && r.menu.includes('ir'),
+     r.ids.filter(id => !r.menu.includes(id)).join(','));
+  const failed = r.ids.filter(id => !r.results[id] || !r.results[id].skin);
+  ok(`all ${r.ids.length} products drape over the relief`, failed.length === 0, failed.join(','));
+  const comps = r.ids.filter(id => /^rgb-|^glb-/.test(id));
+  ok('a composite or mosaic is cropped to the zone: its left half on the left, right half on the right',
+     comps.every(id => { const x = r.results[id]; return x.left[1] > 150 && x.left[0] < 80 && x.right[0] > 150 && x.right[1] < 80; }),
+     JSON.stringify(r.results[comps[0]]));
+  ok('composites come from the sector the heights came from, the mosaic from its worldwide one',
+     r.piCalls.includes('rgb-airmass@east') && r.piCalls.includes('glb-ir@global'), r.piCalls.slice(0, 3).join(' '));
+  ok('Infrared picks the heights\' own grey scan', r.ir.skin === null && r.ir.grey, JSON.stringify(r.ir));
+  ok('a product with nothing over the zone says so and keeps the grey', r.miss.skin === null
+     && /Infrared \(no Dust here\)/.test(r.miss.status), r.miss.status);
+}
+{
+  // A plain channel the WMS no longer holds (a travelled moment): NOAA's
+  // archive on the parsing server fills in.
+  wmsDown = true;
+  const r = await p.evaluate(async () => {
+    const fr = _s3dFrames[_s3dIdx];
+    _s3dSkinSel = 'ch09';
+    await _s3dSkin(fr, _s3dGen);
+    const out = { skin: fr.data.skin, b: fr.data.rgb[2], r: fr.data.rgb[0] };
+    _s3dSkinSel = 'map';
+    return out;
+  });
+  wmsDown = false;
+  ok('when the WMS has nothing, the channel comes from NOAA\'s archive instead',
+     r.skin === 'Mid Water Vapor' && r.b > 180 && r.r < 80 && asked.arcIndex.some(u => /band=9/.test(u))
+     && asked.arcFrame.length >= 1, JSON.stringify(r) + ' ' + asked.arcIndex[0]);
 }
 
 console.log('\n6. Radar inside borrows Radar 3D\'s volume, and neither cancels the other');

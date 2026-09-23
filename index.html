@@ -12039,6 +12039,10 @@ body.clean-mode #clean-hint { opacity: 1; }
   </div>
   <div class="r3d-sliders">
     <label class="r3d-slider-row">
+      <span>Picture</span>
+      <select class="xsec-sel" id="s3d-skin" title="The satellite picture draped over the cloud tops: whatever the map is showing, or any product at all, channels, composites and the global mosaic alike"></select>
+    </label>
+    <label class="r3d-slider-row">
       <span>Height</span>
       <select class="xsec-sel" id="s3d-exag" title="Stretch the cloud tops upward. A cloud 12 km tall over a zone hundreds of km wide is nearly flat at true scale. Labels stay in true height.">
         <option value="auto" selected>Auto stretch</option>
@@ -31125,6 +31129,8 @@ function _reloadGoesIfActive() {
 
 function _setGoesProduct(id) {
   _goesProductId = id;
+  // An open Satellite 3D draping "what the map is showing" follows along.
+  try { if (typeof _s3dOn !== 'undefined' && _s3dOn && _s3dSkinSel === 'map') setTimeout(_s3dReskin, 0); } catch (e) {}
   // Composites cover a different set of sectors from the WMS bands, and the
   // global mosaic a different set again. Landing on a product while sitting
   // on a sector it cannot show would give an empty picture and no reason, so
@@ -67859,6 +67865,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-f', date: 'Sep 23, 2026',
+    text: 'Satellite 3D now works with every satellite product. A new Picture menu in the panel drapes any of them over the cloud tops: all 16 channels, every composite (Air Mass, True Colour, Dust, Day Cloud Phase and the rest) and the global mosaic, whatever the map itself is showing. It still follows the map by default. For a past moment the plain channels come from NOAA\'s own archive when the live service no longer has them, and if a product has no picture over your box the panel says so and shows the infrared instead.' },
   { id: '2026-09-23-e', date: 'Sep 23, 2026',
     text: 'Two comparison fixes. The rotate handle on a split line now turns only that one line, to whatever angle you drag it to (it snaps to straight and diagonal when you get close), and the pictures on either side follow the angled cut. Tap it to turn the line a quarter. The rotate button in the corner still flips the whole split. And the Inspector now reads the picture actually under the crosshair: in a radar or satellite comparison each pane reports its own radar, product and value, labelled A, B, C and so on, instead of every pane reading the main picture.' },
   { id: '2026-09-23-d', date: 'Sep 23, 2026',
@@ -82507,63 +82515,196 @@ async function _s3dFetchFrame(base, fr, gen, quiet) {
   }
 }
 
-// -- The skin: the product being viewed -----------------------------------
-// The satellite picture on the map, asked of the same WMS for exactly this
-// box at exactly this scan's moment, and sampled one pixel per cell. A parsing server
-// composite, or no satellite layer at all, keeps the infrared grey the parsing server
-// sent, which is the same scan the heights came from.
-function _s3dSkinSpec() {
-  try {
+// -- The skin: any satellite product ------------------------------------
+// The picture draped over the cloud tops. By default it is whatever the map
+// is showing (the infrared grey the heights were built from when the
+// satellite layer is off); the panel's Picture menu can pick ANY product
+// instead, whatever is on the map. Every kind of product has a way in:
+//
+//   a plain channel     the WMS, asked for exactly this box at this moment,
+//                       and NOAA's own archive on the parsing server when
+//                       the WMS has nothing then (a travelled moment)
+//   a composite         the parsing server's own picture nearest the scan
+//   the global mosaic   the same, from its worldwide sector
+//
+// All of them arrive as plain latitude and longitude pictures, the same
+// shape as the height grid, so the box is simply cropped out of each one.
+let _s3dSkinSel = 'map';               // 'map', 'ir', or a GOES_PRODUCTS id
+const _s3dPiFrameMemo = new Map();     // product|region -> { at, frames }
+
+function _s3dSkinProduct() {
+  if (_s3dSkinSel === 'ir') return null;
+  if (_s3dSkinSel === 'map') {
     if (typeof activeLayers === 'undefined' || !activeLayers.satellite) return null;
-    const p = _goesProduct();
-    if (!p || !p.ch || (typeof _goesIsPi === 'function' && _goesIsPi())) return null;
-    const cfg = _goesConfigFor(p, _goesRegionId);
-    if (!cfg || !cfg.url || !cfg.layer) return null;
-    return { url: cfg.url, layer: cfg.layer, label: p.label || p.id };
-  } catch (e) { return null; }
+    try { return _goesProduct(); } catch (e) { return null; }
+  }
+  return (typeof GOES_PRODUCTS !== 'undefined' && GOES_PRODUCTS.find(p => p.id === _s3dSkinSel)) || null;
 }
-function _s3dSkinUrl(sp, fr, W, H) {
-  const z = _s3dZone;
-  const t = new Date(Math.floor(fr.t / 300000) * 300000);
+// The sector that covers the zone, from the satellite the heights came from.
+function _s3dSkinRegion(product) {
+  if (product && product.gsat === 'global') return 'global';
+  const i = _s3dIndex || {};
+  const west = i.post === 'west' || (!i.post && _s3dZone && _s3dZone.lng < -105);
+  const disk = i.sector === 'fulldisk';
+  return west ? (disk ? 'wfulldisk' : 'west') : (disk ? 'efulldisk' : 'east');
+}
+function _s3dIso(ms, stepMs) {
+  const t = new Date(Math.floor(ms / stepMs) * stepMs);
   const pad = v => String(v).padStart(2, '0');
-  const iso = `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}T`
-            + `${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}:00Z`;
-  return `${sp.url}?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=${encodeURIComponent(sp.layer)}`
-    + `&STYLES=&SRS=EPSG:4326&BBOX=${z.w},${z.s},${z.e},${z.n}&WIDTH=${W}&HEIGHT=${H}`
-    + `&FORMAT=image/png&TRANSPARENT=true&TIME=${iso}`;
+  return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}T`
+       + `${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}:00Z`;
 }
-function _s3dSkin(fr, gen) {
-  const sp = _s3dSkinSpec();
-  const d = fr.data;
-  if (!sp || !d) return;
-  const W = Math.min(1024, d.w * 2), H = Math.min(1024, d.h * 2);
-  const img = new Image();
-  img.crossOrigin = 'anonymous';
-  img.onload = () => {
-    if (gen !== _s3dGen || fr.data !== d) return;
-    try {
-      const cv = document.createElement('canvas');
-      cv.width = d.w; cv.height = d.h;
-      const cx = cv.getContext('2d');
-      cx.imageSmoothingEnabled = true;
-      cx.drawImage(img, 0, 0, d.w, d.h);
-      const px = cx.getImageData(0, 0, d.w, d.h).data;
-      const n = d.w * d.h;
-      let seen = 0;
-      for (let k = 0; k < n; k++) if (px[k * 4 + 3] > 16) seen++;
-      if (seen < n * 0.2) return;                  // the service had nothing here: keep the grey
-      const rgb = new Uint8Array(n * 3);
-      for (let k = 0; k < n; k++) {
-        const a = px[k * 4 + 3] / 255, g = d.grey[k] * (1 - a);
-        rgb[k * 3] = px[k * 4] * a + g; rgb[k * 3 + 1] = px[k * 4 + 1] * a + g; rgb[k * 3 + 2] = px[k * 4 + 2] * a + g;
-      }
-      d.rgb = rgb;
-      d.skin = sp.label;
-      if (_s3dFrames[_s3dIdx] === fr) _s3dSayFrame();
-      _s3dDirty = true;
-    } catch (e) { /* a picture the page may not read: the grey stays */ }
+// Where to get this product's picture for this frame: { url, bounds } with
+// bounds [[south, west], [north, east]], or null when there is no way.
+async function _s3dSkinSource(product, fr) {
+  const z = _s3dZone;
+  const region = _s3dSkinRegion(product);
+  if (product.src === 'pi') {
+    const key = product.id + '|' + region;
+    let hit = _s3dPiFrameMemo.get(key);
+    if (!hit || Date.now() - hit.at > 60000) {
+      const frames = await _goesPiFramesFor(product, region);
+      hit = { at: Date.now(), frames: frames || [] };
+      _s3dPiFrameMemo.set(key, hit);
+    }
+    let best = null, gap = Infinity;
+    hit.frames.forEach(f => {
+      const g = Math.abs(f.time.getTime() - fr.t);
+      if (g < gap) { gap = g; best = f; }
+    });
+    return best ? { url: best.url, bounds: best.bounds, gapMin: Math.round(gap / 60000) } : null;
+  }
+  if (!product.ch) return null;
+  const cfg = _goesConfigFor(product, region);
+  if (!cfg || !cfg.url || !cfg.layer) return null;
+  const W = Math.min(1024, fr.data.w * 2), H = Math.min(1024, fr.data.h * 2);
+  return {
+    url: `${cfg.url}?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=${encodeURIComponent(cfg.layer)}`
+      + `&STYLES=&SRS=EPSG:4326&BBOX=${z.w},${z.s},${z.e},${z.n}&WIDTH=${W}&HEIGHT=${H}`
+      + `&FORMAT=image/png&TRANSPARENT=true&TIME=${_s3dIso(fr.t, 300000)}`,
+    bounds: [[z.s, z.w], [z.n, z.e]], wms: true,
   };
-  img.src = _s3dSkinUrl(sp, fr, W, H);
+}
+// NOAA's own archive of a plain channel, through the parsing server: the
+// one scan of that band nearest the frame's moment.
+async function _s3dArchiveSource(product, fr) {
+  const band = parseInt(String(product.ch || '').replace(/\D/g, ''), 10);
+  const base = await _s3dBase();
+  const i = _s3dIndex;
+  if (!band || !base || !i) return null;
+  const r = await fetch(`${base}/sat/archive/index?post=${i.post}&band=${band}&sector=${i.sector}`
+    + `&at=${Math.round(fr.t + 120000)}&n=1`,
+    { signal: typeof _abortSignal === 'function' ? _abortSignal(60000) : undefined });
+  if (!r.ok) return null;
+  const idx = await r.json();
+  const f = idx && idx.frames && idx.frames[idx.frames.length - 1];
+  if (!f || !idx.bounds) return null;
+  return { url: `${base}/sat/archive/frame?bucket=${encodeURIComponent(idx.bucket)}`
+    + `&key=${encodeURIComponent(f.key)}&band=${band}&sector=${i.sector}`, bounds: idx.bounds };
+}
+function _s3dLoadImg(url) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => res(img);
+    img.onerror = () => rej(new Error('picture failed'));
+    img.src = url;
+  });
+}
+// Crop the box out of a lat/lon picture onto the height grid, one pixel a
+// cell. Returns the pixels, or null when the picture has nothing here.
+function _s3dCropSkin(img, bounds, d) {
+  const z = _s3dZone;
+  const bs = bounds[0][0], bw = bounds[0][1], bn = bounds[1][0], be = bounds[1][1];
+  const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
+  if (!W || !H || !(be > bw) || !(bn > bs)) return null;
+  // The part of the zone the picture covers, in the picture and in the grid.
+  const w = Math.max(z.w, bw), e = Math.min(z.e, be), s = Math.max(z.s, bs), n = Math.min(z.n, bn);
+  if (!(e > w) || !(n > s)) return null;
+  const sx = (w - bw) / (be - bw) * W, sw = (e - w) / (be - bw) * W;
+  const sy = (bn - n) / (bn - bs) * H, sh = (n - s) / (bn - bs) * H;
+  const dx = (w - z.w) / (z.e - z.w) * d.w, dw = (e - w) / (z.e - z.w) * d.w;
+  const dy = (z.n - n) / (z.n - z.s) * d.h, dh = (n - s) / (z.n - z.s) * d.h;
+  const cv = document.createElement('canvas');
+  cv.width = d.w; cv.height = d.h;
+  const cx = cv.getContext('2d', { willReadFrequently: true });
+  cx.imageSmoothingEnabled = true;
+  cx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+  const px = cx.getImageData(0, 0, d.w, d.h).data;
+  let seen = 0;
+  for (let k = 3; k < px.length; k += 4) if (px[k] > 16) seen++;
+  return seen >= d.w * d.h * 0.2 ? px : null;
+}
+async function _s3dSkin(fr, gen) {
+  const d = fr.data;
+  if (!d) return;
+  const product = _s3dSkinProduct();
+  const want = _s3dSkinSel + '|' + (product ? product.id : 'ir');
+  d.skinWant = want;
+  const grey = () => {
+    const n = d.w * d.h, rgb = new Uint8Array(n * 3);
+    for (let k = 0; k < n; k++) { rgb[k * 3] = rgb[k * 3 + 1] = rgb[k * 3 + 2] = d.grey[k]; }
+    return rgb;
+  };
+  if (!product) {
+    d.rgb = grey(); d.skin = null; d.skinMiss = null;
+    if (_s3dFrames[_s3dIdx] === fr) _s3dSayFrame();
+    _s3dDirty = true;
+    return;
+  }
+  const still = () => gen === _s3dGen && fr.data === d && d.skinWant === want;
+  let px = null, gapMin = 0;
+  try {
+    const src = await _s3dSkinSource(product, fr);
+    if (src && still()) {
+      gapMin = src.gapMin || 0;
+      try { px = _s3dCropSkin(await _s3dLoadImg(src.url), src.bounds, d); } catch (e) { px = null; }
+    }
+    // A plain channel the WMS no longer holds: NOAA's archive has it.
+    if (!px && still() && product.ch && product.src !== 'pi') {
+      const arc = await _s3dArchiveSource(product, fr).catch(() => null);
+      if (arc && still()) {
+        try { px = _s3dCropSkin(await _s3dLoadImg(arc.url), arc.bounds, d); } catch (e) { px = null; }
+      }
+    }
+  } catch (e) { px = null; }
+  if (!still()) return;
+  if (!px) {
+    d.rgb = grey(); d.skin = null; d.skinMiss = product.label;
+  } else {
+    const n = d.w * d.h, rgb = new Uint8Array(n * 3);
+    for (let k = 0; k < n; k++) {
+      const a = px[k * 4 + 3] / 255, g = d.grey[k] * (1 - a);
+      rgb[k * 3] = px[k * 4] * a + g; rgb[k * 3 + 1] = px[k * 4 + 1] * a + g; rgb[k * 3 + 2] = px[k * 4 + 2] * a + g;
+    }
+    d.rgb = rgb; d.skin = product.label; d.skinMiss = null;
+    d.skinGap = gapMin > 20 ? gapMin : 0;
+  }
+  if (_s3dFrames[_s3dIdx] === fr) _s3dSayFrame();
+  _s3dDirty = true;
+}
+// Re-drape every loaded frame, after the Picture menu or the map's own
+// product changes.
+function _s3dReskin() {
+  if (!_s3dOn) return;
+  _s3dFrames.forEach(f => { if (f.data) _s3dSkin(f, _s3dGen); });
+}
+function _s3dFillSkinMenu() {
+  const sel = _s3dEl('s3d-skin');
+  if (!sel || sel.options.length) return;
+  const add = (parent, value, text) => {
+    const o = document.createElement('option'); o.value = value; o.textContent = text; parent.appendChild(o);
+  };
+  add(sel, 'map', 'What the map is showing');
+  add(sel, 'ir', 'Infrared (the heights’ own scan)');
+  const groups = [['Channels', p => !p.src], ['Composites', p => p.src === 'pi' && !p.gsat],
+                  ['Global mosaic', p => p.gsat === 'global']];
+  groups.forEach(([name, test]) => {
+    const g = document.createElement('optgroup'); g.label = name;
+    (typeof GOES_PRODUCTS !== 'undefined' ? GOES_PRODUCTS : []).filter(test).forEach(p => add(g, p.id, p.label));
+    if (g.children.length) sel.appendChild(g);
+  });
+  sel.value = _s3dSkinSel;
 }
 
 function _s3dSayWhere() {
@@ -82585,7 +82726,9 @@ function _s3dSayFrame() {
             : d.source === 'ir' ? 'IR, standard atmosphere' : 'no scan data here';
   const top = d.maxKm > 0 ? ' · tops to ' + Math.round(d.maxKm * R3D_KFT_PER_KM) + ' kft' : ' · clear sky';
   const radar = _s3dRadarOn && _s3dRadar ? ' · radar ' + _s3dRadar.site.toUpperCase() : '';
-  _s3dSay((d.skin || 'Clean IR') + ' · ' + how + top + radar);
+  const skin = d.skin ? d.skin + (d.skinGap ? ' (' + d.skinGap + ' min off)' : '')
+    : d.skinMiss ? 'Infrared (no ' + d.skinMiss + ' here)' : 'Infrared';
+  _s3dSay(skin + ' · ' + how + top + radar);
 }
 
 // -- Radar inside ---------------------------------------------------------
@@ -82926,6 +83069,9 @@ function _s3dInteract() {
   window.addEventListener('resize', () => { if (_s3dOn) _s3dDirty = true; });
   const ex = _s3dEl('s3d-exag');
   if (ex) ex.onchange = () => { _s3dExagSel = ex.value; _s3dDirty = true; };
+  _s3dFillSkinMenu();
+  const sk = _s3dEl('s3d-skin');
+  if (sk) sk.onchange = () => { _s3dSkinSel = sk.value; _s3dReskin(); };
   const al = _s3dEl('s3d-alpha'), alLabel = _s3dEl('s3d-alpha-label');
   const syncAlpha = () => { if (alLabel) alLabel.textContent = Math.round(_s3dAlpha * 100) + '%'; };
   if (al) al.oninput = () => { _s3dAlpha = Math.max(0.15, Math.min(1, (+al.value || 100) / 100)); syncAlpha(); _s3dDirty = true; };
