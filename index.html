@@ -4768,6 +4768,51 @@ body.lite-mode #export-modal { display: none !important; }
   #r3d-panel canvas { height: 220px; }
 }
 
+/* Satellite 3D: its own panel in Radar 3D's clothes (the same .xs-* head,
+   the same gold on black), so the two read as a pair. It sits on the
+   right, so opening it never lands on top of whatever is on the left. */
+#s3d-panel {
+  position: fixed; right: 12px; bottom: 96px; z-index: 1150; display: none;
+  width: min(560px, calc(100vw - 24px));
+  background: linear-gradient(180deg, rgba(30,30,36,0.98) 0%, rgba(12,12,15,0.99) 45%, #000 100%);
+  border: 1px solid rgba(232,184,0,0.35); border-radius: 14px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.7);
+  color: #e8b800; overflow: hidden;
+}
+#s3d-panel.open { display: block; }
+#s3d-panel, #s3d-panel * { font-family: 'Comfortaa', sans-serif; }
+#s3d-panel .xs-head { cursor: grab; }
+#s3d-panel .xs-head:active { cursor: grabbing; }
+#s3d-drag { margin-right: 6px; }
+#s3d-panel .xs-title, #s3d-panel .xs-where, #s3d-panel #s3d-status,
+#s3d-panel .r3d-slider-row > span {
+  background-image: linear-gradient(180deg, #ffe680 0%, #e8b800 48%, #b8860b 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: #e8b800;
+}
+#s3d-status {
+  font-size: 9px; letter-spacing: 0.5px; white-space: nowrap;
+  max-width: 230px; overflow: hidden; text-overflow: ellipsis;
+}
+#s3d-panel #s3d-status.bad { background-image: linear-gradient(180deg, #ffc9b8 0%, #ff8a65 100%); }
+#s3d-panel .r3d-controls { display: flex; align-items: center; gap: 8px; padding: 7px 10px 0; flex-wrap: wrap; }
+#s3d-panel select, #s3d-panel button, #s3d-panel option { color: #e8b800; }
+#s3d-panel option { background: #0c0c0f; }
+#s3d-panel input[type=range], #s3d-panel input[type=checkbox] { accent-color: #e8b800; }
+#s3d-panel .s3d-check { display: flex; align-items: center; gap: 5px; font-size: 9.5px; cursor: pointer; }
+#s3d-panel.big { width: min(1100px, calc(100vw - 24px)); }
+#s3d-panel .xs-plot { padding: 8px 10px 4px; position: relative; }
+#s3d-panel canvas {
+  display: block; width: 100%; height: 300px; border-radius: 8px;
+  background: #000; cursor: grab; touch-action: none;
+}
+#s3d-panel canvas.r3d-dragging { cursor: grabbing; }
+#s3d-panel.big canvas { height: min(60vh, 560px); }
+@media (max-width: 640px) {
+  #s3d-panel { left: 8px; right: 8px; width: auto; bottom: 72px; }
+  #s3d-panel canvas { height: 220px; }
+}
+
 /* ── HD Models panel ── */
 #hd-panel {
   position: fixed; left: 12px; bottom: 132px; z-index: 900; display: none;
@@ -11969,6 +12014,44 @@ body.clean-mode #clean-hint { opacity: 1; }
     <div class="r3d-cam-move" title="Move around">
       <input type="range" id="r3d-yaw" min="-180" max="180" value="0" step="1">
     </div>
+  </div>
+</div>
+
+<div id="s3d-panel">
+  <div class="xs-head">
+    <div class="dtb-drag" id="s3d-drag" title="Drag to move">&#10303;</div>
+    <span class="xs-title">Satellite 3D</span>
+    <span class="xs-where" id="s3d-where"></span>
+    <div class="xs-spacer"></div>
+    <button class="xs-big" title="Expand">&#11036;</button>
+    <button class="xs-x" title="Close">&#10005;</button>
+  </div>
+  <div class="r3d-controls">
+    <span id="s3d-status"></span>
+    <div class="xs-spacer"></div>
+    <label class="s3d-check" title="Draw the radar's storm volume under the clouds, with the cloud tops turned see-through so the storm shows inside"><input type="checkbox" id="s3d-radar"> Radar inside</label>
+  </div>
+  <div class="r3d-sliders">
+    <label class="r3d-slider-row">
+      <span>Height</span>
+      <select class="xsec-sel" id="s3d-exag" title="Stretch the cloud tops upward. A cloud 12 km tall over a zone hundreds of km wide is nearly flat at true scale. Labels stay in true height.">
+        <option value="auto" selected>Auto stretch</option>
+        <option value="1">1&times; true scale</option>
+        <option value="3">3&times;</option>
+        <option value="5">5&times;</option>
+        <option value="10">10&times;</option>
+        <option value="20">20&times;</option>
+        <option value="40">40&times;</option>
+      </select>
+    </label>
+    <label class="r3d-slider-row">
+      <span>Clouds</span>
+      <input type="range" id="s3d-alpha" min="15" max="100" value="100" step="5" title="How solid the cloud surface is drawn. Lower it to see the radar inside.">
+      <span id="s3d-alpha-label">100%</span>
+    </label>
+  </div>
+  <div class="xs-plot">
+    <canvas id="s3d-canvas"></canvas>
   </div>
 </div>
 
@@ -25838,6 +25921,7 @@ async function _tmJump(ms) {
       }
     }
     _goesTmWarnedAt = null;
+    if (typeof _s3dTmSync === 'function') _s3dTmSync();
     try {
       // The Satellite bubble only opens its menu now, so the Time Machine row
       // is usually tapped with no picture on yet, and refusing here ("pick a
@@ -25903,6 +25987,7 @@ async function _tmLive() {
   if (_tmScope === 'sat') {
     _tmSatAt = null;
     if (_tmSatActive()) { try { loadGoesLayer(); } catch (e) {} }
+    if (typeof _s3dTmSync === 'function') _s3dTmSync();
     _tmSyncBadge();
     return;
   }
@@ -43096,6 +43181,7 @@ function _cmOpen(e) {
     ${pm ? `<div class="cm-item" onclick="_cmModelSoundingHere()">${ic('chart-up')} Model sounding: ${esc(pm.label)} &middot; F+${String(pm.fhr).padStart(3, '0')}</div>` : ''}
     <div class="cm-item" onclick="_cmCrossSectionHere()">${ic('ruler')} Cross section here</div>
     <div class="cm-item" onclick="_cmRadar3DDraw()">${ic('hex')} Draw a 3D zone</div>
+    <div class="cm-item" onclick="_cmSat3DDraw()">${ic('satellite')} Draw a 3D satellite zone</div>
     <div class="cm-item" onclick="_cmRadiusHere()">${ic('target')} 50 mi radius here</div>
     <div class="cm-item" onclick="_cmSetRecenter()">${ic('compass')} Set as recenter</div>
     <div class="cm-item" onclick="_cmSetLoadSpot()">${ic('flag')} Set as load spot</div>
@@ -44783,6 +44869,7 @@ function _stopRAF() {
 // ready state and we just allow play (their loaders handle the wait).
 function _animationReady() {
   if (typeof _r3dOn !== 'undefined' && _r3dOn) return _r3dFrames.length > 1;
+  if (typeof _s3dOn !== 'undefined' && _s3dOn) return _s3dFrames.length > 1;
   if (_l2LoopActive()) return true;
   if (_prLoopActive()) return true;
   if (typeof _mrmsLoopActive === 'function' && _mrmsLoopActive()) return true;
@@ -44822,6 +44909,9 @@ function _animSource() {
     // watched, and its own bottom timebar is gone - the bar IS its playback.
     if (typeof _r3dOn !== 'undefined' && _r3dOn)
       return mk('r3d', _r3dFrames.map(f => new Date(f.time)), Math.max(0, _r3dFrameIdx));
+    // Satellite 3D the same way: its scans are the bar's frames.
+    if (typeof _s3dOn !== 'undefined' && _s3dOn)
+      return mk('s3d', _s3dFrames.map(f => new Date(f.t)), Math.max(0, _s3dIdx));
     if (typeof _l2LoopActive === 'function' && _l2LoopActive())
       return mk('l2', _l2Loop.frames.map(f => new Date(f.time)), _l2Loop.idx);
     if (typeof _prLoopActive === 'function' && _prLoopActive())
@@ -45203,6 +45293,9 @@ function stepFrame(dir, quiet) {
         _r3dSetFrame((_r3dFrameIdx + dir + n) % n);
       }
     }
+  } else if (typeof _s3dOn !== 'undefined' && _s3dOn) {
+    const n = _s3dFrames.length;
+    if (n) _s3dSetFrame((_s3dIdx + dir + n) % n);
   } else if (_l2LoopActive()) {
     const n = _l2Loop.frames.length;
     _l2LoopShow((_l2Loop.idx + dir + n) % n);
@@ -45245,6 +45338,7 @@ function stepFrame(dir, quiet) {
 }
 function seekFrame(idx) {
   if (typeof _r3dOn !== 'undefined' && _r3dOn) { if (_r3dFrames.length) _r3dSetFrame(idx); }
+  else if (typeof _s3dOn !== 'undefined' && _s3dOn) { if (_s3dFrames.length) _s3dSetFrame(idx); }
   else if (_l2LoopActive()) _l2LoopShow(idx);
   else if (_prLoopActive()) _prLoopShow(idx);
   else if (typeof _mrmsLoopActive === 'function' && _mrmsLoopActive()) _mrmsLoopShow(idx);
@@ -60730,6 +60824,9 @@ function _presenceSummary() {
       const st = (typeof _r3dStation === 'string' && _r3dStation)
         ? ' (' + _r3dStation.toUpperCase() + ')' : '';
       details = 'Radar 3D: orbiting a storm volume' + st;
+    } else if (typeof _s3dOn !== 'undefined' && _s3dOn) {
+      details = 'Satellite 3D: cloud tops in relief'
+        + (_s3dRadarOn && _s3dRadar ? ' with radar ' + _s3dRadar.site.toUpperCase() : '');
     } else if (typeof _rcOn !== 'undefined' && _rcOn) {
       const sites = [];
       const main = typeof _rcMainSite === 'function' ? _rcMainSite() : null;
@@ -67453,6 +67550,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-b', date: 'Sep 23, 2026',
+    text: 'New: Satellite 3D. Long-press the map, pick Draw a 3D satellite zone, and drag a box: the clouds inside stand up to their real cloud-top heights, with the satellite picture you are viewing draped over them, and you can orbit, zoom and stretch the height. Heights come from NOAA\'s own cloud-top height product blended with the infrared scan, worked out on the home server. Tick Radar inside to see the nearest radar\'s storm volume under see-through clouds, and play the last six scans on the animation bar.' },
   { id: '2026-09-23-a', date: 'Sep 23, 2026',
     text: 'The rotate handle on a comparison split line is now a real dial: press and drag around it to rotate the split to whichever angle you turn it to, with the icon following your finger live. Let go past a quarter turn and it commits (side-by-side becomes stacked, or back); let go short of that and it springs back undone. A quick tap still rotates immediately, same as before.' },
   { id: '2026-09-22-zf', date: 'Sep 22, 2026',
@@ -72136,6 +72235,13 @@ function _r3dUpdateHeightLabel() {
 // the 3D view of exactly that box from the nearest radar.
 function _cmRadar3DDraw() {
   _cmClose();
+  _r3dDrawFor = 'r3d';
+  _r3dDrawStart();
+}
+// The same box drawing opens Satellite 3D instead: one tool, two panels.
+function _cmSat3DDraw() {
+  _cmClose();
+  _r3dDrawFor = 's3d';
   _r3dDrawStart();
 }
 
@@ -72188,6 +72294,10 @@ function _r3dFromPolygon() {
 // and handed straight back afterwards; Escape or a tap without a drag
 // cancels. Pointer events cover mouse and touch alike.
 let _r3dDrawOn = false, _r3dDrawAnchor = null, _r3dDrawPreview = null, _r3dDrawWasDragging = true;
+// Which panel the finished box opens: 'r3d' (Radar 3D) or 's3d'
+// (Satellite 3D). Set by the menu row that started the drawing, and back
+// to Radar 3D once a drawing ends, so every other caller keeps its meaning.
+let _r3dDrawFor = 'r3d';
 function _r3dDrawStart() {
   if (typeof map === 'undefined' || !map) return;
   if (_r3dDrawOn) return;
@@ -72202,7 +72312,9 @@ function _r3dDrawStart() {
   c.addEventListener('pointerup', _r3dDrawUp, true);
   c.addEventListener('pointercancel', _r3dDrawCancelEvent, true);
   document.addEventListener('keydown', _r3dDrawKey, true);
-  if (typeof _showHint === 'function') _showHint('&#9635;  Drag a box on the map to view it in 3D. Esc cancels.');
+  if (typeof _showHint === 'function') _showHint(_r3dDrawFor === 's3d'
+    ? '&#9635;  Drag a box on the map to see its cloud tops in 3D. Esc cancels.'
+    : '&#9635;  Drag a box on the map to view it in 3D. Esc cancels.');
 }
 function _r3dDrawStop() {
   if (!_r3dDrawOn) return;
@@ -72218,6 +72330,7 @@ function _r3dDrawStop() {
   try { if (_r3dDrawWasDragging) map.dragging.enable(); } catch (e) {}
   if (_r3dDrawPreview) { try { map.removeLayer(_r3dDrawPreview); } catch (e) {} _r3dDrawPreview = null; }
   _r3dDrawAnchor = null;
+  _r3dDrawFor = 'r3d';
   if (typeof _showHint === 'function') _showHint('');
 }
 function _r3dDrawKey(e) { if (e.key === 'Escape') { e.preventDefault(); _r3dDrawStop(); } }
@@ -72241,10 +72354,13 @@ function _r3dDrawUp(e) {
   if (!_r3dDrawOn || !_r3dDrawAnchor) return;
   e.preventDefault(); e.stopPropagation();
   const a = _r3dDrawAnchor, b = map.mouseEventToLatLng(e);
+  const target = _r3dDrawFor;
   _r3dDrawStop();
   const bounds = L.latLngBounds(a, b);
-  if (!_r3dOpenBounds(bounds.getSouth(), bounds.getWest(), bounds.getNorth(), bounds.getEast())) {
-    _r3dDrawStart();                                   // too small: try again
+  const open = target === 's3d' ? _s3dOpenBounds : _r3dOpenBounds;
+  if (!open(bounds.getSouth(), bounds.getWest(), bounds.getNorth(), bounds.getEast())) {
+    _r3dDrawFor = target;                              // too small: try again, same panel
+    _r3dDrawStart();
   }
 }
 
@@ -72332,6 +72448,8 @@ function _r3dOpen(stationId) {
     if (pos) { _r3dZone = { lat: pos.lat, lng: pos.lng, wKm: 90, hKm: 90 }; _r3dStationKm = 0; }
   }
   _r3dDrawStop();
+  // One 3D panel at a time: both play on the one animation bar.
+  if (typeof _s3dOn !== 'undefined' && _s3dOn) _s3dClose();
   _r3dOn = true;
   const panel = _r3dEl('r3d-panel');
   if (panel) panel.classList.add('open');
@@ -72511,7 +72629,11 @@ function _r3dDecode(buf, layer, extra) {
 // the storm can be watched growing upward on screen instead of staring at
 // a status line until the whole stack is done. Decoding stops once a tilt
 // steeper than R3D_TOP_ANGLE has been seen: nothing lives above that.
-async function _r3dBuildFrame(buf, layer, sitePos, zone, token, onTilt) {
+async function _r3dBuildFrame(buf, layer, sitePos, zone, token, onTilt, alive) {
+  // Who may cancel this build. Radar 3D bumps its own token; another
+  // caller (Satellite 3D's radar overlay) passes its own test instead, so
+  // opening or closing one panel never aborts the other's volume.
+  const live = typeof alive === 'function' ? alive : () => token === _r3dToken;
   const bbox = _r3dZoneBbox(zone);
   const isVel = _r3dSpecByLayer(layer);            // the product's spec, by the worker's layer name
   const out = { xs: [], ys: [], zs: [], vs: [], rs: [] };
@@ -72529,7 +72651,7 @@ async function _r3dBuildFrame(buf, layer, sitePos, zone, token, onTilt) {
     cuts++;
   };
   const report = () => {
-    if (!onTilt || token !== _r3dToken) return;
+    if (!onTilt || !live()) return;
     try { onTilt(_r3dFinishFrame(out, segs.slice(), timeIso, cuts), done, total); } catch (e) {}
   };
   const takeSweeps = (res) => {
@@ -72550,9 +72672,9 @@ async function _r3dBuildFrame(buf, layer, sitePos, zone, token, onTilt) {
   // All lanes at once - each one's cuts show the moment that lane lands.
   const results = await Promise.all(Array.from({ length: lanes }, (_, lane) =>
     _r3dDecode(buf.slice(0), layer, { elevations: 'distinct', lane, lanes, top_angle: R3D_TOP_ANGLE, bbox })
-      .then((res) => { if (token === _r3dToken && res && Array.isArray(res.sweeps)) takeSweeps(res); return res; })
+      .then((res) => { if (live() && res && Array.isArray(res.sweeps)) takeSweeps(res); return res; })
       .catch(() => null)));                              // one lane's cuts lost, not the volume
-  if (token !== _r3dToken) return null;
+  if (!live()) return null;
   const lane0 = results[0];
   if (lane0 && Array.isArray(lane0.sweeps)) return _r3dFinishFrame(out, segs, timeIso, cuts);
   if (!lane0) return null;
@@ -72574,17 +72696,17 @@ async function _r3dBuildFrame(buf, layer, sitePos, zone, token, onTilt) {
   const lane = async () => {
     while (next < todo.length && !stopAbove) {
       const el = todo[next++];
-      if (token !== _r3dToken) return;
+      if (!live()) return;
       let res = null;
       try { res = await _r3dDecode(buf.slice(0), layer, { elevation: el }); }
       catch (e) { /* one bad cut costs one cut, not the volume */ }
-      if (token !== _r3dToken) return;
+      if (!live()) return;
       consume(res); done++; report();
       await new Promise(r => setTimeout(r, 0));         // let the page breathe between cuts
     }
   };
   await Promise.all(Array.from({ length: lanes }, lane));
-  if (token !== _r3dToken) return null;
+  if (!live()) return null;
   return _r3dFinishFrame(out, segs, meta.timeIso, cuts);
 }
 
@@ -81777,6 +81899,732 @@ async function _expDownloadVideo() {
 })();
 
 // Radar 3D's bar's own info button, same shape as the other two.
+// ── Satellite 3D ─────────────────────────────────────────────────────────
+// Cloud tops in relief: every cell of a box drawn on the map is lifted to
+// the height of the cloud top above it, and the picture you were already
+// looking at (the satellite product on the map, or the Pi's own Clean IR
+// grey when there is none) is draped over that surface. The heights come
+// from the Pi (/sat/cth, pi/sat_cth.py), which fuses NOAA's own cloud-top
+// height product with the infrared scan so every scan gets a height, not
+// just the ones NOAA made a height file for.
+//
+// Drawn with no WebGL at all: a small software rasterizer. The surface is
+// a grid of triangles; each corner is projected through the same orbit
+// camera Radar 3D uses, and every pixel keeps the nearest triangle (a
+// z-buffer), shaded by one light so hills of cloud read as hills. With the
+// radar overlay on, Radar 3D's own ray marcher paints the storm first and
+// the cloud surface goes over it see-through.
+const S3D_FRAMES = 6;             // scans on the animation bar
+const S3D_TOP_KM = 18;            // the box's ceiling: above any cloud top on record
+const S3D_MIN_KM = 8;             // a smaller box is a slip of the finger
+const S3D_MAX_LAT = 25, S3D_MAX_LON = 35;   // the Pi's own limit (sat_cth.MAX_SPAN_*)
+const S3D_PITCH_MIN = 0.05, S3D_PITCH_MAX = 1.45;
+
+let _s3dOn = false;
+let _s3dZone = null;              // { s, w, n, e, lat, lng, wKm, hKm }
+let _s3dFrames = [];              // oldest first: { t, key, stamp, bucket, sector, data }
+let _s3dIdx = -1;
+let _s3dGen = 0;                  // bumped on every load and close: late answers are dropped
+let _s3dIndex = null;             // the Pi's answer: post, sector, bucket
+let _s3dDirty = false, _s3dRendering = false, _s3dTicking = false;
+let _s3dFast = false, _s3dFastTimer = null;
+let _s3dCam = { yaw: 0.6, pitch: 0.55, dist: 300 };
+let _s3dExagSel = 'auto';
+let _s3dAlpha = 1;
+let _s3dRadarOn = false, _s3dRadar = null, _s3dRadarGen = 0;
+let _s3dRect = null;
+
+function _s3dEl(id) { return document.getElementById(id); }
+function _s3dSay(msg, kind) {
+  const el = _s3dEl('s3d-status');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.className = kind || '';
+}
+
+// The stretch actually used. Auto makes the box's height about four tenths
+// of its width, so a 12 km cloud stands up on a 50 km box and a 1000 km
+// box alike.
+function _s3dExag() {
+  if (_s3dExagSel !== 'auto') return Math.max(1, +_s3dExagSel || 1);
+  const span = _s3dZone ? Math.max(_s3dZone.wKm, _s3dZone.hKm) : 300;
+  return Math.max(1, Math.min(60, span * 0.4 / S3D_TOP_KM));
+}
+function _s3dCamFit() {
+  const span = _s3dZone ? Math.max(_s3dZone.wKm, _s3dZone.hKm) : 300;
+  _s3dCam = { yaw: 0.6, pitch: 0.55, dist: span * 1.7 };
+}
+function _s3dDistMin() { return 2; }
+function _s3dDistMax() {
+  const span = _s3dZone ? Math.max(_s3dZone.wKm, _s3dZone.hKm) : 300;
+  return Math.max(span, S3D_TOP_KM * _s3dExag()) * 5;
+}
+
+// The orbit camera, the same model and axes as Radar 3D's (x east, y
+// north, z up in stretched km, the zone's centre at the origin), so the
+// radar marcher and this rasterizer see through one lens and line up.
+function _s3dCamBasis() {
+  const { yaw, pitch, dist } = _s3dCam;
+  const targetZ = S3D_TOP_KM * _s3dExag() / 4;
+  const horiz = dist * Math.cos(pitch);
+  const camX = horiz * Math.sin(yaw), camY = horiz * Math.cos(yaw), camZ = targetZ + dist * Math.sin(pitch);
+  let fx = -camX, fy = -camY, fz = targetZ - camZ;
+  const fl = Math.hypot(fx, fy, fz) || 1; fx /= fl; fy /= fl; fz /= fl;
+  let rx = fy, ry = -fx;
+  const rl = Math.hypot(rx, ry) || 1; rx /= rl; ry /= rl;
+  const rz = 0;
+  const ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
+  return { camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz };
+}
+
+// ── Opening and closing ──────────────────────────────────────────────────
+function _s3dOpenBounds(south, west, north, east) {
+  if (typeof map === 'undefined' || !map) return false;
+  const lat = (south + north) / 2, lng = (west + east) / 2;
+  const kmLng = 111.32 * Math.max(0.2, Math.cos(lat * Math.PI / 180));
+  const wKm = Math.abs(east - west) * kmLng, hKm = Math.abs(north - south) * 111.32;
+  if (wKm < S3D_MIN_KM || hKm < S3D_MIN_KM) {
+    if (typeof showToast === 'function') showToast('Drag out a box at least ' + S3D_MIN_KM + ' km each way.', 2600);
+    return false;
+  }
+  if (north - south > S3D_MAX_LAT || east - west > S3D_MAX_LON) {
+    if (typeof showToast === 'function') showToast('That box is too big for Satellite 3D. Draw one under '
+      + S3D_MAX_LAT + ' degrees tall and ' + S3D_MAX_LON + ' wide.', 3200);
+    return false;
+  }
+  const r3 = v => Math.round(v * 1000) / 1000;
+  _s3dZone = { s: r3(south), w: r3(west), n: r3(north), e: r3(east), lat, lng,
+               wKm: Math.round(wKm * 10) / 10, hKm: Math.round(hKm * 10) / 10 };
+  _s3dOpen();
+  return true;
+}
+
+function _s3dOpen() {
+  // One 3D panel at a time: both play on the one animation bar.
+  if (typeof _r3dOn !== 'undefined' && _r3dOn) _r3dClose();
+  _s3dOn = true;
+  const panel = _s3dEl('s3d-panel');
+  if (panel) panel.classList.add('open');
+  _s3dRectSync();
+  _s3dCamFit();
+  _s3dRadar = null;
+  _s3dDirty = true;
+  if (!_s3dTicking) { _s3dTicking = true; requestAnimationFrame(_s3dTick); }
+  _s3dLoad();
+  if (_s3dRadarOn) _s3dRadarLoad();
+  _s3dUpdateBar();
+}
+
+function _s3dClose() {
+  _s3dOn = false;
+  _s3dGen++;
+  _s3dRadarGen++;
+  const panel = _s3dEl('s3d-panel');
+  if (panel) panel.classList.remove('open', 'big');
+  _s3dRectRemove();
+  _s3dZone = null;
+  _s3dFrames = [];
+  _s3dIdx = -1;
+  _s3dIndex = null;
+  _s3dRadar = null;
+  _s3dUpdateBar();
+}
+
+// The zone, drawn on the map for as long as the panel is open.
+function _s3dRectSync() {
+  if (typeof map === 'undefined' || !map || !_s3dZone || typeof L === 'undefined') return;
+  const b = [[_s3dZone.s, _s3dZone.w], [_s3dZone.n, _s3dZone.e]];
+  if (_s3dRect) { _s3dRect.setBounds(b); return; }
+  _s3dRect = L.rectangle(b, { color: '#e8b800', weight: 2, dashArray: '6 4', fillOpacity: 0.04,
+                              fillColor: '#e8b800', interactive: false }).addTo(map);
+}
+function _s3dRectRemove() {
+  if (_s3dRect) { try { map.removeLayer(_s3dRect); } catch (e) {} _s3dRect = null; }
+}
+
+// ── The animation bar ────────────────────────────────────────────────────
+function _s3dUpdateBar() {
+  if (typeof _refreshPlayButtonsEnabled === 'function') { try { _refreshPlayButtonsEnabled(); } catch (e) {} }
+  try { _syncAnimbarTrack(); } catch (e) {}
+}
+function _s3dSetFrame(idx) {
+  if (!_s3dFrames.length) return;
+  _s3dIdx = Math.max(0, Math.min(_s3dFrames.length - 1, idx));
+  const tl = document.getElementById('timeline');
+  if (tl) tl.value = String(_s3dIdx);
+  const at = document.getElementById('anim-time');
+  if (at) {
+    try {
+      const f = _s3dFrames[_s3dIdx];
+      if (f && f.t) { at.textContent = _fmtHHMM(new Date(f.t)); at.style.visibility = 'visible'; }
+    } catch (e) {}
+  }
+  _s3dSayFrame();
+  _s3dDirty = true;
+}
+
+// The Time Machine calls this when the satellite's clock moves.
+function _s3dTmSync() {
+  if (!_s3dOn || !_s3dZone) return;
+  _s3dLoad();
+  if (_s3dRadarOn) _s3dRadarLoad();
+}
+
+// ── Loading ──────────────────────────────────────────────────────────────
+function _s3dB64(b64) {
+  const bin = atob(b64 || '');
+  const u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return u;
+}
+
+// One frame off the wire: heights as little-endian uint16 metres, the
+// infrared as one grey byte a cell, both row 0 north.
+function _s3dDecode(j) {
+  const w = j.w | 0, h = j.h | 0, n = w * h;
+  const hb = _s3dB64(j.heights), g = _s3dB64(j.ir);
+  if (!n || hb.length !== n * 2 || g.length !== n) throw new Error('that frame came back malformed');
+  const dv = new DataView(hb.buffer);
+  const hm = new Float32Array(n);
+  let maxKm = 0, cloudy = 0;
+  for (let k = 0; k < n; k++) {
+    const v = dv.getUint16(k * 2, true) / 1000;
+    hm[k] = v;
+    if (v > 0) cloudy++;
+    if (v > maxKm) maxKm = v;
+  }
+  const rgb = new Uint8Array(n * 3);
+  for (let k = 0; k < n; k++) { rgb[k * 3] = g[k]; rgb[k * 3 + 1] = g[k]; rgb[k * 3 + 2] = g[k]; }
+  return { w, h, hm, rgb, grey: g, maxKm, cloudy, skin: null,
+           source: j.source || 'ir', pairs: j.pairs | 0, slope: +j.b || 0 };
+}
+
+async function _s3dBase() {
+  if (typeof _hdBase !== 'undefined' && _hdBase) return _hdBase;
+  if (typeof _hdResolveBase === 'function') { try { return await _hdResolveBase(); } catch (e) {} }
+  return null;
+}
+
+function _s3dZoneQs() {
+  const z = _s3dZone;
+  return `south=${z.s}&west=${z.w}&north=${z.n}&east=${z.e}`;
+}
+
+async function _s3dLoad() {
+  const gen = ++_s3dGen;
+  _s3dFrames = [];
+  _s3dIdx = -1;
+  _s3dIndex = null;
+  _s3dDirty = true;
+  _s3dUpdateBar();
+  const z = _s3dZone;
+  if (!z) return;
+  _s3dSay('asking the home server for cloud tops', 'busy');
+  const base = await _s3dBase();
+  if (gen !== _s3dGen) return;
+  if (!base) { _s3dSay('the home server is not answering, and it is what reads NOAA\'s cloud-top files', 'bad'); return; }
+  const at = (typeof _tmSatAt === 'number' && _tmSatAt) ? Math.round(_tmSatAt) : null;
+  let idx;
+  try {
+    const r = await fetch(`${base}/sat/cth/index?${_s3dZoneQs()}&n=${S3D_FRAMES}` + (at ? `&at=${at}` : ''),
+      { signal: typeof _abortSignal === 'function' ? _abortSignal(60000) : undefined });
+    if (gen !== _s3dGen) return;
+    if (r.status === 404) { _s3dSay('no satellite scan for that zone and moment', 'bad'); return; }
+    if (!r.ok) throw new Error('the scan list failed (HTTP ' + r.status + ')');
+    idx = await r.json();
+  } catch (e) {
+    if (gen === _s3dGen) _s3dSay(String((e && e.message) || e).slice(0, 90), 'bad');
+    return;
+  }
+  if (gen !== _s3dGen) return;
+  if (!idx || !Array.isArray(idx.frames) || !idx.frames.length) { _s3dSay('no satellite scan for that zone', 'bad'); return; }
+  _s3dIndex = idx;
+  const all = idx.frames.map(f => ({ t: +f.t, key: f.key, stamp: f.stamp, bucket: idx.bucket,
+                                     sector: idx.sector, data: null }))
+    .filter(f => isFinite(f.t)).sort((a, b) => a.t - b.t);
+  _s3dSayWhere();
+  // The newest scan owns the view alone first, so something is on screen
+  // as soon as one frame is built; the rest join the bar once they land.
+  const newest = all[all.length - 1];
+  _s3dSay('building cloud-top heights for the newest scan', 'busy');
+  const ok = await _s3dFetchFrame(base, newest, gen);
+  if (gen !== _s3dGen) return;
+  if (!ok) return;
+  _s3dFrames = [newest];
+  _s3dIdx = 0;
+  _s3dSayFrame();
+  _s3dDirty = true;
+  _s3dUpdateBar();
+  const rest = all.slice(0, -1).reverse();           // newest first: the likeliest to be cached
+  for (let i = 0; i < rest.length; i++) {
+    if (gen !== _s3dGen) return;
+    _s3dSay(`loading earlier scans (${i + 1} of ${rest.length})`, 'busy');
+    await _s3dFetchFrame(base, rest[i], gen, true);
+  }
+  if (gen !== _s3dGen) return;
+  const shown = _s3dFrames[_s3dIdx];
+  _s3dFrames = all.filter(f => f.data);
+  _s3dIdx = Math.max(0, _s3dFrames.indexOf(shown));
+  _s3dSayFrame();
+  _s3dUpdateBar();
+  _s3dDirty = true;
+}
+
+async function _s3dFetchFrame(base, fr, gen, quiet) {
+  const url = `${base}/sat/cth/frame?bucket=${encodeURIComponent(fr.bucket)}`
+    + `&key=${encodeURIComponent(fr.key)}&sector=${encodeURIComponent(fr.sector)}&${_s3dZoneQs()}`;
+  try {
+    const r = await fetch(url, { signal: typeof _abortSignal === 'function' ? _abortSignal(120000) : undefined });
+    if (gen !== _s3dGen) return false;
+    if (!r.ok) {
+      let why = 'HTTP ' + r.status;
+      try { const j = await r.json(); if (j && j.error) why = j.error; } catch (e) {}
+      throw new Error(why);
+    }
+    const j = await r.json();
+    if (gen !== _s3dGen) return false;
+    fr.data = _s3dDecode(j);
+    _s3dSkin(fr, gen);
+    return true;
+  } catch (e) {
+    if (gen === _s3dGen && !quiet) _s3dSay(String((e && e.message) || e).slice(0, 90), 'bad');
+    return false;
+  }
+}
+
+// ── The skin: the product being viewed ───────────────────────────────────
+// The satellite picture on the map, asked of the same WMS for exactly this
+// box at exactly this scan's moment, and sampled one pixel per cell. A Pi
+// composite, or no satellite layer at all, keeps the infrared grey the Pi
+// sent, which is the same scan the heights came from.
+function _s3dSkinSpec() {
+  try {
+    if (typeof activeLayers === 'undefined' || !activeLayers.satellite) return null;
+    const p = _goesProduct();
+    if (!p || !p.ch || (typeof _goesIsPi === 'function' && _goesIsPi())) return null;
+    const cfg = _goesConfigFor(p, _goesRegionId);
+    if (!cfg || !cfg.url || !cfg.layer) return null;
+    return { url: cfg.url, layer: cfg.layer, label: p.label || p.id };
+  } catch (e) { return null; }
+}
+function _s3dSkinUrl(sp, fr, W, H) {
+  const z = _s3dZone;
+  const t = new Date(Math.floor(fr.t / 300000) * 300000);
+  const pad = v => String(v).padStart(2, '0');
+  const iso = `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}T`
+            + `${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}:00Z`;
+  return `${sp.url}?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=${encodeURIComponent(sp.layer)}`
+    + `&STYLES=&SRS=EPSG:4326&BBOX=${z.w},${z.s},${z.e},${z.n}&WIDTH=${W}&HEIGHT=${H}`
+    + `&FORMAT=image/png&TRANSPARENT=true&TIME=${iso}`;
+}
+function _s3dSkin(fr, gen) {
+  const sp = _s3dSkinSpec();
+  const d = fr.data;
+  if (!sp || !d) return;
+  const W = Math.min(1024, d.w * 2), H = Math.min(1024, d.h * 2);
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    if (gen !== _s3dGen || fr.data !== d) return;
+    try {
+      const cv = document.createElement('canvas');
+      cv.width = d.w; cv.height = d.h;
+      const cx = cv.getContext('2d');
+      cx.imageSmoothingEnabled = true;
+      cx.drawImage(img, 0, 0, d.w, d.h);
+      const px = cx.getImageData(0, 0, d.w, d.h).data;
+      const n = d.w * d.h;
+      let seen = 0;
+      for (let k = 0; k < n; k++) if (px[k * 4 + 3] > 16) seen++;
+      if (seen < n * 0.2) return;                  // the service had nothing here: keep the grey
+      const rgb = new Uint8Array(n * 3);
+      for (let k = 0; k < n; k++) {
+        const a = px[k * 4 + 3] / 255, g = d.grey[k] * (1 - a);
+        rgb[k * 3] = px[k * 4] * a + g; rgb[k * 3 + 1] = px[k * 4 + 1] * a + g; rgb[k * 3 + 2] = px[k * 4 + 2] * a + g;
+      }
+      d.rgb = rgb;
+      d.skin = sp.label;
+      if (_s3dFrames[_s3dIdx] === fr) _s3dSayFrame();
+      _s3dDirty = true;
+    } catch (e) { /* a picture the page may not read: the grey stays */ }
+  };
+  img.src = _s3dSkinUrl(sp, fr, W, H);
+}
+
+function _s3dSayWhere() {
+  const el = _s3dEl('s3d-where');
+  if (!el || !_s3dZone) return;
+  const i = _s3dIndex;
+  const post = i ? (i.post === 'west' ? 'GOES-West' : 'GOES-East') : '';
+  const sector = i ? (i.sector === 'conus' ? 'CONUS' : 'Full Disk') : '';
+  const at = (typeof _tmSatAt === 'number' && _tmSatAt)
+    ? new Date(_tmSatAt).toISOString().slice(0, 16).replace('T', ' ') + 'Z' : '';
+  el.textContent = [post, sector, Math.round(_s3dZone.wKm) + '×' + Math.round(_s3dZone.hKm) + ' km', at]
+    .filter(Boolean).join(' · ');
+}
+function _s3dSayFrame() {
+  const f = _s3dFrames[_s3dIdx];
+  if (!f || !f.data) return;
+  const d = f.data;
+  const how = d.source === 'acha+ir' ? 'NOAA cloud-top heights + IR'
+            : d.source === 'ir' ? 'IR, standard atmosphere' : 'no scan data here';
+  const top = d.maxKm > 0 ? ' · tops to ' + Math.round(d.maxKm * R3D_KFT_PER_KM) + ' kft' : ' · clear sky';
+  const radar = _s3dRadarOn && _s3dRadar ? ' · radar ' + _s3dRadar.site.toUpperCase() : '';
+  _s3dSay((d.skin || 'Clean IR') + ' · ' + how + top + radar);
+}
+
+// ── Radar inside ─────────────────────────────────────────────────────────
+// Radar 3D's own pipeline, borrowed whole: the nearest NEXRAD's newest full
+// volume (or the one nearest a travelled moment), decoded for this box,
+// binned into the polar grid, and marched through the same camera. One
+// volume, the one closest to now: the cloud surface plays over it.
+async function _s3dRadarLoad() {
+  const gen = ++_s3dRadarGen;
+  _s3dRadar = null;
+  _s3dDirty = true;
+  if (!_s3dRadarOn || !_s3dZone) return;
+  const alive = () => gen === _s3dRadarGen && _s3dOn && _s3dRadarOn;
+  const z = _s3dZone;
+  const near = typeof _r3dNearestStation === 'function' ? _r3dNearestStation(z.lat, z.lng) : null;
+  if (!near || near.km > 420) { _s3dSay('no radar close enough to this zone for the overlay', 'bad'); return; }
+  if (typeof _r3dBuildFrame !== 'function' || typeof _workerProcess !== 'function') {
+    _s3dSay('this build has no radar decoder', 'bad'); return;
+  }
+  const site = String(near.id).toLowerCase();
+  _s3dSay('getting the radar volume from ' + site.toUpperCase(), 'busy');
+  try {
+    const at = (typeof _tmSatAt === 'number' && _tmSatAt) ? _tmSatAt : null;
+    let buf = null;
+    if (at) {
+      const vols = await _l2ArcVolumes(site, at, 1, R3D_VOLUME_CAP, 0);
+      if (vols.length && Math.abs(vols[0].when - at) <= 90 * 60000) buf = vols[0].buffer;
+    } else {
+      buf = await _fetchVolumeDirect(site, R3D_VOLUME_CAP, true);
+    }
+    if (!alive()) return;
+    if (!buf) throw new Error('no volume from ' + site.toUpperCase());
+    const zone = { lat: z.lat, lng: z.lng, wKm: z.wKm, hKm: z.hKm };
+    const spec = _r3dSpec('ref');
+    const frame = await _r3dBuildFrame(buf, spec.layer, _xsSiteLatLon(site), zone, 0, null, alive);
+    if (!alive()) return;
+    if (!frame) { _s3dSay('the radar sees nothing in this zone', 'bad'); return; }
+    _s3dRadar = { site, frame, P: _r3dPolarFrame(frame, zone, spec), cache: null };
+    _s3dSayFrame();
+    _s3dDirty = true;
+  } catch (e) {
+    if (alive()) _s3dSay('radar overlay: ' + String((e && e.message) || e).slice(0, 70), 'bad');
+  }
+}
+
+// ── The rasterizer ───────────────────────────────────────────────────────
+// Every cell centre is a vertex; every square of four is two triangles.
+// Each vertex is projected once, lit once (its normal from the slope of
+// its neighbours), and each triangle is filled pixel by pixel with its
+// corners' colours blended across it (Gouraud shading), keeping only the
+// pixel nearest the eye. Clear sky sits at height 0 and is the ground.
+function _s3dRaster(d, zone, v, W, H, exag, alpha, clearAlpha) {
+  const nx = d.w, ny = d.h, N = nx * ny;
+  const hx = zone.wKm / 2, hy = zone.hKm / 2;
+  const cx = 2 * hx / nx, cy = 2 * hy / ny;
+  const focal = H * 1.15, W2 = W / 2, H2 = H / 2;
+  const { camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz } = v;
+  let lx = -0.35 * rx + 0.75 * ux - 0.55 * fx, ly = -0.35 * ry + 0.75 * uy - 0.55 * fy,
+      lz = -0.35 * rz + 0.75 * uz - 0.55 * fz;
+  const ll = Math.hypot(lx, ly, lz) || 1; lx /= ll; ly /= ll; lz /= ll;
+  const hm = d.hm, rgb = d.rgb;
+  const PX = new Float32Array(N), PY = new Float32Array(N), PZ = new Float32Array(N);
+  const CR = new Float32Array(N), CG = new Float32Array(N), CB = new Float32Array(N), CA = new Float32Array(N);
+  for (let j = 0; j < ny; j++) {
+    const Y = hy - (j + 0.5) * cy;
+    const jn = j > 0 ? j - 1 : j, js = j < ny - 1 ? j + 1 : j;
+    for (let i = 0; i < nx; i++) {
+      const k = j * nx + i;
+      const X = -hx + (i + 0.5) * cx, Z = hm[k] * exag;
+      const dx = X - camX, dy = Y - camY, dz = Z - camZ;
+      const depth = dx * fx + dy * fy + dz * fz;
+      if (depth < 0.5) { PZ[k] = -1; continue; }
+      PX[k] = W2 + (dx * rx + dy * ry + dz * rz) / depth * focal;
+      PY[k] = H2 - (dx * ux + dy * uy + dz * uz) / depth * focal;
+      PZ[k] = depth;
+      const iw = i > 0 ? i - 1 : i, ie = i < nx - 1 ? i + 1 : i;
+      const sx = (hm[j * nx + ie] - hm[j * nx + iw]) * exag / (Math.max(1, ie - iw) * cx);
+      const sy = (hm[jn * nx + i] - hm[js * nx + i]) * exag / (Math.max(1, js - jn) * cy);
+      const nl = Math.sqrt(sx * sx + sy * sy + 1);
+      const lam = Math.max(0, (-sx * lx - sy * ly + lz) / nl);
+      const shade = 0.38 + 0.62 * lam;
+      CR[k] = rgb[k * 3] * shade; CG[k] = rgb[k * 3 + 1] * shade; CB[k] = rgb[k * 3 + 2] * shade;
+      CA[k] = (hm[k] > 0 ? alpha : clearAlpha) * 255;
+    }
+  }
+  const out = new Uint8ClampedArray(W * H * 4);
+  const zb = new Float32Array(W * H).fill(Infinity);
+  const tri = (a, b, c) => {
+    const za = PZ[a], zbv = PZ[b], zc = PZ[c];
+    if (za < 0 || zbv < 0 || zc < 0) return;
+    const ax = PX[a], ay = PY[a], bx = PX[b], by = PY[b], qx = PX[c], qy = PY[c];
+    const area = (bx - ax) * (qy - ay) - (by - ay) * (qx - ax);
+    if (area === 0 || !isFinite(area)) return;
+    let x0 = Math.max(0, Math.floor(Math.min(ax, bx, qx))), x1 = Math.min(W - 1, Math.ceil(Math.max(ax, bx, qx)));
+    let y0 = Math.max(0, Math.floor(Math.min(ay, by, qy))), y1 = Math.min(H - 1, Math.ceil(Math.max(ay, by, qy)));
+    if (x0 > x1 || y0 > y1) return;
+    const inv = 1 / area;
+    for (let py = y0; py <= y1; py++) {
+      const sy = py + 0.5;
+      for (let px = x0; px <= x1; px++) {
+        const sx = px + 0.5;
+        const w0 = ((bx - sx) * (qy - sy) - (by - sy) * (qx - sx)) * inv;
+        const w1 = ((qx - sx) * (ay - sy) - (qy - sy) * (ax - sx)) * inv;
+        const w2 = 1 - w0 - w1;
+        if (w0 < -1e-6 || w1 < -1e-6 || w2 < -1e-6) continue;
+        const z = w0 * za + w1 * zbv + w2 * zc;
+        const p = py * W + px;
+        if (z >= zb[p]) continue;
+        zb[p] = z;
+        const o = p * 4;
+        out[o] = w0 * CR[a] + w1 * CR[b] + w2 * CR[c];
+        out[o + 1] = w0 * CG[a] + w1 * CG[b] + w2 * CG[c];
+        out[o + 2] = w0 * CB[a] + w1 * CB[b] + w2 * CB[c];
+        out[o + 3] = w0 * CA[a] + w1 * CA[b] + w2 * CA[c];
+      }
+    }
+  };
+  for (let j = 0; j < ny - 1; j++) {
+    for (let i = 0; i < nx - 1; i++) {
+      const k = j * nx + i;
+      tri(k, k + 1, k + nx);
+      tri(k + 1, k + nx + 1, k + nx);
+    }
+  }
+  return out;
+}
+
+// ── Painting ─────────────────────────────────────────────────────────────
+let _s3dPaintSeq = 0, _s3dOffCv = null, _s3dRadarCv = null;
+function _s3dTick() {
+  if (!_s3dOn) { _s3dTicking = false; return; }
+  if (_s3dDirty && !_s3dRendering) { _s3dDirty = false; _s3dRender(); }
+  requestAnimationFrame(_s3dTick);
+}
+function _s3dRender() {
+  const cv = _s3dEl('s3d-canvas');
+  if (!cv || !cv.getContext) return;
+  const rect = cv.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(rect.width * dpr)), h = Math.max(1, Math.round(rect.height * dpr));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  _s3dRendering = true;
+  return _s3dPaint(cv.getContext('2d'), w, h, dpr)
+    .catch(e => console.warn('[s3d] render:', e))
+    .then(() => { _s3dRendering = false; });
+}
+// Resolves once the picture is up to date: for the tests, and for export.
+function _s3dRenderIdle(timeoutMs) {
+  const until = Date.now() + (timeoutMs || 15000);
+  return new Promise((resolve) => {
+    const poll = () => {
+      if ((!_s3dRendering && !_s3dDirty) || Date.now() > until) resolve(!_s3dRendering && !_s3dDirty);
+      else setTimeout(poll, 16);
+    };
+    poll();
+  });
+}
+
+async function _s3dPaint(ctx, w, h, dpr) {
+  const seq = ++_s3dPaintSeq;
+  const fr = _s3dFrames[_s3dIdx];
+  const zone = _s3dZone;
+  const fast = _s3dFast;
+  // A dragging picture is drawn small and stretched, the way Radar 3D's
+  // coarse pass is: the orbit keeps up with the finger, and the full
+  // picture follows the moment the finger stops.
+  const cap = fast ? 0.45 : Math.min(1, 1300 / w);
+  const rw = Math.max(80, Math.round(w * cap)), rh = Math.max(50, Math.round(h * cap));
+  const exag = _s3dExag();
+  const v = _s3dCamBasis();
+  const hx = zone ? zone.wKm / 2 : 150, hy = zone ? zone.hKm / 2 : 150;
+
+  // The radar, when asked for: marched through this same camera, and kept
+  // while the camera and size stand still, so playing the clouds over it
+  // never re-marches the storm.
+  let radarCv = null;
+  const R = _s3dRadarOn && _s3dRadar && _s3dRadar.P ? _s3dRadar : null;
+  if (R && zone) {
+    const iw = fast ? Math.min(rw, 220) : Math.min(rw, 560);
+    const ih = Math.max(40, Math.round(iw * h / w));
+    const key = [_s3dCam.yaw, _s3dCam.pitch, _s3dCam.dist, exag, iw, ih, R.P.id, _s3dAlpha].join('|');
+    if (R.cache && R.cache.key === key) radarCv = R.cache.cv;
+    else {
+      const stepKm = Math.max(0.08, Math.min(1.5, R.P.rStep * (fast ? 1.3 : 0.6)));
+      const pack = _r3dLutFor('ref', stepKm);
+      let lx = -0.35 * v.rx + 0.75 * v.ux - 0.55 * v.fx, ly = -0.35 * v.ry + 0.75 * v.uy - 0.55 * v.fy,
+          lz = -0.35 * v.rz + 0.75 * v.uz - 0.55 * v.fz;
+      const ll = Math.hypot(lx, ly, lz) || 1;
+      const data = await _r3dMarchAsync(R.P, {
+        iw, ih, fine: fast ? 0 : 1, crisp: 0, exag, stepKm,
+        cam: new Float64Array([v.camX, v.camY, v.camZ, v.rx, v.ry, v.rz, v.ux, v.uy, v.uz, v.fx, v.fy, v.fz]),
+        minX: -hx, maxX: hx, minY: -hy, maxY: hy, maxZ: S3D_TOP_KM * exag,
+        lut: pack.lut, floorRgb: pack.floorRgb, signed: false,
+        light: new Float32Array([lx / ll, ly / ll, lz / ll]),
+      });
+      if (seq !== _s3dPaintSeq || !data) return;
+      const c = document.createElement('canvas');
+      c.width = iw; c.height = ih;
+      const im = c.getContext('2d').createImageData(iw, ih);
+      im.data.set(data);
+      c.getContext('2d').putImageData(im, 0, 0);
+      if (!fast) R.cache = { key, cv: c };
+      radarCv = c;
+    }
+  }
+
+  const bg = ctx.createLinearGradient(0, 0, 0, h);
+  bg.addColorStop(0, '#08080b'); bg.addColorStop(1, '#000');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+  ctx.imageSmoothingEnabled = true;
+  try { ctx.imageSmoothingQuality = 'high'; } catch (e) {}
+  if (radarCv) ctx.drawImage(radarCv, 0, 0, w, h);
+  if (fr && fr.data && zone) {
+    // With the radar under it, clear sky goes nearly away and cloud goes
+    // see-through, so the storm reads through its own anvil.
+    const alpha = radarCv ? Math.min(_s3dAlpha, 0.85) : _s3dAlpha;
+    const clearA = radarCv ? Math.min(0.2, alpha) : Math.max(alpha, 0.9);
+    const px = _s3dRaster(fr.data, zone, v, rw, rh, exag, alpha, clearA);
+    if (!_s3dOffCv) _s3dOffCv = document.createElement('canvas');
+    if (_s3dOffCv.width !== rw || _s3dOffCv.height !== rh) { _s3dOffCv.width = rw; _s3dOffCv.height = rh; }
+    const octx = _s3dOffCv.getContext('2d');
+    const im = octx.createImageData(rw, rh);
+    im.data.set(px);
+    octx.putImageData(im, 0, 0);
+    ctx.drawImage(_s3dOffCv, 0, 0, w, h);
+  }
+  if (zone) _s3dDrawBox(ctx, w, h, v, hx, hy, exag, dpr);
+  if (!fr || !fr.data) {
+    ctx.fillStyle = typeof _r3dGoldFill === 'function' ? _r3dGoldFill(ctx, h) : '#e8b800';
+    ctx.font = `${Math.round(12 * dpr)}px 'Comfortaa', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(zone ? 'Building cloud-top heights…'
+      : 'Long-press the map, pick Draw a 3D satellite zone, and drag out a box', w / 2, h / 2);
+  }
+}
+
+// The box around the zone: its edges, height lines on the far corner in
+// true height (not stretched), and N on the north rim.
+function _s3dDrawBox(ctx, w, h, v, hx, hy, exag, dpr) {
+  const focal = h * 1.15;
+  const proj = (X, Y, Z) => {
+    const dx = X - v.camX, dy = Y - v.camY, dz = Z - v.camZ;
+    const depth = dx * v.fx + dy * v.fy + dz * v.fz;
+    if (depth < 0.5) return null;
+    return [w / 2 + (dx * v.rx + dy * v.ry + dz * v.rz) / depth * focal,
+            h / 2 - (dx * v.ux + dy * v.uy + dz * v.uz) / depth * focal];
+  };
+  const top = S3D_TOP_KM * exag;
+  const cs = [[-hx, -hy], [hx, -hy], [hx, hy], [-hx, hy]];
+  const line = (a, b) => { if (a && b) { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); } };
+  ctx.save();
+  ctx.lineWidth = Math.max(1, dpr);
+  ctx.strokeStyle = 'rgba(232,184,0,0.45)';
+  ctx.beginPath();
+  for (let i = 0; i < 4; i++) {
+    const [x0, y0] = cs[i], [x1, y1] = cs[(i + 1) % 4];
+    line(proj(x0, y0, 0), proj(x1, y1, 0));
+    line(proj(x0, y0, top), proj(x1, y1, top));
+    line(proj(x0, y0, 0), proj(x0, y0, top));
+  }
+  ctx.stroke();
+  // Height lines on the corner farthest from the eye, labelled in kft.
+  let far = cs[0], best = -Infinity;
+  cs.forEach(c => { const d = Math.hypot(c[0] - v.camX, c[1] - v.camY); if (d > best) { best = d; far = c; } });
+  ctx.fillStyle = typeof _r3dGoldFill === 'function' ? _r3dGoldFill(ctx, h) : '#e8b800';
+  ctx.font = `${Math.round(9 * dpr)}px 'Comfortaa', sans-serif`;
+  ctx.textAlign = 'right';
+  ctx.strokeStyle = 'rgba(232,184,0,0.2)';
+  for (let kft = 10; kft / R3D_KFT_PER_KM <= S3D_TOP_KM; kft += 10) {
+    const z = kft / R3D_KFT_PER_KM * exag;
+    const p = proj(far[0], far[1], z);
+    if (!p) continue;
+    ctx.fillText(kft + ' kft', p[0] - 4 * dpr, p[1] + 3 * dpr);
+  }
+  const n = proj(0, hy, 0);
+  if (n) { ctx.textAlign = 'center'; ctx.font = `bold ${Math.round(11 * dpr)}px 'Comfortaa', sans-serif`; ctx.fillText('N', n[0], n[1] - 5 * dpr); }
+  ctx.restore();
+}
+
+// ── The camera and the panel's own chrome ────────────────────────────────
+function _s3dInteract() {
+  _s3dFast = true;
+  _s3dDirty = true;
+  clearTimeout(_s3dFastTimer);
+  _s3dFastTimer = setTimeout(() => { _s3dFast = false; _s3dDirty = true; }, 180);
+}
+
+(function _s3dWire() {
+  const panel = _s3dEl('s3d-panel'), cv = _s3dEl('s3d-canvas');
+  if (!panel || !cv) return;
+  const pointers = new Map();
+  let drag = null, pinch = null;
+  const pinchDist = () => { const p = [...pointers.values()]; return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y); };
+  cv.addEventListener('pointerdown', (e) => {
+    try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 1) {
+      drag = { yaw: _s3dCam.yaw, pitch: _s3dCam.pitch, x: e.clientX, y: e.clientY };
+      cv.classList.add('r3d-dragging');
+    } else if (pointers.size === 2) { drag = null; pinch = { dist: pinchDist(), cam: _s3dCam.dist }; }
+  });
+  cv.addEventListener('pointermove', (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 1 && drag) {
+      _s3dCam.yaw = drag.yaw + (e.clientX - drag.x) * 0.008;
+      _s3dCam.pitch = Math.max(S3D_PITCH_MIN, Math.min(S3D_PITCH_MAX, drag.pitch - (e.clientY - drag.y) * 0.008));
+      _s3dInteract();
+    } else if (pointers.size === 2 && pinch) {
+      _s3dCam.dist = Math.max(_s3dDistMin(), Math.min(_s3dDistMax(), pinch.cam * pinch.dist / Math.max(1, pinchDist())));
+      _s3dInteract();
+    }
+  });
+  const end = (e) => {
+    pointers.delete(e.pointerId);
+    if (!pointers.size) { drag = null; cv.classList.remove('r3d-dragging'); }
+    if (pointers.size < 2) pinch = null;
+  };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+  cv.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    _s3dCam.dist = Math.max(_s3dDistMin(), Math.min(_s3dDistMax(), _s3dCam.dist * (1 + e.deltaY * 0.0015)));
+    _s3dInteract();
+  }, { passive: false });
+
+  const x = panel.querySelector('.xs-x');
+  if (x) x.onclick = () => _s3dClose();
+  const big = panel.querySelector('.xs-big');
+  if (big) big.onclick = () => {
+    panel.classList.toggle('big');
+    big.title = panel.classList.contains('big') ? 'Shrink' : 'Expand';
+    _s3dDirty = true;
+  };
+  if (typeof _makeDraggable === 'function') {
+    try { _makeDraggable(panel, panel.querySelector('.xs-head')); } catch (e) {}
+  }
+  window.addEventListener('resize', () => { if (_s3dOn) _s3dDirty = true; });
+  const ex = _s3dEl('s3d-exag');
+  if (ex) ex.onchange = () => { _s3dExagSel = ex.value; _s3dDirty = true; };
+  const al = _s3dEl('s3d-alpha'), alLabel = _s3dEl('s3d-alpha-label');
+  const syncAlpha = () => { if (alLabel) alLabel.textContent = Math.round(_s3dAlpha * 100) + '%'; };
+  if (al) al.oninput = () => { _s3dAlpha = Math.max(0.15, Math.min(1, (+al.value || 100) / 100)); syncAlpha(); _s3dDirty = true; };
+  const rd = _s3dEl('s3d-radar');
+  if (rd) rd.onchange = () => {
+    _s3dRadarOn = !!rd.checked;
+    // Turning the radar on turns the clouds see-through, since a solid
+    // cloud would hide exactly what was just asked for.
+    if (_s3dRadarOn && _s3dAlpha > 0.6 && al) { al.value = '55'; _s3dAlpha = 0.55; syncAlpha(); }
+    if (_s3dRadarOn) _s3dRadarLoad(); else { _s3dRadarGen++; _s3dRadar = null; _s3dSayFrame(); }
+    _s3dDirty = true;
+  };
+})();
+
 (function _r3dWireInfo() {
   const btn = document.getElementById('r3d-info-btn');
   if (!btn) return;

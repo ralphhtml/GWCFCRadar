@@ -116,11 +116,12 @@ CHANGED=1
 
 # Only the long running one. Restarting the timers here would fire them all at
 # once on every update, which is a stampede rather than a refresh.
-# serve.py, and anything serve.py imports. sounding_service.py is the second
-# kind: serve.py imports it to answer /sounding, so a change to it is a change
-# to the running server even though serve.py itself did not move.
+# serve.py, and anything serve.py imports. sounding_service.py, sat_archive.py
+# and sat_cth.py are the second kind: serve.py imports them to answer
+# /sounding and the /sat/ doors, so a change to one is a change to the
+# running server even though serve.py itself did not move.
 if [ "$CHANGED" = 1 ] && git diff --name-only "$BEFORE" "$AFTER" \
-   | grep -qE '^pi/(serve|sounding_service)\.py$'; then
+   | grep -qE '^pi/(serve|sounding_service|sat_archive|sat_cth)\.py$'; then
   systemctl --user restart gwcfc-serve.service && echo "restarted serve"
 fi
 
