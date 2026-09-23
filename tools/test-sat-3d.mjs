@@ -578,7 +578,7 @@ console.log('\n7d. everything Radar 3D has that fits a cloud-top surface');
      && r.looks.lit.grey > r.looks.lit.n * 0.8, JSON.stringify(r.looks));
   ok('the cutaway removes the side it cuts from', r.looks.cut.n < r.looks.lit.n * 0.8, JSON.stringify(r.looks));
   ok('heights read in the chosen unit', r.units === '10 km', r.units);
-  ok('Walk shows the pad, hides the orbit bars, and W walks forward', r.walk.padShown && r.walk.barsHidden
+  ok('Walk shows the pad, keeps the zoom and turn bars (altitude and heading now), and W walks forward', r.walk.padShown && !r.walk.barsHidden
      && r.walk.moved > 1, JSON.stringify(r.walk));
   ok('VR goes fullscreen in stereo, and both switch off again', r.walk.vr.on && r.walk.vr.full && r.walk.off,
      JSON.stringify(r.walk));

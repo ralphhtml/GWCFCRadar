@@ -1436,6 +1436,7 @@ console.log('\n11c. a black gradient panel with gold gradient text, inside the b
     _r3dFrames = []; _r3dFrameIdx = -1;
     await _r3dRenderIdle(10000);
     const panel = getComputedStyle(document.getElementById('r3d-panel'));
+    const top = getComputedStyle(document.querySelector('#r3d-panel .p3d-top'));
     const title = getComputedStyle(document.querySelector('#r3d-panel .xs-title'));
     const status = getComputedStyle(document.getElementById('r3d-status'));
     const fills = [];
@@ -1449,15 +1450,19 @@ console.log('\n11c. a black gradient panel with gold gradient text, inside the b
     _r3dClose();
     return {
       panelBg: panel.backgroundImage,
+      panelBlur: panel.backdropFilter || panel.webkitBackdropFilter, topBg: top.backgroundImage,
       titleBg: title.backgroundImage, titleClip: title.webkitBackgroundClip || title.backgroundClip,
       titleFill: title.webkitTextFillColor,
       statusBg: status.backgroundImage,
       labels: fills.length, allGradient: fills.every(f => f.gradient),
     };
   });
-  ok('the panel background is a black gradient',
-     /linear-gradient/.test(r.panelBg) && /rgba\(30, 30, 36/.test(r.panelBg) && /rgb\(0, 0, 0\)/.test(r.panelBg),
-     r.panelBg);
+  // The top (title, controls, sliders) is the black gradient; the panel
+  // itself, what shows around and below the picture, is heavy frost.
+  ok('the top of the panel is a black gradient',
+     /linear-gradient/.test(r.topBg) && /rgb\(28, 28, 34\)/.test(r.topBg) && /rgb\(0, 0, 0\)/.test(r.topBg), r.topBg);
+  ok('and the rest is heavy frost: thin dark glass with a 24px blur',
+     /rgba\(24, 28, 34, 0\.36\)/.test(r.panelBg) && /blur\(24px\)/.test(r.panelBlur || ''), r.panelBg + ' ' + r.panelBlur);
   ok('the title is gold gradient text (a gradient clipped to the glyphs)',
      /linear-gradient/.test(r.titleBg) && /232, 184, 0/.test(r.titleBg) && r.titleClip === 'text'
      && /transparent|rgba\(0, 0, 0, 0\)/.test(r.titleFill),

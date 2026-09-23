@@ -4908,6 +4908,21 @@ body.lite-mode #export-modal { display: none !important; }
   .l3d-panel canvas { height: 220px; }
 }
 
+/* -- Every 3D panel: black gradient on top, heavy frost below --
+   The title bar, the control row and the sliders sit in one .p3d-top
+   block in the app's black gradient; the panel itself, which is what
+   shows around and below the picture, is heavy frost: the same thin dark
+   glass and 24px blur the outlook legends wear. */
+#r3d-panel, #s3d-panel, .l3d-panel {
+  background: linear-gradient(180deg, rgba(24,28,34,0.36) 0%, rgba(6,9,13,0.44) 100%) !important;
+}
+.p3d-top {
+  background: linear-gradient(180deg, #1c1c22 0%, #0b0b0e 55%, #000 100%);
+  border-bottom: 1px solid rgba(232,184,0,0.18);
+  padding-bottom: 7px;
+}
+#r3d-panel .xs-head, #s3d-panel .xs-head, .l3d-panel .xs-head { background: transparent; }
+
 /* -- HD Models panel -- */
 #hd-panel {
   position: fixed; left: 12px; bottom: 132px; z-index: 900; display: none;
@@ -12177,6 +12192,7 @@ body.clean-mode #clean-hint { opacity: 1; }
      rectangle drawn on the map); the panel renders only what is inside that
      zone, from the nearest radar, as a ray-marched volume. -->
 <div id="r3d-panel">
+  <div class="p3d-top">
   <div class="xs-head">
     <div class="dtb-drag" id="r3d-drag" title="Drag to move">⠿</div>
     <span class="xs-title">Volumetric 3D</span>
@@ -12194,6 +12210,7 @@ body.clean-mode #clean-hint { opacity: 1; }
     <button class="dtb-btn" id="r3d-terrain-btn" type="button" title="Terrain: the real ground under the storm, from public elevation tiles">Terrain</button>
     <button class="dtb-btn" id="r3d-walk-btn" type="button" title="Walk inside the box: drag to look around, WASD/arrows or the on-screen pad to move, wheel to walk forward">Walk</button>
     <button class="dtb-btn" id="r3d-vr-btn" type="button" title="VR: fullscreen side-by-side stereo for a phone in a headset viewer, turning as you turn">VR</button>
+    <button class="dtb-btn" id="r3d-snap-btn" title="Save this view as a picture" type="button"></button>
     <button class="dtb-btn" id="r3d-info-btn" title="What this does" type="button"></button>
   </div>
   <div class="r3d-sliders">
@@ -12248,7 +12265,13 @@ body.clean-mode #clean-hint { opacity: 1; }
         <option value="ft">ft</option>
         <option value="m">m</option>
       </select>
+      <select class="xsec-sel" id="r3d-quality" title="Auto: quick while you move, sharp when you stop. Fast: always quick. Fine: always sharp.">
+        <option value="auto" selected>Auto</option>
+        <option value="fast">Fast</option>
+        <option value="fine">Fine</option>
+      </select>
     </label>
+  </div>
   </div>
   <div class="xs-plot">
     <canvas id="r3d-canvas"></canvas>
@@ -12270,6 +12293,7 @@ body.clean-mode #clean-hint { opacity: 1; }
 </div>
 
 <div id="s3d-panel">
+  <div class="p3d-top">
   <div class="xs-head">
     <div class="dtb-drag" id="s3d-drag" title="Drag to move">&#10303;</div>
     <span class="xs-title">Satellite 3D</span>
@@ -12286,6 +12310,7 @@ body.clean-mode #clean-hint { opacity: 1; }
     <button class="dtb-btn" id="s3d-walk-btn" type="button" title="Walk over the cloud tops: drag to look around, WASD/arrows or the on-screen pad to move, E and Q to rise and sink, wheel to walk forward">Walk</button>
     <button class="dtb-btn" id="s3d-vr-btn" type="button" title="VR: fullscreen side-by-side stereo for a phone in a headset viewer, turning as you turn">VR</button>
     <button class="dtb-btn" id="s3d-tm-btn" type="button" title="Time Machine: see these cloud tops at any moment since 2017"></button>
+    <button class="dtb-btn" id="s3d-snap-btn" title="Save this view as a picture" type="button"></button>
     <button class="dtb-btn" id="s3d-info-btn" title="What this does" type="button"></button>
   </div>
   <div class="r3d-controls s3d-radar-row">
@@ -12323,6 +12348,7 @@ body.clean-mode #clean-hint { opacity: 1; }
       <select class="xsec-sel" id="s3d-mode" title="Lit surface: the picture, shaded by a light. Flat picture: the picture exactly, unshaded. Height colours: coloured by how tall each top is, like a relief map.">
         <option value="lit" selected>Lit surface</option>
         <option value="flat">Flat picture</option>
+        <option value="pixels">Raw pixels</option>
         <option value="height">Height colours</option>
       </select>
       <select class="xsec-sel" id="s3d-cut" title="Cut the box open from one side to look along a slice of the clouds">
@@ -12345,6 +12371,11 @@ body.clean-mode #clean-hint { opacity: 1; }
         <option value="20">20&times;</option>
         <option value="40">40&times;</option>
       </select>
+      <select class="xsec-sel" id="s3d-quality" title="Auto: quick while you move, sharp when you stop. Fast: always quick. Fine: always sharp.">
+        <option value="auto" selected>Auto</option>
+        <option value="fast">Fast</option>
+        <option value="fine">Fine</option>
+      </select>
       <select class="xsec-sel" id="s3d-hunit" title="Which unit the heights are printed in">
         <option value="kft" selected>kft</option>
         <option value="km">km</option>
@@ -12352,6 +12383,7 @@ body.clean-mode #clean-hint { opacity: 1; }
         <option value="m">m</option>
       </select>
     </label>
+  </div>
   </div>
   <div class="xs-plot">
     <canvas id="s3d-canvas"></canvas>
@@ -68733,6 +68765,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-s', date: 'Sep 23, 2026',
+    text: 'The 3D panels picked up more of Radar 3D\'s tools and a new look. Every 3D panel (Radar, Satellite and each layer) is now a black gradient on top, where the controls are, with heavy frost below. The zoom and turn bars stay while you Walk and steer your altitude and heading. New camera button saves the 3D view as a picture, and a Quality picker (Auto, Fast, Fine) on all three. The layer 3D panels also get Show above and Up to (the layer only on ground inside that height band, like snow above a set elevation), a Layer opacity slider, Smoothing, a Raw pixels look, and they now follow every frame of the animation bar. Satellite 3D gets Raw pixels too. And the automatic height stretch is capped at 30x, so flat coastlines no longer turn into spikes.' },
   { id: '2026-09-23-r', date: 'Sep 23, 2026',
     text: 'New overlay: ECMWF TC Probability, under the tropical overlays. It shows the Euro ensemble\'s tropical cyclone strike probability and genesis maps: the chance that a tropical depression, tropical storm or hurricane passes within 120 km of each place, from all 51 members. Pick TD, TS or HU, a window (0 to 2, 5 or 10 days), and All + genesis (every storm the ensemble makes, including ones that have not formed yet) or Existing (only storms already out there). Colours follow ECMWF\'s own key, and the Inspector reads the exact percentage. The maps are built on the home server after each 00z and 12z run, from ECMWF\'s open data.' },
   { id: '2026-09-23-q', date: 'Sep 23, 2026',
@@ -73364,6 +73398,8 @@ function _r3dFetchUserFix() {
 const R3D_PITCH_MIN = -0.15, R3D_PITCH_MAX = 1.45;
 // Coarse while interacting, full quality the moment interaction stops.
 let _r3dQuality = 'fine';
+let _r3dQualityMode = 'auto';   // the Quality picker: 'auto' | 'fast' | 'fine'
+function _r3dFine() { return _r3dQualityMode === 'fine' || (_r3dQualityMode !== 'fast' && _r3dQuality === 'fine'); }
 let _r3dFineTimer = null;
 let _r3dLutCache = null;         // { key, lut, floorRgb } - rebuilt when product/filter/step changes
 // The two sliders: "Show above" (0-100, mapped to an actual dBZ/kt cutoff
@@ -73421,16 +73457,20 @@ function _r3dCamFit() {
 // scrolling the canvas left the camera. Skipped for whichever bar the hand
 // is actually on: fighting a drag in progress with a sync from the very
 // state the drag is producing is how a slider stutters under a live touch.
+function _r3dWalkTopZ() { return Math.max(1, _r3dBoxTopKm() * _r3dExag * 1.5); }
 function _r3dSyncCamBars() {
   const zoom = _r3dEl('r3d-zoom');
   if (zoom && document.activeElement !== zoom) {
-    const lo = _r3dDistMin(), hi = Math.max(lo + 1, _r3dDistMax());
-    const t = Math.max(0, Math.min(1, (hi - _r3dCam.dist) / (hi - lo)));
-    zoom.value = String(Math.round(t * 1000));
+    if (_r3dWalk) zoom.value = String(Math.round(Math.max(0, Math.min(1, _r3dWalk.z / _r3dWalkTopZ())) * 1000));
+    else {
+      const lo = _r3dDistMin(), hi = Math.max(lo + 1, _r3dDistMax());
+      const t = Math.max(0, Math.min(1, (hi - _r3dCam.dist) / (hi - lo)));
+      zoom.value = String(Math.round(t * 1000));
+    }
   }
   const yaw = _r3dEl('r3d-yaw');
   if (yaw && document.activeElement !== yaw) {
-    let deg = (_r3dCam.yaw * 180 / Math.PI) % 360;
+    let deg = ((_r3dWalk ? _r3dWalk.yaw : _r3dCam.yaw) * 180 / Math.PI) % 360;
     if (deg > 180) deg -= 360; else if (deg < -180) deg += 360;
     yaw.value = String(Math.round(deg));
   }
@@ -73439,13 +73479,15 @@ function _r3dSyncCamBars() {
 // reads 1000, which is the closest the distance range allows - "zoom in"
 // reads as "push up", the way a phone's own volume/zoom bars do.
 function _r3dZoomFromBar(v) {
+  const u = Math.max(0, Math.min(1000, Number(v) || 0)) / 1000;
+  if (_r3dWalk) { _r3dWalk.z = Math.max(0.1, u * _r3dWalkTopZ()); _r3dInteract(); return; }
   const lo = _r3dDistMin(), hi = Math.max(lo + 1, _r3dDistMax());
-  const t = 1 - Math.max(0, Math.min(1000, Number(v) || 0)) / 1000;
-  _r3dCam.dist = lo + t * (hi - lo);
+  _r3dCam.dist = lo + (1 - u) * (hi - lo);
   _r3dInteract();
 }
 function _r3dYawFromBar(v) {
-  _r3dCam.yaw = (Number(v) || 0) * Math.PI / 180;
+  const a = (Number(v) || 0) * Math.PI / 180;
+  if (_r3dWalk) _r3dWalk.yaw = a; else _r3dCam.yaw = a;
   _r3dInteract();
 }
 
@@ -74943,9 +74985,8 @@ function _r3dWalkToggle(force) {
   if (btn) btn.classList.toggle('on', !!_r3dWalk);
   const pad = _r3dEl('r3d-walk-pad');
   if (pad) pad.style.display = _r3dWalk ? '' : 'none';
-  // The two camera bars steer the orbit only, so they step aside.
-  document.querySelectorAll('#r3d-panel .r3d-cam-zoom, #r3d-panel .r3d-cam-move')
-    .forEach(el => { el.style.display = _r3dWalk ? 'none' : ''; });
+  // The two bars stay: while walking, the zoom bar is your altitude and the
+  // other bar the way you face.
   _r3dInteract();
 }
 
@@ -75143,7 +75184,7 @@ function _r3dRender() {
   }
   if (_r3dRendering) { _r3dDirty = true; return; }
   _r3dRendering = true;
-  const fine = _r3dQuality === 'fine';
+  const fine = _r3dFine();
   _r3dPaint(ctx, w, h, dpr, frame).then(ok => {
     _r3dRendering = false;
     if (!ok) { _r3dDirty = true; return; }
@@ -75205,7 +75246,7 @@ async function _r3dPaint(ctx, w, h, dpr, frame) {
   const volumes = [];
   if (frame) {
     const P = _r3dPolarFor(frame, spec);
-    const fine = _r3dQuality === 'fine';
+    const fine = _r3dFine();
     // Fine mode renders at the canvas's own resolution (capped for huge
     // panels, the canvas's bilinear upscale reads as antialiasing on data
     // this soft); fast mode stays small so dragging never stutters.
@@ -75247,7 +75288,7 @@ async function _r3dPaint(ctx, w, h, dpr, frame) {
     const volume = volumes[i];
     // The ground first, then the storm over it.
     if (ground) {
-      const cap = _r3dQuality === 'fine' ? Math.min(1, 900 / eyeW) : 0.45;
+      const cap = _r3dFine() ? Math.min(1, 900 / eyeW) : 0.45;
       const rw = Math.max(80, Math.round(eyeW * cap)), rh = Math.max(50, Math.round(h * cap));
       const px = _s3dRaster(ground.d, ground.zone, v, rw, rh, exag, 1, 1, { mode: 'lit', box });
       if (!_r3dGroundCv) _r3dGroundCv = document.createElement('canvas');
@@ -75597,6 +75638,13 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   window.addEventListener('resize', () => { if (_r3dOn) _r3dDirty = true; });
   const zoomBar = _r3dEl('r3d-zoom');
   if (zoomBar) zoomBar.oninput = () => _r3dZoomFromBar(zoomBar.value);
+  const rsnap = _r3dEl('r3d-snap-btn');
+  if (rsnap) {
+    rsnap.innerHTML = '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-camera></use></svg>';
+    rsnap.onclick = (ev) => { ev.stopPropagation(); _p3dSnapshot(_r3dEl('r3d-canvas'), 'radar3d'); };
+  }
+  const rq = _r3dEl('r3d-quality');
+  if (rq) rq.onchange = () => { _r3dQualityMode = rq.value; _r3dDirty = true; };
   const yawBar = _r3dEl('r3d-yaw');
   if (yawBar) yawBar.oninput = () => _r3dYawFromBar(yawBar.value);
   const ps = _r3dEl('r3d-product');
@@ -77804,6 +77852,13 @@ body {
   background-color: transparent !important;
   background-image: linear-gradient(180deg,
     rgba(24,28,34,0.36) 0%, rgba(6,9,13,0.44) 100%);
+  backdrop-filter: blur(24px) saturate(1.5) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+}
+/* The 3D panels' bottoms, heavy too (their tops are the black .p3d-top).
+   Here with the rest of the glass so a device that has glass switched off
+   for speed keeps the tint and skips the blur. */
+:root[data-glass] #r3d-panel, :root[data-glass] #s3d-panel, :root[data-glass] .l3d-panel {
   backdrop-filter: blur(24px) saturate(1.5) !important;
   -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
 }
@@ -83295,6 +83350,7 @@ let _s3dSmooth = 0;           // 0..100
 let _s3dMode = 'lit';         // 'lit' | 'flat' | 'height'
 let _s3dCutSide = 'off', _s3dCutPct = 50;
 let _s3dHeightUnit = 'kft';
+let _s3dQualityMode = 'auto';   // 'auto' | 'fast' | 'fine'
 let _s3dRadarProduct = 'ref';
 let _s3dRadarProductPicked = false;   // chosen in the panel, so a comparison pane does not override it
 let _s3dRadarSite = null;     // null: the nearest radar
@@ -84066,7 +84122,7 @@ function _s3dRaster(d, zone, v, W, H, exag, alpha, clearAlpha, opts) {
       PY[k] = H2 - (dx * ux + dy * uy + dz * uz) / depth * focal;
       PZ[k] = depth;
       let shade = 1;
-      if (mode !== 'flat') {
+      if (mode !== 'flat' && mode !== 'pixels') {
         const iw = i > 0 ? i - 1 : i, ie = i < nx - 1 ? i + 1 : i;
         const sx = (hm[j * nx + ie] - hm[j * nx + iw]) * exag / (Math.max(1, ie - iw) * cx);
         const sy = (hm[jn * nx + i] - hm[js * nx + i]) * exag / (Math.max(1, js - jn) * cy);
@@ -84085,6 +84141,9 @@ function _s3dRaster(d, zone, v, W, H, exag, alpha, clearAlpha, opts) {
   }
   const out = new Uint8ClampedArray(W * H * 4);
   const zb = new Float32Array(W * H).fill(Infinity);
+  // Raw pixels: each triangle takes one cell's colour, flat, instead of
+  // blending its corners, so every data cell reads as its own square.
+  const flatTri = mode === 'pixels';
   const tri = (a, b, c) => {
     const za = PZ[a], zbv = PZ[b], zc = PZ[c];
     if (za < 0 || zbv < 0 || zc < 0) return;
@@ -84112,10 +84171,14 @@ function _s3dRaster(d, zone, v, W, H, exag, alpha, clearAlpha, opts) {
         if (z >= zb[p]) continue;
         zb[p] = z;
         const o4 = p * 4;
-        out[o4] = w0 * CR[a] + w1 * CR[b] + w2 * CR[c];
-        out[o4 + 1] = w0 * CG[a] + w1 * CG[b] + w2 * CG[c];
-        out[o4 + 2] = w0 * CB[a] + w1 * CB[b] + w2 * CB[c];
-        out[o4 + 3] = w0 * CA[a] + w1 * CA[b] + w2 * CA[c];
+        if (flatTri) {
+          out[o4] = CR[a]; out[o4 + 1] = CG[a]; out[o4 + 2] = CB[a]; out[o4 + 3] = CA[a];
+        } else {
+          out[o4] = w0 * CR[a] + w1 * CR[b] + w2 * CR[c];
+          out[o4 + 1] = w0 * CG[a] + w1 * CG[b] + w2 * CG[c];
+          out[o4 + 2] = w0 * CB[a] + w1 * CB[b] + w2 * CB[c];
+          out[o4 + 3] = w0 * CA[a] + w1 * CA[b] + w2 * CA[c];
+        }
       }
     }
   };
@@ -84296,7 +84359,7 @@ async function _s3dPaint(ctx, w, h, dpr) {
   const seq = ++_s3dPaintSeq;
   const fr = _s3dFrames[_s3dIdx];
   const zone = _s3dZone;
-  const fast = _s3dFast;
+  const fast = _s3dQualityMode === 'fast' || (_s3dQualityMode === 'auto' && _s3dFast);
   const exag = _s3dExag();
   const hx = zone ? zone.wKm / 2 : 150, hy = zone ? zone.hKm / 2 : 150;
   const box = _s3dCutBox(hx, hy);
@@ -84308,7 +84371,7 @@ async function _s3dPaint(ctx, w, h, dpr) {
   // A dragging picture is drawn small and stretched, the way Radar 3D's
   // coarse pass is: the orbit keeps up with the finger, and the full
   // picture follows the moment the finger stops.
-  const cap = fast ? 0.45 : Math.min(1, 1300 / eyeW);
+  const cap = fast ? 0.45 : _s3dQualityMode === 'fine' ? 1 : Math.min(1, 1300 / eyeW);
   const rw = Math.max(80, Math.round(eyeW * cap)), rh = Math.max(50, Math.round(h * cap));
   const R = _s3dRadarOn && _s3dRadar && _s3dRadar.P ? _s3dRadar : null;
 
@@ -84345,7 +84408,9 @@ async function _s3dPaint(ctx, w, h, dpr) {
       const im = octx.createImageData(rw, rh);
       im.data.set(px);
       octx.putImageData(im, 0, 0);
+      ctx.imageSmoothingEnabled = _s3dMode !== 'pixels';
       ctx.drawImage(_s3dOffCv, ex, 0, eyeW, h);
+      ctx.imageSmoothingEnabled = true;
     }
     if (zone) {
       ctx.save();
@@ -84493,9 +84558,8 @@ function _s3dWalkToggle(force) {
   if (btn) btn.classList.toggle('on', !!_s3dWalk);
   const pad = _s3dEl('s3d-walk-pad');
   if (pad) pad.style.display = _s3dWalk ? '' : 'none';
-  // The two camera bars steer the orbit only, so they step aside.
-  document.querySelectorAll('#s3d-panel .r3d-cam-zoom, #s3d-panel .r3d-cam-move')
-    .forEach(el => { el.style.display = _s3dWalk ? 'none' : ''; });
+  // The two bars stay: while walking, the zoom bar is your altitude and the
+  // other bar the way you face.
   _s3dInteract();
 }
 let _s3dGyroBase = null;
@@ -84537,15 +84601,19 @@ function _s3dVrOff() {
 function _s3dVrToggle() { if (_s3dVr) _s3dVrOff(); else _s3dVrOn(); }
 
 // -- The camera bars ------------------------------------------------------
+function _s3dWalkTopZ() { return S3D_TOP_KM * _s3dExag() * 2; }
 function _s3dSyncCamBars() {
   const zoom = _s3dEl('s3d-zoom');
   if (zoom && document.activeElement !== zoom) {
-    const lo = _s3dDistMin(), hi = Math.max(lo + 1, _s3dDistMax());
-    zoom.value = String(Math.round(Math.max(0, Math.min(1, (hi - _s3dCam.dist) / (hi - lo))) * 1000));
+    if (_s3dWalk) zoom.value = String(Math.round(Math.max(0, Math.min(1, _s3dWalk.z / _s3dWalkTopZ())) * 1000));
+    else {
+      const lo = _s3dDistMin(), hi = Math.max(lo + 1, _s3dDistMax());
+      zoom.value = String(Math.round(Math.max(0, Math.min(1, (hi - _s3dCam.dist) / (hi - lo))) * 1000));
+    }
   }
   const yaw = _s3dEl('s3d-yaw');
   if (yaw && document.activeElement !== yaw) {
-    let deg = (_s3dCam.yaw * 180 / Math.PI) % 360;
+    let deg = ((_s3dWalk ? _s3dWalk.yaw : _s3dCam.yaw) * 180 / Math.PI) % 360;
     if (deg > 180) deg -= 360; else if (deg < -180) deg += 360;
     yaw.value = String(Math.round(deg));
   }
@@ -84738,12 +84806,27 @@ function _s3dInteract() {
   }
   const zoomBar = _s3dEl('s3d-zoom');
   if (zoomBar) zoomBar.oninput = () => {
-    const lo = _s3dDistMin(), hi = Math.max(lo + 1, _s3dDistMax());
-    _s3dCam.dist = lo + (1 - Math.max(0, Math.min(1000, +zoomBar.value || 0)) / 1000) * (hi - lo);
+    const t = Math.max(0, Math.min(1000, +zoomBar.value || 0)) / 1000;
+    if (_s3dWalk) _s3dWalk.z = Math.max(0.15, t * _s3dWalkTopZ());
+    else {
+      const lo = _s3dDistMin(), hi = Math.max(lo + 1, _s3dDistMax());
+      _s3dCam.dist = lo + (1 - t) * (hi - lo);
+    }
     _s3dInteract();
   };
   const yawBar = _s3dEl('s3d-yaw');
-  if (yawBar) yawBar.oninput = () => { _s3dCam.yaw = (+yawBar.value || 0) * Math.PI / 180; _s3dInteract(); };
+  if (yawBar) yawBar.oninput = () => {
+    const a = (+yawBar.value || 0) * Math.PI / 180;
+    if (_s3dWalk) _s3dWalk.yaw = a; else _s3dCam.yaw = a;
+    _s3dInteract();
+  };
+  const sq = _s3dEl('s3d-quality');
+  if (sq) sq.onchange = () => { _s3dQualityMode = sq.value; _s3dDirty = true; };
+  const ssnap = _s3dEl('s3d-snap-btn');
+  if (ssnap) {
+    ssnap.innerHTML = '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-camera></use></svg>';
+    ssnap.onclick = (ev) => { ev.stopPropagation(); _p3dSnapshot(_s3dEl('s3d-canvas'), 'satellite3d'); };
+  }
 
   const ex = _s3dEl('s3d-exag');
   if (ex) ex.onchange = () => { _s3dExagSel = ex.value; _s3dDirty = true; };
@@ -84800,6 +84883,40 @@ function _s3dSyncLabels() {
   if (s) s.textContent = _s3dSmooth > 0 ? _s3dSmooth + '%' : 'Off';
 }
 
+// -- Shared by every 3D panel ------------------------------------------------
+// A snapshot: the picture exactly as it is on screen, saved as a PNG file.
+function _p3dSnapshot(canvas, name) {
+  if (!canvas || !canvas.toBlob) return;
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+  canvas.toBlob(blob => {
+    if (!blob) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${name}-${stamp}.png`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    if (typeof showToast === 'function') showToast('Saved the 3D view as a picture', 2000);
+  }, 'image/png');
+}
+// Every time the animation bar shows a new moment, the time readout under
+// it changes. Watching that one line is how the layer panels follow
+// playback frame by frame, whatever layer is playing, without each layer
+// needing its own hook.
+let _p3dFrameObs = null, _p3dFrameT = 0;
+function _p3dWatchFrames() {
+  if (_p3dFrameObs || typeof MutationObserver !== 'function') return;
+  const el = document.getElementById('anim-time');
+  if (!el) return;
+  _p3dFrameObs = new MutationObserver(() => {
+    const now = Date.now();
+    if (now - _p3dFrameT < 120) return;
+    _p3dFrameT = now;
+    Object.values(_l3dPanels).forEach(p => { if (p.on) p.resample(false); });
+  });
+  _p3dFrameObs.observe(el, { childList: true, characterData: true, subtree: true });
+}
+
 // -- Layer 3D: every layer on the real ground -------------------------------
 // Each weather layer gets its own 3D panel: the real ground under a box drawn
 // on the map, with that layer's picture draped over it like a blanket. The
@@ -84825,6 +84942,11 @@ const L3D_TILE_MAX = 36;          // elevation tiles per box, at most
 const L3D_PITCH_MIN = 0.05, L3D_PITCH_MAX = 1.45;
 const L3D_RESAMPLE_MS = 800;
 const L3D_EXAG_MAX = 300;
+// The automatic stretch stops here. Flat ground (a few hundred feet across
+// hundreds of km) used to be stretched 300 times, which turned every noisy
+// elevation pixel into a spike; 30 still shows flat ground as gently
+// rolling, and the slider still goes to 300 for anyone who wants it.
+const L3D_EXAG_AUTO_MAX = 30;
 
 // Which layers get a panel, where each one draws on the map, and how to tell
 // it is on. Ocean layers get the seafloor and the Water button; MRMS reads
@@ -85116,6 +85238,7 @@ const _l3dPanels = {};           // layer id -> panel
 function _l3dPanelHtml(spec) {
   const id = 'l3d-' + spec.id;
   return `
+  <div class="p3d-top">
   <div class="xs-head">
     <div class="dtb-drag" title="Drag to move">&#10303;</div>
     <span class="xs-title">${spec.label} 3D</span>
@@ -85132,6 +85255,7 @@ function _l3dPanelHtml(spec) {
     <button class="dtb-btn" data-r="walk" type="button" title="Walk over the ground: drag to look around, WASD/arrows or the on-screen pad to move, E and Q to rise and sink, wheel to walk forward">Walk</button>
     <button class="dtb-btn" data-r="vr" type="button" title="VR: fullscreen side-by-side stereo for a phone in a headset viewer, turning as you turn">VR</button>
     ${spec.tm ? '<button class="dtb-btn" data-r="tm" type="button" title="Time Machine: this layer at a past moment"></button>' : ''}
+    <button class="dtb-btn" data-r="snap" type="button" title="Save this view as a picture"></button>
     <button class="dtb-btn" data-r="info" title="What this does" type="button"></button>
   </div>
   <div class="r3d-sliders">
@@ -85142,10 +85266,31 @@ function _l3dPanelHtml(spec) {
       <button class="dtb-btn" data-r="exag-auto" type="button" title="Back to the automatic stretch">Auto</button>
     </label>
     <label class="r3d-slider-row">
+      <span>Show above</span>
+      <input type="range" data-r="above" min="0" max="15000" value="0" step="250" title="Only draw the layer on ground higher than this, e.g. snow above a certain elevation">
+      <span data-r="above-label">all</span>
+    </label>
+    <label class="r3d-slider-row">
+      <span>Up to</span>
+      <input type="range" data-r="upto" min="250" max="30000" value="30000" step="250" title="Only draw the layer on ground lower than this">
+      <span data-r="upto-label">all</span>
+    </label>
+    <label class="r3d-slider-row">
+      <span>Layer</span>
+      <input type="range" data-r="alpha" min="0" max="100" value="100" step="5" title="How strongly the layer is painted over the ground">
+      <span data-r="alpha-label">100%</span>
+    </label>
+    <label class="r3d-slider-row">
+      <span>Smoothing</span>
+      <input type="range" data-r="smooth" min="0" max="100" value="0" step="5" title="Blend each point of the ground with the ones around it, so rough terrain reads as smooth hills">
+      <span data-r="smooth-label">Off</span>
+    </label>
+    <label class="r3d-slider-row">
       <span>Look</span>
-      <select class="xsec-sel" data-r="mode" title="Lit: the layer on the ground, shaded by a light. Flat: the layer exactly, unshaded. Relief colours: the ground coloured by height and depth, like a relief map, with no layer.">
+      <select class="xsec-sel" data-r="mode" title="Lit: the layer on the ground, shaded by a light. Flat: the layer exactly, unshaded. Raw pixels: every data cell as its own flat square. Relief colours: the ground coloured by height and depth, like a relief map, with no layer.">
         <option value="lit" selected>Lit surface</option>
         <option value="flat">Flat picture</option>
+        <option value="pixels">Raw pixels</option>
         <option value="height">Relief colours</option>
       </select>
       <select class="xsec-sel" data-r="cut" title="Cut the box open from one side to look along a slice of the ground">
@@ -85160,7 +85305,13 @@ function _l3dPanelHtml(spec) {
         <option value="ft" selected>ft</option>
         <option value="m">m</option>
       </select>
+      <select class="xsec-sel" data-r="quality" title="Auto: quick while you move, sharp when you stop. Fast: always quick. Fine: always sharp.">
+        <option value="auto" selected>Auto</option>
+        <option value="fast">Fast</option>
+        <option value="fine">Fine</option>
+      </select>
     </label>
+  </div>
   </div>
   <div class="xs-plot">
     <canvas data-r="canvas"></canvas>
@@ -85190,6 +85341,7 @@ class Layer3DPanel {
     this.cam = { yaw: 0.6, pitch: 0.7, dist: 300 };
     this.exagAuto = 1; this.exagSel = null;   // null: the automatic stretch
     this.mode = 'lit'; this.cutSide = 'off'; this.cutPct = 50; this.unit = 'ft';
+    this.aboveM = -Infinity; this.uptoM = Infinity; this.drapeAlpha = 1; this.smooth = 0; this.quality = 'auto';
     this.water = !!spec.ocean;
     this.walk = null; this.vr = false; this.walkLastTs = 0; this.moveKeys = new Set(); this.gyroBase = null;
     this.dirty = false; this.rendering = false; this.ticking = false;
@@ -85213,10 +85365,27 @@ class Layer3DPanel {
   // at sea level for everything else.
   floorKm() {
     if (!this.ground) return null;
-    const key = this.spec.ocean ? 'o' : 'l';
+    const key = (this.spec.ocean ? 'o' : 'l') + '|' + this.smooth;
     if (this._fk && this._fkKey === key) return this._fk;
-    const m = this.ground.m, out = new Float32Array(m.length);
-    for (let k = 0; k < m.length; k++) out[k] = (this.spec.ocean ? m[k] : Math.max(0, m[k])) / 1000;
+    const m = this.ground.m, n = m.length, nx = this.nx, ny = this.ny;
+    let out = new Float32Array(n);
+    for (let k = 0; k < n; k++) out[k] = (this.spec.ocean ? m[k] : Math.max(0, m[k])) / 1000;
+    // Smoothing: a box blur, rows then columns, up to four cells each way.
+    const r = Math.round(this.smooth / 100 * 4);
+    if (r > 0) {
+      const tmp = new Float32Array(n), res = new Float32Array(n);
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+        let sm = 0, c = 0;
+        for (let q = Math.max(0, i - r); q <= Math.min(nx - 1, i + r); q++) { sm += out[j * nx + q]; c++; }
+        tmp[j * nx + i] = sm / c;
+      }
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+        let sm = 0, c = 0;
+        for (let q = Math.max(0, j - r); q <= Math.min(ny - 1, j + r); q++) { sm += tmp[q * nx + i]; c++; }
+        res[j * nx + i] = sm / c;
+      }
+      out = res;
+    }
     this._fk = out; this._fkKey = key;
     return out;
   }
@@ -85269,6 +85438,7 @@ class Layer3DPanel {
     this.dirty = true;
     if (!this.ticking) { this.ticking = true; requestAnimationFrame(this.tick); }
     this.load();
+    _p3dWatchFrames();
     clearInterval(this.resampleTimer);
     this.resampleTimer = setInterval(() => this.resample(false), L3D_RESAMPLE_MS);
     this.syncCamBars();
@@ -85309,7 +85479,7 @@ class Layer3DPanel {
     }
     this.ground = g; this._fk = null;
     const relief = (this.highKm() - this.lowKm());
-    this.exagAuto = Math.max(1, Math.min(L3D_EXAG_MAX, this.span() * 0.15 / Math.max(0.02, relief)));
+    this.exagAuto = Math.max(1, Math.min(L3D_EXAG_AUTO_MAX, this.span() * 0.15 / Math.max(0.02, relief)));
     this.syncExag();
     this.sayWhere();
     this.sayState();
@@ -85370,7 +85540,8 @@ class Layer3DPanel {
   // by its own opacity. For an ocean layer with Water on, the seafloor keeps
   // its relief colours and the layer rides on the sea's surface instead.
   cellColours() {
-    if (this.colours && this.coloursKey === this.water + '|' + this.drapeKey) return this.colours;
+    const ck = [this.water, this.drapeKey, this.aboveM, this.uptoM, this.drapeAlpha].join('|');
+    if (this.colours && this.coloursKey === ck) return this.colours;
     const g = this.ground, n = this.nx * this.ny;
     const floor = new Uint8Array(n * 3), sea = new Uint8Array(n * 3), seaA = new Float32Array(n);
     const dr = this.drape;
@@ -85379,7 +85550,9 @@ class Layer3DPanel {
       const m = g.m[k];
       const isSea = m < 0;
       const base = this.spec.ocean || !isSea ? _l3dReliefRgb(m) : [34, 78, 132];
-      const a = dr ? dr[k * 4 + 3] / 255 : 0;
+      // Show above / Up to: the layer only on ground inside that height band.
+      const inBand = m >= this.aboveM && m <= this.uptoM;
+      const a = dr && inBand ? dr[k * 4 + 3] / 255 * this.drapeAlpha : 0;
       const lr = dr ? dr[k * 4] : 0, lg = dr ? dr[k * 4 + 1] : 0, lb = dr ? dr[k * 4 + 2] : 0;
       if (this.spec.ocean && this.water && isSea) {
         floor[k * 3] = base[0]; floor[k * 3 + 1] = base[1]; floor[k * 3 + 2] = base[2];
@@ -85393,7 +85566,7 @@ class Layer3DPanel {
       }
     }
     this.colours = { floor, sea, seaA, anySea };
-    this.coloursKey = this.water + '|' + this.drapeKey;
+    this.coloursKey = ck;
     return this.colours;
   }
 
@@ -85472,12 +85645,13 @@ class Layer3DPanel {
     const eyes = this.vr ? [-1, 1] : [0];
     const eyeW = this.vr ? Math.floor(w / 2) : w;
     const views = eyes.map(e => this.camBasis(e));
-    const cap = this.fast ? 0.45 : Math.min(1, 1300 / eyeW);
+    const fast = this.quality === 'fast' || (this.quality === 'auto' && this.fast);
+    const cap = fast ? 0.45 : this.quality === 'fine' ? 1 : Math.min(1, 1300 / eyeW);
     const rw = Math.max(80, Math.round(eyeW * cap)), rh = Math.max(50, Math.round(h * cap));
     const bg = ctx.createLinearGradient(0, 0, 0, h);
     bg.addColorStop(0, '#08080b'); bg.addColorStop(1, '#000');
     ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
-    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingEnabled = this.mode !== 'pixels';
     try { ctx.imageSmoothingQuality = 'high'; } catch (e) {}
     const fk = this.floorKm();
     const heightRgb = (km) => _l3dReliefRgb(km * 1000);
@@ -85657,8 +85831,8 @@ class Layer3DPanel {
     if (btn) btn.classList.toggle('on', !!this.walk);
     const pad = this.el('pad');
     if (pad) pad.style.display = this.walk ? '' : 'none';
-    this.panel.querySelectorAll('.r3d-cam-zoom, .r3d-cam-move')
-      .forEach(el => { el.style.display = this.walk ? 'none' : ''; });
+    // The two bars stay: while walking, the zoom bar is your altitude and
+    // the other bar the way you face.
     this.interact();
   }
   onGyro(e) {
@@ -85699,15 +85873,19 @@ class Layer3DPanel {
   // -- The camera bars and the stretch ----------------------------------------
   distMin() { return 0.5; }
   distMax() { return Math.max(this.span(), (this.highKm() - this.lowKm()) * this.exag()) * 5; }
+  walkTopZ() { return Math.max(1, (this.highKm() - this.lowKm()) * this.exag() * 4 + 5); }
   syncCamBars() {
     const zoom = this.el('zoom');
     if (zoom && document.activeElement !== zoom) {
-      const lo = this.distMin(), hi = Math.max(lo + 1, this.distMax());
-      zoom.value = String(Math.round(Math.max(0, Math.min(1, (hi - this.cam.dist) / (hi - lo))) * 1000));
+      if (this.walk) zoom.value = String(Math.round(Math.max(0, Math.min(1, this.walk.z / this.walkTopZ())) * 1000));
+      else {
+        const lo = this.distMin(), hi = Math.max(lo + 1, this.distMax());
+        zoom.value = String(Math.round(Math.max(0, Math.min(1, (hi - this.cam.dist) / (hi - lo))) * 1000));
+      }
     }
     const yaw = this.el('yaw');
     if (yaw && document.activeElement !== yaw) {
-      let deg = (this.cam.yaw * 180 / Math.PI) % 360;
+      let deg = ((this.walk ? this.walk.yaw : this.cam.yaw) * 180 / Math.PI) % 360;
       if (deg > 180) deg -= 360; else if (deg < -180) deg += 360;
       yaw.value = String(Math.round(deg));
     }
@@ -85867,12 +86045,46 @@ class Layer3DPanel {
     }
     const zoomBar = this.el('zoom');
     if (zoomBar) zoomBar.oninput = () => {
-      const lo = this.distMin(), hi = Math.max(lo + 1, this.distMax());
-      this.cam.dist = lo + (1 - Math.max(0, Math.min(1000, +zoomBar.value || 0)) / 1000) * (hi - lo);
+      const t = Math.max(0, Math.min(1000, +zoomBar.value || 0)) / 1000;
+      if (this.walk) {
+        const floor = Math.max(this.groundKmAt(this.walk.x, this.walk.y), 0) * this.exag();
+        this.walk.z = Math.max(floor + 0.05, t * this.walkTopZ());
+      } else {
+        const lo = this.distMin(), hi = Math.max(lo + 1, this.distMax());
+        this.cam.dist = lo + (1 - t) * (hi - lo);
+      }
       this.interact();
     };
     const yawBar = this.el('yaw');
-    if (yawBar) yawBar.oninput = () => { this.cam.yaw = (+yawBar.value || 0) * Math.PI / 180; this.interact(); };
+    if (yawBar) yawBar.oninput = () => {
+      const a = (+yawBar.value || 0) * Math.PI / 180;
+      if (this.walk) this.walk.yaw = a; else this.cam.yaw = a;
+      this.interact();
+    };
+    // The new controls.
+    const unitPer = () => (this.unit === 'm' ? 1 : 3.28084);
+    const lbl = (m) => Math.round(m * unitPer()).toLocaleString() + ' ' + (this.unit === 'm' ? 'm' : 'ft');
+    const syncBand = () => {
+      const a = this.el('above-label'), u = this.el('upto-label');
+      if (a) a.textContent = isFinite(this.aboveM) ? lbl(this.aboveM) : 'all';
+      if (u) u.textContent = isFinite(this.uptoM) ? lbl(this.uptoM) : 'all';
+    };
+    this.syncBand = syncBand;
+    const ab = this.el('above');
+    if (ab) ab.oninput = () => { const v = +ab.value || 0; this.aboveM = v > 0 ? v / 3.28084 : -Infinity; syncBand(); this.dirty = true; };
+    const up = this.el('upto');
+    if (up) up.oninput = () => { const v = +up.value || 30000; this.uptoM = v >= 30000 ? Infinity : v / 3.28084; syncBand(); this.dirty = true; };
+    const al = this.el('alpha');
+    if (al) al.oninput = () => { this.drapeAlpha = Math.max(0, Math.min(1, (+al.value || 0) / 100)); const l = this.el('alpha-label'); if (l) l.textContent = Math.round(this.drapeAlpha * 100) + '%'; this.dirty = true; };
+    const sm = this.el('smooth');
+    if (sm) sm.oninput = () => { this.smooth = +sm.value || 0; const l = this.el('smooth-label'); if (l) l.textContent = this.smooth ? this.smooth + '%' : 'Off'; this.interact(); };
+    const q = this.el('quality');
+    if (q) q.onchange = () => { this.quality = q.value; this.dirty = true; };
+    const snap = this.el('snap');
+    if (snap) {
+      snap.innerHTML = '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-camera></use></svg>';
+      snap.onclick = (ev) => { ev.stopPropagation(); _p3dSnapshot(this.el('canvas'), 'layer3d-' + this.spec.id); };
+    }
     const ex = this.el('exag');
     if (ex) ex.oninput = () => {
       this.exagSel = Math.max(1, Math.min(L3D_EXAG_MAX, Math.pow(L3D_EXAG_MAX, (+ex.value || 0) / 1000)));
@@ -85888,7 +86100,7 @@ class Layer3DPanel {
     const cutPct = this.el('cutpct');
     if (cutPct) cutPct.oninput = () => { this.cutPct = +cutPct.value || 0; this.interact(); };
     const unit = this.el('unit');
-    if (unit) unit.onchange = () => { this.unit = unit.value; this.sayWhere(); this.dirty = true; };
+    if (unit) unit.onchange = () => { this.unit = unit.value; this.sayWhere(); if (this.syncBand) this.syncBand(); this.dirty = true; };
   }
 }
 
