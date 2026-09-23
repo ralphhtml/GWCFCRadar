@@ -610,6 +610,36 @@ Persistent=true
 WantedBy=timers.target
 EOF
 
+# ECMWF ensemble tropical cyclone probabilities: strike probability and
+# genesis, built from the 51 members' own pressure and heights (see
+# pi/ecmwf_tc_pipeline.py). Its own service for the same reason the GEFS one
+# is: a large download on its own clock must not hold anything else up.
+cat > "$UNITS/gwcfc-ecmwf-tc.service" <<EOF
+[Unit]
+Description=ECMWF ensemble tropical cyclone strike and genesis probabilities
+
+[Service]
+Type=oneshot
+ExecStart=$VENV/bin/python $REPO/pi/ecmwf_tc_pipeline.py
+TimeoutStartSec=7200
+Nice=15
+EOF
+
+cat > "$UNITS/gwcfc-ecmwf-tc.timer" <<'EOF'
+[Unit]
+Description=ECMWF ensemble cyclone probabilities, per 00z and 12z run
+
+[Timer]
+# The ensemble's 00z and 12z runs are complete on ECMWF's open data server
+# about eight hours later. Four checks a day catch each one soon after; a run
+# already built is skipped, so the extra checks cost nothing.
+OnCalendar=*-*-* 03,09,15,21:50
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
 # Spaghetti model guidance from the ATCF a-decks. Text files, a few hundred
 # kilobytes per storm, so this is by far the lightest fetcher here.
 cat > "$UNITS/gwcfc-spag.service" <<EOF
@@ -832,6 +862,7 @@ systemctl --user enable --now gwcfc-sst.timer      >/dev/null 2>&1
 systemctl --user enable --now gwcfc-cities.timer   >/dev/null 2>&1
 systemctl --user enable --now gwcfc-cyclones.timer >/dev/null 2>&1
 systemctl --user enable --now gwcfc-ens.timer      >/dev/null 2>&1
+systemctl --user enable --now gwcfc-ecmwf-tc.timer >/dev/null 2>&1
 systemctl --user enable --now gwcfc-spag.timer     >/dev/null 2>&1
 systemctl --user enable --now gwcfc-feeds.timer    >/dev/null 2>&1
 systemctl --user enable --now gwcfc-update.timer   >/dev/null 2>&1
