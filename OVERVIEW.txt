@@ -14,7 +14,7 @@ hardcoded, that is said explicitly.
 1. WHAT IT IS
 ================================================================================
 
-A browser weather application. One HTML page, 86,240 lines, no build step, no
+A browser weather application. One HTML page, 86,491 lines, no build step, no
 framework. It runs from GitHub Pages and talks to a parsing server that does the
 heavy decoding and model rendering. Free, no accounts required for the map, no
 paid tier, no advertising.
@@ -26,7 +26,7 @@ Four separate front ends ship from the same repository:
   nwrchive.html           The NOAA Weather Radio archive
   assistant.html          The standalone AI assistant
 
-Plus 22 Python pipelines on the parsing server and a Discord bot in Node.
+Plus 23 Python pipelines on the parsing server and a Discord bot in Node.
 
 
 ================================================================================
@@ -385,6 +385,21 @@ running on the parsing server.
 NHC 5-day Tropical Outlook with active systems, and JTWC outlooks covering the
 western Pacific and Indian Ocean.
 
+--------------------------------------------------------------------------------
+5.4 ECMWF TC PROBABILITY
+--------------------------------------------------------------------------------
+
+The Euro ensemble's strike probability and tropical cyclone activity
+(including genesis) maps: the chance a tropical depression, tropical storm or
+hurricane passes within 120 km of each place, out of all 51 members, for days
+0-2, 0-5 or 0-10, counting every storm the ensemble makes (including ones not
+yet formed) or only the ones that already exist. Built on the parsing server
+by ecmwf_tc_pipeline.py after each 00z and 12z run: the ensemble's own
+pressure and heights from ECMWF's open data, run through the same warm-core
+cyclone finder as the GEFS centres, stitched into tracks, then counted member
+by member. Drawn in ECMWF's colour key, and the Inspector reads the exact
+percentage.
+
 
 ================================================================================
 6. SOUNDINGS
@@ -398,7 +413,7 @@ rendered skew-T PNGs per site) with Open-Meteo model soundings as a fallback.
 
 
 ================================================================================
-7. OVERLAYS (39)
+7. OVERLAYS (40)
 ================================================================================
 
   ALERTS AND WARNINGS
@@ -416,6 +431,7 @@ rendered skew-T PNGs per site) with Open-Meteo model soundings as a fallback.
     CPC Outlooks (6-10 day and 8-14 day, temperature and precipitation)
     NHC Tropical Outlook, with ATCF Updates
     JTWC Tropical Outlook
+    ECMWF TC Probability (strike probability and genesis, TD / TS / HU)
     GWCFC Outlook (issued from our own Forecasting Portal)
     GWCFC Alerts (warnings, watches and statements from our own alert desk)
 
@@ -644,7 +660,7 @@ THEMES AND THE LOOK
 
 
 ================================================================================
-13. THE PARSING SERVER (22 pipelines)
+13. THE PARSING SERVER (23 pipelines)
 ================================================================================
 
   radar_pipeline.py      NEXRAD L3 and the 163-product MRMS catalogue
@@ -660,6 +676,7 @@ THEMES AND THE LOOK
   sst_pipeline.py        SST and ocean heat (OISST, Coral Reef Watch, AOML)
   cyclones_pipeline.py   AI cyclone tracks
   enscenters_pipeline.py Ensemble cyclone centre detection
+  ecmwf_tc_pipeline.py   ECMWF ensemble strike and genesis probabilities
   spaghetti_pipeline.py  ATCF a-deck spaghetti tracks
   feeds_pipeline.py      Outlooks, discussions and text products
   nwr_archiver.py        NOAA Weather Radio recording
@@ -727,7 +744,7 @@ ASSISTANT (assistant.html)
 16. ENGINEERING
 ================================================================================
 
-  - 183 test files in tools/, mixed Node and Python
+  - 185 test files in tools/, mixed Node and Python
   - Service worker: network-first app shell with a timeout fallback,
     cache-first for CDN assets and fonts
   - Installable as a PWA

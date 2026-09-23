@@ -10485,7 +10485,7 @@ body.gwcfc-crosshair #map::after {
 }
 
 /* Shared panel shell - applied to all overlay panels */
-#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #meso-panel, #storm-reports-panel, #tornado-tracks-panel {
+#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #ectc-controls, #meso-panel, #storm-reports-panel, #tornado-tracks-panel {
   position: static;
   transform: none;
   width: 180px;
@@ -10503,6 +10503,17 @@ body.gwcfc-crosshair #map::after {
 #fw-controls  { border: 1.5px solid rgba(200,80,0,0.45);  }
 #cpc-controls { border: 1.5px solid rgba(0,180,80,0.45);  }
 #ec-controls  { border: 1.5px solid rgba(220,20,60,0.45);  }
+#ectc-controls { border: 1.5px solid rgba(255,64,255,0.45); }
+.ectc-float-title {
+  font-family: var(--display); font-weight: 700; font-size: 9px; letter-spacing: .6px;
+  color: #ff7aff; text-align: center; text-transform: uppercase; margin-bottom: 1px; flex: 1;
+}
+#ectc-controls .spc-picker-row { flex-wrap: wrap; }
+.ectc-legend { display: flex; height: 10px; border-radius: 3px; overflow: hidden; }
+.ectc-sw { flex: 1; }
+.ectc-legend-lbl { display: flex; font-family: var(--mono); font-size: 7.5px; opacity: .8; }
+.ectc-legend-lbl span { flex: 1; text-align: left; }
+.ectc-cap { font-size: 8.5px; line-height: 1.35; opacity: .9; text-align: center; }
 #meso-panel   { border: 1.5px solid rgba(255,140,0,0.45); }
 #storm-reports-panel { border: 1.5px solid rgba(255,68,68,0.45); }
 #tornado-tracks-panel { border: 1.5px solid rgba(220,20,60,0.45); }
@@ -32395,6 +32406,8 @@ function toggleOverlayPill(id) {
       _htmSyncBadge();
       _htmLoad();
     }
+  } else if (id === 'ecmwf-tc') {
+    _ectcToggle();
   } else if (id === 'atcf') {
     _atcfActive = !_atcfActive;
     const pill = document.getElementById('op-atcf');
@@ -43014,6 +43027,7 @@ function _inspRowsAt(center, cx, cy, light) {
   // layer that is off contributes nothing rather than a row saying so.
   if (typeof _sstOn !== 'undefined' && _sstOn)                        rows.push(_inspSstRow(center));
   if (typeof _nwsOn !== 'undefined' && _nwsOn)                        rows.push(_inspNwsRow(cx, cy));
+  if (typeof _ectcOn !== 'undefined' && _ectcOn && _ectcGrid)         rows.push(_inspEctcRow(center));
   if (!light && typeof _mrmsAnyOn === 'function' && _mrmsAnyOn())     rows.push(..._inspMrmsRows(cx, cy));
   if (typeof activeLayers !== 'undefined' && activeLayers.lightning)  rows.push(_inspLightningRow(center));
   if (typeof spcOutlookLayer !== 'undefined' && spcOutlookLayer) {
@@ -62046,6 +62060,7 @@ function _presenceSummary() {
     if (typeof alertsLayerVisible !== 'undefined' && alertsLayerVisible) overlays.push('Alert Polygons');
     Object.keys(OVERLAY_LABELS).forEach(k => { if (activeLayers[k]) overlays.push(OVERLAY_LABELS[k]); });
     if (typeof _metarActive !== 'undefined' && _metarActive) overlays.push('METAR Stations');
+    if (typeof _ectcOn !== 'undefined' && _ectcOn) overlays.push('ECMWF TC Probability');
   } catch (e) {}
 
   return {
@@ -68718,6 +68733,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-r', date: 'Sep 23, 2026',
+    text: 'New overlay: ECMWF TC Probability, under the tropical overlays. It shows the Euro ensemble\'s tropical cyclone strike probability and genesis maps: the chance that a tropical depression, tropical storm or hurricane passes within 120 km of each place, from all 51 members. Pick TD, TS or HU, a window (0 to 2, 5 or 10 days), and All + genesis (every storm the ensemble makes, including ones that have not formed yet) or Existing (only storms already out there). Colours follow ECMWF\'s own key, and the Inspector reads the exact percentage. The maps are built on the home server after each 00z and 12z run, from ECMWF\'s open data.' },
   { id: '2026-09-23-q', date: 'Sep 23, 2026',
     text: 'The Discord bot\'s footer now names the bot by its own Discord name (the one shown above its messages) instead of a fixed "Asturio AI", followed by who ran the command, so it reads like "Snowball \u00b7 requested by (you)".' },
   { id: '2026-09-23-p', date: 'Sep 23, 2026',
@@ -70495,6 +70512,7 @@ document.addEventListener('DOMContentLoaded', () => {
   _makeDraggable(document.getElementById('dist-toolbar'),        document.getElementById('dist-drag-handle'));
   _makeDraggable(document.getElementById('spc-controls'),        document.getElementById('spc-drag'));
   _makeDraggable(document.getElementById('wpc-controls'),        document.getElementById('wpc-drag'));
+  _makeDraggable(document.getElementById('ectc-controls'),       document.getElementById('ectc-drag'));
   _makeDraggable(document.getElementById('fw-controls'),         document.getElementById('fw-drag'));
   _makeDraggable(document.getElementById('cpc-controls'),        document.getElementById('cpc-drag'));
   _makeDraggable(document.getElementById('ec-controls'),         document.getElementById('ec-drag'));
@@ -71061,6 +71079,9 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
     <div class="ov-pill" id="op-atcf" data-ovid="atcf" title="ATCF Updates - live Automated Tropical Cyclone Forecast fixes for every active system and invest worldwide, via KnackWX">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('atcf')">ATCF Updates</span><span class="ov-drag" title="Drag to reorder">⠿</span>
+    </div>
+    <div class="ov-pill" id="op-ecmwf-tc" data-ovid="ecmwf-tc" title="ECMWF TC Probability - the chance a tropical depression, storm or hurricane passes within 120 km, from the 51 member ECMWF ensemble, including storms that have not formed yet">
+      <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('ecmwf-tc')">ECMWF TC Probability</span><span class="ov-drag" title="Drag to reorder">⠿</span>
     </div>
     <div class="ov-pill" id="op-ftm" data-ovid="ftm" title="Forecast Time Machine - pick any past date and every reporting station in view shows what the thermometer actually read, from NOAA's climate archive">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('ftm')">Forecast Time Machine</span><span class="ov-drag" title="Drag to reorder">⠿</span>
@@ -71773,6 +71794,25 @@ function _tlTickHTML(times, fmt) {
     </div>
   </div>
 
+  <div id="ectc-controls">
+    <div class="ov-panel-header-row"><div class="dtb-drag" id="ectc-drag" title="Drag to move">⠿</div><div class="ectc-float-title">ECMWF TC Probability</div></div>
+    <div class="spc-picker-row">
+      <button class="spc-pick-btn" id="ectc-c-td" onclick="_ectcPick('cat','td')" title="Tropical depression or stronger">TD</button>
+      <button class="spc-pick-btn active" id="ectc-c-ts" onclick="_ectcPick('cat','ts')" title="Tropical storm or stronger (34 kt)">TS</button>
+      <button class="spc-pick-btn" id="ectc-c-hu" onclick="_ectcPick('cat','hu')" title="Hurricane (64 kt)">HU</button>
+    </div>
+    <div class="spc-picker-row">
+      <button class="spc-pick-btn active" id="ectc-s-all" onclick="_ectcPick('scope','all')" title="Every cyclone in the ensemble, including the ones that have not formed yet">All + genesis</button>
+      <button class="spc-pick-btn" id="ectc-s-existing" onclick="_ectcPick('scope','existing')" title="Only cyclones that already exist at the start of the run">Existing</button>
+    </div>
+    <div class="spc-picker-row" id="ectc-wins"></div>
+    <hr class="ov-panel-sep">
+    <div class="ectc-legend"><div class="ectc-sw" style="background:#ff40ff" title="5% or more"></div><div class="ectc-sw" style="background:#ff5a1e" title="10% or more"></div><div class="ectc-sw" style="background:#ffa21e" title="20% or more"></div><div class="ectc-sw" style="background:#ffff3c" title="30% or more"></div><div class="ectc-sw" style="background:#8cff3c" title="40% or more"></div><div class="ectc-sw" style="background:#2e8b2e" title="50% or more"></div><div class="ectc-sw" style="background:#6ef2f2" title="60% or more"></div><div class="ectc-sw" style="background:#3d8bff" title="70% or more"></div><div class="ectc-sw" style="background:#0000e6" title="80% or more"></div><div class="ectc-sw" style="background:#6a0dad" title="90% or more"></div></div>
+    <div class="ectc-legend-lbl"><span>5</span><span>10</span><span>20</span><span>30</span><span>40</span><span>50</span><span>60</span><span>70</span><span>80</span><span>90</span></div>
+    <div class="ectc-cap">Strike probability (%) within 120 km</div>
+    <div id="ectc-note" class="ectc-cap" style="opacity:.75"></div>
+  </div>
+
   <div id="fw-controls">
     <div class="ov-panel-header-row"><div class="dtb-drag" id="fw-drag" title="Drag to move">⠿</div><div class="fw-float-title"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-fire></use></svg> Fire Weather</div></div>
     <div class="spc-picker-row">
@@ -72377,6 +72417,7 @@ function _ccClose(){ _ccHideModal(); _ccAdminUnlocked=false; }
 // ===============================================================================
 const OV_DESCRIPTIONS = {
   'navigation':       'Turn-by-turn navigation with the weather drawn onto the route: each leg is coloured by the radar and conditions along it, so you can see where the drive gets bad before you are in it. Add stops by searching or tapping the map, get live guidance with voice, and report road weather for others. Drag the panel by its handle to put it anywhere.',
+  'ecmwf-tc':         'ECMWF TC Probability: the chance that a tropical cyclone passes within 120 km of each place, from all 51 members of the ECMWF ensemble, the same maps ECMWF call strike probability and tropical cyclone activity. Pick the strength (tropical depression, tropical storm or hurricane), the time window, and whether to count every storm the ensemble makes, including ones that have not formed yet (All + genesis), or only the ones that already exist. Built on the parsing server from ECMWF\'s open data after each 00z and 12z run; strength comes from each storm\'s central pressure, so the hurricane map runs a little conservative. The Inspector reads the exact percentage.',
   'atcf':             'ATCF Updates: every active tropical system in the world, drawn straight from the Automated Tropical Cyclone Forecast feed. Hurricanes are coloured by category, storms and depressions by strength, and invests come dashed. Tap any system for the full advisory: class, winds in knots and mph, pressure, movement, fix time, basin, and the raw ATCF line itself. Re-checks the feed every 10 minutes while on.',
   'ftm':              'Forecast Time Machine: pick any past date, as far back as 1763 where station records reach, and every reporting station in view shows what the thermometer actually read that day, coloured red or blue by how far it ran above or below normal. Tap a station for the full daily report. Powered by NOAA\'s climate archive.',
   'ctm':              'Climate Time Machine: the same stations as the Forecast Time Machine, but showing what is NORMAL for that day of the year rather than any one reading. Switch the dots between high, low, rain and snowfall, and use the year-jump chips to hop 1 to 50 years back through the record.',
@@ -76848,7 +76889,7 @@ function closeCredits() {
 #ad-shell,
 #dtb-color-modal,
 #tutorial-modal-inner,
-#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls,
+#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #ectc-controls,
 #meso-panel, #storm-reports-panel, #tornado-tracks-panel,
 .models-style-panel,
 .ss-firstrun-card,
@@ -77624,7 +77665,7 @@ body {
    The overlay LIST itself is deliberately not in here. That is a menu you
    drive the app from, not a thing laid over the weather, so it stays in the
    house colour with the rest of the chrome. */
-#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls,
+#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #ectc-controls,
 #meso-panel, #storm-reports-panel, #tornado-tracks-panel {
   background-image: var(--grad-ink);
   box-shadow: var(--lift-3d), var(--edge-3d-ink);
@@ -77680,7 +77721,7 @@ body {
 :root[data-glass] #tutorial-modal-inner,
 :root[data-glass] #spc-controls, :root[data-glass] #wpc-controls,
 :root[data-glass] #fw-controls, :root[data-glass] #cpc-controls,
-:root[data-glass] #ec-controls, :root[data-glass] #meso-panel,
+:root[data-glass] #ec-controls, :root[data-glass] #ectc-controls, :root[data-glass] #meso-panel,
 :root[data-glass] #storm-reports-panel, :root[data-glass] #tornado-tracks-panel,
 :root[data-glass] .models-style-panel,
 :root[data-glass] .ss-firstrun-card,
@@ -77758,7 +77799,7 @@ body {
    two weights of glass in one column would read as a mistake. */
 :root[data-glass] #spc-controls, :root[data-glass] #wpc-controls,
 :root[data-glass] #fw-controls, :root[data-glass] #cpc-controls,
-:root[data-glass] #ec-controls, :root[data-glass] #meso-panel,
+:root[data-glass] #ec-controls, :root[data-glass] #ectc-controls, :root[data-glass] #meso-panel,
 :root[data-glass] #storm-reports-panel, :root[data-glass] #tornado-tracks-panel {
   background-color: transparent !important;
   background-image: linear-gradient(180deg,
@@ -85878,6 +85919,212 @@ function _l3dMenuItems(ic, cx, cy) {
     const s = _l3dSpec(id);
     return `<div class="cm-item" onclick="_cmLayer3DDraw('${id}')">${ic('terrain3d')} Draw a 3D ${s.noun} zone</div>`;
   }).join('');
+}
+
+// -- ECMWF ENSEMBLE TROPICAL CYCLONE PROBABILITIES ----------------------------
+// ECMWF's strike probability and "tropical cyclone activity (including
+// genesis)" maps, rebuilt on the parsing server from the 51 members' own
+// fields (pi/ecmwf_tc_pipeline.py): the chance that a tropical cyclone passes
+// within 120 km of each place during the window, as a tropical depression, a
+// tropical storm or a hurricane. "All" counts every cyclone the ensemble
+// makes, including ones that have not formed yet (genesis); "Existing" only
+// the ones already there at the start of the run.
+//
+// The server sends one greyscale picture per map whose pixels ARE the
+// percentages, on a plain latitude/longitude grid. This colours them with
+// ECMWF's own key, resamples the rows onto Mercator so they sit on the right
+// coastlines, and keeps the numbers for the Inspector.
+const ECTC_TTL = 30 * 60 * 1000;
+const ECTC_STEPS = [
+  [5, '#ff40ff'], [10, '#ff5a1e'], [20, '#ffa21e'], [30, '#ffff3c'], [40, '#8cff3c'],
+  [50, '#2e8b2e'], [60, '#6ef2f2'], [70, '#3d8bff'], [80, '#0000e6'], [90, '#6a0dad'],
+];
+let _ectcOn = false;
+let _ectcCat = 'ts';          // 'td' | 'ts' | 'hu'
+let _ectcScope = 'all';       // 'all' (including genesis) | 'existing'
+let _ectcWin = null;          // 'lo_hi', or null for the longest window
+let _ectcMan = null, _ectcManAt = 0;
+let _ectcLayer = null;
+let _ectcGrid = null;         // { w, h, data, bounds, key } for the Inspector
+let _ectcTimer = null;
+let _ectcGen = 0;
+
+function _ectcColor(p) {
+  let c = null;
+  for (const [min, col] of ECTC_STEPS) if (p >= min) c = col;
+  return c;
+}
+function _ectcWindows() {
+  return ((_ectcMan && _ectcMan.windows) || []).map(w => w[0] + '_' + w[1]);
+}
+function _ectcWinLabel(key) {
+  const [a, b] = key.split('_').map(Number);
+  const d = h => (h % 24 === 0 ? h / 24 : (h / 24).toFixed(1));
+  return `${d(a)}-${d(b)}d`;
+}
+function _ectcKey() {
+  const wins = _ectcWindows();
+  const win = wins.includes(_ectcWin) ? _ectcWin : wins[wins.length - 1];
+  return win ? `${_ectcCat}_${_ectcScope}_${win}` : null;
+}
+
+async function _ectcFresh(force) {
+  if (!force && _ectcMan && Date.now() - _ectcManAt < ECTC_TTL) return _ectcMan;
+  const base = (typeof _hdBase !== 'undefined' && _hdBase) || (typeof _hdResolveBase === 'function' ? await _hdResolveBase() : null);
+  if (!base) return _ectcMan;
+  if (typeof _hdBase !== 'undefined') _hdBase = base;
+  const man = await fetch(`${base}/enscenters/ecmwf/latest.json?t=${Date.now()}`, { cache: 'no-store' })
+    .then(r => r.ok ? r.json() : null).catch(() => null);
+  if (man && man.products) { _ectcMan = man; _ectcManAt = Date.now(); _ectcMan._base = base; }
+  return _ectcMan;
+}
+
+// The picture's pixels back into percentages: its own greyscale.
+function _ectcReadGrid(img) {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.drawImage(img, 0, 0);
+  const px = x.getImageData(0, 0, c.width, c.height).data;
+  const data = new Uint8Array(c.width * c.height);
+  for (let k = 0; k < data.length; k++) data[k] = px[k * 4];
+  return { w: c.width, h: c.height, data };
+}
+
+// Coloured, and resampled from equal-latitude rows onto Mercator rows, the
+// way the map draws a picture.
+function _ectcPaint(grid, bounds) {
+  const s = bounds[0][0], n = bounds[1][0];
+  const W = grid.w, H = grid.h * 2;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  const im = x.createImageData(W, H);
+  const yN = _latToMercY(n), yS = _latToMercY(s);
+  const rgb = ECTC_STEPS.map(([, col]) => [parseInt(col.slice(1, 3), 16), parseInt(col.slice(3, 5), 16), parseInt(col.slice(5, 7), 16)]);
+  for (let j = 0; j < H; j++) {
+    const lat = _mercYToLat(yN - (j + 0.5) / H * (yN - yS));
+    const sj = Math.max(0, Math.min(grid.h - 1, Math.floor((n - lat) / (n - s) * grid.h)));
+    for (let i = 0; i < W; i++) {
+      const p = grid.data[sj * W + i];
+      let idx = -1;
+      for (let q = 0; q < ECTC_STEPS.length; q++) if (p >= ECTC_STEPS[q][0]) idx = q;
+      if (idx < 0) continue;
+      const o = (j * W + i) * 4;
+      im.data[o] = rgb[idx][0]; im.data[o + 1] = rgb[idx][1]; im.data[o + 2] = rgb[idx][2]; im.data[o + 3] = 200;
+    }
+  }
+  x.putImageData(im, 0, 0);
+  return c.toDataURL('image/png');
+}
+
+function _ectcPane() {
+  if (typeof map === 'undefined' || !map) return undefined;
+  if (!map.getPane('ectcPane')) {
+    const p = map.createPane('ectcPane');
+    p.style.zIndex = 402;
+    p.style.pointerEvents = 'none';
+  }
+  return 'ectcPane';
+}
+
+async function _ectcDraw(force) {
+  const gen = ++_ectcGen;
+  const man = await _ectcFresh(force);
+  if (gen !== _ectcGen || !_ectcOn) return;
+  if (!man) {
+    _ectcSay('No ECMWF cyclone maps from the parsing server yet. It builds one after each 00z and 12z run.');
+    _ectcRender();
+    return;
+  }
+  const key = _ectcKey();
+  const prod = key && man.products[key];
+  if (!prod) { _ectcSay('That map is not in this run.'); _ectcRender(); return; }
+  let img;
+  try { img = await _s3dLoadImg(`${man._base}/enscenters/ecmwf/${prod.path}`); }
+  catch (e) { if (gen === _ectcGen) { _ectcSay('Could not load that map from the parsing server.'); _ectcRender(); } return; }
+  if (gen !== _ectcGen || !_ectcOn) return;
+  let grid;
+  try { grid = _ectcReadGrid(img); } catch (e) { _ectcSay('That map could not be read.'); return; }
+  const bounds = man.bounds || [[-60, -180], [60, 180]];
+  _ectcGrid = { ...grid, bounds, key };
+  const url = _ectcPaint(grid, bounds);
+  if (_ectcLayer) { try { map.removeLayer(_ectcLayer); } catch (e) {} }
+  _ectcLayer = L.imageOverlay(url, bounds, { opacity: 0.85, interactive: false, pane: _ectcPane() }).addTo(map);
+  const run = man.base ? new Date(man.base) : null;
+  const when = run && !isNaN(run) ? `${String(run.getUTCHours()).padStart(2, '0')}z ${run.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}` : man.run;
+  _ectcSay(`${when} run · ${man.members} members · within ${Math.round(man.radius_km || 120)} km` + (prod.max ? '' : ' · nothing reaches 5% on this map'));
+  _ectcRender();
+}
+
+function _ectcSay(msg) { const el = document.getElementById('ectc-note'); if (el) el.textContent = msg || ''; }
+
+// The panel's buttons, redrawn from the manifest so the windows are the
+// run's own.
+function _ectcRender() {
+  const set = (id, on) => { const b = document.getElementById(id); if (b) b.classList.toggle('active', on); };
+  ['td', 'ts', 'hu'].forEach(c => set('ectc-c-' + c, _ectcCat === c));
+  set('ectc-s-all', _ectcScope === 'all');
+  set('ectc-s-existing', _ectcScope === 'existing');
+  const row = document.getElementById('ectc-wins');
+  if (row) {
+    const wins = _ectcWindows();
+    const cur = _ectcKey() ? _ectcKey().split('_').slice(2).join('_') : null;
+    row.innerHTML = wins.map(w => `<button class="spc-pick-btn${w === cur ? ' active' : ''}" onclick="_ectcPick('win','${w}')" title="Days ${_ectcWinLabel(w).replace('d', '')} of the forecast">${_ectcWinLabel(w)}</button>`).join('')
+      || '<span style="font-size:9px;opacity:.6">no run yet</span>';
+  }
+}
+function _ectcPick(what, v) {
+  if (what === 'cat') _ectcCat = v;
+  else if (what === 'scope') _ectcScope = v;
+  else if (what === 'win') _ectcWin = v;
+  try { localStorage.setItem('gwcfc_ectc', JSON.stringify({ c: _ectcCat, s: _ectcScope, w: _ectcWin })); } catch (e) {}
+  _ectcRender();
+  if (_ectcOn) _ectcDraw(false);
+}
+(function _ectcRestore() {
+  try {
+    const v = JSON.parse(localStorage.getItem('gwcfc_ectc') || 'null');
+    if (v && ['td', 'ts', 'hu'].includes(v.c)) _ectcCat = v.c;
+    if (v && ['all', 'existing'].includes(v.s)) _ectcScope = v.s;
+    if (v && typeof v.w === 'string') _ectcWin = v.w;
+  } catch (e) {}
+})();
+
+function _ectcToggle() {
+  _ectcOn = !_ectcOn;
+  const pill = document.getElementById('op-ecmwf-tc');
+  if (pill) pill.classList.toggle('active', _ectcOn);
+  const ctrl = document.getElementById('ectc-controls');
+  if (ctrl) ctrl.style.display = _ectcOn ? 'flex' : 'none';
+  if (_ectcOn) {
+    _ectcRender();
+    _ectcDraw(true);
+    clearInterval(_ectcTimer);
+    _ectcTimer = setInterval(() => _ectcDraw(true), ECTC_TTL);
+  } else {
+    _ectcGen++;
+    clearInterval(_ectcTimer); _ectcTimer = null;
+    if (_ectcLayer) { try { map.removeLayer(_ectcLayer); } catch (e) {} _ectcLayer = null; }
+    _ectcGrid = null;
+  }
+}
+
+// The Inspector's reading: the percentage under the crosshair.
+function _inspEctcRow(center) {
+  const g = _ectcGrid;
+  if (!g) return null;
+  const [cat, scope, a, b] = g.key.split('_');
+  const names = { td: 'depression', ts: 'tropical storm', hu: 'hurricane' };
+  const label = `ECMWF ${names[cat] || cat} strike` + (scope === 'existing' ? ' (existing)' : '');
+  const s = g.bounds[0][0], n = g.bounds[1][0], w = g.bounds[0][1], e = g.bounds[1][1];
+  if (center.lat < s || center.lat > n) return { label, value: 'outside the map', color: 'rgba(150,150,150,0.55)' };
+  const lng = ((center.lng - w) % 360 + 360) % 360;
+  const i = Math.min(g.w - 1, Math.floor(lng / (e - w) * g.w));
+  const j = Math.min(g.h - 1, Math.floor((n - center.lat) / (n - s) * g.h));
+  const p = g.data[j * g.w + i];
+  return { label, value: p + '%', unit: 'days ' + _ectcWinLabel(a + '_' + b).replace('d', ''),
+           color: _ectcColor(p) || 'rgba(150,150,150,0.55)' };
 }
 
 // -- COMPARING LAYERS: THE CROSS-LAYER SPLIT --------------------------------
