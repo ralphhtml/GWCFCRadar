@@ -4820,7 +4820,7 @@ body.lite-mode #export-modal { display: none !important; }
   background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18);
   cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px;
 }
-#s3d-walk-btn.on, #s3d-vr-btn.on { background: rgba(232,184,0,0.25); border-color: var(--accent); }
+#s3d-walk-btn.on, #s3d-vr-btn.on, #s3d-tm-btn.on { background: rgba(232,184,0,0.25); border-color: var(--accent); }
 #s3d-panel .s3d-radar-row { padding-top: 4px; }
 #s3d-panel .s3d-radar-row select { max-width: 150px; }
 #s3d-walk-pad {
@@ -12065,6 +12065,7 @@ body.clean-mode #clean-hint { opacity: 1; }
     <div class="xs-spacer"></div>
     <button class="dtb-btn" id="s3d-walk-btn" type="button" title="Walk over the cloud tops: drag to look around, WASD/arrows or the on-screen pad to move, E and Q to rise and sink, wheel to walk forward">Walk</button>
     <button class="dtb-btn" id="s3d-vr-btn" type="button" title="VR: fullscreen side-by-side stereo for a phone in a headset viewer, turning as you turn">VR</button>
+    <button class="dtb-btn" id="s3d-tm-btn" type="button" title="Time Machine: see these cloud tops at any moment since 2017"></button>
     <button class="dtb-btn" id="s3d-info-btn" title="What this does" type="button"></button>
   </div>
   <div class="r3d-controls s3d-radar-row">
@@ -30678,6 +30679,84 @@ function _goesTmWatch(layer, graceMs) {
   }, graceMs || 8000);
 }
 
+// -- Satellite pictures onto Mercator ------------------------------------
+// Every satellite picture the parsing server makes (the Time Machine's NOAA
+// archive frames, the composites, the global mosaic) is a plain latitude
+// and longitude grid: its rows are evenly spaced in LATITUDE. A Leaflet
+// image overlay stretches a picture evenly in MERCATOR instead, so drawn
+// as it came, everything in it slid toward the equator: about two degrees,
+// some 200 km, in the middle of the US, and far more on the Full Disk. The
+// clouds did not line up with the coastlines they were over. The sea
+// temperature layer met exactly this and cures it in _sstMercReproject;
+// this is the same cure for the satellite: each picture's rows are resampled
+// so row j is the latitude Mercator actually puts at row j, once per
+// picture, and the result is kept as a blob URL.
+const GOES_BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+const GOES_MERC_LAT = 85.05112878;
+const GOES_MERC_KEEP = 40;             // pictures kept; well over any pool or split
+const _goesMercCache = new Map();      // url|bounds -> Promise<blob URL or null>
+function _goesMercBounds(b) {
+  return [[Math.max(b[0][0], -GOES_MERC_LAT), b[0][1]], [Math.min(b[1][0], GOES_MERC_LAT), b[1][1]]];
+}
+function _goesMercUrl(url, bounds) {
+  const key = url + '|' + JSON.stringify(bounds);
+  if (_goesMercCache.has(key)) {
+    const hit = _goesMercCache.get(key);
+    _goesMercCache.delete(key); _goesMercCache.set(key, hit);     // most recent last
+    return hit;
+  }
+  const pr = new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const W = img.naturalWidth, H = img.naturalHeight;
+        const gS = bounds[0][0], gN = bounds[1][0];
+        const disp = _goesMercBounds(bounds);
+        const yN = _latToMercY(disp[1][0]), yS = _latToMercY(disp[0][0]);
+        if (!W || !H || !(gN > gS) || !(yN > yS)) { resolve(null); return; }
+        const cv = document.createElement('canvas');
+        cv.width = W; cv.height = H;
+        const ctx = cv.getContext('2d');
+        for (let j = 0; j < H; j++) {
+          const lat = _mercYToLat(yN - (j + 0.5) / H * (yN - yS));
+          const src = Math.max(0, Math.min(H - 1, Math.round((gN - lat) / (gN - gS) * H - 0.5)));
+          ctx.drawImage(img, 0, src, W, 1, 0, j, W, 1);
+        }
+        cv.toBlob(b => {
+          try { cv.width = cv.height = 0; } catch (e) {}
+          resolve(b ? URL.createObjectURL(b) : null);
+        }, 'image/png');
+      } catch (e) { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+  _goesMercCache.set(key, pr);
+  while (_goesMercCache.size > GOES_MERC_KEEP) {
+    const oldKey = _goesMercCache.keys().next().value;
+    const old = _goesMercCache.get(oldKey);
+    _goesMercCache.delete(oldKey);
+    old.then(u => { if (u) { try { URL.revokeObjectURL(u); } catch (e) {} } });
+  }
+  return pr;
+}
+// Put a parsing server picture on an image overlay, the right way up. The
+// overlay is created blank; this fills it once the rows are resampled. A
+// picture that cannot be read (no CORS) is shown as it came rather than
+// not at all.
+function _goesMercApply(layer, url, bounds, onReady) {
+  layer._goesMercWant = url;
+  _goesMercUrl(url, bounds).then(blob => {
+    if (layer._goesMercWant !== url) return;          // a newer frame asked since
+    try {
+      layer.setBounds(L.latLngBounds(blob ? _goesMercBounds(bounds) : bounds));
+      layer.setUrl(blob || url);
+    } catch (e) {}
+    if (onReady) { try { onReady(); } catch (e) {} }
+  });
+}
+
 function _goesEnsureLayer(i) {
   const f = goesFrames[i];
   if (_goesPool[i] || !f) return;
@@ -30685,12 +30764,17 @@ function _goesEnsureLayer(i) {
   // a finished picture with its own rectangle. Both answer setOpacity, which
   // is all the pool and the playback loop ever ask of them, so from here on
   // they are handled identically.
+  // A parsing server picture starts blank and is filled with its
+  // Mercator-corrected copy (see _goesMercApply), so the uncorrected one is
+  // never on screen, not even for a moment.
   const l = f.url
-    ? L.imageOverlay(f.url, f.bounds,
+    ? L.imageOverlay(GOES_BLANK, _goesMercBounds(f.bounds),
                      { opacity: 0, interactive: false, pane: 'satPhotoPane',
                        crossOrigin: 'anonymous', zIndex: 11 }).addTo(map)
     : _makeGoesLayer(f.timeStr, 0);
+  if (f.url) _goesMercApply(l, f.url, f.bounds);
   l.on('load', () => {
+    if (f.url && l._url === GOES_BLANK) return;          // the placeholder, not the picture
     _goesPoolLoaded[i] = true;
     // If this is the frame the map is waiting on, promote it the moment it
     // is ready: the previous picture was left showing so the map never sat
@@ -50742,9 +50826,11 @@ function _scSyncSlotTime(slot, ms, force) {
   slot.frameMs = f.time.getTime();
   if (slot.kind === 'pi') {
     if (!slot.layer) {
-      slot.layer = L.imageOverlay(f.url, f.bounds,
+      slot.layer = L.imageOverlay(GOES_BLANK, _goesMercBounds(f.bounds),
         { opacity: 0.85, interactive: false, pane: _scPaneName(slot),
           crossOrigin: 'anonymous' }).addTo(map);
+      // Onto Mercator, the same as the main picture (see _goesMercApply).
+      _goesMercApply(slot.layer, f.url, f.bounds, _scUpdateClips);
       // The pane's own clip was already set when the slot was created, but
       // that was before this image existed to be clipped: without this,
       // a parsing server strip could draw full map width for a moment the instant its
@@ -50752,8 +50838,7 @@ function _scSyncSlotTime(slot, ms, force) {
       // same reason.
       _scUpdateClips();
     } else {
-      slot.layer.setUrl(f.url);
-      slot.layer.setBounds(f.bounds);
+      _goesMercApply(slot.layer, f.url, f.bounds);
     }
   } else if (slot.layer) {
     try { slot.layer.setParams({ TIME: f.timeStr }); } catch (e) {}
@@ -67960,6 +68045,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-i', date: 'Sep 23, 2026',
+    text: 'Fixed the satellite Time Machine drawing its pictures in the wrong place. Every satellite picture that comes from the parsing server (the Time Machine\'s archive scans, the composites like Air Mass and True Colour, and the global mosaic) was stretched the wrong way, so clouds sat about 2 degrees (over 200 km) south of where they really were over the US, and further off on the Full Disk. They now line up with the coastlines and borders. Satellite 3D follows the Time Machine too: a clock button in the panel opens it, a jump reloads the zone at that moment, going back to live brings it back, and a past moment\'s plain channel is taken from NOAA\'s own archive of that exact scan.' },
   { id: '2026-09-23-h', date: 'Sep 23, 2026',
     text: 'Satellite 3D picked up nearly everything Radar 3D has: fullscreen, Walk (fly over the cloud tops with WASD, the on-screen pad or the wheel), VR for a phone headset, an info button, zoom and turn bars on the picture, Tops above and Up to height filters, Smoothing, three looks (lit, flat, and height colours like a relief map), a cutaway, height units (kft, km, ft, m), your location marked with You, and a radar product and radar site picker for Radar inside. The map menu row for Radar 3D now reads Draw a 3D radar zone, with its own new icon. And both 3D views follow comparisons: draw a zone over a comparison pane and it opens on that pane\'s radar, product or satellite picture.' },
   { id: '2026-09-23-g', date: 'Sep 23, 2026',
@@ -82868,7 +82955,9 @@ async function _s3dSkinSource(product, fr) {
   const z = _s3dZone;
   const region = _s3dSkinRegion(product);
   if (product.src === 'pi') {
-    const key = product.id + '|' + region;
+    // Keyed on the Time Machine's moment too: a list fetched live must not
+    // answer for a travelled moment, or the other way round.
+    const key = product.id + '|' + region + '|' + ((typeof _tmSatAt === 'number' && _tmSatAt) || 'live');
     let hit = _s3dPiFrameMemo.get(key);
     if (!hit || Date.now() - hit.at > 60000) {
       const frames = await _goesPiFramesFor(product, region);
@@ -82962,14 +83051,25 @@ async function _s3dSkin(fr, gen) {
   }
   const still = () => gen === _s3dGen && fr.data === d && d.skinWant === want;
   let px = null, gapMin = 0;
+  // At a travelled moment a plain channel comes from NOAA's own archive
+  // first: that scan is exactly the moment asked for, where the map
+  // service may only hold recent pictures.
+  const travelled = typeof _tmSatAt === 'number' && !!_tmSatAt;
+  const arcFirst = travelled && product.ch && product.src !== 'pi';
   try {
-    const src = await _s3dSkinSource(product, fr);
+    if (arcFirst) {
+      const arc = await _s3dArchiveSource(product, fr).catch(() => null);
+      if (arc && still()) {
+        try { px = _s3dCropSkin(await _s3dLoadImg(arc.url), arc.bounds, d); } catch (e) { px = null; }
+      }
+    }
+    const src = px ? null : await _s3dSkinSource(product, fr);
     if (src && still()) {
       gapMin = src.gapMin || 0;
       try { px = _s3dCropSkin(await _s3dLoadImg(src.url), src.bounds, d); } catch (e) { px = null; }
     }
     // A plain channel the WMS no longer holds: NOAA's archive has it.
-    if (!px && still() && product.ch && product.src !== 'pi') {
+    if (!px && !arcFirst && still() && product.ch && product.src !== 'pi') {
       const arc = await _s3dArchiveSource(product, fr).catch(() => null);
       if (arc && still()) {
         try { px = _s3dCropSkin(await _s3dLoadImg(arc.url), arc.bounds, d); } catch (e) { px = null; }
@@ -83015,7 +83115,12 @@ function _s3dFillSkinMenu() {
   sel.value = _s3dSkinSel;
 }
 
+function _s3dSyncTmBtn() {
+  const b = _s3dEl('s3d-tm-btn');
+  if (b) b.classList.toggle('on', typeof _tmSatAt === 'number' && !!_tmSatAt);
+}
 function _s3dSayWhere() {
+  _s3dSyncTmBtn();
   const el = _s3dEl('s3d-where');
   if (!el || !_s3dZone) return;
   const i = _s3dIndex;
@@ -83745,6 +83850,19 @@ function _s3dInteract() {
   if (walkBtn) walkBtn.onclick = () => _s3dWalkToggle();
   const vrBtn = _s3dEl('s3d-vr-btn');
   if (vrBtn) vrBtn.onclick = () => _s3dVrToggle();
+  // The satellite's own Time Machine, one tap from the panel: a jump (or a
+  // return to live) reloads the zone at that moment through _s3dTmSync.
+  const tmb = _s3dEl('s3d-tm-btn');
+  if (tmb) {
+    tmb.innerHTML = '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-clock></use></svg>';
+    tmb.onclick = (ev) => {
+      ev.stopPropagation();
+      // A fullscreen panel sits above the Time Machine's own window.
+      if (_s3dVr) _s3dVrOff();
+      panel.classList.remove('fullscreen');
+      if (typeof _tmOpen === 'function') _tmOpen('sat');
+    };
+  }
   const info = _s3dEl('s3d-info-btn');
   if (info) {
     info.innerHTML = '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-info></use></svg>';
