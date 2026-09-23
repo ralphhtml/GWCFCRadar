@@ -12821,6 +12821,64 @@ function _wireWheelZoom(m) {
   }, { passive: false });
 }
 
+// -- BASEMAP BACKDROP ---------------------------------------------------------
+// Pinching out on a phone used to shrink the map into a small rectangle
+// floating in empty dark space: the basemap only ever holds tiles for what is
+// on screen, and the tiles for the wider view take a moment to arrive, by
+// which time the fingers have moved on again. Underneath the basemap now sits
+// a second, much coarser copy of the same style, three zoom levels blurrier,
+// covering eight times the screen's width. Its handful of tiles are already
+// there when a pinch starts, so zooming out shows a soft version of the map
+// around the edges instead of a void, and the sharp tiles fade in over it.
+// It follows whichever basemap is on, and only refreshes once a gesture ends.
+const BACKDROP_ZOOM_BACK = 3;
+const BACKDROP_PAD = 3.5;       // screens of cover on each side
+let _basemapBackdrop = null;
+function _wireBasemapBackdrop() {
+  if (typeof L === 'undefined' || !map || !L.TileLayer) return;
+  if (!map.getPane('backdropPane')) {
+    const pane = map.createPane('backdropPane');
+    pane.style.zIndex = 150;          // under the basemap's tilePane (200)
+    pane.style.pointerEvents = 'none';
+  }
+  // Three levels coarser the way Leaflet itself documents it: each tile is
+  // drawn 8 times its size (2048 px) and asked for three levels down
+  // (zoomOffset). Leaflet's own zoom bookkeeping is left alone; only the area
+  // it covers is widened.
+  const Backdrop = L.TileLayer.extend({
+    _getTiledPixelBounds(center) {
+      const b = L.TileLayer.prototype._getTiledPixelBounds.call(this, center);
+      const pad = b.getSize().multiplyBy(BACKDROP_PAD);
+      return L.bounds(b.min.subtract(pad), b.max.add(pad));
+    },
+  });
+  const sync = () => {
+    let base = null;
+    for (const k in mapTileLayers) { const l = mapTileLayers[k]; if (l && map.hasLayer(l)) { base = l; break; } }
+    if (!base) {
+      if (_basemapBackdrop && map.hasLayer(_basemapBackdrop)) map.removeLayer(_basemapBackdrop);
+      return;
+    }
+    if (!_basemapBackdrop) {
+      _basemapBackdrop = new Backdrop(base._url, {
+        pane: 'backdropPane', noWrap: true, crossOrigin: 'anonymous', className: 'basemap-backdrop',
+        subdomains: base.options.subdomains || 'abc', maxZoom: base.options.maxZoom || 18,
+        tileSize: 256 << BACKDROP_ZOOM_BACK, zoomOffset: -BACKDROP_ZOOM_BACK, minNativeZoom: BACKDROP_ZOOM_BACK,
+        updateWhenIdle: true, updateWhenZooming: false, keepBuffer: 1, attribution: '',
+      });
+      _basemapBackdrop.on('tileloadstart', e => { e.tile.decoding = 'async'; });
+    } else if (_basemapBackdrop._url !== base._url) {
+      _basemapBackdrop.options.subdomains = base.options.subdomains || 'abc';
+      _basemapBackdrop.setUrl(base._url);
+    }
+    if (!map.hasLayer(_basemapBackdrop)) _basemapBackdrop.addTo(map);
+  };
+  // Every layer on the map fires these, radar frames included, so the check
+  // is kept to a few property reads and the backdrop's own add is ignored.
+  map.on('layeradd layerremove', e => { if (e.layer !== _basemapBackdrop) { try { sync(); } catch (err) {} } });
+  sync();
+}
+
 // -- INIT MAP --
 function initMap() {
   // iOS: Leaflet draws every canvas renderer at two device pixels per CSS
@@ -12963,6 +13021,7 @@ function initMap() {
   mapTileLayers = { dark: cartoDark, light: cartoLight, satellite, topo };
   satellite.addTo(map);
   rmActivate('rm-satellite');
+  _wireBasemapBackdrop();
 
   // Auto-fix blank map whenever the container changes size (sidebar open/close, orientation, etc.)
   if (window.ResizeObserver) {
@@ -68965,6 +69024,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-v', date: 'Sep 23, 2026',
+    text: 'Pinch-zooming out on a phone no longer shrinks the map into a small rectangle floating in empty space. A soft, low-detail copy of the map now sits underneath the real one and covers far more than the screen, so the edges fill in straight away while the sharp map loads over it. It uses only a handful of tiles and follows whichever map style you pick.' },
   { id: '2026-09-23-u', date: 'Sep 23, 2026',
     text: 'VR now fills the whole screen. On every 3D panel (Radar, Satellite and each layer), VR asks your browser for true full screen, hides the address bar and all the panel controls, and tries to hold the phone sideways, so only the two stereo eyes show in a headset viewer. A small Exit VR button (or Esc, or your phone\'s back gesture) brings everything back. The Fullscreen button goes truly full screen too.' },
   { id: '2026-09-23-t', date: 'Sep 23, 2026',
