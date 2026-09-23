@@ -52,7 +52,8 @@ console.log('\n1. every guard is in the page');
   ok('satellite tiles are not fetched at four times the pixels on iOS or small machines',
      (PAGE.match(/detectRetina: !_isIOS\s*\n?\s*&& \(\(\(typeof navigator !== 'undefined' && navigator\.deviceMemory\) \|\| 8\) > 4\)/g) || []).length >= 2);
   ok('the three canvas renderers pad far less on iOS',
-     PAGE.includes("L.canvas({ pane: 'alertsPane', padding: _isIOS ? 0.1 : 0.3 })")
+     // The alerts renderer became its own subclass (it draws the casing), same padding.
+     PAGE.includes("new AlertCanvas({ pane: 'alertsPane', padding: _isIOS ? 0.1 : 0.3, tolerance: 1 })")
      && PAGE.includes('L.canvas({ padding: _isIOS ? 0.15 : 0.5 })')
      && PAGE.includes("L.canvas({ pane: 'bordersPane', padding: _isIOS ? 0.1 : 0.25 })"));
   ok('on iOS a radar picture releases its drawing canvas the moment the PNG exists',
