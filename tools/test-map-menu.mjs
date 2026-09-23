@@ -623,18 +623,24 @@ console.log('\n8j. timeline tick labels fit the strip instead of overlapping');
   // short loop got a label per frame, and the crowd ran on out of the strip
   // underneath the time display beside it. The builder now measures the
   // strip and ceil-thins to what fits.
-  const r = await page.evaluate(() => {
+  const r = await page.evaluate(async () => {
     const wrap = document.getElementById('timeline-labels');
     const times = [];
     for (let i = 0; i < 8; i++) times.push(new Date(Date.UTC(2026, 7, 28, 13, 20 + i * 5)));
+    // The strip's width is watched rather than measured on every build (that
+    // measuring forced a page layout on every animation frame), so a resize
+    // is seen by the next frame, the way a real one is.
+    const settle = () => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
 
     // A wide strip: never more than five, even for a short loop.
     wrap.style.width = '300px';
+    await settle();
     buildTimelineLabels({ times, first: 0 });
     const wide = wrap.querySelectorAll('span').length;
 
     // A phone-width strip: fewer still, because fewer fit.
     wrap.style.width = '120px';
+    await settle();
     buildTimelineLabels({ times, first: 0 });
     const narrow = wrap.querySelectorAll('span').length;
 

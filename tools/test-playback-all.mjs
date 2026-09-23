@@ -142,16 +142,25 @@ console.log('\n3. the step buttons follow the same readiness gate as play');
 
 console.log('\n4. satellite: preloaded layers around the current frame, swapped by opacity');
 {
-  const r = await page.evaluate(() => {
+  const r = await page.evaluate(async () => {
     _disableRadar();
     activeLayers.satellite = true;
     loadGoesLayer();
+    // The frame on screen is attached at once; the rest of the window joins
+    // in the browser's idle time (_goesFillWindow), nearest first.
+    for (let i = 0; i < 60 && _goesPool.filter(Boolean).length < Math.min(GOES_POOL_MAX, goesFrames.length); i++) {
+      await new Promise(res => setTimeout(res, 50));
+    }
     const built = _goesPool.filter(Boolean).length;
     const distinct = new Set(_goesPool.filter(Boolean)).size;
     const visibleAtStart = _goesPool.findIndex(l => l && l.options.opacity > 0);
     showGoesFrame(3);
     const visibleAfterScrub = _goesPool.findIndex(l => l && l.options.opacity > 0);
-    const onlyOneVisible = _goesPool.filter(l => l && l.options.opacity > 0).length;
+    // While the frame jumped to is still loading, the last picture that did
+    // load is deliberately held underneath it (so the map never blanks);
+    // that one is not a second frame on show.
+    const held = _goesPoolLoaded[3] ? null : _goesShownLayer;
+    const onlyOneVisible = _goesPool.filter(l => l && l !== held && l.options.opacity > 0).length;
     return { frames: goesFrames.length, built, distinct, visibleAtStart,
              visibleAfterScrub, onlyOneVisible, poolMax: GOES_POOL_MAX };
   });
