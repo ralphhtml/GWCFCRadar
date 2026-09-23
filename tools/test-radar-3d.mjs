@@ -47,15 +47,18 @@ console.log('\n1. the panel: a zone picker and volumetric controls, no toolbar b
      && !PAGE.includes('id="r3d-time-label"')
      && /return mk\('r3d', _r3dFrames\.map\(f => new Date\(f\.time\)\), Math\.max\(0, _r3dFrameIdx\)\);/.test(PAGE));
   ok('the double-click/long-press map menu has a row that starts drawing a zone',
-     /_cmRadar3DDraw\(\)/.test(PAGE) && /Draw a 3D zone/.test(PAGE));
+     /_cmRadar3DDraw\(\)/.test(PAGE) && /Draw a 3D radar zone/.test(PAGE));
   ok('the renderer marches the radar\'s own polar volume, in workers',
      /_r3dMarchBand/.test(PAGE) && /_r3dPolarFrame/.test(PAGE) && /_r3dMarchAsync/.test(PAGE));
   ok('a box has no upper size limit any more',
      !/R3D_ZONE_MAX_KM/.test(PAGE) && /const R3D_ZONE_MIN_KM = 3;/.test(PAGE));
+  // Satellite 3D wears the same pair, so the page holds two of each: the
+  // Radar 3D panel's own markup is what is counted here.
+  const r3dHtml = PAGE.slice(PAGE.indexOf('<div id="r3d-panel">'), PAGE.indexOf('<div id="s3d-panel">'));
   ok('exactly two camera bars exist: one vertical, one horizontal',
      PAGE.includes('id="r3d-zoom"') && PAGE.includes('id="r3d-yaw"')
-     && (PAGE.match(/class="r3d-cam-zoom"/g) || []).length === 1
-     && (PAGE.match(/class="r3d-cam-move"/g) || []).length === 1);
+     && (r3dHtml.match(/class="r3d-cam-zoom"/g) || []).length === 1
+     && (r3dHtml.match(/class="r3d-cam-move"/g) || []).length === 1);
   ok('the zoom bar is styled vertical, the move bar horizontal',
      /\.r3d-cam-zoom input\[type=range\] \{\s*\n\s*writing-mode: vertical-lr; direction: rtl;/.test(PAGE)
      && /\.r3d-cam-move input\[type=range\] \{ width: 100%; height: 6px; \}/.test(PAGE));
@@ -108,7 +111,7 @@ console.log('\n2. the map menu starts a drag, and the drag becomes the zone');
     await new Promise(res => setTimeout(res, 200));
     _cmOpen({ latlng: L.latLng(36.1, -95.9) });
     const row = Array.from(document.querySelectorAll('#map-ctx-menu .cm-item'))
-      .find(el => /Draw a 3D zone/i.test(el.textContent));
+      .find(el => /Draw a 3D radar zone/i.test(el.textContent));
     if (row) row.click();
     const drawing = { on: _r3dDrawOn, dragOff: !map.dragging.enabled(),
                       cursor: map.getContainer().style.cursor,
