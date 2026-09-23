@@ -47,8 +47,10 @@ console.log('\n1. the pieces are in the page');
      && PAGE.includes('function _gridGeometry(leftPct, rightPct, topPct, bottomPct)')
      // Both split systems position their shared lines through the same
      // one-axis geometry: two calls each (columns and rows).
-     && (PAGE.match(/_stripGeometry\(pct, pct, 'x'\)/g) || []).length === 2
-     && (PAGE.match(/_stripGeometry\(pct, pct, 'y'\)/g) || []).length === 2);
+     // Both split systems cut their panes and place their lines through
+     // the same angled-line geometry.
+     && (PAGE.match(/_cmpCellGeometry\(row, col, _(rc|sc)ColSplits/g) || []).length === 2
+     && (PAGE.match(/_cmpPlaceLine\(_(rc|sc)GridDividerEls\.cols/g) || []).length === 2);
   ok('a bubble in a running comparison wears the strip ring',
      /\.sub-bubble\.in-compare \{/.test(PAGE));
   ok('and the info description says what it does',
@@ -58,7 +60,7 @@ console.log('\n1. the pieces are in the page');
      && /function _scGridGrow\(\) \{/.test(PAGE)
      && /if \(_scSlots\.length >= _scMaxStrips\(\) && !_scGridGrow\(\)\) \{/.test(PAGE));
   ok('the satellite split lines wear the same drag grip and rotate handle as the radars',
-     /function _scRefreshGridDOM[\s\S]{0,900}_cmpLineHandles\(d, _scToggleOrientation\);/.test(PAGE));
+     /function _scRefreshGridDOM[\s\S]{0,900}_cmpLineHandles\(d, _cmpLineApi\(\(\) => _scColRots/.test(PAGE));
   ok('a parsing server strip reclips the instant its own image lands, not just on the next pan/zoom '
      + '(the same race radar compare had to fix)',
      /if \(!slot\.layer\) \{\s*\n\s*slot\.layer = L\.imageOverlay\(f\.url, f\.bounds,[\s\S]{0,600}_scUpdateClips\(\);\s*\n\s*\} else \{/.test(PAGE));

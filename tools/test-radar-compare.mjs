@@ -34,7 +34,7 @@ console.log('\n1. the pieces are in the page');
      && /async function _siteView\(s\) \{[\s\S]*?_loadSingleSiteRef\(s\.id\);[\s\S]*?map\.setView\(\[s\.lat, s\.lon\]/.test(PAGE));
   ok('both comparisons share one strip geometry',
      PAGE.includes('function _stripGeometry(leftPct, rightPct, axis)')
-     && (PAGE.match(/_stripGeometry\(/g) || []).length >= 3
+     && PAGE.includes('function _cmpLineGeom(axis, pct, rot, size)')
      && PAGE.includes('function _stripPctFromClientX(clientX, splits, idx, axis, clientY)')
      && (PAGE.match(/_stripPctFromClientX\(/g) || []).length >= 3);
   ok('the axis argument is additive: the model and satellite comparisons still call '
@@ -63,16 +63,15 @@ console.log('\n1. the pieces are in the page');
   ok('cycling to a split too small for the pictures already on screen is refused, not silently trimmed',
      /function _rcSetGrid\(rows, cols\) \{[\s\S]*?if \(_rcSlots\.length > need\) \{[\s\S]{0,200}return false;/.test(PAGE));
   ok('every split line carries the two handles: a drag grip and a rotate, shared by both comparisons',
-     /function _cmpLineHandles\(d, onRotate\) \{/.test(PAGE)
+     /function _cmpLineHandles\(d, line\) \{/.test(PAGE)
      && /cmp-drag-h/.test(PAGE) && /cmp-rot-h/.test(PAGE)
-     && /_cmpLineHandles\(d, _rcToggleOrientation\);/.test(PAGE)
-     && /_cmpLineHandles\(d, _scToggleOrientation\);/.test(PAGE)
+     && /_cmpLineHandles\(d, _cmpLineApi\(\(\) => _rcColRots, i, 'col'/.test(PAGE)
+     && /_cmpLineHandles\(d, _cmpLineApi\(\(\) => _scColRots, i, 'col'/.test(PAGE)
      && /d\.title = 'Drag to resize the split';/.test(PAGE));
-  ok('the rotate handle is a real dial: it tracks the drag angle around its own centre, '
-     + 'and only commits past 45 degrees',
-     /function _cmpWireRotateHandle\(el, onRotate\) \{/.test(PAGE)
-     && /icon\.style\.transform = `rotate\(\$\{drag\.delta\}deg\)`;/.test(PAGE)
-     && /if \(!moved \|\| Math\.abs\(delta\) >= 45\) onRotate\(\);/.test(PAGE));
+  ok('the rotate handle turns only its own line, to any angle, and the panes are cut along it',
+     /function _cmpWireRotateHandle\(el, line\) \{/.test(PAGE)
+     && /function _cmpCellGeometry\(row, col, colSplits, rowSplits, colRots, rowRots\) \{/.test(PAGE)
+     && /function _cmpClipHalf\(poly, g, sign\) \{/.test(PAGE));
   ok('rotate transposes the split, so a side-by-side double becomes a stacked one',
      /function _rcToggleOrientation\(\) \{\s*\n\s*if \(!_rcOn \|\| !_rcGrid\) return;\s*\n\s*if \(!_rcSetGrid\(_rcGrid\.cols, _rcGrid\.rows\)\) return;/.test(PAGE));
   ok('the layer stack keeps the strips just above the radar',
@@ -313,7 +312,7 @@ console.log('\n4b. the rotate button transposes the split, and back');
     // reader / keyboard-activation path - still rotates.
     const line = _rcGridDividerEls.cols[0];
     line.querySelector('.cmp-rot-h').click();
-    const viaHandle = { grid: { ..._rcGrid } };
+    const viaHandle = { grid: { ..._rcGrid }, rot: _rcColRots[0] };
     document.getElementById('rc-rotate-btn').click();   // back again
     await new Promise(res => setTimeout(res, 50));
     return { shownWhileComparing, before, after, restored, viaHandle };
@@ -330,62 +329,72 @@ console.log('\n4b. the rotate button transposes the split, and back');
      JSON.stringify(r.after));
   ok('a second click transposes it straight back',
      r.restored.grid.rows === 1 && r.restored.grid.cols === 2, JSON.stringify(r.restored));
-  ok('a synthetic click on the handle (no pointer events) transposes it too',
-     r.viaHandle.grid.rows === 2 && r.viaHandle.grid.cols === 1, JSON.stringify(r.viaHandle));
+  ok('a synthetic click on the handle (no pointer events) turns just that line a quarter, the split stays',
+     r.viaHandle.grid.rows === 1 && r.viaHandle.grid.cols === 2 && r.viaHandle.rot === 90, JSON.stringify(r.viaHandle));
   // The evaluate above already restored double (the "back again" click
   // right after viaHandle), so nothing further is needed here.
 }
 
-console.log('\n4c. the rotate handle is a real dial: drag around it to rotate, release short and it springs back');
+console.log('\n4c. the rotate handle turns only its own line, to the angle you drag it to');
 {
-  const centerOf = async (sel) => p.evaluate((s) => {
-    const r = document.querySelector(s).getBoundingClientRect();
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-  }, sel);
-  const dragAngle = async (deg) => {
-    const c = await centerOf('.rc-divider .cmp-rot-h');
-    const rad = deg * Math.PI / 180, radius = 20;
-    await p.mouse.move(c.x, c.y);
+  // A quad, so there is a second line that must NOT turn.
+  await p.evaluate(() => { _rcSetGrid(2, 2); _rcRefreshDOM(); _rcUpdateClips(); });
+  await p.waitForTimeout(50);
+  // Drag the handle round the line's pivot to `deg` degrees past straight.
+  const turn = async (deg, release = true) => {
+    const g = await p.evaluate(() => {
+      const h = document.querySelector('#rc-dividers .rc-divider:not(.horizontal) .cmp-rot-h').getBoundingClientRect();
+      const piv = _cmpLineApi(() => _rcColRots, 0, 'col', () => _rcColSplits, () => {}).pivot();
+      return { hx: h.left + h.width / 2, hy: h.top + h.height / 2, px: piv.x, py: piv.y };
+    });
+    const r0 = Math.hypot(g.hx - g.px, g.hy - g.py);
+    const a0 = Math.atan2(g.hy - g.py, g.hx - g.px);
+    await p.mouse.move(g.hx, g.hy);
     await p.mouse.down();
-    // A handful of intermediate steps, the way a real drag sends them,
-    // sweeping from straight up around to the target angle.
-    const steps = 6;
+    const steps = 8;
     for (let i = 1; i <= steps; i++) {
-      const a = (-90 + (deg - -90) * (i / steps)) * Math.PI / 180;
-      await p.mouse.move(c.x + Math.cos(a) * radius, c.y + Math.sin(a) * radius);
+      const a = a0 + (deg * Math.PI / 180) * (i / steps);
+      await p.mouse.move(g.px + Math.cos(a) * r0, g.py + Math.sin(a) * r0);
     }
-    return c;
+    const mid = await p.evaluate(() => ({ rot: _rcColRots[0],
+      transform: _rcGridDividerEls.cols[0].style.transform }));
+    if (release) await p.mouse.up();
+    await p.waitForTimeout(40);
+    return mid;
   };
-
-  const before = await p.evaluate(() => ({ ..._rcGrid }));
-  // A short drag: well under the 45 degree commit threshold, released.
-  await dragAngle(10);
-  const midIcon = await p.evaluate(() => {
-    const svg = document.querySelector('.rc-divider .cmp-rot-h svg');
-    return svg && svg.style.transform;
+  const state = () => p.evaluate(() => ({
+    grid: { ..._rcGrid }, colRots: _rcColRots.slice(), rowRots: _rcRowRots.slice(),
+    rowTransform: _rcGridDividerEls.rows[0].style.transform,
+    clip: map.getPane(_rcPaneName(_rcSlots[0])).style.clipPath,
+    dragStarted: _rcGridDrag !== null,
+  }));
+  const mid = await turn(30);
+  const after30 = await state();
+  await turn(13);          // 30 + 13 = 43, within the snap of 45
+  const after43 = await state();
+  // A tap (no movement) turns it a further quarter.
+  const hc = await p.evaluate(() => {
+    const h = document.querySelector('#rc-dividers .rc-divider:not(.horizontal) .cmp-rot-h').getBoundingClientRect();
+    return { x: h.left + h.width / 2, y: h.top + h.height / 2 };
   });
-  await p.mouse.up();
-  await p.waitForTimeout(50);
-  const afterShort = await p.evaluate(() => ({ grid: { ..._rcGrid },
-    icon: (document.querySelector('.rc-divider .cmp-rot-h svg') || {}).style
-      && document.querySelector('.rc-divider .cmp-rot-h svg').style.transform,
-    dragStarted: _rcGridDrag !== null }));
+  await p.mouse.move(hc.x, hc.y); await p.mouse.down(); await p.mouse.up();
+  await p.waitForTimeout(40);
+  const afterTap = await state();
+  await p.evaluate(() => { _rcSetGrid(1, 2); _rcRefreshDOM(); _rcUpdateClips(); });
 
-  // A real drag past 45 degrees, released: commits the rotation.
-  await dragAngle(70);
-  await p.mouse.up();
-  await p.waitForTimeout(50);
-  const afterLong = await p.evaluate(() => ({ ..._rcGrid }));
-  await p.evaluate(() => { document.getElementById('rc-rotate-btn').click(); });   // back to double
-
-  ok('the icon visibly follows the drag angle while held', /rotate\(/.test(midIcon || ''), String(midIcon));
-  ok('short of 45 degrees, letting go springs back: no rotation, the icon resets, no resize drag was started',
-     afterShort.grid.rows === before.rows && afterShort.grid.cols === before.cols
-     && afterShort.icon === '' && afterShort.dragStarted === false,
-     JSON.stringify({ before, afterShort }));
-  ok('past 45 degrees, letting go commits the rotation',
-     afterLong.rows !== before.rows || afterLong.cols !== before.cols,
-     JSON.stringify({ before, afterLong }));
+  const pts = (after30.clip.match(/px/g) || []).length / 2;
+  ok('the line follows the drag while held, and the line itself turns on screen',
+     Math.abs(mid.rot - 30) < 3 && /rotate\(/.test(mid.transform), JSON.stringify(mid));
+  ok('let go, it stays at that angle: no snap back, and the split is still a quad',
+     Math.abs(after30.colRots[0] - 30) < 3 && after30.grid.rows === 2 && after30.grid.cols === 2,
+     JSON.stringify(after30));
+  ok('only that line turned: the other line did not move', after30.rowRots[0] === 0 && after30.rowTransform === '',
+     JSON.stringify(after30));
+  ok('the picture beside it is cut along the angled line, not a rectangle',
+     /^polygon\(/.test(after30.clip) && !/-99999px/.test(after30.clip), after30.clip.slice(0, 120));
+  ok('near a diagonal it snaps onto 45 degrees', after43.colRots[0] === 45, JSON.stringify(after43.colRots));
+  ok('a tap turns it a further quarter', afterTap.colRots[0] === 135, JSON.stringify(afterTap.colRots));
+  ok('turning never started a resize drag of the line', !after30.dragStarted && !afterTap.dragStarted);
   ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
 }
 
