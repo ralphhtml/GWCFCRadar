@@ -49765,11 +49765,60 @@ function _cmpLineHandles(d, onRotate) {
   d.innerHTML =
     '<div class="sev-cmp-handle cmp-drag-h" title="Drag to resize the split">'
     + '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-swap></use></svg></div>'
-    + '<div class="sev-cmp-handle cmp-rot-h" title="Rotate the split: side by side, or stacked">'
+    + '<div class="sev-cmp-handle cmp-rot-h" title="Drag around the handle to rotate the split, or tap it">'
     + '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-refresh-cw></use></svg></div>';
-  const rot = d.querySelector('.cmp-rot-h');
-  rot.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); });
-  rot.addEventListener('click', e => { e.stopPropagation(); onRotate(); });
+  _cmpWireRotateHandle(d.querySelector('.cmp-rot-h'), onRotate);
+}
+// The rotate handle turns like a real dial: press it and drag around its
+// own centre, and the icon follows the pointer's angle live. Letting go
+// past 45 degrees either way commits the rotation (which is always just
+// a transpose - side by side to stacked, or back - there is no third
+// orientation to land on); short of that it springs back undone. A press
+// and release with no real movement rotates immediately, the way tapping
+// always has, so a quick tap is never slower than the old click was.
+function _cmpWireRotateHandle(el, onRotate) {
+  const icon = el.querySelector('svg');
+  let drag = null;      // { cx, cy, startAngle, delta, moved }
+  const angleAt = (x, y, cx, cy) => Math.atan2(y - cy, x - cx) * 180 / Math.PI;
+  const norm = (deg) => ((deg + 180) % 360 + 360) % 360 - 180;
+  el.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    e.stopPropagation();   // never also starts the line's own resize drag
+    const r = el.getBoundingClientRect();
+    drag = { cx: r.left + r.width / 2, cy: r.top + r.height / 2,
+             startAngle: angleAt(e.clientX, e.clientY, r.left + r.width / 2, r.top + r.height / 2),
+             delta: 0, moved: false };
+    try { el.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  el.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const cur = angleAt(e.clientX, e.clientY, drag.cx, drag.cy);
+    drag.delta = norm(cur - drag.startAngle);
+    if (Math.abs(drag.delta) > 4) drag.moved = true;
+    if (icon) icon.style.transform = `rotate(${drag.delta}deg)`;
+  });
+  const end = () => {
+    if (!drag) return;
+    const { delta, moved } = drag;
+    drag = null;
+    if (icon) icon.style.transform = '';
+    if (!moved || Math.abs(delta) >= 45) onRotate();
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', () => { drag = null; if (icon) icon.style.transform = ''; });
+  // A real mouse/touch interaction always fires pointerup first, which
+  // end() above has already acted on - and when it commits, that call
+  // can rebuild the DOM out from under this very gesture, leaving the
+  // browser's trailing native click to land on a freshly built element
+  // sitting in the same spot and fire the SAME rotation a second time.
+  // e.isTrusted tells the two apart: a real click is never acted on
+  // here, only a synthetic one (e.isTrusted === false), which is exactly
+  // what a screen reader or an automated test invoking .click() sends,
+  // with no pointer sequence of its own to have already been handled.
+  el.addEventListener('click', e => {
+    e.stopPropagation();
+    if (!e.isTrusted) onRotate();
+  });
 }
 function _rcRefreshGridDOM(dc, lc) {
   const { rows, cols } = _rcGrid;
@@ -67404,6 +67453,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-a', date: 'Sep 23, 2026',
+    text: 'The rotate handle on a comparison split line is now a real dial: press and drag around it to rotate the split to whichever angle you turn it to, with the icon following your finger live. Let go past a quarter turn and it commits (side-by-side becomes stacked, or back); let go short of that and it springs back undone. A quick tap still rotates immediately, same as before.' },
   { id: '2026-09-22-zf', date: 'Sep 22, 2026',
     text: 'The comparison split lines got their handles back: every line in the radar and satellite splits now carries a small grip (drag it, or anywhere on the line, to resize) and a rotate handle that flips the whole split between side-by-side and stacked, right where your finger already is.' },
   { id: '2026-09-22-ze', date: 'Sep 22, 2026',
