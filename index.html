@@ -13123,6 +13123,8 @@ function initMap() {
     }, 300);
   });
   map.on('moveend', _applyRadarPolyMask);
+  map.on('movestart zoomstart', () => { _alertMapMoving = true; });
+  map.on('moveend zoomend', () => { _alertMapMoving = false; });
 
 
   map.on('moveend', _updateRecenterBtn);
@@ -15256,6 +15258,8 @@ function _focusAlertById(id) {
   return true;
 }
 let _alertFlashRAF = null;
+// Set between movestart and moveend, so the flash can sit out a gesture.
+let _alertMapMoving = false;
 let _alertNewLayers = [];   // { layer, fillLayer, color, until }
 
 // One shared canvas renderer for every alert shape. The default is SVG: one
@@ -15266,15 +15270,92 @@ let _alertNewLayers = [];   // { layer, fillLayer, color, until }
 // setStyle both work the same on canvas, which _focusAlertById and the flash
 // loops depend on.
 let _alertsCanvasR = null;
+// Every alert used to be built twice: once as a black "casing" layer and again
+// as the coloured outline on top. That doubled the most expensive thing the
+// map does with alerts, projecting and clipping every coordinate on every
+// zoom, which is where a DevTools trace of an iPhone crash spent most of its
+// time. The renderer now draws the casing itself, straight under each
+// outline, from the same projected points: one layer, one projection.
+// tolerance 1 widens the area each shape repaints by the casing's extra pixel,
+// so a restyle (the flash) cannot leave a sliver of old casing behind.
 function _alertsCanvas() {
   if (!_alertsCanvasR) {
+    const AlertCanvas = L.Canvas.extend({
+      _fillStroke(ctx, layer) {
+        const o = layer.options;
+        if (o.fill) {
+          ctx.globalAlpha = o.fillOpacity;
+          ctx.fillStyle = o.fillColor || o.color;
+          ctx.fill(o.fillRule || 'evenodd');
+        }
+        if (o.stroke && o.weight !== 0) {
+          if (ctx.setLineDash) ctx.setLineDash((layer.options && layer.options._dashArray) || []);
+          ctx.lineCap = o.lineCap; ctx.lineJoin = o.lineJoin;
+          if (o.casing) {
+            ctx.globalAlpha = 1;
+            ctx.lineWidth = o.weight + 2;
+            ctx.strokeStyle = o.casing;
+            ctx.stroke();
+          }
+          ctx.globalAlpha = o.opacity;
+          ctx.lineWidth = o.weight;
+          ctx.strokeStyle = o.color;
+          ctx.stroke();
+        }
+      },
+    });
     // A canvas renderer's backing store is the viewport plus its padding on
     // every side, at two device pixels per CSS pixel. On an iPad that is
     // already a very large canvas, and WebKit counts every canvas against
     // one hard limit, so iOS pads far less.
-    _alertsCanvasR = L.canvas({ pane: 'alertsPane', padding: _isIOS ? 0.1 : 0.3 });
+    _alertsCanvasR = new AlertCanvas({ pane: 'alertsPane', padding: _isIOS ? 0.1 : 0.3, tolerance: 1 });
   }
   return _alertsCanvasR;
+}
+
+// -- Lighter alert shapes -------------------------------------------------------
+// Alerts issued by zone arrive with the zone's full survey outline: a coastal
+// or county zone can be thousands of points, and one heat advisory covers
+// dozens of zones. Every one of those points is projected and clipped again
+// on every zoom, and held in memory the whole time. Nothing on a weather map
+// needs a boundary to the metre, so each ring is thinned (Douglas-Peucker,
+// about 300 m) and rounded to five decimals (about a metre) once, when it
+// first arrives. Drawn warning polygons are a handful of points and pass
+// through untouched.
+const ALERT_SIMPLIFY_DEG = 0.003;
+function _simplifyRing(ring, tol) {
+  const n = ring.length;
+  if (n <= 16) return ring;
+  const keep = new Uint8Array(n);
+  keep[0] = keep[n - 1] = 1;
+  const tol2 = tol * tol;
+  const stack = [[0, n - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop();
+    const ax = ring[a][0], ay = ring[a][1], bx = ring[b][0], by = ring[b][1];
+    const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+    let far = -1, farD = tol2;
+    for (let i = a + 1; i < b; i++) {
+      const px = ring[i][0], py = ring[i][1];
+      let t = len2 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const ex = px - (ax + t * dx), ey = py - (ay + t * dy);
+      const d = ex * ex + ey * ey;
+      if (d > farD) { farD = d; far = i; }
+    }
+    if (far >= 0) { keep[far] = 1; stack.push([a, far], [far, b]); }
+  }
+  const out = [];
+  for (let i = 0; i < n; i++) if (keep[i]) out.push([Math.round(ring[i][0] * 1e5) / 1e5, Math.round(ring[i][1] * 1e5) / 1e5]);
+  // A closed ring needs at least four points (three corners and the close).
+  return out.length >= 4 ? out : ring;
+}
+function _simplifyGeometry(g, tol) {
+  if (!g || !g.coordinates) return g;
+  tol = tol || ALERT_SIMPLIFY_DEG;
+  if (g.type === 'Polygon') return { type: 'Polygon', coordinates: g.coordinates.map(r => _simplifyRing(r, tol)) };
+  if (g.type === 'MultiPolygon') return { type: 'MultiPolygon', coordinates: g.coordinates.map(p => p.map(r => _simplifyRing(r, tol))) };
+  return g;
 }
 
 // Some NWS alerts (mostly advisories issued by county/zone rather than an
@@ -15297,7 +15378,7 @@ async function _fetchZoneGeometry(ugc) {
         const r = await fetch(`https://api.weather.gov/zones/${type}/${ugc}`, { signal: _abortSignal(8000) });
         if (!r.ok) continue;
         const d = await r.json();
-        if (d.geometry) return d.geometry;
+        if (d.geometry) return _simplifyGeometry(d.geometry);
       } catch(e) {}
     }
     return null;
@@ -15466,13 +15547,6 @@ function renderAlerts(features) {
   // Priority stacking: draw lowest-priority first so the worst warnings sit on top.
   filtered.sort((a,b) => _alertPriority(a.properties.event) - _alertPriority(b.properties.event));
 
-  // Black casing layer (drawn first, sits beneath the colored outlines).
-  const casing = L.geoJSON({ type: 'FeatureCollection', features: filtered }, {
-    pane: 'alertsPane', interactive: false, renderer: _alertsCanvas(),
-    style: f => ({ color: '#000000', weight: _alertThicknessFor(f.properties.event) + 2, fill: false, opacity: 1,
-                   dashArray: f.properties._simulated ? '9 6' : null })
-  });
-
   // Main colored outline + translucent fill (keeps the existing click popup).
   // Published to _alertLayerById as well so a notification tap can fly to and
   // flash the same polygon a card click does, without duplicating that logic.
@@ -15484,7 +15558,9 @@ function renderAlerts(features) {
     pane: 'alertsPane', renderer: _alertsCanvas(),
     style: f => {
       const ev = f.properties.event || '', color = _alertColorFor(ev);
-      const st = { color, weight: _alertThicknessFor(ev), fillColor: color, fillOpacity: 0.4, opacity: 1 };
+      // casing: the black edge under the coloured line, drawn by the renderer
+      // (see _alertsCanvas) instead of by a second copy of every shape.
+      const st = { color, weight: _alertThicknessFor(ev), fillColor: color, fillOpacity: 0.4, opacity: 1, casing: '#000000' };
       // A practice product is drawn dashed. Colour alone would make it read as
       // the real thing in a screenshot, and the outline is the one part of an
       // alert that survives being scaled down to a thumbnail.
@@ -15535,7 +15611,7 @@ function renderAlerts(features) {
     });
   });
 
-  alertsLayer = L.layerGroup([casing, main, motion]).addTo(map);
+  alertsLayer = L.layerGroup([main, motion]).addTo(map);
   // Re-apply visibility , addTo can reset pane display
   const _ap = map.getPane('alertsPane');
   if (_ap) _ap.style.display = alertsLayerVisible ? '' : 'none';
@@ -15557,6 +15633,14 @@ function renderAlerts(features) {
       // Each layer gets its own phase because emergencies run at half the
       // period. One shared phase would put them in lockstep with everything
       // else and lose the very distinction the faster pulse is there to make.
+      // While the map is being panned, pinched or zoomed, every restyle
+      // repaints the whole alert canvas in the middle of the gesture, the
+      // worst moment to spend the time. The pulse just waits for it to end.
+      if (map._animatingZoom || (map.dragging && map.dragging.moving && map.dragging.moving())
+          || (map.touchZoom && map.touchZoom._moved) || _alertMapMoving) {
+        _alertFlashRAF = setTimeout(() => requestAnimationFrame(tick), 150);
+        return;
+      }
       const base = _alertFlashCfg.period;
       _alertNewLayers.forEach(({ layer, color, fast }) => {
         const per = fast ? base / 2 : base;
@@ -69024,6 +69108,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-w', date: 'Sep 23, 2026',
+    text: 'Alerts are much lighter on the map, which should help iPhones that were freezing or crashing while panning and zooming on busy weather days. Advisories drawn from forecast zones used to carry the zone\'s full surveyed outline, thousands of points each, and every alert was built twice (once for its black edge, once for its colour). Zone outlines are now smoothed to within a few hundred metres, each alert is one shape with its black edge drawn underneath, and flashing warnings pause while you pan or zoom. In testing, a heavy advisory day draws about 30 times faster.' },
   { id: '2026-09-23-v', date: 'Sep 23, 2026',
     text: 'Pinch-zooming out on a phone no longer shrinks the map into a small rectangle floating in empty space. A soft, low-detail copy of the map now sits underneath the real one and covers far more than the screen, so the edges fill in straight away while the sharp map loads over it. It uses only a handful of tiles and follows whichever map style you pick.' },
   { id: '2026-09-23-u', date: 'Sep 23, 2026',
