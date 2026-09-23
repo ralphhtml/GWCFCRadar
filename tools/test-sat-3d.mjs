@@ -59,6 +59,9 @@ const T0 = Date.UTC(2026, 8, 23, 18, 1, 17);
 const frameTimes = [0, 1, 2, 3, 4, 5].map(i => T0 + i * 300000);
 const asked = { index: [], frame: [], wms: [], arcIndex: [], arcFrame: [] };
 let wmsDown = false;              // the WMS has nothing (a travelled moment)
+let piDown = false;               // the parsing server cannot be reached at all
+let piBusyOnce = 0;               // answer the next N scan lists with a bare 503
+let ch13Split = false;            // the map's Clean IR: cold cloud left, warm ground right
 function synthFrame(t) {
   const shift = (t - T0) / 300000;                 // the anvil drifts a cell east a scan
   const h = Buffer.alloc(GW * GH * 2), g = Buffer.alloc(GW * GH);
@@ -80,6 +83,24 @@ function crc32(buf) {
     crc = (crc >>> 8) ^ c;
   }
   return (crc ^ 0xffffffff) >>> 0;
+}
+// A picture whose left half is one colour and right half another.
+function png2(w, h, left, right) {
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type), data]);
+    const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td));
+    return Buffer.concat([len, td, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 6;
+  const raw = Buffer.alloc((w * 4 + 1) * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const c = x < w / 2 ? left : right, o = y * (w * 4 + 1) + 1 + x * 4;
+    raw[o] = c[0]; raw[o + 1] = c[1]; raw[o + 2] = c[2]; raw[o + 3] = c[3];
+  }
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
 }
 function png(w, h, rgba) {
   const chunk = (type, data) => {
@@ -115,6 +136,17 @@ await p.route('**://**', route => {
     return route.fulfill({ contentType: 'application/javascript', body: readFileSync(join(LEAFLET, 'leaflet.js'), 'utf8') });
   if (url.includes('leaflet') && url.endsWith('.css'))
     return route.fulfill({ contentType: 'text/css', body: readFileSync(join(LEAFLET, 'leaflet.css'), 'utf8') });
+  if (piDown && url.startsWith('https://pi.test/')) return route.abort('connectionrefused');
+  if (url.startsWith('https://pi.test/sat/cth/index') && piBusyOnce > 0) {
+    piBusyOnce--; asked.index.push(url);
+    return route.fulfill({ status: 503, headers: CORS, body: '' });
+  }
+  if (ch13Split && url.includes('mesonet.agron.iastate.edu') && /ch13/.test(url) && /REQUEST=GetMap/.test(url)) {
+    asked.wms.push(url);
+    // White is the coldest IR shade (-100 C), dark grey is warm ground.
+    return route.fulfill({ headers: CORS, contentType: 'image/png',
+      body: png2(40, 20, [235, 235, 235, 255], [40, 40, 40, 255]) });
+  }
   if (url.startsWith('https://pi.test/sat/cth/index')) {
     asked.index.push(url);
     return route.fulfill({ headers: CORS, contentType: 'application/json', body: JSON.stringify({
@@ -427,6 +459,46 @@ console.log('\n7. closing hands everything back; opening Radar 3D closes this');
   ok('and stops any radar still being built for it', r.closed.alive === false);
   ok('opening Radar 3D closes Satellite 3D (one owns the bar at a time)', r.opened && !r.swapped.s3d && r.swapped.r3d);
   ok('a box bigger than the parsing server will build, or a sliver, is refused', r.tooBig === false && r.tiny === false && !r.on);
+}
+
+console.log('\n7b. a busy parsing server is asked again, not given up on');
+{
+  piBusyOnce = 1;
+  const before = asked.index.length;
+  await p.evaluate(() => { _s3dOpenBounds(35.5, -97, 36.5, -95.5); });
+  await p.waitForFunction(() => _s3dFrames.length === 6, null, { timeout: 30000 }).catch(() => {});
+  const r = await p.evaluate(() => ({ n: _s3dFrames.length, src: _s3dFrames[0] && _s3dFrames[0].data.source,
+    status: document.getElementById('s3d-status').textContent }));
+  ok('one bare 503, then the retry loads all six scans from the parsing server',
+     asked.index.length - before === 2 && r.n === 6 && r.src === 'acha+ir', JSON.stringify(r));
+  await p.evaluate(() => _s3dClose());
+}
+
+console.log('\n7c. no parsing server at all: the browser builds the heights from the map\'s infrared');
+{
+  piDown = true; ch13Split = true;
+  await p.evaluate(() => { _s3dOpenBounds(35.5, -97, 36.5, -95.5); });
+  await p.waitForFunction(() => _s3dFrames.length === 6, null, { timeout: 40000 }).catch(() => {});
+  const r = await p.evaluate(() => {
+    const f = _s3dFrames[_s3dFrames.length - 1], d = f && f.data;
+    const row = d ? Math.floor(d.h / 2) : 0;
+    return { n: _s3dFrames.length, src: d && d.source,
+             left: d && d.hm[row * d.w + 2], right: d && d.hm[row * d.w + d.w - 3],
+             bar: _animSource().id, times: _s3dFrames.map(x => x.t),
+             status: document.getElementById('s3d-status').textContent,
+             where: document.getElementById('s3d-where').textContent };
+  });
+  piDown = false; ch13Split = false;
+  ok('six frames were built with no parsing server, straight from the map service', r.n === 6
+     && r.src === 'map-ir' && r.bar === 's3d', JSON.stringify(r));
+  ok('cold cloud stands tall (about 17 km) and warm ground stays flat', r.left > 14 && r.left <= 18 && r.right === 0,
+     r.left + ' / ' + r.right);
+  ok('the frames are ten minutes apart, oldest first', r.times.every((t, i) => !i || t - r.times[i - 1] === 600000),
+     JSON.stringify(r.times));
+  ok('the status says the heights came from the map because the parsing server was offline',
+     /parsing server offline/.test(r.status), r.status);
+  ok('and still names the satellite and sector', /GOES-East/.test(r.where) && /CONUS/.test(r.where), r.where);
+  await p.evaluate(() => _s3dClose());
 }
 
 console.log('\n8. nothing above threw');
