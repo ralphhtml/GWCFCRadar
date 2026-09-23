@@ -43,7 +43,7 @@ console.log('\n1. the fix is in the page');
   ok('both are wired to the map, the same way the graticule wires its own pair',
      /_initGraticule\(\);\s*\n\s*map\.on\('zoomstart', _goesOnZoomStart\);\s*\n\s*map\.on\('zoomend', _goesOnZoomEnd\);/.test(PAGE));
   ok('zoomstart leaves the current frame alone and drops the rest',
-     /function _goesOnZoomStart\(\) \{\s*\n\s*if \(!activeLayers\.satellite \|\| !_goesPool\.length\) return;\s*\n\s*for \(let i = 0; i < _goesPool\.length; i\+\+\) \{\s*\n\s*if \(i === goesCurrentFrame\) continue;/.test(PAGE));
+     /function _goesOnZoomStart\(\) \{\s*\n(\s*_goesFillTok\+\+;\s*\n)?\s*if \(!activeLayers\.satellite \|\| !_goesPool\.length\) return;\s*\n\s*for \(let i = 0; i < _goesPool\.length; i\+\+\) \{\s*\n\s*if \(i === goesCurrentFrame\) continue;/.test(PAGE));
   ok('zoomend debounces the rebuild rather than firing on every step',
      /function _goesOnZoomEnd\(\) \{[\s\S]{0,200}setTimeout\([\s\S]{0,120}, 300\);/.test(PAGE));
   const EM = String.fromCharCode(0x2014);

@@ -10774,6 +10774,13 @@ body.gwcfc-crosshair #map::after {
 }
 /* Smooth crossfade between radar animation frames */
 .leaflet-radar-pane img { transition: opacity 80ms ease-in-out; }
+/* A map layer at opacity 0 (a preloaded playback frame waiting its turn) is
+   still composited by the browser on every frame of a pan or zoom. Marked
+   hidden it is skipped; the moment its opacity is raised it no longer
+   matches and shows at once. Leaflet writes opacity inline, so this reads
+   the inline style. */
+.leaflet-pane .leaflet-layer[style*="opacity: 0;"],
+.leaflet-pane .leaflet-image-layer[style*="opacity: 0;"] { visibility: hidden; }
 
 /* The offline banner: says when the connection went, so the age of what is
    on screen is never a mystery. Vanishes the moment the network returns. */
@@ -13022,8 +13029,13 @@ function _initGraticule() {
 
   function redraw() {
     const size = map.getSize();
-    canvas.width  = size.x;
-    canvas.height = size.y;
+    // Setting a canvas's size throws its whole bitmap away and allocates a
+    // new one, even to the same size; this runs on every frame of a pan, so
+    // it only happens when the map really changed size.
+    if (canvas.width !== size.x || canvas.height !== size.y) {
+      canvas.width  = size.x;
+      canvas.height = size.y;
+    }
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, size.x, size.y);
 
@@ -13382,6 +13394,7 @@ function _switchSlotToWms(i) {
   l.on('load', _markWmsReady);
   _wmsReadyTimer = setTimeout(_markWmsReady, 30000); // match showFrame's 30s force-reveal
   _radarLayerLoaded[i] = false;
+  _poolIdleWhenHidden(l);
   l.addTo(map);
   _radarLayerPool[i] = l;
   // Do NOT reveal here - wait for tiles to load first (immediate setOpacity showed blank)
@@ -13466,8 +13479,25 @@ function _ensureNexradLayer(i) {
   });
 
   _radarLayerLoaded[i] = false;
+  _poolIdleWhenHidden(l);
   l.addTo(map);
   _radarLayerPool[i] = l;
+}
+
+// A pooled frame nobody can see yet does not need its tiles kept up with
+// every step of a pan. On a desktop each of the 12 to 24 preloaded frames
+// used to re-work out and request its tiles on every move (Leaflet's
+// updateWhenIdle: false), so a pan with radar playing did that work 24
+// times over for pictures at opacity 0. Now only the frame on screen
+// follows the drag live; the hidden ones catch up once, when the pan ends
+// (their moveend update is untouched), and the moment one is shown it
+// follows the next move again. Must run before the layer is added: Leaflet
+// wires this handler up when the layer joins the map.
+function _poolIdleWhenHidden(l) {
+  if (!l || !l.options || l.options.updateWhenIdle || typeof L === 'undefined' || !l._onMoveEnd) return l;
+  const upd = L.Util.throttle(l._onMoveEnd, l.options.updateInterval || 200, l);
+  l._onMove = function () { if ((this.options.opacity || 0) > 0.01) upd(); };
+  return l;
 }
 
 function _ensureCanadaLayer(i) {
@@ -31007,7 +31037,34 @@ function _goesEnsureLayer(i) {
 // the old zoom anyway) and the window is rebuilt once, a beat after the
 // zoom actually settles.
 let _goesZoomTimer = null;
+// Refilling the playback window after a zoom used to attach every frame in
+// it (up to two dozen WMS layers) in one go, and each one lays out and asks
+// for its whole viewport of tiles on the spot: the long stall right after a
+// zoom settled. Nearest frames first, in idle time, so the next frame to
+// play is ready first and the page keeps drawing in between. The
+// token drops a fill that a newer window, a zoom or a clear has replaced.
+let _goesFillTok = 0;
+function _goesFillWindow(s, e, idx) {
+  const tok = ++_goesFillTok;
+  const order = [];
+  for (let i = s; i <= e; i++) if (i !== idx && !_goesPool[i]) order.push(i);
+  if (!order.length) return;
+  order.sort((a, b) => Math.abs(a - idx) - Math.abs(b - idx));
+  // In the browser's idle time: while a pan or zoom is still going there is
+  // little of it, so hidden frames wait until the hand stops rather than
+  // competing with it. The timeout keeps a busy page from starving playback.
+  const later = (f) => (typeof requestIdleCallback === 'function'
+    ? requestIdleCallback(f, { timeout: 1200 }) : setTimeout(() => f(null), 60));
+  const step = (deadline) => {
+    if (tok !== _goesFillTok || !activeLayers.satellite) return;
+    do { _goesEnsureLayer(order.shift()); }
+    while (order.length && deadline && deadline.timeRemaining() > 8);
+    if (order.length) later(step);
+  };
+  later(step);
+}
 function _goesOnZoomStart() {
+  _goesFillTok++;
   if (!activeLayers.satellite || !_goesPool.length) return;
   for (let i = 0; i < _goesPool.length; i++) {
     if (i === goesCurrentFrame) continue;
@@ -31028,6 +31085,7 @@ function _goesOnZoomEnd() {
 }
 
 function _goesClearPool() {
+  _goesFillTok++;
   _goesPool.forEach(l => { if (l) { try { map.removeLayer(l); } catch (e) {} } });
   _goesPool = [];
   _goesPoolLoaded = [];
@@ -31142,6 +31200,7 @@ function _makeGoesLayer(timeStr, opacity) {
     const c = layer.getContainer && layer.getContainer();
     if (c) c.classList.add('wx-photo');
   });
+  _poolIdleWhenHidden(layer);
   return layer.addTo(map);
 }
 
@@ -31394,7 +31453,10 @@ function showGoesFrame(idx) {
       _goesPoolLoaded[i] = false;
     }
   }
-  for (let i = s; i <= e; i++) _goesEnsureLayer(i);
+  // The frame asked for goes on now; the rest of the window follows nearest
+  // first, in the browser's idle time (see _goesFillWindow).
+  _goesEnsureLayer(idx);
+  _goesFillWindow(s, e, idx);
 
   // One opacity swap, no network wait, when the frame is already fetched.
   // When it is not fetched yet (playback stepped past the preloaded window,
@@ -37226,6 +37288,12 @@ let _dismissScheduled = false;
 // (fonts, browser chrome, an unanticipated device size) - measure the real
 // thing instead and drive both buttons off a CSS variable so they're
 // correct on any device, not just the ones that got manually checked.
+// A custom property written on the page root restyles the whole page, even
+// when the number did not change, so each one is only written when it did.
+function _setRootVar(name, value) {
+  const root = document.documentElement;
+  if (root.style.getPropertyValue(name) !== value) root.style.setProperty(name, value);
+}
 function _syncFabClearance() {
   const animbar = document.getElementById('animbar');
   if (!animbar) return;
@@ -37233,7 +37301,7 @@ function _syncFabClearance() {
   if (!rect.height) return; // not laid out yet
   const gap = 22; // breathing room between the buttons and the bar
   const clearance = Math.max(60, Math.round(window.innerHeight - rect.top + gap));
-  document.documentElement.style.setProperty('--fab-bottom', clearance + 'px');
+  _setRootVar('--fab-bottom', clearance + 'px');
 
   // #right-menu and #sidebar (the "toolbar menu" and "left menu") both need
   // to stop growing before they reach down into where the AI/overlay
@@ -37246,7 +37314,7 @@ function _syncFabClearance() {
   const toggleBtn = document.getElementById('overlay-toggle-btn');
   const btnHeight = Math.max(aiBtn ? aiBtn.getBoundingClientRect().height : 0, toggleBtn ? toggleBtn.getBoundingClientRect().height : 0) || 58;
   const menuClearance = Math.round(clearance + btnHeight + 12);
-  document.documentElement.style.setProperty('--menu-clearance', menuClearance + 'px');
+  _setRootVar('--menu-clearance', menuClearance + 'px');
   // Where the top-anchored phone menus may begin: just under the quick menu
   // while it is open (it starts shown now, and wraps to two rows on narrow
   // phones), and at the old 90px floor when it is hidden. Measured off the
@@ -37259,10 +37327,16 @@ function _syncFabClearance() {
       const r = qm.getBoundingClientRect();
       if (r.height > 0) clear = Math.max(90, Math.round(r.bottom) + 8);
     }
-    document.documentElement.style.setProperty('--lqm-clear', clear + 'px');
+    _setRootVar('--lqm-clear', clear + 'px');
   } catch (e) {}
 }
-window.addEventListener('resize', _syncFabClearance);
+// A window being dragged wider fires resize dozens of times a second, and
+// each call measures the page; once per painted frame is all it can show.
+let _fabRaf = 0;
+window.addEventListener('resize', () => {
+  if (_fabRaf) return;
+  _fabRaf = requestAnimationFrame(() => { _fabRaf = 0; _syncFabClearance(); });
+});
 window.addEventListener('orientationchange', () => setTimeout(_syncFabClearance, 250));
 document.addEventListener('DOMContentLoaded', () => setTimeout(_syncFabClearance, 200));
 
@@ -68410,6 +68484,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-m', date: 'Sep 23, 2026',
+    text: 'Smoother panning and zooming with radar or satellite playing. The preloaded playback frames you cannot see yet no longer re-fetch their map tiles on every step of a drag, they catch up when you let go, and the browser no longer spends time drawing them. After a zoom, satellite brings its frames back nearest first in spare moments instead of all at once, which was the freeze right after zooming. The time labels under the animation bar stopped re-measuring the page on every frame, the lat/lon grid stopped rebuilding its canvas on every move, and resizing the window is lighter too. The labels now also refit when the bar changes size while paused.' },
   { id: '2026-09-23-l', date: 'Sep 23, 2026',
     text: 'Every weather layer has a 3D mode now. Turn a layer on (model charts, waves, air, wind, temperature, pressure, sea temperature or MRMS), long-press the map, pick Draw a 3D (layer) zone and drag a box: the real ground inside it rises to its true height, and the layer is draped over it in your own colours. Each layer gets its own panel, and you can have several open at once. Press play on the animation bar and the 3D view plays along. The ocean layers stand on the real seafloor, so you can see the shallow shelf and the deep water: the Water button switches between a see-through sea over the seafloor and the layer painted straight onto the seafloor. Every panel has a Height stretch (automatic to start, a slider to change it), lit, flat and relief looks, a cutaway, Walk, VR, fullscreen, and your location marked. The MRMS panel has its own Time Machine button, and in a cross-layer comparison the menu offers the layer of the pane you pressed. Radar 3D and Satellite 3D gained a Terrain button that puts the real hills and mountains under the storm or the clouds. The ground comes from free public elevation tiles, and the home server keeps its own copy in case those cannot be reached.' },
   { id: '2026-09-23-k', date: 'Sep 23, 2026',
@@ -71349,8 +71425,36 @@ function buildTimelineLabels(src) {
     wrap.innerHTML = '<span class="tl-empty">No loop loaded</span>';
     return;
   }
-  wrap.innerHTML = _tlTickHTML(times, _fmtHHMMshort)
-    || '<span class="tl-empty">No loop loaded</span>';
+  const html = _tlTickHTML(times, _fmtHHMMshort) || '<span class="tl-empty">No loop loaded</span>';
+  // Called on every animation frame through the play-button sync; the labels
+  // only change when the loop does, so the DOM is only touched then.
+  if (wrap.innerHTML !== html) wrap.innerHTML = html;
+}
+
+// The strip's width, remembered. Reading clientWidth makes the browser lay
+// the whole page out right then, and this ran on every animation frame, in
+// the middle of pans, with hundreds of radar tiles on the page. A
+// ResizeObserver keeps the number fresh instead, measured when the browser
+// has already done its layout anyway.
+function _tlStripWidth(wrap) {
+  if (!wrap) return 0;
+  if (typeof ResizeObserver !== 'function') return wrap.clientWidth || 0;
+  if (wrap._tlW == null) {
+    wrap._tlW = wrap.clientWidth || 0;
+    try {
+      new ResizeObserver(() => {
+        const w = wrap.clientWidth || 0;
+        if (w === wrap._tlW) return;
+        wrap._tlW = w;
+        // A new width can fit a different number of labels: refit them now,
+        // so a paused loop is right too, not only one that is playing.
+        if (typeof buildTimelineLabels === 'function' && wrap.querySelector('span:not(.tl-empty)')) {
+          try { buildTimelineLabels(); } catch (e) {}
+        }
+      }).observe(wrap);
+    } catch (e) {}
+  }
+  return wrap._tlW;
 }
 
 // The tick labels under the slider, as many as actually fit, measured.
@@ -71370,7 +71474,7 @@ function _tlTickHTML(times, fmt) {
   // plus the breathing room that keeps neighbours from reading as one
   // number. A strip that has not been laid out yet measures 0 and falls
   // back to the desktop-familiar five.
-  const w = (wrap && wrap.clientWidth) || 0;
+  const w = _tlStripWidth(wrap);
   const fit = w ? Math.max(2, Math.min(5, Math.floor(w / 44))) : 5;
   const step = Math.max(1, Math.ceil(n / fit));
   let html = '';
