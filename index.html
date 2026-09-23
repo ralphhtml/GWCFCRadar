@@ -28669,7 +28669,7 @@ const WAVES_SCALES = {
 };
 function _waveColorFor(product, v) {
   if (product === 'wave-dir') return _hslToRgb(((v % 360) + 360) % 360, 0.85, 0.5);
-  return _colorScale(v, WAVES_SCALES[product] || WAVES_SCALES['wave-height']);
+  return _colorScale(v, _omScale('waves:' + product, WAVES_SCALES[product] || WAVES_SCALES['wave-height']));
 }
 
 function toggleWavesSub() {
@@ -28927,7 +28927,7 @@ const AIR_SCALES = {
 };
 const AIR_UNITS = { 'us-aqi': 'AQI', pm25: 'µg/m³', pm10: 'µg/m³', ozone: 'µg/m³' };
 function _airColorFor(product, v) {
-  return _colorScale(v, AIR_SCALES[product] || AQI_SCALE);
+  return _colorScale(v, _omScale('air:' + product, AIR_SCALES[product] || AQI_SCALE));
 }
 
 function toggleAirSub() {
@@ -29041,7 +29041,7 @@ const DEWPOINT_SCALE = [[20,[80,0,180]],[28,[40,50,205]],[35,[0,120,220]],[42,[0
 const TEMPERATURE_SCALES = { 'air-temp': TEMP_SCALE, 'feels-like': TEMP_SCALE, 'dew-point': DEWPOINT_SCALE };
 const TEMPERATURE_UNITS = { 'air-temp': '°F', 'feels-like': '°F', 'dew-point': '°F' };
 function _temperatureColorFor(product, v) {
-  return _colorScale(v, TEMPERATURE_SCALES[product] || TEMP_SCALE);
+  return _colorScale(v, _omScale('temperature:' + product, TEMPERATURE_SCALES[product] || TEMP_SCALE));
 }
 
 function toggleTemperatureSub() {
@@ -29158,7 +29158,7 @@ const PRESSURE_FIELD = { 'sea-level': 'pressure_msl', surface: 'surface_pressure
 const PRESSURE_SCALE = [[970,[200,0,220]],[980,[100,20,220]],[990,[0,90,220]],[998,[0,150,160]],[1005,[0,200,60]],[1010,[140,210,20]],[1015,[255,204,0]],[1020,[255,150,0]],[1025,[255,90,0]],[1032,[240,30,0]],[1040,[220,0,0]]];
 const PRESSURE_UNITS = { 'sea-level': 'hPa', surface: 'hPa' };
 function _pressureColorFor(product, v) {
-  return _colorScale(v, PRESSURE_SCALE);
+  return _colorScale(v, _omScale('pressure', PRESSURE_SCALE));
 }
 
 function togglePressureSub() {
@@ -29281,7 +29281,191 @@ const WIND_FIELDS = {
 // Also shared by the Wind Particles overlay below, so particle color always
 // matches this layer's color map.
 const WIND_SPEED_SCALE = [[0,[60,60,180]],[5,[30,100,200]],[8,[0,140,220]],[14,[0,175,170]],[20,[0,200,120]],[27,[130,210,60]],[35,[255,204,0]],[45,[255,150,0]],[55,[255,110,0]],[65,[240,60,0]],[80,[220,0,0]],[100,[205,0,120]],[120,[190,0,220]]];
-function _windColorFor(v) { return _colorScale(v, WIND_SPEED_SCALE); }
+function _windColorFor(v) { return _colorScale(v, _omScale('wind', WIND_SPEED_SCALE)); }
+
+// -- OPEN-METEO COLORS ------------------------------------------------------
+// The five layers drawn from Open-Meteo's live grids (Waves, Air, Wind,
+// Temperature, Pressure) are painted right here in the browser from the
+// numbers, one colour scale per product, so a scale can simply be swapped:
+// every value is recoloured exactly, with nothing to decode back out of a
+// picture the way Model Colors has to. Settings > Open-Meteo Colors edits
+// them; each product keeps its own table, saved on this device, and turning
+// it off (or Back to Normal) puts the built-in scale back.
+const OM_COLOR_FIELDS = [
+  { key: 'waves:wave-height',     label: 'Waves: Wave Height',   unit: 'ft',    step: 0.5 },
+  { key: 'waves:swell-height',    label: 'Waves: Swell Height',  unit: 'ft',    step: 0.5 },
+  { key: 'waves:wave-period',     label: 'Waves: Period',        unit: 's',     step: 0.5 },
+  { key: 'waves:sst',             label: 'Waves: Sea Surf. Temp', unit: '°F',   step: 1 },
+  { key: 'air:us-aqi',            label: 'Air: US AQI',          unit: 'AQI',   step: 1 },
+  { key: 'air:pm25',              label: 'Air: PM2.5',           unit: 'µg/m³', step: 0.5 },
+  { key: 'air:pm10',              label: 'Air: PM10',            unit: 'µg/m³', step: 1 },
+  { key: 'air:ozone',             label: 'Air: Ozone',           unit: 'µg/m³', step: 1 },
+  { key: 'temperature:air-temp',  label: 'Temperature: Air Temp', unit: '°F',   step: 1 },
+  { key: 'temperature:feels-like', label: 'Temperature: Feels Like', unit: '°F', step: 1 },
+  { key: 'temperature:dew-point', label: 'Temperature: Dew Point', unit: '°F',  step: 1 },
+  { key: 'wind',                  label: 'Wind: Speed',          unit: 'mph',   step: 1 },
+  { key: 'pressure',              label: 'Pressure: Sea-Level & Surface', unit: 'hPa', step: 1 },
+];
+const OM_COLORS_KEY = 'gwcfc_om_colors';
+let _omColors = (function () {
+  try { const raw = JSON.parse(localStorage.getItem(OM_COLORS_KEY) || '{}'); return raw && typeof raw === 'object' ? raw : {}; }
+  catch (e) { return {}; }
+})();
+const _omScaleCache = new Map();
+// The built-in scale for a product, as the [[value, [r, g, b]], ...] table
+// _colorScale reads.
+function _omDefaultScale(key) {
+  const [layer, product] = key.split(':');
+  if (layer === 'waves') return WAVES_SCALES[product] || WAVES_SCALES['wave-height'];
+  if (layer === 'air') return AIR_SCALES[product] || AQI_SCALE;
+  if (layer === 'temperature') return TEMPERATURE_SCALES[product] || TEMP_SCALE;
+  if (layer === 'wind') return WIND_SPEED_SCALE;
+  return PRESSURE_SCALE;
+}
+function _omDef(key) {
+  const f = OM_COLOR_FIELDS.find(x => x.key === key) || {};
+  const sc = _omDefaultScale(key);
+  return { min: sc[0][0], max: sc[sc.length - 1][0], step: f.step || 1, unit: f.unit || '' };
+}
+// The scale actually painted: the custom table when one is on, otherwise the
+// built-in one handed in.
+function _omScale(key, fallback) {
+  const c = _omColors[key];
+  if (!c || !c.on || typeof _stopsUsable !== 'function' || !_stopsUsable(c.stops)) return fallback;
+  let s = _omScaleCache.get(key);
+  if (!s) {
+    s = _stopsNormalize(c.stops, _omDef(key)).map(x => [x.v, _gradHexToRgb(x.c)]);
+    _omScaleCache.set(key, s);
+  }
+  return s.length >= 2 ? s : fallback;
+}
+function _omSave() {
+  _omScaleCache.clear();
+  try { localStorage.setItem(OM_COLORS_KEY, JSON.stringify(_omColors)); } catch (e) {}
+}
+// Repaint whichever of these layers is on, from the numbers it already has:
+// no refetch, so a colour change shows at once.
+function _omRepaint() {
+  try { if (typeof wavesActive !== 'undefined' && wavesActive && _wavesAllGrids) _paintAndShowWaves(_wavesAllGrids, _wavesLoadToken); } catch (e) {}
+  try { if (typeof airActive !== 'undefined' && airActive && _airAllGrids) _paintAndShowAir(_airAllGrids, _airLoadToken); } catch (e) {}
+  try { if (typeof temperatureActive !== 'undefined' && temperatureActive && _temperatureAllGrids) _paintAndShowTemperature(_temperatureAllGrids, _temperatureLoadToken); } catch (e) {}
+  try { if (typeof pressureActive !== 'undefined' && pressureActive && _pressureAllGrids) _paintAndShowPressure(_pressureAllGrids, _pressureLoadToken); } catch (e) {}
+  try { if (typeof windActive !== 'undefined' && windActive && _windGridCache) _paintAndShowWind(_windLoadToken); } catch (e) {}
+}
+
+// -- The Settings editor ------------------------------------------------------
+let _omUiKey = (function () {
+  try { const k = localStorage.getItem('gwcfc_om_colors_pick'); return OM_COLOR_FIELDS.some(f => f.key === k) ? k : OM_COLOR_FIELDS[0].key; }
+  catch (e) { return OM_COLOR_FIELDS[0].key; }
+})();
+// The stops being edited: the custom table if there is one, else the
+// built-in scale written out as editable stops.
+function _omUiStops() {
+  const c = _omColors[_omUiKey];
+  if (c && _stopsUsable(c.stops)) return _stopsNormalize(c.stops, _omDef(_omUiKey));
+  return _omDefaultScale(_omUiKey).map(([v, rgb]) => ({ v, c: _gradRgbToHex(rgb) }));
+}
+function _omUiCommit(stops, on) {
+  const prev = _omColors[_omUiKey];
+  _omColors[_omUiKey] = { on: on === undefined ? true : !!on, stops: stops.map(s => ({ v: +s.v, c: s.c })) };
+  if (prev && prev.on === false && on === undefined) _omColors[_omUiKey].on = true;
+  _omSave();
+  _omUiRender();
+  _omRepaint();
+}
+function _omUiRender() {
+  const sel = document.getElementById('lqm-om-field');
+  if (!sel) return;
+  if (!sel.options.length) {
+    OM_COLOR_FIELDS.forEach(f => { const o = document.createElement('option'); o.value = f.key; o.textContent = f.label; sel.appendChild(o); });
+  }
+  sel.value = _omUiKey;
+  const def = _omDef(_omUiKey);
+  const stops = _omUiStops();
+  const c = _omColors[_omUiKey];
+  const on = !!(c && c.on && _stopsUsable(c.stops));
+  const tog = document.getElementById('lqm-om-colors-on');
+  if (tog) tog.checked = on;
+  const box = document.getElementById('lqm-om-stops');
+  if (box) box.innerHTML = _gradStopsHtml(stops, '_omUiColor', '_omUiRemove', def, '_omUiValue');
+  const pv = document.getElementById('lqm-om-preview');
+  if (pv) pv.style.background = _gradPreviewCss(stops, def);
+  const add = document.getElementById('lqm-om-add');
+  if (add) add.disabled = stops.length >= 16;
+  const pre = document.getElementById('lqm-om-preset');
+  if (pre && pre.options.length <= 1) {
+    Object.keys(GRAD_PRESETS).filter(k => !GRAD_PRESETS[k].fields).forEach(k => {
+      const o = document.createElement('option'); o.value = k; o.textContent = GRAD_PRESETS[k].label; pre.appendChild(o);
+    });
+  }
+  const note = document.getElementById('lqm-om-note');
+  if (note) note.textContent = on ? 'Your colours are on for this product.' : 'Showing the built-in colours. Edit any colour to start your own.';
+}
+function _omUiPick(key) {
+  if (!OM_COLOR_FIELDS.some(f => f.key === key)) return;
+  _omUiKey = key;
+  try { localStorage.setItem('gwcfc_om_colors_pick', key); } catch (e) {}
+  _omUiRender();
+}
+function _omUiColorsOn(on) {
+  const stops = _omUiStops();
+  _omUiCommit(stops, on);
+}
+function _omUiColor(i, hex) {
+  const stops = _omUiStops();
+  if (!stops[i] || !/^#[0-9a-f]{6}$/i.test(hex)) return;
+  stops[i].c = hex.toLowerCase();
+  _omUiCommit(stops);
+}
+function _omUiValue(i, val) {
+  const stops = _omUiStops();
+  if (!stops[i] || !isFinite(+val)) return;
+  stops[i].v = +val;
+  _omUiCommit(stops);
+}
+function _omUiRemove(i) {
+  const stops = _omUiStops();
+  if (stops.length <= 2) return;
+  stops.splice(i, 1);
+  _omUiCommit(stops);
+}
+// A new colour between the two highest stops, halfway in value and colour.
+function _omUiAddStop() {
+  const stops = _omUiStops();
+  if (stops.length >= 16) return;
+  const a = stops[stops.length - 2], b = stops[stops.length - 1];
+  stops.splice(stops.length - 1, 0, { v: (a.v + b.v) / 2, c: _gradMidColor(a.c, b.c) });
+  _omUiCommit(stops);
+}
+// Same values, colours in the opposite order.
+function _omUiInvert() {
+  const stops = _omUiStops();
+  const cols = stops.map(s => s.c).reverse();
+  _omUiCommit(stops.map((s, i) => ({ v: s.v, c: cols[i] })));
+}
+// A preset's colours spread evenly across this product's own range.
+function _omUiPreset(k) {
+  const p = GRAD_PRESETS[k];
+  const pre = document.getElementById('lqm-om-preset');
+  if (pre) pre.value = '';
+  if (!p) return;
+  const def = _omDef(_omUiKey);
+  const cols = p.stops.map(s => typeof s === 'string' ? s : s.c);
+  const n = cols.length - 1;
+  _omUiCommit(cols.map((c, i) => ({ v: def.min + (n ? i / n : 0) * (def.max - def.min), c })));
+}
+function _omUiReset() {
+  delete _omColors[_omUiKey];
+  _omSave();
+  _omUiRender();
+  _omRepaint();
+}
+function _omUiResetAll() {
+  _omColors = {};
+  _omSave();
+  _omUiRender();
+  _omRepaint();
+}
 
 // Picks the entry in an hourly series that matches the current hour. Reading
 // [0] instead means midnight of today, so the map could be showing wind up to
@@ -57247,6 +57431,55 @@ function selectProduct(p) {
   </div>
 
   <!-- --- LAYER OPACITY --- -->
+  <!-- --- OPEN-METEO COLORS: the scales of the five live-grid layers --- -->
+  <div class="lqm-settings-group" data-cat="omcolors">
+    <div class="lqm-settings-category"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-palette></use></svg> Open-Meteo Colors</div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Layer</span>
+      <select id="lqm-om-field" class="lqm-settings-select" onchange="_omUiPick(this.value)"></select>
+    </div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Custom Colors</span>
+      <label class="lqm-toggle">
+        <input type="checkbox" id="lqm-om-colors-on" onchange="_omUiColorsOn(this.checked)">
+        <div class="lqm-toggle-track"></div>
+        <div class="lqm-toggle-knob"></div>
+      </label>
+    </div>
+    <div class="lqm-settings-row" style="align-items:flex-start;">
+      <span class="lqm-settings-lbl">Low to High</span>
+      <div style="display:flex;flex-direction:column;gap:5px;flex:1;min-width:0;">
+        <div id="lqm-om-stops" class="lqm-grad-stops"></div>
+        <div id="lqm-om-preview" class="lqm-grad-preview"></div>
+        <div id="lqm-om-note" style="font-family:var(--mono);font-size:9px;opacity:.7;"></div>
+      </div>
+    </div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Edit</span>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <button id="lqm-om-add" class="lqm-settings-btn" onclick="_omUiAddStop()">+ Color</button>
+        <button class="lqm-settings-btn" onclick="_omUiInvert()">Invert</button>
+        <select id="lqm-om-preset" class="lqm-settings-select" onchange="_omUiPreset(this.value)">
+          <option value="">Preset&hellip;</option>
+        </select>
+      </div>
+    </div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">Back to Normal</span>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <button class="lqm-settings-btn" onclick="_omUiReset()">This layer</button>
+        <button class="lqm-settings-btn" onclick="_omUiResetAll()">All layers</button>
+      </div>
+    </div>
+    <div style="font-size:9px;opacity:.65;line-height:1.45;padding:2px 4px 0;">
+      Waves, Air, Wind, Temperature and Pressure are drawn right here from
+      Open-Meteo's numbers, so these colours repaint the real values exactly.
+      Each colour starts at the value beside it. Every product keeps its own
+      table, the layer on the map changes the moment you edit, and the
+      Inspector and 3D view follow the same colours.
+    </div>
+  </div>
+
   <div class="lqm-settings-group" data-cat="layers">
     <div class="lqm-settings-category"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-sliders></use></svg> Layer Opacity</div>
     <div class="lqm-settings-row">
@@ -64079,6 +64312,7 @@ function lqmOpenSettings() {
   const _clkSel = document.getElementById('lqm-set-clock');
   if (_clkSel) _clkSel.value = _appClock;
   if (typeof _satcSyncUi === 'function') { try { _satcSyncUi(); } catch (e) {} }
+  if (typeof _omUiRender === 'function') { try { _omUiRender(); } catch (e) {} }
   // The shortcut rows are rebuilt on every open, not once at boot. A key
   // rebound from the offer dialog, or a preset picked on another tab, has to
   // be what the panel shows when it next appears.
@@ -68484,6 +68718,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-23-o', date: 'Sep 23, 2026',
+    text: 'New in Settings: Open-Meteo Colors. Waves, Air, Wind, Temperature and Pressure are drawn from Open-Meteo\'s live numbers, and you can now pick your own colours for each of their products (wave height, swell, period, sea temperature, US AQI, PM2.5, PM10, ozone, air temperature, feels like, dew point, wind speed and pressure). Choose a layer, change any colour or the value it starts at, add or remove colours, invert, or start from a preset. The map repaints as you edit, the Inspector and the 3D view use the same colours, and Back to Normal puts one layer or all of them back to the built-in scale.' },
   { id: '2026-09-23-n', date: 'Sep 23, 2026',
     text: 'Fixed 3D mode for the weather layers. When the elevation tiles could not be reached, the 3D panel sat empty with an error instead of showing anything. It now tries three places for the ground heights (two addresses for the same public tiles, then Mapterhorn, then the home server), remembers whichever one works, and if none of them answer it still shows the layer in 3D on flat ground and tells you why. Layers whose pictures the page was not allowed to read back, like MRMS, now drape too: a readable copy of the same picture is fetched in the background and used instead.' },
   { id: '2026-09-23-m', date: 'Sep 23, 2026',
