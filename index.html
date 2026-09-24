@@ -6578,6 +6578,14 @@ body.lite-mode #export-modal { display: none !important; }
   box-shadow: 0 0 10px rgba(70,224,138,0.9);
 }
 /* The MRRL network's radars: violet, so they read as a different network. */
+/* The Polygon and Radius tools' 3D button: which 3D view to open. */
+.zone3d-pick { position: fixed; z-index: 3000; display: flex; flex-direction: column; gap: 3px; min-width: 150px;
+  padding: 8px; border-radius: 10px; background: rgba(8,4,4,0.94); border: 1px solid rgba(255,209,102,0.45);
+  box-shadow: 0 6px 22px rgba(0,0,0,0.6); font-family: 'Comfortaa', sans-serif; }
+.zone3d-pick-title { font-size: 9px; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(255,209,102,0.7); margin: 0 2px 3px; }
+.zone3d-pick button { font: inherit; font-size: 11px; font-weight: 700; text-align: left; padding: 6px 9px; border-radius: 6px; cursor: pointer;
+  background: rgba(255,209,102,0.08); border: 1px solid rgba(255,209,102,0.3); color: rgba(255,230,200,0.9); }
+.zone3d-pick button:hover { background: #ffd166; color: #1a1200; }
 .nexrad-label.mrrl { background: #c9a0ff; color: #1a0030; }
 .nexrad-label.active-station {
   background: var(--accent);
@@ -11988,7 +11996,7 @@ body.clean-mode #clean-hint { opacity: 1; }
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M9 6V4h6v2"/></svg>
     </button>
     <div class="dtb-sep"></div>
-    <button class="rtb-btn" id="rtb-3d-btn" onclick="_r3dFromRadius()" title="View this radius in 3D">
+    <button class="rtb-btn" id="rtb-3d-btn" onclick="_r3dFromRadius(event)" title="View this radius in 3D (Radar, Satellite, Model or a layer)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" width="15" height="15"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
     </button>
     <div class="dtb-sep"></div>
@@ -12061,7 +12069,7 @@ body.clean-mode #clean-hint { opacity: 1; }
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
   </button>
   <!-- View the polygon's area in 3D -->
-  <button class="ptb-btn" id="ptb-3d" onclick="_r3dFromPolygon()" title="View this polygon's area in 3D">
+  <button class="ptb-btn" id="ptb-3d" onclick="_r3dFromPolygon(event)" title="View this polygon in 3D (Radar, Satellite, Model or a layer), shaped like the polygon">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" width="17" height="17"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
   </button>
   <!-- Close -->
@@ -46097,6 +46105,7 @@ function _cmOpen(e) {
     <div class="cm-item" onclick="_cmRadar3DDraw()">${ic('radar3d')} Draw a 3D radar zone</div>
     <div class="cm-item" onclick="_cmSat3DDraw()">${ic('satellite')} Draw a 3D satellite zone</div>
     <div class="cm-item" onclick="_cmModel3DHere()">${ic('terrain3d')} 3D model volume here${pm ? `: ${esc(pm.label)} &middot; F+${String(pm.fhr).padStart(3, '0')}` : ''}</div>
+    <div class="cm-item" onclick="_cmModel3DDraw()">${ic('terrain3d')} Draw a 3D model zone</div>
     ${typeof _l3dMenuItems === 'function' ? _l3dMenuItems(ic, e.originalEvent && e.originalEvent.clientX, e.originalEvent && e.originalEvent.clientY) : ''}
     <div class="cm-item" onclick="_cmRadiusHere()">${ic('target')} 50 mi radius here</div>
     <div class="cm-item" onclick="_cmSetRecenter()">${ic('compass')} Set as recenter</div>
@@ -46868,7 +46877,7 @@ async function openModel3D(lat, lng, opts) {
     q('snap').onclick = () => { if (typeof _p3dSnapshot === 'function') _p3dSnapshot(q('canvas'), 'model-3d'); };
     q('model').onchange = () => { _m3dFollow(false); _m3dSyncHourSlider(); _m3dLoad(); };
     q('follow').onclick = () => { _m3dFollow(!_m3d.follow); if (_m3d.follow) _m3dFromChart(true); };
-    q('size').onchange = () => { _m3d.zone = _m3dZone(_m3d.zone.lat, _m3d.zone.lng, +q('size').value); _m3dLoad(); };
+    q('size').onchange = () => { _m3d.zone = _m3dZone(_m3d.zone.lat, _m3d.zone.lng, +q('size').value); _m3dRectSync(); _m3dLoad(); };
     q('field').onchange = () => { _m3dSyncIsoSlider(true); _m3dBuild(); };
     q('iso').oninput = () => { _m3dSyncIsoSlider(false); clearTimeout(_m3d.isoT); _m3d.isoT = setTimeout(_m3dBuild, 60); };
     q('vol').oninput = () => { _m3dLabels(); clearTimeout(_m3d.volT); _m3d.volT = setTimeout(_m3dBuild, 60); };
@@ -46896,7 +46905,8 @@ async function openModel3D(lat, lng, opts) {
     if (typeof _makeDraggable === 'function') { try { _makeDraggable(el, el.querySelector('.xs-head')); } catch (e) {} }
     window.addEventListener('resize', () => { if (el.classList.contains('open')) _m3dDraw(); });
   }
-  _m3d.zone = _m3dZone(lat, lng, +_m3d.q('size').value);
+  _m3d.zone = (opts && opts.zone) || _m3dZone(lat, lng, +_m3d.q('size').value);
+  _m3dRectSync();
   el.classList.add('open');
   _m3dSyncIsoSlider(true);
   if (_m3d.spin) _m3dTick();
@@ -46946,7 +46956,20 @@ function _m3dFromChart(force) {
 setInterval(() => {
   try { if (_m3d && _m3d.follow && _m3d.el.classList.contains('open')) _m3dFromChart(false); } catch (e) {}
 }, 1000);
+// The zone on the map while the panel is open: the box or the drawn shape.
+let _m3dRect = null;
+function _m3dRectSync() {
+  if (!_m3d || !_m3d.zone || typeof map === 'undefined' || !map || typeof L === 'undefined') return;
+  const ring = _zoneMapLatLngs(_m3d.zone);
+  if (_m3dRect) { try { _m3dRect.setLatLngs(ring); } catch (e) {} return; }
+  try {
+    _m3dRect = L.polygon(ring, { color: _themeColor('--accent', '#e8b800'), weight: 2, dashArray: '6 4', fillOpacity: 0.03,
+      fillColor: _themeColor('--accent', '#e8b800'), interactive: false }).addTo(map);
+  } catch (e) { _m3dRect = null; }
+}
+function _m3dRectRemove() { if (_m3dRect) { try { map.removeLayer(_m3dRect); } catch (e) {} _m3dRect = null; } }
 function _m3dClose() {
+  _m3dRectRemove();
   if (!_m3d) return;
   _m3d.el.classList.remove('open', 'fullscreen');
   _m3d.gen++;
@@ -47018,18 +47041,29 @@ async function _m3dLoad() {
 // the 12 km of weather stands about a third as tall as the box is wide.
 function _m3dWorld() {
   const z = _m3d.zone, W = Math.max(z.wKm, z.hKm);
-  return { W, zs: 0.7 / 12 };
+  // A box drawn wider than tall (or the other way) keeps its proportions:
+  // the long side spans -1..1 and the short side its share of that.
+  return { W, zs: 0.7 / 12, ax: z.wKm / W, ay: z.hKm / W };
+}
+// Whether a point of the world (x east, y north, the long side -1..1) lies
+// inside the zone's drawn shape. Always true for a plain box.
+function _m3dInside(x, y) {
+  const z = _m3d.zone;
+  if (!z || !z.shape) return true;
+  const half = Math.max(z.wKm, z.hKm) / 2;
+  return _zoneInsideXY(z.shape, x * half, y * half);
 }
 function _m3dBuild() {
   if (!_m3d || !_m3d.data) return;
   const D = _m3d.data, N = M3D_N, K = M3D_LEVELS.length, S = 2;
-  const { zs } = _m3dWorld();
+  const { zs, ax, ay } = _m3dWorld();
   const prims = [];
+  const mid = pts => { let x = 0, y = 0; pts.forEach(q => { x += q[0]; y += q[1]; }); return _m3dInside(x / pts.length, y / pts.length); };
   // Every node's place in the world, on the upsampled grid.
   const Z = _m3dUpsample(D.zkm, N, K, S), M = Z.M, L = Z.L;
   const pos = x => {
     const k = Math.floor(x / (M * M)), r = x - k * M * M, j = Math.floor(r / M), i = r - j * M;
-    return [i / (M - 1) * 2 - 1, j / (M - 1) * 2 - 1, Z.F[x] * zs];
+    return [(i / (M - 1) * 2 - 1) * ax, (j / (M - 1) * 2 - 1) * ay, Z.F[x] * zs];
   };
   // Terrain.
   if (_m3d.terrain && _m3d.ter && _m3d.ter.m) {
@@ -47037,8 +47071,9 @@ function _m3dBuild() {
     for (let j = 0; j < n - 1; j++) for (let i = 0; i < n - 1; i++) {
       // Terrain rows run north to south; the world runs south to north.
       const h = (a, b) => Math.max(0, T[b * n + a]) / 1000 * zs;
-      const X = a => a / (n - 1) * 2 - 1, Y = b => 1 - b / (n - 1) * 2;
+      const X = a => (a / (n - 1) * 2 - 1) * ax, Y = b => (1 - b / (n - 1) * 2) * ay;
       const q = [[X(i), Y(j), h(i, j)], [X(i + 1), Y(j), h(i + 1, j)], [X(i + 1), Y(j + 1), h(i + 1, j + 1)], [X(i), Y(j + 1), h(i, j + 1)]];
+      if (!mid(q)) continue;
       let rgb = (typeof _l3dReliefRgb === 'function') ? _l3dReliefRgb(T[j * n + i]) : [90, 110, 90];
       const dr = _m3d.drape, k4 = (j * n + i) * 4;
       if (dr && dr.rgba[k4 + 3]) {
@@ -47050,13 +47085,18 @@ function _m3dBuild() {
   } else if (_m3d.drape) {
     const n = 48, dr = _m3d.drape;
     for (let j = 0; j < n - 1; j++) for (let i = 0; i < n - 1; i++) {
-      const X = a => a / (n - 1) * 2 - 1, Y = b => 1 - b / (n - 1) * 2, k4 = (j * n + i) * 4;
+      const X = a => (a / (n - 1) * 2 - 1) * ax, Y = b => (1 - b / (n - 1) * 2) * ay, k4 = (j * n + i) * 4;
       const a = dr.rgba[k4 + 3] / 255;
-      prims.push({ kind: 'poly', pts: [[X(i), Y(j), 0], [X(i + 1), Y(j), 0], [X(i + 1), Y(j + 1), 0], [X(i), Y(j + 1), 0]],
+      const quad = [[X(i), Y(j), 0], [X(i + 1), Y(j), 0], [X(i + 1), Y(j + 1), 0], [X(i), Y(j + 1), 0]];
+      if (!mid(quad)) continue;
+      prims.push({ kind: 'poly', pts: quad,
         rgb: [0, 1, 2].map(c => 40 * (1 - a) + dr.rgba[k4 + c] * a), alpha: 1, lit: false });
     }
   } else {
-    prims.push({ kind: 'poly', pts: [[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0]], rgb: [40, 46, 56], alpha: 1, lit: false });
+    // The floor: the box, or the drawn shape.
+    const half = Math.max(_m3d.zone.wKm, _m3d.zone.hKm) / 2;
+    const floor = _zoneOutlineXY(_m3d.zone).map(q => [q[0] / half, q[1] / half, 0]);
+    prims.push({ kind: 'poly', pts: floor, rgb: [40, 46, 56], alpha: 1, lit: false });
   }
   // Isosurfaces.
   const f = _m3dField();
@@ -47065,7 +47105,7 @@ function _m3dBuild() {
     const U = _m3dUpsample(D[f.id], N, K, S), iso = _m3dIsoValue();
     const sides = f.signed ? [[1, f.pos], [-1, f.neg]] : [[1, f.pos]];
     sides.forEach(([sign, rgb]) => {
-      _m3dIso(U.F, U.M, U.L, iso, pos, sign).forEach(t => { prims.push({ kind: 'poly', pts: t, rgb, alpha: 0.78, lit: true }); ntri++; });
+      _m3dIso(U.F, U.M, U.L, iso, pos, sign).forEach(t => { if (!mid(t)) return; prims.push({ kind: 'poly', pts: t, rgb, alpha: 0.78, lit: true }); ntri++; });
     });
   }
   // Wind volume: a glow in every cell faster than the threshold.
@@ -47078,7 +47118,9 @@ function _m3dBuild() {
       if (!(s >= vmin)) continue;
       const t = Math.min(1, (s - vmin) / 30);
       const rgb = t < 0.5 ? [80 + 350 * t, 200 + 80 * t, 255 - 200 * t] : [255, 240 - 300 * (t - 0.5), 55 + 300 * (t - 0.5)];
-      prims.push({ kind: 'dot', p: pos(x), rgb: rgb.map(c => Math.max(0, Math.min(255, c))), alpha: 0.05 + 0.2 * t, r: 0.8 / (M - 1) });
+      const px = pos(x);
+      if (!_m3dInside(px[0], px[1])) continue;
+      prims.push({ kind: 'dot', p: px, rgb: rgb.map(c => Math.max(0, Math.min(255, c))), alpha: 0.05 + 0.2 * t, r: 0.8 / (M - 1) });
       nvol++;
     }
   }
@@ -47089,7 +47131,8 @@ function _m3dBuild() {
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const x = k * N * N + j * N + i, u = D.u[x], v = D.v[x];
       if (!isFinite(u) || !isFinite(v)) continue;
-      const p = [i / (N - 1) * 2 - 1, j / (N - 1) * 2 - 1, D.zkm[x] * zs];
+      const p = [(i / (N - 1) * 2 - 1) * ax, (j / (N - 1) * 2 - 1) * ay, D.zkm[x] * zs];
+      if (!_m3dInside(p[0], p[1])) continue;
       const q = [p[0] + u * sc, p[1] + v * sc, p[2]];
       const s = Math.hypot(u, v), t = Math.min(1, s / 60);
       prims.push({ kind: 'arrow', a: p, b: q, rgb: [255, 255 - 160 * t, 255 - 230 * t] });
@@ -47184,19 +47227,23 @@ function _m3dDraw() {
   });
   g.globalAlpha = 1;
   // The box's edges, level labels and north.
-  const { zs } = _m3dWorld(), top = 12 * zs;
+  const { zs, ax, ay } = _m3dWorld(), top = 12 * zs;
   g.strokeStyle = 'rgba(255,255,255,0.25)'; g.lineWidth = 1;
   const edge = (a, b) => { const A = P(a), B = P(b); if (A[2] > 0.05 && B[2] > 0.05) { g.beginPath(); g.moveTo(A[0], A[1]); g.lineTo(B[0], B[1]); g.stroke(); } };
-  [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([x, y], i, a) => {
-    const [x2, y2] = a[(i + 1) % 4];
-    edge([x, y, 0], [x2, y2, 0]); edge([x, y, top], [x2, y2, top]); edge([x, y, 0], [x, y, top]);
+  // The frame follows the zone: the box, or the drawn shape.
+  const half = Math.max(_m3d.zone.wKm, _m3d.zone.hKm) / 2;
+  const ring = _zoneOutlineXY(_m3d.zone).map(q => [q[0] / half, q[1] / half]), every = _zonePostEvery(ring.length);
+  ring.forEach(([x, y], i, a) => {
+    const [x2, y2] = a[(i + 1) % a.length];
+    edge([x, y, 0], [x2, y2, 0]); edge([x, y, top], [x2, y2, top]);
+    if (i % every === 0) edge([x, y, 0], [x, y, top]);
   });
   g.font = '9px Comfortaa, sans-serif'; g.fillStyle = 'rgba(255,255,255,0.65)';
   [[0, 'sfc'], [1.5, '850'], [5.6, '500'], [9.2, '300'], [11.8, '200 mb']].forEach(([km, l]) => {
-    const A = P([-1, -1, km * zs]);
+    const A = P([ring[0][0], ring[0][1], km * zs]);
     if (A[2] > 0.05) g.fillText(l, A[0] - 30, A[1] + 3);
   });
-  const Np = P([0, 1.12, 0]);
+  const Np = P([0, ay + 0.12, 0]);
   if (Np[2] > 0.05) { g.fillStyle = 'rgba(255,230,120,0.9)'; g.font = 'bold 11px Comfortaa, sans-serif'; g.fillText('N', Np[0] - 4, Np[1] + 4); }
 }
 function _m3dTick() {
@@ -47208,6 +47255,36 @@ function _m3dTick() {
     _m3dDraw();
   }
   requestAnimationFrame(_m3dTick);
+}
+// Drag a box for Model 3D, the way the other 3D views are drawn.
+function _cmModel3DDraw() {
+  _cmClose();
+  _r3dDrawFor = 'm3d';
+  _r3dDrawStart();
+}
+// Model 3D on a box given as map bounds: the dragged box, or the box round
+// a drawn polygon or radius (whose shape the zone then keeps).
+const M3D_MIN_KM = 60, M3D_MAX_KM = 6000;
+function _m3dOpenBounds(south, west, north, east) {
+  const lat = (south + north) / 2, lng = (west + east) / 2;
+  const kmLng = 111.32 * Math.max(0.1, Math.cos(lat * Math.PI / 180));
+  const wKm = Math.abs(east - west) * kmLng, hKm = Math.abs(north - south) * 111.32;
+  if (wKm < M3D_MIN_KM && hKm < M3D_MIN_KM) {
+    _zonePendingShape = null;
+    if (typeof showToast === 'function') showToast('Drag out a box at least ' + M3D_MIN_KM + ' km across for Model 3D.', 2600);
+    return false;
+  }
+  if (wKm > M3D_MAX_KM || hKm > M3D_MAX_KM) {
+    _zonePendingShape = null;
+    if (typeof showToast === 'function') showToast('That box is too big for Model 3D. Draw one under ' + M3D_MAX_KM.toLocaleString() + ' km each way.', 3000);
+    return false;
+  }
+  const w2 = Math.max(M3D_MIN_KM, wKm), h2 = Math.max(M3D_MIN_KM, hKm);
+  const dLat = h2 / 2 / 111.32, dLng = w2 / 2 / kmLng;
+  const zone = { lat, lng, wKm: Math.round(w2 * 10) / 10, hKm: Math.round(h2 * 10) / 10,
+                 n: lat + dLat, s: lat - dLat, e: lng + dLng, w: lng - dLng, shape: _zoneTakeShape(lat, lng) };
+  openModel3D(lat, lng, { zone });
+  return true;
 }
 function _cmModel3DHere() {
   if (!_cmLatLng) { _cmClose(); return; }
@@ -72084,6 +72161,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-w', date: 'Sep 24, 2026',
+    text: "3D zones take the shape you draw. The 3D button on the Polygon tool and the Radius tool now asks which 3D view to open (Radar 3D, Satellite 3D, Model 3D, or any layer that is on) and opens it cut to your exact shape: the radar volume, cloud tops, ground, layer and model all stop at the polygon or the circle, the frame in 3D follows it, and the outline on the map is your shape instead of a square. Model 3D can also be drawn as a box now: long-press the map and pick Draw a 3D model zone, and a wide or tall box keeps its real proportions instead of being squashed into a square." },
   { id: '2026-09-24-v', date: 'Sep 24, 2026',
     text: "Model 3D now has the same zoom bar (up the side) and turn bar (along the bottom) as Radar 3D, Satellite 3D and every layer's 3D panel, so all the 3D views steer the same way. The bars follow along when you drag or scroll, too." },
   { id: '2026-09-24-u', date: 'Sep 24, 2026',
@@ -76972,7 +77051,7 @@ function _r3dOpenBounds(south, west, north, east) {
     if (typeof showToast === 'function') showToast('No radar close enough to that box for a 3D view.', 2800);
     return false;
   }
-  _r3dZone = { lat, lng, wKm: Math.round(wKm * 10) / 10, hKm: Math.round(hKm * 10) / 10 };
+  _r3dZone = { lat, lng, wKm: Math.round(wKm * 10) / 10, hKm: Math.round(hKm * 10) / 10, shape: _zoneTakeShape(lat, lng) };
   _r3dStationKm = near.km;
   // Drawn over a radar comparison pane: that pane's radar, and its own
   // product when it picked one, rather than whatever is nearest.
@@ -76991,23 +77070,163 @@ function _r3dOpenBounds(south, west, north, east) {
 // A product the panel should open on (set by a comparison pane), once.
 let _r3dWantProduct = null;
 
-// The Radius maker's button: the newest radius, as its bounding square.
-function _r3dFromRadius() {
+// -- SHAPED 3D ZONES ---------------------------------------------------------
+// A 3D zone can be the box dragged out on the map, or the shape the Polygon
+// or Radius tool drew. The data is still fetched for the box around the
+// shape (that is how every source is asked), and then everything outside
+// the shape itself is left out of the picture: the radar volume, the cloud
+// tops, the ground, the layer and the model all stop at the drawn edge,
+// and the frame and the outline on the map follow it too.
+//
+// The shape is carried on the zone in km from the zone's centre (x east,
+// y north), the coordinates every 3D view already draws in:
+//   { type: 'poly', xy: [[x, y], ...] }   or   { type: 'circle', cx, cy, r }
+// A zone with no shape is the plain box.
+let _zonePendingShape = null;   // the drawn shape the next zone to open takes
+function _zoneShapeKm(geo, lat0, lng0) {
+  if (!geo) return null;
+  const kx = 111.32 * Math.max(0.2, Math.cos(lat0 * Math.PI / 180)), ky = 111.32;
+  if (geo.type === 'circle') return { type: 'circle', cx: (geo.lng - lng0) * kx, cy: (geo.lat - lat0) * ky, r: geo.km };
+  if (geo.type === 'poly' && geo.pts && geo.pts.length >= 3)
+    return { type: 'poly', xy: geo.pts.map(p => [(p.lng - lng0) * kx, (p.lat - lat0) * ky]) };
+  return null;
+}
+// Hands the waiting shape to a zone being opened, once.
+function _zoneTakeShape(lat0, lng0) {
+  const g = _zonePendingShape;
+  _zonePendingShape = null;
+  return g ? _zoneShapeKm(g, lat0, lng0) : null;
+}
+function _zoneInsideXY(shape, x, y) {
+  if (!shape) return true;
+  if (shape.type === 'circle') return Math.hypot(x - shape.cx, y - shape.cy) <= shape.r;
+  const v = shape.xy;
+  let inside = false;
+  for (let i = 0, j = v.length - 1; i < v.length; j = i++) {
+    const xi = v[i][0], yi = v[i][1], xj = v[j][0], yj = v[j][1];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function _zoneShapeSig(z) {
+  const sh = z && z.shape;
+  if (!sh) return '';
+  return sh.type === 'circle' ? ['c', sh.cx.toFixed(2), sh.cy.toFixed(2), sh.r.toFixed(2)].join(',')
+    : 'p' + sh.xy.map(q => q[0].toFixed(2) + ':' + q[1].toFixed(2)).join(',');
+}
+// Inside (1) or outside (0) for every cell of an nx by ny grid over the
+// zone's box, row 0 along the north edge. Null for a plain box. Cached.
+function _zoneMask(zone, nx, ny) {
+  if (!zone || !zone.shape) return null;
+  const key = nx + 'x' + ny + '|' + zone.wKm + 'x' + zone.hKm + '|' + _zoneShapeSig(zone);
+  if (zone._mask && zone._mask.key === key) return zone._mask.m;
+  const m = new Uint8Array(nx * ny), hx = zone.wKm / 2, hy = zone.hKm / 2;
+  for (let j = 0; j < ny; j++) {
+    const y = hy - (j + 0.5) / ny * 2 * hy;
+    for (let i = 0; i < nx; i++) m[j * nx + i] = _zoneInsideXY(zone.shape, -hx + (i + 0.5) / nx * 2 * hx, y) ? 1 : 0;
+  }
+  try { Object.defineProperty(zone, '_mask', { value: { key, m }, writable: true, configurable: true, enumerable: false }); } catch (e) {}
+  return m;
+}
+// The zone's rim as a ring of points in its own km: the box's four corners,
+// the polygon's corners, or 64 points round the circle.
+function _zoneOutlineXY(zone) {
+  const hx = zone.wKm / 2, hy = zone.hKm / 2, sh = zone.shape;
+  if (!sh) return [[-hx, -hy], [hx, -hy], [hx, hy], [-hx, hy]];
+  if (sh.type === 'circle') {
+    const out = [];
+    for (let k = 0; k < 64; k++) { const a = k / 64 * 2 * Math.PI; out.push([sh.cx + sh.r * Math.sin(a), sh.cy + sh.r * Math.cos(a)]); }
+    return out;
+  }
+  return sh.xy.map(q => [q[0], q[1]]);
+}
+// Which rim points get a post from floor to ceiling: all of a polygon's
+// corners, but only eight round a circle.
+function _zonePostEvery(n) { return n > 12 ? Math.ceil(n / 8) : 1; }
+// The rim as map coordinates, for the outline drawn on the map.
+function _zoneMapLatLngs(zone) {
+  const kx = 111.32 * Math.max(0.2, Math.cos(zone.lat * Math.PI / 180));
+  return _zoneOutlineXY(zone).map(q => [zone.lat + q[1] / 111.32, zone.lng + q[0] / kx]);
+}
+// Draws a frame of the zone's rim between two heights: the floor loop, the
+// ceiling loop and the posts. `proj` maps (x, y, z) to the screen or null.
+function _zoneFrame(ctx, zone, proj, lo, hi) {
+  const ring = _zoneOutlineXY(zone), n = ring.length, every = _zonePostEvery(n);
+  const line = (a, b) => { if (a && b) { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); } };
+  for (let i = 0; i < n; i++) {
+    const [x0, y0] = ring[i], [x1, y1] = ring[(i + 1) % n];
+    line(proj(x0, y0, lo), proj(x1, y1, lo));
+    line(proj(x0, y0, hi), proj(x1, y1, hi));
+    if (i % every === 0) line(proj(x0, y0, lo), proj(x0, y0, hi));
+  }
+  return ring;
+}
+
+// The Polygon and Radius tools' 3D button: a short menu of every 3D view
+// that can be opened on the shape, then the chosen one opens on it.
+function _zone3DTargets() {
+  const out = [{ id: 'r3d', label: 'Radar 3D' }, { id: 's3d', label: 'Satellite 3D' }, { id: 'm3d', label: 'Model 3D' }];
+  try {
+    L3D_LAYERS.filter(sp => sp.id !== 'models' && _l3dIsOn(sp.id))
+      .forEach(sp => out.push({ id: 'l3d:' + sp.id, label: sp.label + ' 3D' }));
+  } catch (e) {}
+  return out;
+}
+function _zoneGeoBounds(geo) {
+  if (geo.type === 'circle') {
+    const dLat = geo.km / 111.32, dLng = geo.km / (111.32 * Math.max(0.2, Math.cos(geo.lat * Math.PI / 180)));
+    return [geo.lat - dLat, geo.lng - dLng, geo.lat + dLat, geo.lng + dLng];
+  }
+  let s = Infinity, w = Infinity, n = -Infinity, e = -Infinity;
+  geo.pts.forEach(q => { if (q.lat < s) s = q.lat; if (q.lat > n) n = q.lat; if (q.lng < w) w = q.lng; if (q.lng > e) e = q.lng; });
+  return [s, w, n, e];
+}
+// Opens one 3D view on a drawn shape: its box is fetched, the shape kept.
+function _zone3DOpen(target, geo) {
+  const [s, w, n, e] = _zoneGeoBounds(geo);
+  _zonePendingShape = geo;
+  let ok = false;
+  try {
+    if (target === 's3d') ok = _s3dOpenBounds(s, w, n, e);
+    else if (target === 'm3d') ok = _m3dOpenBounds(s, w, n, e);
+    else if (String(target).startsWith('l3d:')) ok = _l3dOpenBounds(String(target).slice(4), s, w, n, e);
+    else ok = _r3dOpenBounds(s, w, n, e);
+  } finally { _zonePendingShape = null; }
+  return ok;
+}
+function _zone3DPick(geo, anchor) {
+  document.querySelectorAll('.zone3d-pick').forEach(el => el.remove());
+  const el = document.createElement('div');
+  el.className = 'zone3d-pick';
+  el.innerHTML = '<div class="zone3d-pick-title">Open in 3D</div>'
+    + _zone3DTargets().map(t => `<button type="button" data-t="${t.id}">${t.label}</button>`).join('');
+  document.body.appendChild(el);
+  const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { left: 200, bottom: 120 };
+  el.style.left = Math.max(8, Math.min(window.innerWidth - 180, r.left)) + 'px';
+  el.style.top = Math.min(window.innerHeight - 40 - el.offsetHeight, r.bottom + 6) + 'px';
+  el.querySelectorAll('button').forEach(b => b.onclick = (ev) => {
+    ev.stopPropagation(); el.remove(); _zone3DOpen(b.dataset.t, geo);
+  });
+  setTimeout(() => {
+    const off = (ev) => { if (!el.contains(ev.target)) { el.remove(); document.removeEventListener('pointerdown', off, true); } };
+    document.addEventListener('pointerdown', off, true);
+  }, 0);
+  return el;
+}
+// The Radius maker's button: the newest radius, as a round 3D zone.
+function _r3dFromRadius(ev) {
   const list = (typeof _radii !== 'undefined' && _radii) || [];
   const r = list[list.length - 1];
   if (!r) { if (typeof showToast === 'function') showToast('Place a radius first, then view it in 3D.', 2600); return false; }
-  const km = r.miles * 1.60934;
-  const dLat = km / 111.32, dLng = km / (111.32 * Math.max(0.2, Math.cos(r.lat * Math.PI / 180)));
-  return _r3dOpenBounds(r.lat - dLat, r.lng - dLng, r.lat + dLat, r.lng + dLng);
+  return _zone3DPick({ type: 'circle', lat: r.lat, lng: r.lng, km: r.miles * 1.60934 },
+    (ev && ev.currentTarget) || document.getElementById('rtb-3d-btn'));
 }
-
-// The Polygon maker's button: the polygon's extent.
-function _r3dFromPolygon() {
+// The Polygon maker's button: the polygon itself as the 3D zone.
+function _r3dFromPolygon(ev) {
   const pts = (typeof _polyPts !== 'undefined' && _polyPts) || [];
   if (pts.length < 3) { if (typeof showToast === 'function') showToast('Draw a polygon with at least three corners first.', 2600); return false; }
-  let s = Infinity, w = Infinity, n = -Infinity, e = -Infinity;
-  pts.forEach(p => { const la = p.lat, ln = p.lng; if (la < s) s = la; if (la > n) n = la; if (ln < w) w = ln; if (ln > e) e = ln; });
-  return _r3dOpenBounds(s, w, n, e);
+  return _zone3DPick({ type: 'poly', pts: pts.map(q => ({ lat: q.lat, lng: q.lng })) },
+    (ev && ev.currentTarget) || document.getElementById('ptb-3d'));
 }
 
 // -- Drawing the zone on the map -----------------------------------------
@@ -77035,6 +77254,8 @@ function _r3dDrawStart() {
   document.addEventListener('keydown', _r3dDrawKey, true);
   if (typeof _showHint === 'function') _showHint(_r3dDrawFor === 's3d'
     ? '&#9635;  Drag a box on the map to see its cloud tops in 3D. Esc cancels.'
+    : _r3dDrawFor === 'm3d'
+    ? '&#9635;  Drag a box on the map to cut the model run out of it in 3D. Esc cancels.'
     : String(_r3dDrawFor).startsWith('l3d:')
     ? '&#9635;  Drag a box on the map to see it on the real ground in 3D. Esc cancels.'
     : '&#9635;  Drag a box on the map to view it in 3D. Esc cancels.');
@@ -77081,6 +77302,7 @@ function _r3dDrawUp(e) {
   _r3dDrawStop();
   const bounds = L.latLngBounds(a, b);
   const open = target === 's3d' ? _s3dOpenBounds
+    : target === 'm3d' ? _m3dOpenBounds
     : String(target).startsWith('l3d:') ? (s, w, n, e2) => _l3dOpenBounds(String(target).slice(4), s, w, n, e2)
     : _r3dOpenBounds;
   if (!open(bounds.getSouth(), bounds.getWest(), bounds.getNorth(), bounds.getEast())) {
@@ -77142,16 +77364,16 @@ function _r3dZoneBounds(zone) {
 // exactly what you get in the panel.
 function _r3dZoneRectSync() {
   if (!_r3dZone || typeof map === 'undefined' || !map || typeof L === 'undefined') return;
-  const b = _r3dZoneBounds(_r3dZone);
+  const ring = _zoneMapLatLngs(_r3dZone);
   if (!_r3dZoneRect) {
     try {
-      _r3dZoneRect = L.rectangle(b, {
+      _r3dZoneRect = L.polygon(ring, {
         color: '#82C2ED', weight: 2, opacity: 0.9,
         fillColor: '#82C2ED', fillOpacity: 0.04, interactive: false,
       }).addTo(map);
     } catch (e) { _r3dZoneRect = null; }
   } else {
-    try { _r3dZoneRect.setBounds(b); } catch (e) {}
+    try { _r3dZoneRect.setLatLngs(ring); } catch (e) {}
   }
 }
 
@@ -77517,6 +77739,7 @@ const R3D_HALF_BEAM = 0.5;               // degrees: how far the highest tilt re
 // storm bottom read as a slanted plane. A degree and a bit fades it to
 // nothing well before it could paint a whole sky's worth of clear air.
 const R3D_SKIRT_BELOW = 1.2;
+const R3D_MASK_N = 256;                  // a drawn shape's inside/outside grid over the zone
 const R3D_COL_N = 64;                    // the column map: 64 by 64 cells over the zone, each with its top of echo
 let _r3dVolSeq = 0;
 
@@ -77725,6 +77948,9 @@ function _r3dPolarFrame(frame, zone, specOrVel) {
     id: ++_r3dVolSeq, sweeps: smoothed, nS, nR, nA, r0, rStep, az0, azStep, span, full,
     angles: new Float32Array(sorted), angIdx, angFade, elMin: R3D_EL_MIN, elStep: R3D_EL_STEP,
     sx, sy, colMaxZ: grown, colN: R3D_COL_N, halfX, halfY, wKm: zone.wKm, hKm: zone.hKm,
+    // A drawn shape: which ground is inside it, finely enough that the edge
+    // reads as the edge that was drawn. Null for a plain box.
+    mask: zone.shape ? _zoneMask(zone, R3D_MASK_N, R3D_MASK_N) : null, maskN: R3D_MASK_N,
     signed: !!spec.signed, product: spec.id,
     // Kept for the tests and the status line: how many bins hold data.
     bytes: nS * rows * nR,
@@ -77739,7 +77965,7 @@ function _r3dPolarFor(frame, productOrVel) {
              : productOrVel && typeof productOrVel === 'object' ? productOrVel
              : _r3dSpec(productOrVel ? 'vel' : 'ref');
   const zone = _r3dZone || { wKm: 90, hKm: 90 };
-  const key = zone.wKm + 'x' + zone.hKm + '|' + spec.id + '|' + _r3dSmoothing;
+  const key = zone.wKm + 'x' + zone.hKm + '|' + spec.id + '|' + _r3dSmoothing + '|' + _zoneShapeSig(zone);
   if (!frame._grids) frame._grids = {};
   if (!frame._grids[key]) {
     frame._grids = {};
@@ -77811,6 +78037,15 @@ function _r3dMarchBand(P, prm, y0, y1, data) {
   const elMin = P.elMin, invElStep = 1 / P.elStep, sx = P.sx, sy = P.sy;
   const colMaxZ = P.colMaxZ, colN = P.colN, halfX = P.halfX, halfY = P.halfY;
   const colSX = colN / (2 * halfX), colSY = colN / (2 * halfY);
+  // A drawn shape: samples and floor outside it are left out.
+  const mask = P.mask || null, maskN = P.maskN || 1;
+  const mSX = maskN / (2 * halfX), mSY = maskN / (2 * halfY);
+  const inMask = (x, y) => {
+    let mi = ((x + halfX) * mSX) | 0, mj = ((halfY - y) * mSY) | 0;
+    if (mi < 0) mi = 0; else if (mi >= maskN) mi = maskN - 1;
+    if (mj < 0) mj = 0; else if (mj >= maskN) mj = maskN - 1;
+    return mask[mj * maskN + mi] === 1;
+  };
   const invR = 1 / rStep, invA = 1 / azStep, azStepRad = azStep / DEG;
   const angles = P.angles;
   const nRm1 = nR - 1.001;
@@ -77821,6 +78056,7 @@ function _r3dMarchBand(P, prm, y0, y1, data) {
   // The floor: the lowest tilt, bilinear, at the point where a ray meets
   // the ground. Bare ground where the tilt holds nothing.
   const floorAt = (x, y, acc) => {
+    if (mask && !inMask(x, y)) return;
     const dx = x - sx, dy = y - sy;
     const s = Math.sqrt(dx * dx + dy * dy);
     let cr = 30, cg = 36, cb = 46, ca = 0.4;
@@ -77875,6 +78111,7 @@ function _r3dMarchBand(P, prm, y0, y1, data) {
       let accR = acc[0], accG = acc[1], accB = acc[2], accA = acc[3];
       while (t < t1 && accA < 0.96 && guard++ < 1400) {
         const x = camX + dx * t, y = camY + dy * t, zt = (camZ + dz * t) * invExag;
+        if (mask && !inMask(x, y)) { t += stepKm; continue; }
         // Clear air above the storm tops of this column: leap.
         let cx = ((x + halfX) * colSX) | 0, cy = ((y + halfY) * colSY) | 0;
         if (cx < 0) cx = 0; else if (cx >= colN) cx = colN - 1;
@@ -77976,8 +78213,9 @@ function _r3dPolarPack(P) {
     az0: P.az0, azStep: P.azStep, span: P.span, full: P.full, angles: P.angles.slice().buffer,
     angIdx: P.angIdx.slice().buffer, angFade: P.angFade.slice().buffer, elMin: P.elMin, elStep: P.elStep,
     sx: P.sx, sy: P.sy, colMaxZ: P.colMaxZ.slice().buffer, colN: P.colN, halfX: P.halfX, halfY: P.halfY,
+    mask: P.mask ? P.mask.slice().buffer : null, maskN: P.maskN,
   };
-  return { msg, transfer: bufs.concat([msg.angles, msg.angIdx, msg.angFade, msg.colMaxZ]) };
+  return { msg, transfer: bufs.concat([msg.angles, msg.angIdx, msg.angFade, msg.colMaxZ]).concat(msg.mask ? [msg.mask] : []) };
 }
 function _r3dPolarUnpack(m) {
   return {
@@ -77985,6 +78223,7 @@ function _r3dPolarUnpack(m) {
     az0: m.az0, azStep: m.azStep, span: m.span, full: m.full, angles: new Float32Array(m.angles),
     angIdx: new Float32Array(m.angIdx), angFade: new Float32Array(m.angFade), elMin: m.elMin, elStep: m.elStep,
     sx: m.sx, sy: m.sy, colMaxZ: new Float32Array(m.colMaxZ), colN: m.colN, halfX: m.halfX, halfY: m.halfY,
+    mask: m.mask ? new Uint8Array(m.mask) : null, maskN: m.maskN,
   };
 }
 
@@ -78577,7 +78816,7 @@ let _r3dOffCv = null, _r3dImg = null, _r3dPaintSeq = 0;
 // Satellite 3D's rasterizer before the storm is marched over it. Loaded the
 // first time it is wanted for a zone, and again when the zone moves.
 let _r3dTerrainOn = false, _r3dGround = null, _r3dGroundLoading = '', _r3dGroundCv = null;
-function _r3dZoneKey(z) { return z ? [z.lat, z.lng, z.wKm, z.hKm].map(v => (+v).toFixed(4)).join('|') : ''; }
+function _r3dZoneKey(z) { return z ? [z.lat, z.lng, z.wKm, z.hKm].map(v => (+v).toFixed(4)).join('|') + '|' + _zoneShapeSig(z) : ''; }
 function _r3dGroundNow() {
   if (!_r3dTerrainOn || !_r3dZone) return null;
   const key = _r3dZoneKey(_r3dZone);
@@ -78610,7 +78849,7 @@ async function _r3dGroundLoad(key) {
     const c = m < 0 ? [34, 78, 132] : _l3dReliefRgb(m);
     rgb[k * 3] = c[0]; rgb[k * 3 + 1] = c[1]; rgb[k * 3 + 2] = c[2];
   }
-  _r3dGround = { key, d: { w: nx, h: ny, hm, rgb }, zone: { wKm: z.wKm, hKm: z.hKm } };
+  _r3dGround = { key, d: { w: nx, h: ny, hm, rgb }, zone: { wKm: z.wKm, hKm: z.hKm, shape: z.shape || null } };
   _r3dDirty = true;
 }
 // The box actually marched: the zone, less whatever the cutaway removes.
@@ -78836,7 +79075,7 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   const step = topU > 3 * unit.step ? unit.step : unit.fine;
   ctx.strokeStyle = 'rgba(255,255,255,0.13)';
   ctx.lineWidth = Math.max(1, dpr * 0.8);
-  for (const wi of farWalls) {
+  if (!(_r3dZone && _r3dZone.shape)) for (const wi of farWalls) {
     const a = corners[wi], b = corners[(wi + 1) % 4];
     for (let v = step; v <= topU + 1e-6; v += step) {
       const z = zOf(v);
@@ -78847,7 +79086,12 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
   // The far corner the two far walls share carries the labels.
   const shared = farWalls.includes((farWalls[0] + 1) % 4) ? (farWalls[0] + 1) % 4
     : farWalls.includes((farWalls[1] + 1) % 4) ? (farWalls[1] + 1) % 4 : farWalls[0];
-  const lc = corners[shared];
+  let lc = corners[shared];
+  // A drawn shape: the labels climb its rim point farthest from the eye.
+  if (_r3dZone && _r3dZone.shape) {
+    let best = -Infinity;
+    _zoneOutlineXY(_r3dZone).forEach(q => { const d2 = (q[0] - camX) ** 2 + (q[1] - camY) ** 2; if (d2 > best) { best = d2; lc = q; } });
+  }
   ctx.fillStyle = gold;
   ctx.font = `${Math.round(9.5 * dpr)}px 'Comfortaa', sans-serif`;
   ctx.textAlign = 'left';
@@ -78878,9 +79122,15 @@ function _r3dDrawBox(ctx, w, h, camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy
            project(corners[(i + 1) % 4][0], corners[(i + 1) % 4][1], z));
     }
   };
-  drawLoop(0);
-  drawLoop(topDrawn);
-  corners.forEach(([x, y]) => line(project(x, y, 0), project(x, y, topDrawn)));
+  if (_r3dZone && _r3dZone.shape) {
+    ctx.beginPath();
+    _zoneFrame(ctx, _r3dZone, project, 0, topDrawn);
+    ctx.stroke();
+  } else {
+    drawLoop(0);
+    drawLoop(topDrawn);
+    corners.forEach(([x, y]) => line(project(x, y, 0), project(x, y, topDrawn)));
+  }
 
   // The cutaway face, outlined in white where the box has been opened.
   if (box && _r3dCutSide !== 'off') {
@@ -86913,7 +87163,7 @@ function _s3dOpenBounds(south, west, north, east) {
   }
   const r3 = v => Math.round(v * 1000) / 1000;
   _s3dZone = { s: r3(south), w: r3(west), n: r3(north), e: r3(east), lat, lng,
-               wKm: Math.round(wKm * 10) / 10, hKm: Math.round(hKm * 10) / 10 };
+               wKm: Math.round(wKm * 10) / 10, hKm: Math.round(hKm * 10) / 10, shape: _zoneTakeShape(lat, lng) };
   _s3dOpen();
   return true;
 }
@@ -86958,9 +87208,9 @@ function _s3dClose() {
 // The zone, drawn on the map for as long as the panel is open.
 function _s3dRectSync() {
   if (typeof map === 'undefined' || !map || !_s3dZone || typeof L === 'undefined') return;
-  const b = [[_s3dZone.s, _s3dZone.w], [_s3dZone.n, _s3dZone.e]];
-  if (_s3dRect) { _s3dRect.setBounds(b); return; }
-  _s3dRect = L.rectangle(b, { color: _themeColor('--accent', '#e8b800'), weight: 2, dashArray: '6 4', fillOpacity: 0.04,
+  const b = _zoneMapLatLngs(_s3dZone);
+  if (_s3dRect) { _s3dRect.setLatLngs(b); return; }
+  _s3dRect = L.polygon(b, { color: _themeColor('--accent', '#e8b800'), weight: 2, dashArray: '6 4', fillOpacity: 0.04,
                               fillColor: _themeColor('--accent', '#e8b800'), interactive: false }).addTo(map);
 }
 function _s3dRectRemove() {
@@ -87582,6 +87832,8 @@ function _s3dRaster(d, zone, v, W, H, exag, alpha, clearAlpha, opts) {
   const nx = d.w, ny = d.h, N = nx * ny;
   const hx = zone.wKm / 2, hy = zone.hKm / 2;
   const cx = 2 * hx / nx, cy = 2 * hy / ny;
+  // A drawn shape: the grid stops at its edge.
+  const shapeMask = o.noMask ? null : _zoneMask(zone, nx, ny);
   const focal = H * 1.15, W2 = W / 2, H2 = H / 2;
   const { camX, camY, camZ, rx, ry, rz, ux, uy, uz, fx, fy, fz } = v;
   let lx = -0.35 * rx + 0.75 * ux - 0.55 * fx, ly = -0.35 * ry + 0.75 * uy - 0.55 * fy,
@@ -87600,6 +87852,7 @@ function _s3dRaster(d, zone, v, W, H, exag, alpha, clearAlpha, opts) {
       if (box && (X < box.minX - eps || X > box.maxX + eps || Y < box.minY - eps || Y > box.maxY + eps)) {
         PZ[k] = -1; continue;
       }
+      if (shapeMask && !shapeMask[k]) { PZ[k] = -1; continue; }
       const dx = X - camX, dy = Y - camY, dz = Z - camZ;
       const depth = dx * fx + dy * fy + dz * fz;
       if (depth < 0.05) { PZ[k] = -1; continue; }
@@ -87933,13 +88186,14 @@ function _s3dDrawBox(ctx, w, h, v, hx, hy, exag, dpr, box, hm, d) {
             h / 2 - (dx * v.ux + dy * v.uy + dz * v.uz) / depth * focal];
   };
   const top = S3D_TOP_KM * exag;
-  const cs = [[box.minX, box.minY], [box.maxX, box.minY], [box.maxX, box.maxY], [box.minX, box.maxY]];
+  let cs = [[box.minX, box.minY], [box.maxX, box.minY], [box.maxX, box.maxY], [box.minX, box.maxY]];
   const line = (a, b) => { if (a && b) { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); } };
   ctx.save();
   ctx.lineWidth = Math.max(1, dpr);
   ctx.strokeStyle = 'rgba(232,184,0,0.45)';
   ctx.beginPath();
-  for (let i = 0; i < 4; i++) {
+  if (_s3dZone && _s3dZone.shape) cs = _zoneFrame(ctx, _s3dZone, proj, 0, top);
+  else for (let i = 0; i < 4; i++) {
     const [x0, y0] = cs[i], [x1, y1] = cs[(i + 1) % 4];
     line(proj(x0, y0, 0), proj(x1, y1, 0));
     line(proj(x0, y0, top), proj(x1, y1, top));
@@ -88928,7 +89182,7 @@ class Layer3DPanel {
     }
     const r3 = v => Math.round(v * 1000) / 1000;
     this.zone = { s: r3(south), w: r3(west), n: r3(north), e: r3(east), lat, lng,
-                  wKm: Math.round(wKm * 10) / 10, hKm: Math.round(hKm * 10) / 10 };
+                  wKm: Math.round(wKm * 10) / 10, hKm: Math.round(hKm * 10) / 10, shape: _zoneTakeShape(lat, lng) };
     const long = Math.max(wKm, hKm);
     this.nx = Math.max(16, Math.round(L3D_CELLS * wKm / long));
     this.ny = Math.max(16, Math.round(L3D_CELLS * hKm / long));
@@ -88967,9 +89221,9 @@ class Layer3DPanel {
   }
   rectSync() {
     if (typeof map === 'undefined' || !map || !this.zone || typeof L === 'undefined') return;
-    const b = [[this.zone.s, this.zone.w], [this.zone.n, this.zone.e]];
-    if (this.rect) { this.rect.setBounds(b); return; }
-    this.rect = L.rectangle(b, { color: _themeColor('--accent', '#e8b800'), weight: 2, dashArray: '6 4', fillOpacity: 0.03,
+    const b = _zoneMapLatLngs(this.zone);
+    if (this.rect) { this.rect.setLatLngs(b); return; }
+    this.rect = L.polygon(b, { color: _themeColor('--accent', '#e8b800'), weight: 2, dashArray: '6 4', fillOpacity: 0.03,
                                  fillColor: _themeColor('--accent', '#e8b800'), interactive: false }).addTo(map);
   }
   rectRemove() { if (this.rect) { try { map.removeLayer(this.rect); } catch (e) {} this.rect = null; } }
@@ -89266,13 +89520,14 @@ class Layer3DPanel {
               h / 2 - (dx * v.ux + dy * v.uy + dz * v.uz) / depth * focal];
     };
     const lo = this.lowKm() * exag, hi = this.highKm() * exag;
-    const cs = [[box.minX, box.minY], [box.maxX, box.minY], [box.maxX, box.maxY], [box.minX, box.maxY]];
+    let cs = [[box.minX, box.minY], [box.maxX, box.minY], [box.maxX, box.maxY], [box.minX, box.maxY]];
     const line = (a, b) => { if (a && b) { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); } };
     ctx.save();
     ctx.lineWidth = Math.max(1, dpr);
     ctx.strokeStyle = 'rgba(232,184,0,0.45)';
     ctx.beginPath();
-    for (let i = 0; i < 4; i++) {
+    if (this.zone && this.zone.shape) cs = _zoneFrame(ctx, this.zone, proj, lo, hi);
+    else for (let i = 0; i < 4; i++) {
       const [x0, y0] = cs[i], [x1, y1] = cs[(i + 1) % 4];
       line(proj(x0, y0, lo), proj(x1, y1, lo));
       line(proj(x0, y0, hi), proj(x1, y1, hi));

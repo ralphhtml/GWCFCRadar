@@ -37,7 +37,7 @@ console.log('\n1. the panel: a zone picker and volumetric controls, no toolbar b
   ok('it has a product picker and no box-size picker: the zone is whatever you draw',
      PAGE.includes('id="r3d-product"') && !PAGE.includes('id="r3d-zone"'));
   ok('the Radius maker and the Polygon maker each have a 3D button',
-     /id="rtb-3d-btn" onclick="_r3dFromRadius\(\)"/.test(PAGE) && /id="ptb-3d" onclick="_r3dFromPolygon\(\)"/.test(PAGE));
+     /id="rtb-3d-btn" onclick="_r3dFromRadius\(event\)"/.test(PAGE) && /id="ptb-3d" onclick="_r3dFromPolygon\(event\)"/.test(PAGE));
   ok('it has a station picker too, for choosing a different radar than the nearest',
      PAGE.includes('id="r3d-site"'));
   ok('it keeps the two sliders: Show above and Up to',
@@ -177,13 +177,18 @@ console.log('\n2c. the Radius maker and the Polygon maker can send their shape t
 {
   const r = await p.evaluate(() => {
     _radii.push({ id: 9990, lat: 36.0, lng: -96.0, miles: 30, color: '#fff', marker: null, circle: null });
-    const okRadius = _r3dFromRadius();
+    // The button asks which 3D view; Radar 3D is picked here.
+    const pickR = _r3dFromRadius();
+    const okRadius = !!pickR;
+    pickR.querySelector('[data-t="r3d"]').click();
     const fromRadius = _r3dZone ? Object.assign({}, _r3dZone) : null;
     _radii.pop();
     _r3dClose();
     const savedPts = _polyPts;
     _polyPts = [L.latLng(36.0, -96.0), L.latLng(36.5, -96.0), L.latLng(36.5, -95.4)];
-    const okPoly = _r3dFromPolygon();
+    const pickP = _r3dFromPolygon();
+    const okPoly = !!pickP;
+    pickP.querySelector('[data-t="r3d"]').click();
     const fromPoly = _r3dZone ? Object.assign({}, _r3dZone) : null;
     _polyPts = [];
     const refusedEmpty = _r3dFromPolygon();
@@ -193,12 +198,13 @@ console.log('\n2c. the Radius maker and the Polygon maker can send their shape t
   });
   // A 30 mile radius is a 96.6 km square; the polygon spans 0.5 degrees of
   // latitude (55.7 km) and 0.6 of longitude (53.9 km at 36.25 north).
-  ok('a radius becomes its bounding square, centred on the radius',
+  ok('a radius becomes its bounding square, centred on the radius, cut to the circle',
      r.okRadius && r.fromRadius && Math.abs(r.fromRadius.wKm - 96.6) < 0.5 && Math.abs(r.fromRadius.hKm - 96.6) < 0.5
+     && r.fromRadius.shape && r.fromRadius.shape.type === 'circle'
      && Math.abs(r.fromRadius.lat - 36) < 1e-6 && Math.abs(r.fromRadius.lng - -96) < 1e-6,
      JSON.stringify(r.fromRadius));
-  ok('a polygon becomes its extent',
-     r.okPoly && r.fromPoly && Math.abs(r.fromPoly.hKm - 55.7) < 0.5 && Math.abs(r.fromPoly.wKm - 53.9) < 0.6
+  ok('a polygon becomes its extent, cut to the polygon',
+     r.okPoly && r.fromPoly && r.fromPoly.shape && r.fromPoly.shape.type === 'poly' && r.fromPoly.shape.xy.length === 3 && Math.abs(r.fromPoly.hKm - 55.7) < 0.5 && Math.abs(r.fromPoly.wKm - 53.9) < 0.6
      && Math.abs(r.fromPoly.lat - 36.25) < 1e-6 && Math.abs(r.fromPoly.lng - -95.7) < 1e-6,
      JSON.stringify(r.fromPoly));
   ok('with no polygon drawn the button politely refuses', r.refusedEmpty === false);
