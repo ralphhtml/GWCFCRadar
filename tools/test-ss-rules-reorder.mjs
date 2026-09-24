@@ -45,8 +45,9 @@ const ok = (name, cond, extra) => {
 console.log('\n1. the source');
 const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
 ok('no em dash anywhere in the page', !html.includes(String.fromCharCode(0x2014)));
+// The gold follows the app theme now (the theme's accent, gold by default).
 ok('the StormStream gold is gold, and the yellow is gone',
-   /--ss-gold:\s*#e8b800/.test(html) && !html.includes('#f5cf12'));
+   /--ss-gold:\s*(#e8b800|var\(--accent\))/.test(html) && !html.includes('#f5cf12'));
 ok('the panel wash carries the top-lit sheen',
    /--ss-sheen:/.test(html) && /--ss-rb:\s*var\(--ss-sheen\)/.test(html));
 ok('the lower bar frame is a gold gradient, not flat gold',
