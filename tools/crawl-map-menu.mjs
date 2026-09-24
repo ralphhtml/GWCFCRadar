@@ -53,6 +53,17 @@ async function freshPage() {
   // Pictures are not needed to learn the menu, only to draw the map.
   await p.route(/\.(png|jpe?g|webp|gif)(\?|$)/i, r => r.abort());
   await p.goto('file://' + join(ROOT, 'index.html'), { waitUntil: 'domcontentloaded' });
+  await ready(p);
+  return p;
+}
+// Every path is tapped from a freshly loaded page, the way a ?menu= link
+// always is: tapped with an earlier pick still on, a row can toggle that
+// pick off instead of opening (a sea temperature source does exactly that).
+async function fresh(p) {
+  await p.reload({ waitUntil: 'domcontentloaded' });
+  await ready(p);
+}
+async function ready(p) {
   await p.waitForFunction(() => typeof _menuPlay === 'function' && document.querySelector('#sub-bubbles .sub-bubble'), null, { timeout: 30000 });
   // A few rows are only shown after the parsing server answers (a sea
   // temperature source's fields). This walks the menu, not the data, so
@@ -62,8 +73,7 @@ async function freshPage() {
       window._sstEnable = async (src, v) => { _sstSource = src; _sstVariant = v; _sstOn = true; };
     }
   });
-  await p.waitForTimeout(1500);
-  return p;
+  await p.waitForTimeout(1200);
 }
 
 // The labels of the row on screen now, and whether it is a sub-row.
@@ -83,6 +93,7 @@ const leaves = [];
 // Tap to a row and wait for it to be the one on screen: some rows are built
 // only after something loads, and reading too soon reads the parent's row.
 async function reach(p, path, notSig) {
+  await fresh(p);
   await p.evaluate(path => _menuPlay(path), path);
   let here = await row(p), prev = null;
   const t0 = Date.now();
@@ -105,6 +116,7 @@ async function walk(p, path, depth, seen, parentSig) {
   }
   for (const label of here.labels) {
     const next = [...path, label];
+    await fresh(p);
     const r = await p.evaluate(path => _menuPlay(path), next);
     if (!r.ok) continue;
     // Give the tap time to open a row (some wait on something loading).
@@ -123,8 +135,6 @@ async function walk(p, path, depth, seen, parentSig) {
     } else if (!opened) {
       leaves.push(next);
     }
-    // Back to this row for the next label.
-    await reach(p, path, parentSig);
   }
 }
 
