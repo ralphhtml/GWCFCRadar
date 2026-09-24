@@ -73,7 +73,22 @@ async function ready(p) {
       window._sstEnable = async (src, v) => { _sstSource = src; _sstVariant = v; _sstOn = true; };
     }
   });
-  await p.waitForTimeout(1200);
+  // The page's own start-up redraws the main menu once or twice as things
+  // finish loading, and with the network on that can land seconds in, in
+  // the middle of a tap sequence. Wait until the menu has been left alone
+  // for a while before tapping anything.
+  await p.evaluate(() => new Promise(done => {
+    const wrap = document.getElementById('sub-bubbles');
+    let last = Date.now();
+    const mo = new MutationObserver(() => { last = Date.now(); });
+    mo.observe(wrap, { childList: true });
+    const t0 = Date.now();
+    const tick = () => {
+      if (Date.now() - last > 2500 || Date.now() - t0 > 15000) { mo.disconnect(); done(); }
+      else setTimeout(tick, 200);
+    };
+    tick();
+  }));
 }
 
 // The labels of the row on screen now, and whether it is a sub-row.

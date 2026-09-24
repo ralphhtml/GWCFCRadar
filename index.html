@@ -71303,6 +71303,22 @@ async function _menuPlay(path, stepWait = 6000) {
 async function _menuPlayAll(raw) {
   const paths = String(raw || '').split('|').map(x => x.trim()).filter(Boolean).slice(0, 8);
   if (!paths.length) return [];
+  // The page's own start-up redraws the main menu as things finish loading.
+  // One of those landing between two taps would drop the path back to the
+  // top, so the menu is given a moment of quiet first.
+  await new Promise(done => {
+    const wrap = document.getElementById('sub-bubbles');
+    if (!wrap || typeof MutationObserver === 'undefined') return done();
+    let last = Date.now();
+    const mo = new MutationObserver(() => { last = Date.now(); });
+    mo.observe(wrap, { childList: true });
+    const t0 = Date.now();
+    const tick = () => {
+      if (Date.now() - last > 1500 || Date.now() - t0 > 8000) { mo.disconnect(); done(); }
+      else setTimeout(tick, 150);
+    };
+    tick();
+  });
   const onLayers = () => new Set(Object.keys(activeLayers).filter(k => activeLayers[k]));
   const onOv = () => new Set([...document.querySelectorAll('.ov-pill.active')].map(x => x.dataset.ovid));
   const beforeL = onLayers(), beforeO = onOv();
