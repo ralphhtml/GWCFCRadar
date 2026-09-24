@@ -53,8 +53,12 @@ BASE = "https://deepmind.google.com/science/weatherlab/download/cyclones"
 # (GenCast, rebranded WeatherNext Gen). That mapping, the working product
 # path below, and the CSV column names are all live-verified findings from
 # Triple-A Tropics' enscenters package, used with permission.
-MODELS = ["FNV3", "GENC"]
-MODEL_LABELS = {"FNV3": "Google FNV3 (50 members)",
+# WNV3 joined them in 2026: DeepMind's newest cyclone model (the WeatherNext
+# generation behind their August 2026 Nature paper), 64 members, live on the
+# same endpoint and in the same CSV shape. Checked against the live files.
+MODELS = ["WNV3", "FNV3", "GENC"]
+MODEL_LABELS = {"WNV3": "Google WNV3 (64 members)",
+                "FNV3": "Google FNV3 (50 members)",
                 "GENC": "Google GenCast"}
 
 # Four cycles a day on the synoptic hours. Published a few hours later.
@@ -129,6 +133,10 @@ TRACK_COLUMNS = {
                "pressure", "pmin"),
     "member": ("sample", "member", "ensemble_member", "realization",
                "number"),
+    # The storm's size, which the WNV3 and FNV3 files carry (GenCast does
+    # not): the radius of maximum wind and, per quadrant, how far 34, 50 and
+    # 64 knot winds reach. Kept for the site's wind radii and wind chance map.
+    "rmw":    ("radius_of_maximum_winds_km",),
     # track_id is deliberately NOT mapped to storm: it is a bare number that
     # separates one member's simultaneous storms, not a name anyone knows.
     # The site names these lines itself, from the nearest storm in the
@@ -176,6 +184,12 @@ def parse_tracks(raw):
         return {}, header
 
     idx = {k: header.index(v) for k, v in cols.items()}
+    low = [h.lower().strip() for h in header]
+    radii = {}
+    for kt in (34, 50, 64):
+        names = [f"radius_{kt}_knot_winds_{q}_km" for q in ("ne", "se", "sw", "nw")]
+        if all(n in low for n in names):
+            radii[kt] = [low.index(n) for n in names]
     tracks = {}
     for row in body:
         if len(row) < len(header):
@@ -211,6 +225,24 @@ def parse_tracks(raw):
                     pt[extra] = round(float(v), 1)
                 except ValueError:
                     pt[extra] = v
+        if "rmw" in idx and row[idx["rmw"]] not in ("", "NaN"):
+            try:
+                v = float(row[idx["rmw"]])
+                if v > 0:
+                    pt["rmw"] = round(v)
+            except ValueError:
+                pass
+        for kt in (34, 50, 64):
+            if kt not in radii:
+                continue
+            try:
+                q = [float(row[i]) if row[i] not in ("", "NaN") else 0.0 for i in radii[kt]]
+            except ValueError:
+                continue
+            # Only when it reaches anywhere: most points are too weak for 64
+            # knots, and four zeros per point is a fifth of the file for nothing.
+            if any(x > 0 for x in q):
+                pt[f"r{kt}"] = [round(x) for x in q]
         # Strictly 6-hourly out to the observed maximum; anything else in the
         # lead column is a malformed row, not a finer forecast.
         if "lead" in pt and isinstance(pt["lead"], float):
