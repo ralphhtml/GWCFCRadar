@@ -91,22 +91,34 @@ const state = () => p.evaluate(() => {
     legend: document.querySelector('#ensx-panel [data-e="legend"]').textContent, alert: document.querySelector('#ensx-panel [data-e="alert"]').textContent,
     layer: !!(_ensx.layer && map.hasLayer(_ensx.layer)), P };
 });
+const _ensxIdxOf = (pl) => [6, 12].indexOf(pl.hour);
 const click = (mode) => p.evaluate(m => document.querySelector(`#ensx-panel .ensx-modes [data-mode="${m}"]`).click(), mode);
 
 console.log('\n1. opened from Models > Ensemble Models');
 {
   await p.evaluate(() => { toggleEnsembleModelsSub(); });
-  const rows = await p.evaluate(() => [...document.querySelectorAll('#ens-models-panel .ens-panel-grid button')].map(x => x.textContent));
-  ok('Members & Stats, Chance Maps and Postage Stamps are in the menu', ['Members & Stats', 'Chance Maps', 'Postage Stamps'].every(r => rows.includes(r)), rows.join('|'));
-  await p.evaluate(() => document.getElementById('ens-explorer').click());
   await p.waitForTimeout(1500);
+  const rows = await p.evaluate(() => [...document.querySelectorAll('#ensx-panel .ensx-modes [data-mode]')].map(x => x.textContent));
+  ok('Mean, Member, Chance and Stamps are all in the one panel', ['Mean', 'Member', 'Chance', 'Stamps'].every(r => rows.includes(r)), rows.join('|'));
   const s = await state();
   ok('opens on the mean of the newest run, drawn on the map', s.mode === 'mean' && s.layer && Math.abs(s.v - 70) < 0.06 && s.hour === 6, JSON.stringify(s));
-  const ui = await p.evaluate(() => ({ models: [...document.querySelectorAll('#ensx-panel [data-e="model"] option')].map(o => o.textContent),
+  const ui = await p.evaluate(() => ({ models: [...document.querySelectorAll('#ensx-panel [data-e="chips"] .spag-leg')].map(o => o.textContent + ':' + o.classList.contains('on')),
+    which: document.querySelector('#ensx-panel [data-e="which"]').textContent,
+    names: [...document.querySelectorAll('#ensx-panel [data-e="member"] option')].slice(0, 3).map(o => o.textContent),
     members: document.querySelectorAll('#ensx-panel [data-e="member"] option').length, run: document.querySelector('#ensx-panel [data-e="run"]').textContent,
     note: document.querySelector('#ensx-panel [data-e="note"]').textContent }));
-  ok('names the ensemble, run and members', ui.models.join() === 'GEFS' && ui.members === 5 && ui.run === '09/24 12z run' && /5 members, 2 forecast hours/.test(ui.note), JSON.stringify(ui));
-  ok('the row lights', await p.evaluate(() => document.getElementById('ens-explorer').classList.contains('on')));
+  ok('the ensemble is a Spaghetti-style chip (AEMN is the GEFS mean) with its name', ui.models.join() === 'AEMN:true' && /GEFS/.test(ui.which), JSON.stringify(ui));
+  ok('members carry their ATCF names, as in Spaghetti Models', ui.names.join('|') === 'AC00 (control)|AP01|AP02', ui.names.join('|'));
+  ok('names the run and members', ui.members === 5 && ui.run === '09/24 12z run' && /5 members, 2 forecast hours/.test(ui.note), JSON.stringify(ui));
+  await p.evaluate(() => { _ensxQ('speed').value = '4'; _ensxQ('speed').dispatchEvent(new Event('input')); _ensxQ('play').click(); });
+  await p.waitForTimeout(900);
+  const pl = await p.evaluate(() => ({ playing: _ensx.playing, hour: _ensx.man.hours[_ensx.hourIdx], slider: +_ensxQ('hour').value, speed: _ensx.speed }));
+  await p.evaluate(() => _ensxQ('play').click());
+  await p.waitForTimeout(300);
+  ok('the playbar plays the forecast hours, at the typed speed', pl.playing && pl.speed === 4 && pl.slider === _ensxIdxOf(pl), JSON.stringify(pl));
+  ok('and stops again', !(await p.evaluate(() => _ensx.playing)));
+  await p.evaluate(() => { _ensx.hourIdx = 0; _ensxQ('hour').value = 0; _ensxSyncHour(); return _ensxRender(); });
+  ok('the Models row lights', await p.evaluate(() => document.getElementById('sub-ensemble-models') ? document.getElementById('sub-ensemble-models').classList.contains('active') : activeBubbles['ensemble-models'] === true));
 }
 
 console.log('\n2. mean, median, spread');
@@ -127,7 +139,7 @@ console.log('\n3. stepping through members, the hour staying put');
   await p.waitForTimeout(500);
   await click('member'); await p.waitForTimeout(400);
   let s = await state();
-  ok('member 00 is the control', s.mode === 'member' && s.member === 0 && Math.abs(s.v - 50) < 0.06 && /Member 00/.test(s.legend), JSON.stringify(s));
+  ok('member 00 is the control', s.mode === 'member' && s.member === 0 && Math.abs(s.v - 50) < 0.06 && /AC00/.test(s.legend), JSON.stringify(s));
   await p.evaluate(() => _ensxQ('mnext').click()); await p.waitForTimeout(300);
   await p.evaluate(() => _ensxQ('mnext').click()); await p.waitForTimeout(300);
   s = await state();

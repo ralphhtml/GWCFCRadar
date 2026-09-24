@@ -3231,15 +3231,35 @@ img.wx-model-smooth {
 /* Spaghetti Models wears the DeepMind Models layout: the same inner
    padding, the same gold chips in even grids, and a quiet status line. */
 #spaghetti-models-panel > :not(.models-panel-header) { margin-left: 10px; margin-right: 10px; }
-#ens-models-panel > :not(.models-panel-header) { margin-left: 10px; margin-right: 10px; }
-#ens-models-panel > :last-child { margin-bottom: 10px; }
-#ens-models-panel .ens-panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 3px 10px 6px; }
-#ens-models-panel .ens-panel-grid button {
-  font-family: 'Comfortaa', sans-serif; font-size: 10px; font-weight: 700; padding: 6px 6px; border-radius: 6px; cursor: pointer;
-  background: rgba(255,209,102,0.10); border: 1px solid rgba(255,209,102,0.35); color: #ffd166; text-align: center;
+/* Ensemble Models: one panel shaped like the other model panels. The
+   ensembles are chips in the Spaghetti Models format (the ATCF code in the
+   model's own colour, the full name on hover), then what to show, then the
+   ensemble layers that go on the map. Gold switches, like DeepMind. */
+#ensx-panel.open { display: flex; }
+#ensx-panel > :not(.models-panel-header) { margin-left: 10px; margin-right: 10px; }
+#ensx-panel > :last-child { margin-bottom: 10px; }
+#ensx-panel.big { width: min(760px, calc(100vw - 196px)); }
+#ensx-panel .sev-section-label { margin: 10px 10px 5px; }
+#ensx-panel .sev-playbar-row { margin-top: 8px; }
+#ensx-panel.models-style-panel .ensx-row { padding: 6px 0 0; }
+#ensx-panel.models-style-panel .ensx-legend { padding: 8px 0 0; }
+#ensx-panel.models-style-panel .ensx-stamps { padding: 8px 0 0; }
+#ensx-panel .ensx-hour { flex: 1; accent-color: var(--accent2); cursor: pointer; }
+#ensx-panel .ens-big-btn { background: none; border: 0; color: rgba(255,230,200,0.7); cursor: pointer; font-size: 13px; padding: 0 4px; }
+#ensx-panel .ens-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+#ensx-panel .ens-chips .spag-leg { font-size: 10px; padding: 3px 8px; }
+#ensx-panel .ens-chips .spag-leg.on { background: var(--spag-color); color: #000; }
+#ensx-panel .ens-which { margin-top: 5px; opacity: 0.8; }
+#ensx-panel .ensx-modes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+#ensx-panel .ensx-modes button, #ensx-panel .ens-toggles button {
+  font: inherit; font-size: 10px; font-weight: 700; padding: 5px 4px; border-radius: 6px; cursor: pointer;
+  background: rgba(255,209,102,0.08); border: 1px solid rgba(255,209,102,0.35); color: rgba(255,230,200,0.85);
 }
-#ens-models-panel .ens-panel-grid button:hover { background: rgba(255,209,102,0.22); }
-#ens-models-panel .ens-panel-grid button.on { background: #ffd166; color: #1a1200; border-color: #ffd166; }
+#ensx-panel .ensx-modes button:hover, #ensx-panel .ens-toggles button:hover { background: rgba(255,209,102,0.22); color: #ffd166; }
+#ensx-panel .ensx-modes button.on, #ensx-panel .ens-toggles button.on { background: #ffd166; color: #1a1200; border-color: #ffd166; }
+#ensx-panel .ens-toggles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+#ensx-panel .snd-alert:empty { display: none; }
+#ensx-panel .snd-note { padding: 8px 0 0; opacity: 0.7; }
 #spaghetti-models-panel > :last-child { margin-bottom: 10px; }
 #spaghetti-models-panel #spag-groups { gap: 4px; }
 #spaghetti-models-panel .spag-chip,
@@ -3993,7 +4013,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
    default is a compact draggable card in the corner, with the skew-T at a
    readable size and the numbers that matter under it, and a button to expand
    it when a proper look is wanted. */
-#snd-panel, #mtg-panel, #ensx-panel, #ensl-panel {
+#snd-panel, #mtg-panel, #ensl-panel {
   /* -- The panel's palette IS the radar's palette --------------------------
      Every colour below is lifted straight out of the NWS reflectivity table
      this app already paints radar with (NWS_DBZ_META, further down the file),
@@ -4040,24 +4060,24 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   max-height: calc(100vh - 160px);
   overflow: hidden auto;
 }
-#snd-panel.open, #mtg-panel.open, #ensx-panel.open, #ensl-panel.open { display: block; animation: sndIn 0.22s cubic-bezier(.2,.9,.3,1); }
+#snd-panel.open, #mtg-panel.open, #ensl-panel.open { display: block; animation: sndIn 0.22s cubic-bezier(.2,.9,.3,1); }
 @keyframes sndIn {
   from { opacity: 0; transform: translateY(10px) scale(0.985); }
   to   { opacity: 1; transform: none; }
 }
 /* An expanded panel is centred, and centring is a transform, so the opening
    animation must not fight it by animating transform too. */
-#snd-panel.big.open, #mtg-panel.big.open, #ensx-panel.big.open, #ensl-panel.big.open { animation: sndFade 0.2s ease; }
+#snd-panel.big.open, #mtg-panel.big.open, #ensl-panel.big.open { animation: sndFade 0.2s ease; }
 @keyframes sndFade { from { opacity: 0; } to { opacity: 1; } }
 
 /* Expanded: still a panel, just a big one, so the map is never fully gone. */
-#snd-panel.big, #mtg-panel.big, #ensx-panel.big, #ensl-panel.big {
+#snd-panel.big, #mtg-panel.big, #ensl-panel.big {
   right: 50%; bottom: 50%; transform: translate(50%, 50%);
   width: min(1140px, calc(100vw - 32px));
   max-height: calc(100vh - 32px); overflow: auto;
 }
-#snd-panel::-webkit-scrollbar, #mtg-panel::-webkit-scrollbar, #ensx-panel::-webkit-scrollbar, #ensl-panel::-webkit-scrollbar { width: 10px; }
-#snd-panel::-webkit-scrollbar-thumb, #mtg-panel::-webkit-scrollbar-thumb, #ensx-panel::-webkit-scrollbar-thumb, #ensl-panel::-webkit-scrollbar-thumb {
+#snd-panel::-webkit-scrollbar, #mtg-panel::-webkit-scrollbar, #ensl-panel::-webkit-scrollbar { width: 10px; }
+#snd-panel::-webkit-scrollbar-thumb, #mtg-panel::-webkit-scrollbar-thumb, #ensl-panel::-webkit-scrollbar-thumb {
   background: rgba(253,0,0,0.34); border-radius: 8px;
   border: 3px solid transparent; background-clip: padding-box;
 }
@@ -4094,20 +4114,20 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
 .snd-head-spacer { order: 5; flex: 1 1 100%; height: 0; }
 .snd-src { order: 6; }
 .snd-hour-wrap { order: 7; display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
-#snd-panel.big .snd-head, #mtg-panel.big .snd-head, #ensx-panel.big .snd-head, #ensl-panel.big .snd-head { flex-wrap: nowrap; }
-#snd-panel.big .snd-title, #mtg-panel.big .snd-title, #ensx-panel.big .snd-title, #ensl-panel.big .snd-title,
-#snd-panel.big .snd-where, #mtg-panel.big .snd-where, #ensx-panel.big .snd-where, #ensl-panel.big .snd-where { order: 0; margin-right: 0; }
-#snd-panel.big .snd-head-spacer, #mtg-panel.big .snd-head-spacer, #ensx-panel.big .snd-head-spacer, #ensl-panel.big .snd-head-spacer { order: 0; flex: 1 1 auto; height: auto; }
-#snd-panel.big .snd-src, #mtg-panel.big .snd-src, #ensx-panel.big .snd-src, #ensl-panel.big .snd-src,
-#snd-panel.big .snd-hour-wrap, #mtg-panel.big .snd-hour-wrap, #ensx-panel.big .snd-hour-wrap, #ensl-panel.big .snd-hour-wrap { order: 0; flex: 0 0 auto; }
-#snd-panel.big .snd-big, #mtg-panel.big .snd-big, #ensx-panel.big .snd-big, #ensl-panel.big .snd-big { order: 0; }
-#snd-panel.big .snd-x, #mtg-panel.big .snd-x, #ensx-panel.big .snd-x, #ensl-panel.big .snd-x { order: 0; }
+#snd-panel.big .snd-head, #mtg-panel.big .snd-head, #ensl-panel.big .snd-head { flex-wrap: nowrap; }
+#snd-panel.big .snd-title, #mtg-panel.big .snd-title, #ensl-panel.big .snd-title,
+#snd-panel.big .snd-where, #mtg-panel.big .snd-where, #ensl-panel.big .snd-where { order: 0; margin-right: 0; }
+#snd-panel.big .snd-head-spacer, #mtg-panel.big .snd-head-spacer, #ensl-panel.big .snd-head-spacer { order: 0; flex: 1 1 auto; height: auto; }
+#snd-panel.big .snd-src, #mtg-panel.big .snd-src, #ensl-panel.big .snd-src,
+#snd-panel.big .snd-hour-wrap, #mtg-panel.big .snd-hour-wrap, #ensl-panel.big .snd-hour-wrap { order: 0; flex: 0 0 auto; }
+#snd-panel.big .snd-big, #mtg-panel.big .snd-big, #ensl-panel.big .snd-big { order: 0; }
+#snd-panel.big .snd-x, #mtg-panel.big .snd-x, #ensl-panel.big .snd-x { order: 0; }
 .snd-hour-lbl {
   font-family: var(--mono); font-size: 10px; opacity: 0.75; min-width: 40px;
   font-variant-numeric: tabular-nums;
 }
 .snd-hour { width: 100%; min-width: 60px; accent-color: var(--r-red); }
-#snd-panel.big .snd-hour, #mtg-panel.big .snd-hour, #ensx-panel.big .snd-hour, #ensl-panel.big .snd-hour { width: 190px; }
+#snd-panel.big .snd-hour, #mtg-panel.big .snd-hour, #ensl-panel.big .snd-hour { width: 190px; }
 .snd-src {
   background: rgba(253,0,0,0.08); border: 1px solid rgba(253,0,0,0.3);
   color: #e8edf5; border-radius: 8px; font-size: 10px; padding: 4px 5px;
@@ -4117,7 +4137,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   font-family: var(--sans); cursor: pointer;
 }
 .snd-src:hover { background: rgba(253,0,0,0.18); border-color: rgba(253,0,0,0.5); }
-#snd-panel.big .snd-src, #mtg-panel.big .snd-src, #ensx-panel.big .snd-src, #ensl-panel.big .snd-src { max-width: none; font-size: 11px; }
+#snd-panel.big .snd-src, #mtg-panel.big .snd-src, #ensl-panel.big .snd-src { max-width: none; font-size: 11px; }
 .snd-src option { background: #14090b; color: #e8edf5; }
 .snd-x, .snd-big {
   background: rgba(253,0,0,0.08); border: 1px solid rgba(253,0,0,0.3);
@@ -4209,7 +4229,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px; padding: 0 10px 10px;
 }
-#snd-panel.big .snd-hodo-read, #mtg-panel.big .snd-hodo-read, #ensx-panel.big .snd-hodo-read, #ensl-panel.big .snd-hodo-read { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+#snd-panel.big .snd-hodo-read, #mtg-panel.big .snd-hodo-read, #ensl-panel.big .snd-hodo-read { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .snd-hodo-read:empty { display: none; }
 .snd-hr {
   background: linear-gradient(180deg, rgba(253,0,0,0.09), rgba(253,0,0,0.02));
@@ -4239,7 +4259,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 7px; padding: 0 10px 10px;
 }
-#snd-panel.big .snd-quick, #mtg-panel.big .snd-quick, #ensx-panel.big .snd-quick, #ensl-panel.big .snd-quick { display: none; }
+#snd-panel.big .snd-quick, #mtg-panel.big .snd-quick, #ensl-panel.big .snd-quick { display: none; }
 .snd-q {
   background: linear-gradient(180deg, rgba(253,0,0,0.09), rgba(253,0,0,0.02));
   border: 1px solid rgba(253,0,0,0.18);
@@ -4282,7 +4302,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   display: grid; grid-template-columns: minmax(0, 1fr);
   gap: 10px; padding: 10px;
 }
-#snd-panel.big .snd-tables, #mtg-panel.big .snd-tables, #ensx-panel.big .snd-tables, #ensl-panel.big .snd-tables {
+#snd-panel.big .snd-tables, #mtg-panel.big .snd-tables, #ensl-panel.big .snd-tables {
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 12px; padding: 10px 12px 14px;
 }
@@ -4338,7 +4358,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
 }
 /* Stretched across 1140px the four segments read as four buttons that happen
    to touch, so the track stops growing once it is comfortably wide. */
-#snd-panel.big .snd-tabs, #mtg-panel.big .snd-tabs, #ensx-panel.big .snd-tabs, #ensl-panel.big .snd-tabs {
+#snd-panel.big .snd-tabs, #mtg-panel.big .snd-tabs, #ensl-panel.big .snd-tabs {
   max-width: 780px; margin: 10px 12px 0;
   grid-template-columns: repeat(8, 1fr);
 }
@@ -38946,10 +38966,9 @@ const MODELS_SUB_BUBBLES = [
 // itself, so adding a panel is a row here instead of a fourth copy of the
 // ternary below.
 const _MODELS_PANELS = {
-  'run-models':       { isOpen: () => _runModelsPanelIsOpen() && !_runModelsEns,
-                        open: () => { _runModelsEns = false; openRunModelsPanel(); _runModelsApplyMode(); },
+  'run-models':       { isOpen: () => _runModelsPanelIsOpen(),
+                        open: () => { openRunModelsPanel(); _runModelsApplyMode(); },
                         close: () => closeRunModelsPanel() },
-  // Not a panel: a menu of every ensemble feature, opened in place.
   'ensemble-models':  { isOpen: () => _ensPanelIsOpen(),
                         open: () => openEnsembleModelsPanel(),
                         close: () => closeEnsembleModelsPanel() },
@@ -39695,28 +39714,51 @@ function _ensxProb(grids, conds, join, M, P) {
 }
 
 // -- The panel --------------------------------------------------------------
+// Every ensemble the parsing server builds, labelled the way Spaghetti Models
+// labels its lines: the ATCF code (AEMN is the GEFS mean, CEMN the Canadian
+// mean, EEMN the ECMWF mean, AVNO the GFS), in the colour Spaghetti Models
+// draws that model, with the full name beside it. GEFS and GEPS members get
+// their ATCF names too (AC00 is the GEFS control, AP01 its first member);
+// the rest are numbered after their code.
+const ENS_TAGS = {
+  gefs: { tag: 'AEMN', name: 'GEFS, the American ensemble', color: '#9fd0ff', member: i => i ? 'AP' + String(i).padStart(2, '0') : 'AC00' },
+  geps: { tag: 'CEMN', name: 'GEPS, the Canadian ensemble', color: '#a9e8b8', member: i => i ? 'CP' + String(i).padStart(2, '0') : 'CC00' },
+  ecmwfens: { tag: 'EEMN', name: 'ECMWF ENS, the European ensemble', color: '#ffb37a' },
+  sref: { tag: 'SREF', name: 'SREF, the short-range ensemble', color: '#d9b3ff' },
+  gfs: { tag: 'AVNO', name: 'GFS, one run (no members)', color: '#29b6f6' },
+  ecmwf: { tag: 'EMX', name: 'ECMWF IFS, one run (no members)', color: '#ff8a80' },
+};
+function _ensTag(key) { return ENS_TAGS[key] || { tag: String(key).toUpperCase(), name: key, color: '#cfd8dc' }; }
+function _ensMemberName(key, i) {
+  const t = _ensTag(key);
+  return t.member ? t.member(i) : `${t.tag}-${String(i).padStart(2, '0')}`;
+}
 function _ensxPanelHtml() {
   return `
-  <div class="snd-head">
-    <span class="snd-title">Ensemble Explorer</span>
-    <span class="snd-where" data-e="run"></span>
-    <div class="snd-head-spacer"></div>
-    <select class="snd-src" data-e="model" title="Which ensemble"></select>
-    <button class="snd-big" data-e="big" title="Expand">&#11036;</button>
-    <button class="snd-x" data-e="x" title="Close">&#10005;</button>
+  <div class="models-panel-header">
+    <div class="dtb-drag" title="Drag to move">&#x28FF;</div>
+    <div class="models-panel-title"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-signal></use></svg> Ensemble Models</div>
+    <button class="ens-big-btn" data-e="big" title="Wider panel (roomier postage stamps)">&#11036;</button>
+    <button class="models-close-btn" data-e="x" title="Close panel">&times;</button>
   </div>
+  <div class="sev-playbar-row">
+    <button class="sev-play-btn" data-e="play" title="Play the forecast hours"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg></button>
+    <input type="number" class="sev-speed-in" data-e="speed" value="1" min="0.05" step="any" title="Type any playback speed">
+    <input type="range" class="ensx-hour" data-e="hour" min="0" max="0" value="0" step="1" title="Forecast hour">
+  </div>
+  <div class="sev-fcast-header"><span class="sev-fcast-date" data-e="run"></span><span class="sev-fcast-flbl" data-e="hlabel"></span></div>
   <div class="snd-alert" data-e="alert" role="status" aria-live="polite"></div>
+  <div class="sev-section-label">Ensemble</div>
+  <div class="ens-chips" data-e="chips"></div>
+  <div class="ens-which" data-e="which"></div>
+  <div class="sev-section-label">Show</div>
+  <div class="ensx-modes" role="tablist" aria-label="What to show">
+    ${[['mean', 'Mean'], ['median', 'Median'], ['member', 'Member'], ['spread', 'Spread'], ['nspread', 'Norm. spread'], ['prob', 'Chance'], ['stamps', 'Stamps']]
+      .map(([id, l]) => `<button type="button" role="tab" class="${id === 'mean' ? 'on' : ''}" data-mode="${id}">${l}</button>`).join('')}
+  </div>
   <div class="ensx-row">
     <select data-e="field" title="Which field"></select>
-    <button type="button" data-e="hprev" title="Earlier">&#9664;</button>
-    <input type="range" data-e="hour" min="0" max="0" value="0" step="1" title="Forecast hour">
-    <button type="button" data-e="hnext" title="Later">&#9654;</button>
-    <span data-e="hlabel" class="ensx-hl"></span>
   </div>
-  <nav class="snd-tabs ensx-modes" role="tablist" aria-label="What to show">
-    ${[['member', 'Member'], ['mean', 'Mean'], ['median', 'Median'], ['spread', 'Spread'], ['nspread', 'Norm. spread'], ['prob', 'Chance'], ['stamps', 'Stamps']]
-      .map(([id, l], i) => `<button type="button" role="tab" class="snd-tab${i === 1 ? ' on' : ''}" data-mode="${id}">${l}</button>`).join('')}
-  </nav>
   <div class="ensx-row" data-e="memrow">
     <button type="button" data-e="mprev" title="Previous member">&#9664;</button>
     <select data-e="member" title="Which member"></select>
@@ -39740,6 +39782,10 @@ function _ensxPanelHtml() {
     <label class="ensx-op">Opacity <input type="range" data-e="alpha" min="10" max="100" value="80" step="5"></label>
     <span class="ensx-read" data-e="read"></span>
   </div>
+  <div class="sev-section-label">On the map</div>
+  <div class="ens-toggles">
+    ${ENS_MODEL_ROWS.map(r => `<button type="button" id="${r.id}" title="${_ccEsc(LAYER_DESCRIPTIONS[r.id] || r.label)}">${r.label}</button>`).join('')}
+  </div>
   <div class="snd-note" data-e="note"></div>`;
 }
 function _ensxQ(r) { return _ensx.el.querySelector(`[data-e="${r}"]`); }
@@ -39749,17 +39795,25 @@ async function openEnsembleExplorer(opts) {
   if (!_ensx) {
     const el = document.createElement('div');
     el.id = 'ensx-panel';
+    el.className = 'models-style-panel';
     el.innerHTML = _ensxPanelHtml();
     document.body.appendChild(el);
     _ensx = { el, mode: 'mean', member: 0, conds: [{ field: 'qpf', op: '>', value: 1 }], join: 'and', alpha: 0.8,
-      model: null, field: 't2m', hourIdx: 0, gen: 0 };
+      model: null, field: 't2m', hourIdx: 0, gen: 0, speed: 1, playing: false };
     _ensxQ('x').onclick = () => closeEnsembleExplorer();
     _ensxQ('big').onclick = () => { el.classList.toggle('big'); if (_ensx.mode === 'stamps') _ensxRender(); };
-    _ensxQ('model').onchange = e => { _ensx.model = e.target.value; _ensxLoadModel(); };
     _ensxQ('field').onchange = e => { _ensx.field = e.target.value; _ensxRender(); };
-    _ensxQ('hour').oninput = e => { _ensx.hourIdx = +e.target.value; _ensxSyncHour(); clearTimeout(_ensx.ht); _ensx.ht = setTimeout(_ensxRender, 120); };
-    _ensxQ('hprev').onclick = () => _ensxStepHour(-1);
-    _ensxQ('hnext').onclick = () => _ensxStepHour(1);
+    _ensxQ('hour').oninput = e => { _ensxStop(); _ensx.hourIdx = +e.target.value; _ensxSyncHour(); clearTimeout(_ensx.ht); _ensx.ht = setTimeout(_ensxRender, 120); };
+    _ensxQ('play').onclick = () => (_ensx.playing ? _ensxStop() : _ensxPlay());
+    _ensxQ('speed').oninput = e => { const v = parseFloat(e.target.value); if (v > 0) _ensx.speed = v; };
+    ENS_MODEL_ROWS.forEach(r => {
+      const b = el.querySelector('#' + r.id);
+      if (b) b.onclick = async () => {
+        try { await r.click(); } catch (err) { console.warn('ensemble switch', r.id, err); }
+        _ensPanelSync(); setTimeout(_ensPanelSync, 400); setTimeout(_ensPanelSync, 1500);
+      };
+    });
+    setInterval(() => { if (_ensxPanelIsOpen()) _ensPanelSync(); }, 1500);
     _ensxQ('member').onchange = e => { _ensx.member = +e.target.value; _ensxRender(); };
     _ensxQ('mprev').onclick = () => _ensxStepMember(-1);
     _ensxQ('mnext').onclick = () => _ensxStepMember(1);
@@ -39774,8 +39828,8 @@ async function openEnsembleExplorer(opts) {
     _ensxQ('join').onchange = e => { _ensx.join = e.target.value; _ensxQ('preset').value = ''; _ensxRender(); };
     _ensxQ('addc').onclick = () => { _ensx.conds.push({ field: 't2m', op: '>', value: 32 }); _ensxQ('preset').value = ''; _ensxCondsUi(); _ensxRender(); };
     _ensxQ('alpha').oninput = e => { _ensx.alpha = +e.target.value / 100; if (_ensx.layer) _ensx.layer.setOpacity(_ensx.alpha); };
-    el.querySelectorAll('.ensx-modes .snd-tab').forEach(b => { b.onclick = () => _ensxSetMode(b.dataset.mode); });
-    if (typeof _makeDraggable === 'function') { try { _makeDraggable(el, el.querySelector('.snd-head')); } catch (e) {} }
+    el.querySelectorAll('.ensx-modes [data-mode]').forEach(b => { b.onclick = () => _ensxSetMode(b.dataset.mode); });
+    if (typeof _makeDraggable === 'function') { try { _makeDraggable(el, el.querySelector('.models-panel-header')); } catch (e) {} }
     document.addEventListener('keydown', e => {
       if (!_ensxPanelIsOpen() || /INPUT|SELECT|TEXTAREA/.test((e.target && e.target.tagName) || '')) return;
       if (e.key === '[' ) { _ensxStepMember(-1); e.preventDefault(); }
@@ -39784,6 +39838,8 @@ async function openEnsembleExplorer(opts) {
     map.on('mousemove', _ensxHover);
   }
   _ensx.el.classList.add('open');
+  activeBubbles['ensemble-models'] = true;
+  _ensPanelSync();
   if (opts && opts.mode) _ensx.mode = opts.mode;
   _ensxCondsUi();
   _ensxSyncModeUi();
@@ -39798,16 +39854,54 @@ async function openEnsembleExplorer(opts) {
   }
   const models = Object.keys((_ensx.index && _ensx.index.models) || {}).filter(k => (_ensx.index.models[k].hours || []).length);
   if (!models.length) { alert.textContent = 'The parsing server has not finished an ensemble run yet.'; return; }
-  const sel = _ensxQ('model');
-  sel.innerHTML = models.map(k => `<option value="${k}">${_ccEsc(_ensx.index.models[k].label || k)}</option>`).join('');
+  _ensx.models = models;
   _ensx.model = (opts && opts.model && models.includes(opts.model)) ? opts.model : (models.includes(_ensx.model) ? _ensx.model : models[0]);
-  sel.value = _ensx.model;
+  _ensxChips();
   alert.textContent = '';
   return _ensxLoadModel();
 }
+// The ensembles as Spaghetti Models style chips; tapping one switches to it.
+function _ensxChips() {
+  const box = _ensxQ('chips');
+  box.innerHTML = (_ensx.models || []).map(k => {
+    const t = _ensTag(k), e = _ensx.index.models[k] || {};
+    return `<span class="spag-leg${k === _ensx.model ? ' on' : ''}" data-model="${k}" style="--spag-color:${t.color}"`
+      + ` title="${_ccEsc(t.name + (e.label && e.label !== t.name ? ' (' + e.label + ')' : ''))}">${_ccEsc(t.tag)}</span>`;
+  }).join('');
+  box.querySelectorAll('[data-model]').forEach(c => c.onclick = () => {
+    if (c.dataset.model === _ensx.model) return;
+    _ensx.model = c.dataset.model; _ensxChips(); _ensxLoadModel();
+  });
+  const t = _ensTag(_ensx.model);
+  _ensxQ('which').innerHTML = `<b style="color:${t.color}">${_ccEsc(t.tag)}</b> ${_ccEsc(t.name)}`;
+}
+// Plays the forecast hours, each one drawn before the next is asked for.
+function _ensxPlay() {
+  if (!_ensx || !_ensx.man || _ensx.playing) return;
+  _ensx.playing = true;
+  _ensxQ('play').innerHTML = '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-pause></use></svg>';
+  const tick = async () => {
+    if (!_ensx.playing || !_ensxPanelIsOpen()) return _ensxStop();
+    const n = _ensx.man.hours.length;
+    _ensx.hourIdx = (_ensx.hourIdx + 1) % n;
+    _ensxQ('hour').value = _ensx.hourIdx; _ensxSyncHour();
+    try { await _ensxRender(); } catch (e) {}
+    _ensx.pt = setTimeout(tick, 700 / (_ensx.speed || 1));
+  };
+  _ensx.pt = setTimeout(tick, 700 / (_ensx.speed || 1));
+}
+function _ensxStop() {
+  if (!_ensx) return;
+  _ensx.playing = false; clearTimeout(_ensx.pt);
+  const b = _ensxQ('play');
+  if (b) b.innerHTML = '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg>';
+}
 function closeEnsembleExplorer() {
   if (!_ensx) return;
+  _ensxStop();
   _ensx.el.classList.remove('open');
+  activeBubbles['ensemble-models'] = false;
+  _ensPanelSync();
   _ensx.gen++;
   if (_ensx.layer) { try { map.removeLayer(_ensx.layer); } catch (e) {} _ensx.layer = null; }
 }
@@ -39821,7 +39915,7 @@ async function _ensxLoadModel() {
   if (!fields.includes(_ensx.field)) _ensx.field = fields.includes('t2m') ? 't2m' : fields[0];
   _ensxQ('field').innerHTML = fields.map(f => `<option value="${f}">${ENSX_FIELDS[f].label}${ENSX_FIELDS[f].unit ? ' (' + ENSX_FIELDS[f].unit + ')' : ''}</option>`).join('');
   _ensxQ('field').value = _ensx.field;
-  _ensxQ('member').innerHTML = m.members.map((id, i) => `<option value="${i}">Member ${String(i).padStart(2, '0')}${i === 0 ? ' (control)' : ''}</option>`).join('');
+  _ensxQ('member').innerHTML = m.members.map((id, i) => `<option value="${i}">${_ensMemberName(_ensx.model, i)}${i === 0 ? ' (control)' : ''}</option>`).join('');
   _ensx.member = Math.min(_ensx.member, m.members.length - 1);
   _ensxQ('member').value = _ensx.member;
   const h = _ensxQ('hour');
@@ -39830,7 +39924,8 @@ async function _ensxLoadModel() {
   h.value = _ensx.hourIdx;
   const r = m.run || '';
   _ensxQ('run').textContent = `${r.slice(4, 6)}/${r.slice(6, 8)} ${r.slice(9, 11)}z run`;
-  _ensxQ('note').textContent = `${m.label}: ${m.members.length} members, ${m.hours.length} forecast hours`
+  _ensxChips();
+  _ensxQ('note').textContent = `${_ensTag(_ensx.model).tag} ${m.label}: ${m.members.length} members, ${m.hours.length} forecast hours`
     + (m.complete ? '' : ' so far (still building)') + `. Half-degree grid from the parsing server.`;
   _ensxCondsUi();
   _ensxSyncHour();
@@ -39857,7 +39952,7 @@ function _ensxStepMember(d) {
 }
 function _ensxSetMode(mode) { _ensx.mode = mode; _ensxSyncModeUi(); _ensxRender(); }
 function _ensxSyncModeUi() {
-  _ensx.el.querySelectorAll('.ensx-modes .snd-tab').forEach(b => b.classList.toggle('on', b.dataset.mode === _ensx.mode));
+  _ensx.el.querySelectorAll('.ensx-modes [data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === _ensx.mode));
   _ensxQ('memrow').style.display = _ensx.mode === 'member' ? '' : 'none';
   _ensxQ('probbox').style.display = _ensx.mode === 'prob' ? '' : 'none';
   _ensxQ('stamps').style.display = _ensx.mode === 'stamps' ? '' : 'none';
@@ -39919,7 +40014,7 @@ async function _ensxRender() {
       values = _ensxStat(codes, spec, M, P, mode, _ensx.member);
       scaleKey = _ensx.field === 'ptype' ? 'ptype' : (mode === 'spread' ? 'spread' : mode === 'nspread' ? 'nspread' : _ensx.field);
       const f = ENSX_FIELDS[_ensx.field];
-      legend = ({ member: `Member ${String(_ensx.member).padStart(2, '0')}`, mean: 'Mean', median: 'Median', mode: 'Most likely',
+      legend = ({ member: `${_ensMemberName(_ensx.model, _ensx.member)}`, mean: 'Mean', median: 'Median', mode: 'Most likely',
         spread: 'Spread (standard deviation)', nspread: 'Spread compared with its average over the map' })[mode]
         + ` · ${f.label}` + (mode === 'nspread' ? '' : f.unit ? ` (${f.unit})` : '');
     }
@@ -40359,7 +40454,6 @@ function _enslHover(e) {
 // probabilities, the GEFS cyclone centres and the ensemble meteogram. They
 // used to be spread across the overlay list, the AI Cyclones panel and the
 // Run Models list beside the ordinary runs.
-let _runModelsEns = false;
 // A model is an ensemble product if its key or its name says so: a mean, a
 // spread, a control or a member of GEFS, ECMWF ENS, GEPS/CMCE, HREF or SREF.
 function _isEnsModel(key, label) {
@@ -40367,81 +40461,38 @@ function _isEnsModel(key, label) {
   return /^(gefs|cmce|geps|ecmwfens|href|sref|naefs)/.test(k)
     || /\b(ens|ensemble|mean|spread|member|control)\b/i.test(String(label || ''));
 }
-// Shows only the ensemble models in the Run Models picker, or only the
-// ordinary runs, and moves off a model the other list owns.
+// Run Models runs the ensembles too: their charts sit in the same picker,
+// gathered under an Ensembles heading at the bottom so they read as their
+// own family rather than scattered between the single runs.
 function _runModelsApplyMode() {
   const sel = document.getElementById('sev-model-sel');
-  const title = document.querySelector('#run-models-panel .models-panel-title');
-  if (title) title.innerHTML = _runModelsEns
-    ? '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-signal></use></svg> Ensemble Models'
-    : '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-chart-up></use></svg> Run Models';
   if (!sel) return;
-  const keep = new Set(['ndfd', 'pi:rtma']);      // hidden already, shown only when driven from elsewhere
-  Array.from(sel.options).forEach(o => {
-    if (keep.has(o.value)) return;
-    const ens = _isEnsModel(o.value, o.textContent);
-    o.hidden = _runModelsEns ? !ens : ens;
-  });
-  sel.querySelectorAll('optgroup').forEach(g => { g.hidden = !Array.from(g.children).some(o => !o.hidden); });
-  const cur = sel.options[sel.selectedIndex];
-  if (cur && cur.hidden && !keep.has(cur.value)) {
-    const first = Array.from(sel.options).find(o => !o.hidden);
-    if (first) { sel.value = first.value; try { _sevSetSection(first.value); } catch (e) {} }
-  }
+  const keep = new Set(['ndfd', 'pi:rtma']);
+  let grp = document.getElementById('sev-ens-group');
+  const moving = Array.from(sel.options).filter(o => !keep.has(o.value) && o.parentNode !== grp && _isEnsModel(o.value, o.textContent));
+  if (!moving.length) return;
+  const chosen = sel.value;
+  if (!grp) { grp = document.createElement('optgroup'); grp.id = 'sev-ens-group'; grp.label = 'Ensembles'; }
+  grp.innerHTML = '';
+  moving.forEach(o => { o.hidden = false; grp.appendChild(o); });
+  sel.appendChild(grp);
+  sel.querySelectorAll('optgroup').forEach(g => { g.hidden = !g.children.length; });
+  sel.value = chosen;
 }
-function openEnsembleChartsPanel() {
-  _runModelsEns = true;
-  openRunModelsPanel();
-  _runModelsApplyMode();
-}
+// The ensemble layers that go on the map. Nothing here is offered anywhere
+// else: the ensemble charts are in Run Models, the meteogram is on the
+// map's right-click menu, and the GEFS member cyclone tracks are Spaghetti
+// Models' GEFS members.
 const ENS_MODEL_ROWS = [
-  { id: 'ens-charts', label: 'Ensemble Charts', icon: 'chart-up',
-    on: () => _runModelsPanelIsOpen() && _runModelsEns,
-    click: () => { if (_runModelsPanelIsOpen() && _runModelsEns) closeRunModelsPanel(); else openEnsembleChartsPanel(); } },
-  { id: 'ens-explorer', label: 'Members & Stats', icon: 'sliders',
-    on: () => _ensxPanelIsOpen() && !['prob', 'stamps'].includes(_ensx.mode),
-    click: () => { if (_ensxPanelIsOpen() && !['prob', 'stamps'].includes(_ensx.mode)) closeEnsembleExplorer(); else openEnsembleExplorer({ mode: _ensx && !['prob', 'stamps'].includes(_ensx.mode) ? _ensx.mode : 'mean' }); } },
-  { id: 'ens-prob', label: 'Chance Maps', icon: 'target',
-    on: () => _ensxPanelIsOpen() && _ensx.mode === 'prob',
-    click: () => { if (_ensxPanelIsOpen() && _ensx.mode === 'prob') closeEnsembleExplorer(); else openEnsembleExplorer({ mode: 'prob' }); } },
-  { id: 'ens-stamps', label: 'Postage Stamps', icon: 'image',
-    on: () => _ensxPanelIsOpen() && _ensx.mode === 'stamps',
-    click: () => { if (_ensxPanelIsOpen() && _ensx.mode === 'stamps') closeEnsembleExplorer(); else openEnsembleExplorer({ mode: 'stamps' }); } },
-  { id: 'ens-stack', label: 'Model Layer Stack', icon: 'sliders',
-    on: () => _enslPanelIsOpen(), click: () => { if (_enslPanelIsOpen()) closeLayerStack(); else openLayerStack(); } },
-  { id: 'ens-lows', label: 'Low Tracks', icon: 'noodles',
-    on: () => typeof _lowsOn !== 'undefined' && _lowsOn, click: () => _lowsToggle() },
-  { id: 'ens-tcprob', label: 'ECMWF TC Probability', icon: 'cyclone',
-    on: () => typeof _ectcOn !== 'undefined' && _ectcOn, click: () => _ectcToggle() },
-  { id: 'ens-centres', label: 'GEFS Cyclone Centres', icon: 'target',
-    on: () => typeof _ensOn !== 'undefined' && _ensOn, click: () => _ensToggle() },
-  { id: 'ens-meteogram', label: 'Ensemble Meteogram', icon: 'chart-bar',
-    on: () => typeof _mtgPanelIsOpen === 'function' && _mtgPanelIsOpen(),
-    click: () => {
-      if (_mtgPanelIsOpen()) { document.getElementById('mtg-panel').classList.remove('open'); return; }
-      const gps = typeof _userGPS === 'function' ? _userGPS() : null;
-      const c = gps ? { lat: gps.lat, lng: gps.lon } : map.getCenter();
-      openMeteogram(c.lat, c.lng);
-    } },
+  { id: 'ens-lows', label: 'Low Tracks', on: () => typeof _lowsOn !== 'undefined' && _lowsOn, click: () => _lowsToggle() },
+  { id: 'ens-tcprob', label: 'TC Chance', on: () => typeof _ectcOn !== 'undefined' && _ectcOn, click: () => _ectcToggle() },
+  { id: 'ens-stack', label: 'Layer Stack', on: () => _enslPanelIsOpen(), click: () => { if (_enslPanelIsOpen()) closeLayerStack(); else openLayerStack(); } },
 ];
 function _ensModelsAnyOn() {
   return ENS_MODEL_ROWS.some(r => { try { return !!r.on(); } catch (e) { return false; } });
 }
-// One simple panel, laid out like DeepMind Models: every ensemble feature is
-// a switch in a short grid under a plain heading, lit while it is on.
-const ENS_PANEL_GROUPS = [
-  { label: 'Charts', ids: ['ens-charts', 'ens-stack'] },
-  { label: 'Members & chances', ids: ['ens-explorer', 'ens-prob', 'ens-stamps'] },
-  { label: 'On the map', ids: ['ens-lows', 'ens-tcprob', 'ens-centres'] },
-  { label: 'At a point', ids: ['ens-meteogram'] },
-];
-function _ensPanelIsOpen() {
-  const el = document.getElementById('ens-models-panel');
-  return !!el && el.style.display === 'flex';
-}
+function _ensPanelIsOpen() { return typeof _ensxPanelIsOpen === 'function' && _ensxPanelIsOpen(); }
 function _ensPanelSync() {
-  const el = document.getElementById('ens-models-panel');
-  if (!el) return;
   ENS_MODEL_ROWS.forEach(r => {
     const b = document.getElementById(r.id);
     if (b) { let on = false; try { on = !!r.on(); } catch (e) {} b.classList.toggle('on', on); }
@@ -40449,47 +40500,8 @@ function _ensPanelSync() {
   const btn = document.getElementById('sub-ensemble-models');
   if (btn) btn.classList.toggle('active', _ensPanelIsOpen() || _ensModelsAnyOn());
 }
-function openEnsembleModelsPanel() {
-  let el = document.getElementById('ens-models-panel');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'ens-models-panel';
-    el.className = 'models-style-panel';
-    const rowOf = id => ENS_MODEL_ROWS.find(r => r.id === id);
-    el.innerHTML = `
-      <div class="models-panel-header">
-        <div class="dtb-drag" title="Drag to move">&#x28FF;</div>
-        <div class="models-panel-title"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-signal></use></svg> Ensemble Models</div>
-        <button class="models-close-btn" title="Close panel (what is on the map stays on)">&times;</button>
-      </div>
-      ${ENS_PANEL_GROUPS.map(g => `<div class="sev-section-label">${g.label}</div><div class="ens-panel-grid">`
-        + g.ids.map(id => { const r = rowOf(id); return r ? `<button type="button" id="${r.id}" title="${_ccEsc(LAYER_DESCRIPTIONS[r.id] || r.label)}">${r.label}</button>` : ''; }).join('')
-        + `</div>`).join('')}`;
-    document.body.appendChild(el);
-    el.querySelector('.models-close-btn').onclick = () => closeEnsembleModelsPanel();
-    ENS_MODEL_ROWS.forEach(r => {
-      const b = el.querySelector('#' + r.id);
-      if (!b) return;
-      b.onclick = async () => {
-        try { await r.click(); } catch (e) { console.warn('ensemble switch', r.id, e); }
-        // Several of these finish a moment later (a fetch, a panel), so the
-        // light is checked again rather than guessed.
-        _ensPanelSync(); setTimeout(_ensPanelSync, 400); setTimeout(_ensPanelSync, 1500);
-      };
-    });
-    if (typeof _makeDraggable === 'function') { try { _makeDraggable(el, el.querySelector('.models-panel-header')); } catch (e) {} }
-    setInterval(() => { if (_ensPanelIsOpen()) _ensPanelSync(); }, 1500);
-  }
-  el.style.display = 'flex';
-  activeBubbles['ensemble-models'] = true;
-  _ensPanelSync();
-}
-function closeEnsembleModelsPanel() {
-  const el = document.getElementById('ens-models-panel');
-  if (el) el.style.display = 'none';
-  activeBubbles['ensemble-models'] = false;
-  _ensPanelSync();
-}
+function openEnsembleModelsPanel() { return openEnsembleExplorer(); }
+function closeEnsembleModelsPanel() { closeEnsembleExplorer(); }
 // Kept by name: the sub-bubble and older callers open the panel through it.
 function toggleEnsembleModelsSub() {
   if (_ensPanelIsOpen()) closeEnsembleModelsPanel(); else openEnsembleModelsPanel();
@@ -71930,6 +71942,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-t', date: 'Sep 24, 2026',
+    text: "Ensemble Models is redesigned as one panel that works like the other model panels: a playbar with a typed speed on top, then the ensembles as chips labelled the way Spaghetti Models labels its lines (AEMN is the GEFS mean, CEMN the Canadian, EEMN the European, AVNO the GFS), then what to show (Mean, Median, Member, Spread, Chance, Stamps), then Low Tracks, TC Chance and Layer Stack for the map. GEFS members are named like spaghetti lines too (AC00 is the control, AP01 the first member). Nothing in it repeats something that lives elsewhere: the ensemble charts are back in Run Models, under their own Ensembles heading, the meteogram is on the map's right-click menu, and the GEFS member cyclone tracks are Spaghetti Models' GEFS members." },
   { id: '2026-09-24-s', date: 'Sep 24, 2026',
     text: "The height slider is now just a bare slider floating under the left menu: no box and no names, only a small label riding on the dot that says the height it is on. It is quicker too: every height you have looked at is kept for ten minutes so going back is instant, and resting the dot on a new height starts downloading it before you even let go. In Layer 3D, Temperature, Wind and Pressure read up high now float as a sheet at that height over the ground (mountains taller than the level poke through), and Ocean Depth puts the water's colours at that depth under the sea." },
   { id: '2026-09-24-r', date: 'Sep 24, 2026',

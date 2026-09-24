@@ -1,15 +1,13 @@
 #!/usr/bin/env node
 /*
- * Models > Ensemble Models: every ensemble feature in one sub-bubble.
+ * Models > Ensemble Models: one panel shaped like the other model panels.
  *
  *     node tools/test-ensemble-models.mjs
  *
- * The ensemble charts (the Run Models panel switched to its ensemble list),
- * Low Tracks and ECMWF TC Probability (which were overlay rows), the GEFS
- * cyclone centres (which was a button in the AI Cyclones panel) and the
- * ensemble meteogram. Checked: the rows are there and light up, the old
- * homes no longer show them, and the Run Models picker splits cleanly into
- * ordinary runs and ensembles.
+ * Checked: the Models row opens it; it has the playbar, the ensembles as
+ * Spaghetti-style chips, what to show and the map switches; the switches
+ * light; nothing in it repeats a feature that lives elsewhere; and Run
+ * Models lists the ensembles too, under their own heading.
  */
 
 import { readFileSync } from 'node:fs';
@@ -57,10 +55,9 @@ await p.evaluate(() => {
   // No parsing server here: the three map features just flip their switch.
   window._lowsToggle = () => { _lowsOn = !_lowsOn; };
   window._ectcToggle = () => { _ectcOn = !_ectcOn; };
-  window._ensToggle = async () => { _ensOn = !_ensOn; };
 });
 
-console.log('\n1. one simple panel');
+console.log('\n1. one panel, shaped like the other model panels');
 const rows = () => p.evaluate(() => [...document.querySelectorAll('#sub-bubbles .sub-bubble')].map(e =>
   (e.classList.contains('active') ? '*' : '') + e.querySelector('.sb-label').textContent));
 {
@@ -68,21 +65,26 @@ const rows = () => p.evaluate(() => [...document.querySelectorAll('#sub-bubbles 
   const r = await rows();
   ok('Models lists Ensemble Models right under Run Models', r.join('|').startsWith('Back|Run Models|Ensemble Models|'), r.join('|'));
   await p.evaluate(() => document.getElementById('sub-ensemble-models').click());
+  await p.waitForTimeout(400);
   const e = await p.evaluate(() => {
-    const el = document.getElementById('ens-models-panel');
-    return { shown: !!el && getComputedStyle(el).display === 'flex',
-      text: [...el.querySelectorAll('.sev-section-label, button:not(.models-close-btn)')].map(x => x.textContent.trim()).join('|'),
-      titled: [...el.querySelectorAll('.ens-panel-grid button')].every(b => b.title.length > 20) };
+    const el = document.getElementById('ensx-panel');
+    return { shown: !!el && getComputedStyle(el).display === 'flex', cls: el.className,
+      title: el.querySelector('.models-panel-title').textContent.trim(),
+      sections: [...el.querySelectorAll('.sev-section-label')].map(x => x.textContent.trim()).join('|'),
+      play: !!el.querySelector('.sev-playbar-row [data-e="play"]') && !!el.querySelector('.sev-playbar-row [data-e="speed"]'),
+      toggles: [...el.querySelectorAll('.ens-toggles button')].map(x => x.textContent.trim()).join('|'),
+      titled: [...el.querySelectorAll('.ens-toggles button')].every(b => b.title.length > 20),
+      old: !!document.getElementById('ens-models-panel') };
   });
-  ok('it opens one panel', e.shown);
-  ok('with every ensemble feature grouped',
-     e.text === 'Charts|Ensemble Charts|Model Layer Stack|Members & chances|Members & Stats|Chance Maps|Postage Stamps|On the map|Low Tracks|ECMWF TC Probability|GEFS Cyclone Centres|At a point|Ensemble Meteogram', e.text);
-  ok('each button explains itself on hover', e.titled);
+  ok('the Models row opens the one Ensemble Models panel', e.shown && /models-style-panel/.test(e.cls) && e.title === 'Ensemble Models', JSON.stringify(e));
+  ok('playbar on top, then Ensemble, Show and On the map', e.play && e.sections === 'Ensemble|Show|On the map', e.sections);
+  ok('the map layers are gold switches that explain themselves', e.toggles === 'Low Tracks|TC Chance|Layer Stack' && e.titled, e.toggles);
+  ok('the old button menu is gone', !e.old);
 }
 
-console.log('\n2. the rows work and light up');
+console.log('\n2. the switches work and light up');
 {
-  for (const [id, flag] of [['ens-lows', '_lowsOn'], ['ens-tcprob', '_ectcOn'], ['ens-centres', '_ensOn']]) {
+  for (const [id, flag] of [['ens-lows', '_lowsOn'], ['ens-tcprob', '_ectcOn']]) {
     await p.evaluate(i => document.getElementById(i).click(), id);
     await p.waitForTimeout(450);
     const r = await p.evaluate(([i, f]) => ({ on: eval(f), lit: document.getElementById(i).classList.contains('on') }), [id, flag]);
@@ -92,52 +94,41 @@ console.log('\n2. the rows work and light up');
     const r2 = await p.evaluate(([i, f]) => ({ on: eval(f), lit: document.getElementById(i).classList.contains('on') }), [id, flag]);
     ok(`${id} turns off again`, !r2.on && !r2.lit, JSON.stringify(r2));
   }
-  await p.evaluate(() => document.getElementById('ens-meteogram').click());
-  await p.waitForTimeout(500);
-  ok('the meteogram row opens the meteogram', await p.evaluate(() => _mtgPanelIsOpen()));
-  await p.evaluate(() => document.getElementById('ens-meteogram').click());
-  await p.waitForTimeout(300);
-  ok('and closes it', !(await p.evaluate(() => _mtgPanelIsOpen())));
 }
 
-console.log('\n3. the old homes');
+console.log('\n3. nothing repeated from elsewhere');
 {
-  const r = await p.evaluate(() => ['op-ecmwf-tc', 'op-low-tracks', 'cyc-ens-centres-btn'].map(id => {
-    const el = document.getElementById(id);
-    return id + ':' + (el ? getComputedStyle(el).display : 'gone');
-  }));
-  ok('the overlay rows and the AI Cyclones button are no longer shown', r.every(x => /:none$/.test(x)), r.join(' '));
+  const r = await p.evaluate(() => ({
+    ids: [...document.querySelectorAll('#ensx-panel button[id]')].map(b => b.id),
+    hidden: ['op-ecmwf-tc', 'op-low-tracks', 'cyc-ens-centres-btn'].map(id => {
+      const el = document.getElementById(id); return id + ':' + (el ? getComputedStyle(el).display : 'gone'); }),
+    rightClick: typeof _cmMeteogramHere === 'function' }));
+  ok('no charts, meteogram or GEFS centres buttons (Run Models, the right-click menu and Spaghetti Models have those)',
+     !r.ids.some(i => /ens-charts|ens-meteogram|ens-centres/.test(i)) && r.rightClick, r.ids.join(','));
+  ok('and the overlay rows stay hidden, so each layer has one home', r.hidden.every(x => /:none$/.test(x)), r.hidden.join(' '));
 }
 
-console.log('\n4. ensemble charts and ordinary runs, split');
+console.log('\n4. Run Models runs the ensembles too');
 {
-  await p.evaluate(() => { toggleEnsembleModelsSub(); document.getElementById('ens-charts').click(); });
+  await p.evaluate(() => { toggleModelsSub(); document.getElementById('sub-run-models').click(); });
   await p.waitForTimeout(600);
   const vis = () => p.evaluate(() => ({
     title: document.querySelector('#run-models-panel .models-panel-title').textContent.trim(),
     shown: [...document.querySelectorAll('#sev-model-sel option')].filter(o => !o.hidden).map(o => o.value),
-    value: document.getElementById('sev-model-sel').value }));
+    ens: [...document.querySelectorAll('#sev-ens-group option')].map(o => o.value),
+    label: (document.getElementById('sev-ens-group') || {}).label }));
   let v = await vis();
-  ok('Ensemble Charts opens the models panel as Ensemble Models', v.title === 'Ensemble Models', v.title);
-  ok('listing only the ensembles, and showing one', v.shown.join(',') === 'pi:gefs,pi:gefsspr' && v.value === 'pi:gefs', JSON.stringify(v));
-  ok('and the row is lit', await p.evaluate(() => document.getElementById('ens-charts').classList.contains('on')));
-  await p.evaluate(() => { toggleModelsSub(); document.getElementById('sub-run-models').click(); });
-  await p.waitForTimeout(600);
-  v = await vis();
-  ok('Run Models is the ordinary runs only', v.title === 'Run Models' && !v.shown.some(x => /gefs/.test(x)) && v.shown.includes('pi:gfs')
-     && !/gefs/.test(v.value), JSON.stringify(v));
-  // The parsing server's own list arriving later keeps the split.
+  ok('the single runs and the ensembles are both there', v.title === 'Run Models' && v.shown.includes('pi:gfs') && v.shown.includes('pi:gefs'), JSON.stringify(v));
+  ok('the ensembles under their own Ensembles heading', v.label === 'Ensembles' && v.ens.join(',') === 'pi:gefs,pi:gefsspr', JSON.stringify(v));
   await p.evaluate(() => {
     _hdIndex = { models: { gfs: { label: 'GFS' }, gefs: { label: 'GEFS Mean' }, cmce: { label: 'CMC Ensemble' },
       hrefpmmn: { label: 'HREF PMM' }, ecmwfens: { label: 'ECMWF ENS mean' }, hrrr: { label: 'HRRR' } } };
     _hdFillModelPicker();
   });
   v = await vis();
-  ok('a fresh model list from the parsing server keeps ensembles out of Run Models',
-     !v.shown.some(x => /gefs|cmce|href|ecmwfens/.test(x)) && v.shown.includes('pi:hrrr'), JSON.stringify(v.shown));
-  await p.evaluate(() => openEnsembleChartsPanel());
-  v = await vis();
-  ok('and in Ensemble Models', v.shown.join(',') === 'pi:gefs,pi:cmce,pi:hrefpmmn,pi:ecmwfens', JSON.stringify(v.shown));
+  ok('a fresh list from the parsing server keeps that shape, no repeats',
+     v.ens.join(',') === 'pi:gefs,pi:cmce,pi:hrefpmmn,pi:ecmwfens' && v.shown.includes('pi:hrrr')
+     && new Set(v.shown).size === v.shown.length, JSON.stringify(v));
   ok('no page errors along the way', errs.length === 0, errs[0]);
 }
 
