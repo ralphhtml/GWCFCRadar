@@ -147,11 +147,12 @@ console.log('\n4. each of the five bubble rows is really in the stack and really
   // is its position, not an independent number), so Wind's own z-index is
   // expected to shift too; what has to stay true is that it stays a
   // DIFFERENT pane from Temperature's, still present, still its own row.
+  const MAP_STACK_TOP_Z_EXPECTED = await p.evaluate(() => MAP_STACK_TOP_Z);
   const moved = await p.evaluate(() => {
     let row = document.querySelector('#lqm-stack-list .lqm-order-row[data-stackid="temperature"]');
-    // Ten rows now (borders, models, radar, satellite, the five split-out
-    // bubbles, ocean), so walking clear to the top can take up to nine clicks.
-    for (let i = 0; i < 10 && row && !row.previousElementSibling === false; i++) {
+    // One combined list now, the overlays and the map layers together, so
+    // walking clear to the top can take fifty-odd clicks.
+    for (let i = 0; i < 80 && row; i++) {
       const upBtn = row.querySelector('.lqm-order-btn[data-move="up"]');
       if (!upBtn || upBtn.classList.contains('off')) break;
       upBtn.click();
@@ -165,8 +166,8 @@ console.log('\n4. each of the five bubble rows is really in the stack and really
     return { idx, z, topZ: rows[0] === row, windStillThere: !!windRow, windZ };
   });
   ok('walking it up with the arrow puts it first in the list', moved.topZ, JSON.stringify(moved));
-  ok('and the real pane on the map is now the highest of the stack layers',
-     Number(moved.z) === 401, JSON.stringify(moved));
+  ok('and the real pane on the map is now the highest of the stack',
+     Number(moved.z) === MAP_STACK_TOP_Z_EXPECTED, JSON.stringify(moved));
   ok("Wind kept its own row and its own pane, distinct from Temperature's",
      moved.windStillThere && moved.windZ !== moved.z, JSON.stringify(moved));
   ok('nothing threw across the whole run', errs.length === 0, errs.slice(0, 3).join(' | '));

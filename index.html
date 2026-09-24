@@ -61509,6 +61509,8 @@ function selectProduct(p) {
     .lqm-order-row .lqm-order-grip { flex:none; cursor:grab; color:var(--muted); padding:0 2px; }
     .lqm-order-row .lqm-order-dot { flex:none; width:7px; height:7px; border-radius:50%; background:rgba(255,255,255,.18); }
     .lqm-order-row .lqm-order-dot.on { background:var(--accent2); box-shadow:0 0 5px var(--accent2); }
+    /* A product under its layer, indented so it reads as part of it. */
+    .lqm-order-row.sub { margin-left:18px; padding:3px 7px; font-size:9px; background:rgba(255,255,255,.025); }
   </style>
   <div class="lqm-settings-group" data-cat="layers">
     <div class="lqm-settings-category"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-grip></use></svg> Layer Order</div>
@@ -61516,21 +61518,18 @@ function selectProduct(p) {
       Top of a list draws on top on the map. Drag a row by its grip, or use the arrows if that is
       easier on a phone. The change is live: you do not have to close Settings to see it.
     </div>
-    <div class="lqm-settings-row"><span class="lqm-settings-lbl">Map layers</span></div>
+    <div class="lqm-settings-row"><span class="lqm-settings-lbl">Everything on the map</span></div>
     <div id="lqm-stack-list" class="lqm-order-list"></div>
     <div class="lqm-settings-row">
-      <button class="lqm-settings-btn" onclick="_stackReset()">Reset map layers</button>
-    </div>
-    <div class="lqm-settings-row"><span class="lqm-settings-lbl">Overlays</span></div>
-    <div id="lqm-ovorder-list" class="lqm-order-list"></div>
-    <div class="lqm-settings-row">
-      <button class="lqm-settings-btn" onclick="_ovOrderReset()">Reset overlays</button>
+      <button class="lqm-settings-btn" onclick="_stackReset()">Reset the order</button>
     </div>
     <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:2px 0 6px;line-height:1.5;">
-      A lit dot means that layer is on right now. Overlays always draw above the four map layers,
-      which is why they are two lists rather than one. Alert polygons are deliberately pinned low
-      in the stack: they are drawn to a canvas that covers the whole map, so letting them climb
-      would swallow every click meant for the markers underneath.
+      One list: map layers and overlays together, so anything can go over or under anything.
+      Every product you pick from a menu, however deep (Waves &gt; SST &gt; Coral Reef Watch &gt; Actual),
+      gets its own indented row under its layer once it has been on the map, and those rows
+      reorder among themselves. A lit dot means it is on right now. Alert polygons are
+      deliberately pinned low: they are drawn to a canvas that covers the whole map, so letting
+      them climb would swallow every click meant for the markers underneath.
     </div>
   </div>
 
@@ -72425,6 +72424,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-zc', date: 'Sep 24, 2026',
+    text: "Layer Order in Settings is one list now. Map layers and overlays used to be two separate lists, with every overlay always drawn above every map layer; now they are rows of the same list, so radar can go over the SPC outlook, satellite under the storm reports, anything over or under anything. And it goes down to the last sub-bubble: every product you pick from a menu, however deep (Waves > SST > Coral Reef Watch > Actual, Radar > Level 2 > Velocity), gets its own indented row under its layer once it has been on the map, and those rows reorder among themselves. A saved order carries over, and the overlay fly-out stays in the same order as the list." },
   { id: '2026-09-24-zb', date: 'Sep 24, 2026',
     text: "Run Models has one list of models now. ECMWF IFS, HRDPS and the 18 hour HRRR map charts are gone (the parsing server's own HRRR, the ECMWF items and the ensemble panel cover them), and DWD ICON moved into the main list with GFS, NAM, HRRR and the rest, in the comparison rows too. Panels also stay clear of the search bar: drag Run Models (or any panel) up to the top right and it stops just under the bar instead of sliding beneath it and hiding its title and close button." },
   { id: '2026-09-24-za', date: 'Sep 24, 2026',
@@ -79946,28 +79947,14 @@ function _ovMarkerPane(id){
     cv.style.pointerEvents = prev;
   };
 })();
+// The overlays used to be stacked here in a band of their own, always above
+// every map layer. They are rows of the one combined Layer Order list now
+// (see _stackApply), so this just restacks everything.
 function _ovApplyMapOrder(){
-  if (typeof map==='undefined'||!map) return;
-  const ids=_ovRows().map(r=>r.dataset.ovid), n=ids.length;
-  ids.forEach((id,idx)=>{
-    // Two z-values per overlay, so an overlay's markers can sit above its own
-    // vectors without reaching the next overlay's band.
-    const z = 402 + (n - idx) * 3;
-    const pane=map.getPane('ovp-'+id);
-    if (pane) pane.style.zIndex = String(z);
-    const mpane=map.getPane('ovp-'+id+'-m');
-    if (mpane) mpane.style.zIndex = String(z + 1);
-    // alertsPane is deliberately NOT kept in sync with the reorderable list
-    // here any more: it is a <canvas> pane (see the comment at its
-    // createPane call), and letting its z climb this high - which it always
-    // did while "alerts" sat first in the default order - is what made every
-    // marker pane below it in the stack unclickable. It stays pinned low.
-    // The particle layers draw to their own canvas rather than a Leaflet pane,
-    // but the canvas is a sibling of the panes in the same container, so the
-    // same number puts it in the same stack.
-    const cv=document.getElementById(id+'-canvas');
-    if (cv) cv.style.zIndex = String(z);
-  });
+  // The fly-out's pills are always in the combined list's overlay order, so
+  // whatever order they are in now is the one to keep.
+  if (typeof _allFromFlyout === 'function') { try { _allFromFlyout(); } catch (e) {} }
+  if (typeof _stackApply === 'function') _stackApply();
 }
 function _ovSaveOrder(){
   try { localStorage.setItem(OV_ORDER_KEY, JSON.stringify(_ovRows().map(r=>r.dataset.ovid))); } catch(e){}
@@ -80034,14 +80021,20 @@ function _ovLoadOrder(){
 // reads its z from a saved list instead, in the band just under the
 // overlays, so nothing collides and nothing is left out.
 const MAP_STACK_KEY = 'gwcfc_map_stack_order';
-const MAP_STACK_TOP_Z = 401;            // the top row's z
-// Rows are ten apart rather than one. The gap is not decoration: the model
-// comparison slots need somewhere to sit ABOVE the model they are comparing
-// against and still BELOW the borders, and with rows one apart there was no
-// room between them. They used to solve that by sitting at 450, which put
-// them above the borders AND above the alert polygons, so turning on a
-// second model buried both.
-const MAP_STACK_STEP = 10;
+// The one combined order, map layers and overlays together, top first:
+// "L:radar", "O:alerts", ... The two used to be separate lists in separate
+// bands (every overlay always above every map layer), so radar could never
+// be put over the SPC outlook, say. Now any row can go anywhere.
+const ALL_ORDER_KEY = 'gwcfc_layer_order_all';
+// Each family's sub-products, in the order they stack inside it:
+// { radarPane: ['radar-level-2-velocity', ...], ... }
+const SUB_ORDER_KEY = 'gwcfc_layer_sub_order';
+const MAP_STACK_TOP_Z = 594;            // the top row's z; markers start at 600
+// Rows are six apart. An overlay takes two of them (its shapes, and its
+// markers one above), and the model comparison slots sit in the gap just
+// above the model pane. Six rows apart keeps 50+ rows between the basemap
+// (200) and Leaflet's own marker pane (600).
+const MAP_STACK_STEP = 6;
 const MAP_STACK_LAYERS = [
   { id: 'borders',   pane: 'bordersPane',  label: 'Borders & Boundaries' },
   // Models sit directly under the borders by default, because a model field
@@ -80049,13 +80042,6 @@ const MAP_STACK_LAYERS = [
   { id: 'models',    pane: 'modelPane',    label: 'Model Charts' },
   { id: 'radar',     pane: 'radarPane',    label: 'Radar' },
   { id: 'satellite', pane: 'satPhotoPane', label: 'Satellite' },
-  // Each of these five used to share one "NWS Grids" row and one pane, which
-  // meant they could never be restacked against EACH OTHER, only against
-  // everything else - not a real problem while only one of them is ever on
-  // screen at a time, but it also meant every menu bubble did not have its
-  // own row here the way Radar, Satellite and Models do. Same default
-  // position the old shared row held (beside Model Charts, above the ocean),
-  // just split five ways, one pane and one row per bubble now.
   { id: 'waves',       pane: 'wavesPane',       label: 'Waves' },
   { id: 'air',         pane: 'airPane',         label: 'Air' },
   { id: 'wind',        pane: 'windPane',        label: 'Wind' },
@@ -80064,196 +80050,359 @@ const MAP_STACK_LAYERS = [
   { id: 'ocean',       pane: 'sstPane',         label: 'Ocean & Sea Temperature' },
 ];
 function _stackDefault(){ return MAP_STACK_LAYERS.map(l => l.id); }
-// Reads the saved order, then repairs it. A stored list can be stale in two
-// directions: it can name a layer that no longer exists (dropped on read) and
-// it can be missing one added since it was saved (appended in default order),
-// so a person who saved an order two versions ago still gets a complete list.
-function _stackOrder(){
-  let saved = [];
-  try { saved = JSON.parse(localStorage.getItem(MAP_STACK_KEY) || '[]'); } catch(e){}
-  if (!Array.isArray(saved)) saved = [];
+// The map layers' own order, read out of the combined list (kept for the
+// code and tests that only care about the map layers among themselves).
+function _stackOrder(){ return _allOrder().filter(t => t[0] === 'L').map(t => t.slice(2)); }
+
+// -- The combined order ----------------------------------------------------
+// Default: the overlays in the fly-out's order on top, then the map layers,
+// which is exactly how the two separate lists used to stack. An order saved
+// by the old separate lists is carried over the same way.
+// The map layers among themselves, from their own saved list (kept beside
+// the combined one): stale names dropped, repeats dropped, and a layer
+// added since inserted at its default position rather than at the bottom.
+function _stackLayerOrder(){
+  let layers = [];
+  try { layers = JSON.parse(localStorage.getItem(MAP_STACK_KEY) || '[]'); } catch (e) {}
+  if (!Array.isArray(layers)) layers = [];
   const known = new Set(_stackDefault());
-  const out = saved.filter(id => known.has(id));
-  const seen = new Set(out);
-  // A row added since the order was saved is INSERTED at its default
-  // position, not appended. Appending looks harmless and is not: every
-  // existing saved order predates the models row, and appending would have
-  // dropped model charts to the bottom of the stack, underneath the sea
-  // temperature, for everyone who had ever touched this control.
+  layers = layers.filter((id, i) => known.has(id) && layers.indexOf(id) === i);
   _stackDefault().forEach((id, want) => {
-    if (seen.has(id)) return;
-    out.splice(Math.min(want, out.length), 0, id);
-    seen.add(id);
+    if (!layers.includes(id)) layers.splice(Math.min(want, layers.length), 0, id);
   });
-  return out;
+  return layers;
 }
+function _allDefault(){
+  const layers = _stackLayerOrder();
+  const ovs = (typeof _ovRows === 'function' ? _ovRows() : []).map(r => r.dataset.ovid);
+  return [...ovs.map(id => 'O:' + id), ...layers.map(id => 'L:' + id)];
+}
+// Reads the saved order, then repairs it: a row that no longer exists is
+// dropped, and one added since the order was saved is put back at its
+// default neighbour's side rather than at the bottom.
+function _allOrder(){
+  const def = _allDefault();
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(ALL_ORDER_KEY) || 'null'); } catch (e) {}
+  if (!Array.isArray(saved)) return def;
+  const known = new Set(def);
+  const out = saved.filter((t, i) => known.has(t) && saved.indexOf(t) === i);
+  def.forEach((t, i) => {
+    if (out.includes(t)) return;
+    const before = def.slice(0, i).reverse().find(x => out.includes(x));
+    out.splice(before ? out.indexOf(before) + 1 : 0, 0, t);
+  });
+  // The map layers keep the order their own list gives them, in the slots
+  // the combined list gives map layers.
+  const layers = _stackLayerOrder();
+  let k = 0;
+  return out.map(t => t[0] === 'L' ? 'L:' + layers[k++] : t);
+}
+function _allSave(order){
+  try {
+    localStorage.setItem(ALL_ORDER_KEY, JSON.stringify(order));
+    localStorage.setItem(MAP_STACK_KEY, JSON.stringify(order.filter(t => t[0] === 'L').map(t => t.slice(2))));
+  } catch (e) {}
+  // The fly-out's own list follows the overlays' order here, so dragging in
+  // either place is the same list.
+  const cont = typeof _ovContainer === 'function' ? _ovContainer() : null;
+  if (cont) order.filter(t => t[0] === 'O').forEach(t => {
+    const el = document.getElementById('op-' + t.slice(2));
+    if (el) cont.appendChild(el);
+  });
+  try { localStorage.setItem(OV_ORDER_KEY, JSON.stringify(order.filter(t => t[0] === 'O').map(t => t.slice(2)))); } catch (e) {}
+  _stackApply();
+}
+// The fly-out was dragged: its overlays keep their slots in the combined
+// list, in the fly-out's new order.
+function _allFromFlyout(){
+  const ovs = _ovRows().map(r => 'O:' + r.dataset.ovid);
+  let k = 0;
+  const order = _allOrder().map(t => t[0] === 'O' ? (ovs[k++] || t) : t);
+  try { localStorage.setItem(ALL_ORDER_KEY, JSON.stringify(order)); } catch (e) {}
+}
+
+// -- Sub-products: every last sub-bubble gets its own row -------------------
+// A whole family (all of Waves, say) draws into one pane. To stack its
+// products against each other, each product gets a pane of its own, NESTED
+// inside the family's: the family's colour filter, clipping, cross-section
+// and inspector code all search the family pane and keep finding it, and the
+// family row still moves all of its products at once.
+//
+// Which product a layer belongs to is read from the menu: the last pick
+// tapped under that family's bubble (see the breadcrumb below). So a product
+// reached by any path of sub-bubbles, however deep, is its own row, with no
+// list of products kept in step with the menus.
+const SUB_FAMILY = {
+  radarPane: 'Radar', satPhotoPane: 'Satellite', wavesPane: 'Waves', sstPane: 'Waves',
+  airPane: 'Air', windPane: 'Wind', temperaturePane: 'Temperature', pressurePane: 'Pressure',
+  modelPane: 'Models',
+};
+const _menuPick = {};          // top bubble label -> the last path picked under it
+let _menuCrumb = [];
+function _subSlug(t){ return String(t).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'x'; }
+// Follows the left menu: a main bubble starts a path, Back steps up, and a
+// tap that does not open a new row is a pick.
+(function _menuCrumbInit(){
+  function attach(){
+    const wrap = document.getElementById('sub-bubbles');
+    if (!wrap) { setTimeout(attach, 300); return; }
+    wrap.addEventListener('click', e => {
+      const el = e.target.closest('.sub-bubble');
+      if (!el || e.target.closest('.info-btn, .lqm-info-btn')) return;
+      const lab = (el.querySelector('.sb-label') || el).textContent.replace(/\s+/g, ' ').trim();
+      if (el.classList.contains('sub-bubble-main')) { _menuCrumb = [lab]; return; }
+      if (el.classList.contains('sb-back')) { _menuCrumb.pop(); return; }
+      const path = [..._menuCrumb, lab];
+      // Read after the tap has had its effect: a new row means a branch.
+      setTimeout(() => {
+        const rowLabels = [...wrap.querySelectorAll('.sub-bubble:not(.sb-back) .sb-label')].map(x => x.textContent.trim());
+        const opened = wrap.querySelector('.sb-back') && !rowLabels.includes(lab);
+        if (opened) _menuCrumb = path;
+        else if (path.length > 1) _menuPick[path[0]] = path;
+      }, 0);
+      // Recorded as the pick straight away too, so a layer added in the
+      // same tick as the tap is already filed under it.
+      if (path.length > 1) _menuPick[path[0]] = path;
+    }, true);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attach); else attach();
+})();
+function _subOrderAll(){
+  try { const o = JSON.parse(localStorage.getItem(SUB_ORDER_KEY) || '{}'); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; }
+}
+// The sub-panes that exist this visit, per family pane, in stacking order.
+function _subPanes(famPane){
+  if (typeof map === 'undefined' || !map) return [];
+  const fam = map.getPane(famPane);
+  if (!fam) return [];
+  const list = [...fam.children].filter(c => c.dataset && c.dataset.subslug);
+  const saved = _subOrderAll()[famPane] || [];
+  const rank = el => { const i = saved.indexOf(el.dataset.subslug); return i < 0 ? 1e6 : i; };
+  return list.sort((a, b) => rank(a) - rank(b));
+}
+function _subApply(famPane){
+  const list = _subPanes(famPane);
+  // Nested inside the family pane, so these only order among themselves:
+  // top of the list highest.
+  list.forEach((el, i) => { el.style.zIndex = String(100 + list.length - i); });
+}
+// Every layer bound for a family pane is put in its product's pane instead.
+(function _subRouteInit(){
+  if (typeof L === 'undefined' || !L.Map || L.Map.prototype._subRouted) return;
+  const add = L.Map.prototype.addLayer;
+  L.Map.prototype.addLayer = function (layer) {
+    try {
+      const o = layer && layer.options;
+      const fam = o && o.pane;
+      const top = fam && SUB_FAMILY[fam];
+      if (top && this === (typeof map !== 'undefined' ? map : null) && this.getPane(fam)) {
+        const path = _menuPick[top];
+        const label = path ? path.slice(1).join(' > ') : top;
+        const slug = _subSlug(label);
+        const name = fam + '~' + slug;
+        if (!this.getPane(name)) {
+          const el = this.createPane(name, this.getPane(fam));
+          el.dataset.subslug = slug;
+          el.dataset.sublabel = label;
+          _subApply(fam);
+        }
+        o.pane = name;
+      }
+    } catch (e) {}
+    return add.call(this, layer);
+  };
+  L.Map.prototype._subRouted = true;
+})();
+
 let _stackApplyWait = 0;
 function _stackApply(){
   // The map is built by an earlier script than this one, but not necessarily
   // before this one runs, and a saved order applied to a map that does not
-  // exist yet is an order silently lost. Wait for it, briefly, rather than
-  // giving up: ten tries at 300 ms is three seconds, far longer than the map
-  // takes, and it stops rather than spinning forever if something is broken.
+  // exist yet is an order silently lost. Wait for it, briefly.
   if (typeof map === 'undefined' || !map) {
     if (_stackApplyWait++ < 10) setTimeout(_stackApply, 300);
     return;
   }
   _stackApplyWait = 0;
-  _stackOrder().forEach((id, idx) => {
-    const def = MAP_STACK_LAYERS.find(l => l.id === id);
-    if (!def) return;
-    const pane = map.getPane(def.pane);
-    if (pane) pane.style.zIndex = String(MAP_STACK_TOP_Z - idx * MAP_STACK_STEP);
+  _allOrder().forEach((t, idx) => {
+    const z = MAP_STACK_TOP_Z - idx * MAP_STACK_STEP;
+    const id = t.slice(2);
+    if (t[0] === 'L') {
+      const def = MAP_STACK_LAYERS.find(l => l.id === id);
+      const pane = def && map.getPane(def.pane);
+      if (pane) pane.style.zIndex = String(z);
+      if (def) _subApply(def.pane);
+      return;
+    }
+    // An overlay: its shapes at z, its markers one above.
+    const pane = map.getPane('ovp-' + id);
+    if (pane) pane.style.zIndex = String(z);
+    const mpane = map.getPane('ovp-' + id + '-m');
+    if (mpane) mpane.style.zIndex = String(z + 1);
+    // alertsPane is deliberately NOT moved with its row: it is a <canvas>
+    // pane that takes every click over it, so it stays pinned low.
+    // The particle layers draw to their own canvas rather than a Leaflet pane,
+    // but the canvas is a sibling of the panes in the same container, so the
+    // same number puts it in the same stack.
+    const cv = document.getElementById(id + '-canvas');
+    if (cv) cv.style.zIndex = String(z);
   });
-  // The comparison slots hang off the model pane's position, so they have to
-  // move when it does. Reordering the stack and leaving them where they were
-  // is how the second model ends up somewhere its own row is not.
+  // The comparison slots hang off the model and radar panes' positions.
   if (typeof _sevSyncSlotPaneZ === 'function') { try { _sevSyncSlotPaneZ(); } catch (e) {} }
-  // And the radar strips hang off the radar pane's position the same way.
   if (typeof _rcSyncPaneZ === 'function') { try { _rcSyncPaneZ(); } catch (e) {} }
 }
 
 // Where a comparison slot's pane belongs: just above the model layer it is
-// being compared with, and never at or above whatever is directly above the
-// models, which is normally the borders. Reading the live pane rather than a
-// constant means this keeps working after the stack is reordered.
+// being compared with, and below whatever row is directly above it.
 function _stackSlotZ(i) {
   let base = 391;
   try {
     const p = (typeof map !== 'undefined' && map) ? map.getPane('modelPane') : null;
     if (p && p.style.zIndex) base = parseInt(p.style.zIndex, 10) || base;
   } catch (e) {}
-  // One below the next row up, so eight slots still cannot climb out of the
-  // model's own band and over the borders.
   return base + 1 + Math.min(i, MAP_STACK_STEP - 2);
 }
 function _stackSave(ids){
-  try { localStorage.setItem(MAP_STACK_KEY, JSON.stringify(ids)); } catch(e){}
-  _stackApply();
+  // The map layers' own order, slotted back into the combined list.
+  try { localStorage.setItem(MAP_STACK_KEY, JSON.stringify(ids)); } catch (e) {}
+  _allSave(_allOrder());
 }
 function _stackReset(){
-  try { localStorage.removeItem(MAP_STACK_KEY); } catch(e){}
+  try { localStorage.removeItem(MAP_STACK_KEY); localStorage.removeItem(ALL_ORDER_KEY); localStorage.removeItem(SUB_ORDER_KEY); } catch(e){}
   _stackApply();
   _stackRender();
 }
-// A pane holds nothing until a layer is added to it and its container is
-// removed again when the layer goes, so "has children" is the same question
-// as "is this layer on" without having to know each subsystem's own flag.
+// Is anything drawn in this pane right now? A sub-pane left behind by a
+// product that was switched off is empty, so it is looked through.
 function _stackLive(paneName){
   if (typeof map === 'undefined' || !map) return false;
-  const pane = map.getPane(paneName);
-  return !!(pane && pane.childElementCount > 0);
+  const pane = typeof paneName === 'string' ? map.getPane(paneName) : paneName;
+  if (!pane) return false;
+  return [...pane.children].some(c => !(c.dataset && c.dataset.subslug) || c.childElementCount > 0);
 }
+const _ordArrows = (idx, n) =>
+  `<span class="lqm-order-btn${idx === 0 ? ' off' : ''}" data-move="up" title="Move up">▲</span>` +
+  `<span class="lqm-order-btn${idx === n - 1 ? ' off' : ''}" data-move="down" title="Move down">▼</span>`;
+const _ordGrip = `<span class="lqm-order-grip"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-grip></use></svg></span>`;
 function _stackRender(){
   const host = document.getElementById('lqm-stack-list');
   if (!host) return;
-  // bordersPane is built the first time borders are drawn, which can be long
-  // after boot, so re-applying on every open is what gets the saved order onto
-  // a pane that did not exist when the order was last applied.
   _stackApply();
-  const ids = _stackOrder();
+  const order = _allOrder();
   host.innerHTML = '';
-  ids.forEach((id, idx) => {
-    const def = MAP_STACK_LAYERS.find(l => l.id === id);
-    if (!def) return;
+  order.forEach((t, idx) => {
+    const id = t.slice(2);
     const row = document.createElement('div');
     row.className = 'lqm-order-row';
-    row.dataset.stackid = id;
-    row.innerHTML =
-      `<span class="lqm-order-grip"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-grip></use></svg></span>` +
-      `<span class="lqm-order-dot${_stackLive(def.pane) ? ' on' : ''}"></span>` +
-      `<span class="lqm-order-name">${def.label}</span>` +
-      `<span class="lqm-order-z">z ${MAP_STACK_TOP_Z - idx}</span>` +
-      `<span class="lqm-order-btn${idx === 0 ? ' off' : ''}" data-move="up" title="Move up">▲</span>` +
-      `<span class="lqm-order-btn${idx === ids.length - 1 ? ' off' : ''}" data-move="down" title="Move down">▼</span>`;
+    row.dataset.token = t;
+    let label = id, live = false;
+    if (t[0] === 'L') {
+      const def = MAP_STACK_LAYERS.find(l => l.id === id);
+      if (!def) return;
+      row.dataset.stackid = id;
+      label = def.label; live = _stackLive(def.pane);
+    } else {
+      const src = document.getElementById('op-' + id);
+      if (!src) return;
+      row.dataset.ovid = id;
+      row.classList.add('ov');
+      const nm = src.querySelector('.ov-rowname');
+      label = nm ? nm.textContent : id;
+      live = src.classList.contains('active');
+    }
+    row.innerHTML = _ordGrip +
+      `<span class="lqm-order-dot${live ? ' on' : ''}"></span>` +
+      `<span class="lqm-order-name"></span>` +
+      `<span class="lqm-order-z">${t[0] === 'O' ? 'overlay' : 'layer'}</span>` +
+      _ordArrows(idx, order.length);
+    // textContent, not innerHTML: a name is a label, not markup.
+    row.querySelector('.lqm-order-name').textContent = label;
     host.appendChild(row);
+    // Its sub-products, indented under it, in their own order.
+    if (t[0] === 'L') {
+      const def = MAP_STACK_LAYERS.find(l => l.id === id);
+      const subs = _subPanes(def.pane);
+      subs.forEach((el, j) => {
+        const sr = document.createElement('div');
+        sr.className = 'lqm-order-row sub';
+        sr.dataset.fam = def.pane;
+        sr.dataset.subslug = el.dataset.subslug;
+        sr.innerHTML = _ordGrip +
+          `<span class="lqm-order-dot${el.childElementCount ? ' on' : ''}"></span>` +
+          `<span class="lqm-order-name"></span>` + _ordArrows(j, subs.length);
+        sr.querySelector('.lqm-order-name').textContent = el.dataset.sublabel;
+        host.appendChild(sr);
+      });
+    }
   });
 }
-function _stackRows(){ return Array.from(document.querySelectorAll('#lqm-stack-list .lqm-order-row')); }
+function _stackRows(){ return Array.from(document.querySelectorAll('#lqm-stack-list .lqm-order-row:not(.sub)')); }
+function _stackSubRows(fam){ return Array.from(document.querySelectorAll('#lqm-stack-list .lqm-order-row.sub')).filter(r => r.dataset.fam === fam); }
 function _stackCommit(){
-  _stackSave(_stackRows().map(r => r.dataset.stackid));
+  _allSave(_stackRows().map(r => r.dataset.token));
+  const subs = _subOrderAll();
+  MAP_STACK_LAYERS.forEach(def => {
+    const rows = _stackSubRows(def.pane);
+    if (rows.length) subs[def.pane] = rows.map(r => r.dataset.subslug);
+    _subApply(def.pane);
+  });
+  try { localStorage.setItem(SUB_ORDER_KEY, JSON.stringify(subs)); } catch (e) {}
   _stackRender();
 }
-
-// -- The overlay list, mirrored into Settings ------------------------------
-//
-// This is a view of the fly-out list, not a second copy of it: every move
-// here reorders the real .ov-pill rows and then calls the same save the
-// fly-out's own drag calls. One list, two places to touch it, so the two can
-// never drift apart and disagree about what draws on top.
-function _ovOrderRender(){
-  const host = document.getElementById('lqm-ovorder-list');
-  if (!host) return;
-  const rows = _ovRows();
-  host.innerHTML = '';
-  rows.forEach((src, idx) => {
-    const nameEl = src.querySelector('.ov-rowname');
-    const row = document.createElement('div');
-    row.className = 'lqm-order-row';
-    row.dataset.ovid = src.dataset.ovid;
-    row.innerHTML =
-      `<span class="lqm-order-grip"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-grip></use></svg></span>` +
-      `<span class="lqm-order-dot${src.classList.contains('active') ? ' on' : ''}"></span>` +
-      `<span class="lqm-order-name"></span>` +
-      `<span class="lqm-order-btn${idx === 0 ? ' off' : ''}" data-move="up" title="Move up">▲</span>` +
-      `<span class="lqm-order-btn${idx === rows.length - 1 ? ' off' : ''}" data-move="down" title="Move down">▼</span>`;
-    // textContent, not innerHTML: an overlay's name is a label, and putting a
-    // label through the HTML parser is how a stray & or < turns into markup.
-    row.querySelector('.lqm-order-name').textContent = nameEl ? nameEl.textContent : src.dataset.ovid;
-    host.appendChild(row);
+// Keep a family's sub-rows right under it after the family row moved.
+function _stackRegroup(host){
+  _stackRows().forEach(r => {
+    if (!r.dataset.stackid) return;
+    const def = MAP_STACK_LAYERS.find(l => l.id === r.dataset.stackid);
+    let after = r;
+    _stackSubRows(def.pane).forEach(s => { host.insertBefore(s, after.nextSibling); after = s; });
   });
 }
-function _ovOrderRows(){ return Array.from(document.querySelectorAll('#lqm-ovorder-list .lqm-order-row')); }
-function _ovOrderCommit(){
-  const cont = _ovContainer();
-  if (cont) {
-    _ovOrderRows().forEach(r => {
-      const real = document.getElementById('op-' + r.dataset.ovid);
-      if (real) cont.appendChild(real);          // appendChild moves, it does not copy
-    });
-  }
-  _ovSaveOrder();
-  _ovOrderRender();
-}
-function _ovOrderReset(){
-  try { localStorage.removeItem(OV_ORDER_KEY); } catch(e){}
-  // Nothing stores the original order, but the page's own markup is that
-  // order, so reloading the list from the document is the reset.
-  location.reload();
-}
 
-// One drag-and-arrows handler serving both lists, told apart by which
-// container the event started in.
+// The overlay list in Settings is part of the one list above now; this is
+// kept so anything that still asks for it gets the combined list.
+function _ovOrderRender(){ _stackRender(); }
+function _ovOrderReset(){ _stackReset(); }
+
+// One drag-and-arrows handler for the list. A main row moves among main rows
+// and takes its sub-products with it; a sub-product row moves only among its
+// own family's.
 (function _orderListInit(){
   let drag = null;
-  function listOf(el){
-    const host = el.closest('#lqm-stack-list, #lqm-ovorder-list');
-    if (!host) return null;
-    return host.id === 'lqm-stack-list'
-      ? { host, rows: _stackRows, commit: _stackCommit }
-      : { host, rows: _ovOrderRows, commit: _ovOrderCommit };
+  function peersOf(row){
+    return row.classList.contains('sub') ? _stackSubRows(row.dataset.fam) : _stackRows();
+  }
+  function place(host, row, peers, target, before){
+    if (before) host.insertBefore(row, target);
+    else host.insertBefore(row, target.nextSibling);
+    if (!row.classList.contains('sub')) _stackRegroup(host);
   }
   function onClick(e){
-    const btn = e.target.closest('.lqm-order-btn');
+    const btn = e.target.closest('#lqm-stack-list .lqm-order-btn');
     if (!btn || btn.classList.contains('off')) return;
-    const ctx = listOf(btn); if (!ctx) return;
     const row = btn.closest('.lqm-order-row'); if (!row) return;
-    const rows = ctx.rows(), i = rows.indexOf(row);
-    if (btn.dataset.move === 'up' && i > 0) ctx.host.insertBefore(row, rows[i - 1]);
-    else if (btn.dataset.move === 'down' && i < rows.length - 1) {
-      // insertBefore the row after next, because inserting before the next
-      // one is where it already is: that would be a move of nothing.
-      if (rows[i + 2]) ctx.host.insertBefore(row, rows[i + 2]);
-      else ctx.host.appendChild(row);
+    const host = row.parentElement;
+    const peers = peersOf(row), i = peers.indexOf(row);
+    if (btn.dataset.move === 'up' && i > 0) place(host, row, peers, peers[i - 1], true);
+    else if (btn.dataset.move === 'down' && i < peers.length - 1) {
+      // Below the next peer, and below that peer's own sub-products.
+      const nxt = peers[i + 1];
+      let last = nxt;
+      if (!row.classList.contains('sub') && nxt.dataset.stackid) {
+        const def = MAP_STACK_LAYERS.find(l => l.id === nxt.dataset.stackid);
+        const subs = _stackSubRows(def.pane);
+        if (subs.length) last = subs[subs.length - 1];
+      }
+      place(host, row, peers, last, false);
     }
-    ctx.commit();
+    _stackCommit();
   }
   function onDown(e){
-    const grip = e.target.closest('.lqm-order-grip'); if (!grip) return;
-    const ctx = listOf(grip); if (!ctx) return;
+    const grip = e.target.closest('#lqm-stack-list .lqm-order-grip'); if (!grip) return;
     const row = grip.closest('.lqm-order-row'); if (!row) return;
     e.preventDefault();
-    drag = { row, ctx };
+    drag = { row, host: row.parentElement };
     row.classList.add('dragging');
     try { grip.setPointerCapture(e.pointerId); } catch(_){}
     document.addEventListener('pointermove', onMove);
@@ -80262,24 +80411,28 @@ function _ovOrderReset(){
   }
   function onMove(e){
     if (!drag) return;
-    const { host } = drag.ctx;
-    const others = drag.ctx.rows().filter(r => r !== drag.row);
-    let placed = false;
-    for (const sib of others){
+    const peers = peersOf(drag.row).filter(r => r !== drag.row);
+    for (const sib of peers){
       const rect = sib.getBoundingClientRect();
-      if (e.clientY < rect.top + rect.height / 2){ host.insertBefore(drag.row, sib); placed = true; break; }
+      if (e.clientY < rect.top + rect.height / 2){ place(drag.host, drag.row, peers, sib, true); return; }
     }
-    if (!placed) host.appendChild(drag.row);
+    const last = peers[peers.length - 1];
+    if (last) {
+      let after = last;
+      if (!drag.row.classList.contains('sub') && last.dataset.stackid) {
+        const def = MAP_STACK_LAYERS.find(l => l.id === last.dataset.stackid);
+        const subs = _stackSubRows(def.pane);
+        if (subs.length) after = subs[subs.length - 1];
+      }
+      place(drag.host, drag.row, peers, after, false);
+    }
   }
   function onUp(){
     document.removeEventListener('pointermove', onMove);
     if (!drag) return;
     drag.row.classList.remove('dragging');
-    const ctx = drag.ctx; drag = null;
-    // Commit on drop rather than on every move: unlike the fly-out, this list
-    // is not the map, so there is nothing on screen that needs to keep up
-    // mid-drag, and a re-render mid-drag would delete the row being held.
-    ctx.commit();
+    drag = null;
+    _stackCommit();
   }
   function attach(){
     document.addEventListener('pointerdown', onDown);
