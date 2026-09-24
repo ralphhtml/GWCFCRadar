@@ -4963,6 +4963,11 @@ body.lite-mode #export-modal { display: none !important; }
   cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px;
 }
 .l3d-panel .dtb-btn.on { background: rgba(var(--accent-rgb),0.25); border-color: var(--accent); }
+/* Model 3D: a Layer 3D panel with a line under the picture saying what the
+   chosen surface means. */
+#m3d-panel .m3d-about { padding: 2px 12px 10px; font-size: 10px; line-height: 1.45; color: rgba(var(--text-rgb),0.72); }
+#m3d-panel .m3d-about:empty { display: none; }
+#m3d-panel .r3d-slider-row select { max-width: 190px; }
 .l3d-walk-pad {
   position: absolute; left: 16px; top: 14px; z-index: 3;
   display: grid; grid-template-columns: repeat(3, 32px); gap: 4px;
@@ -44694,6 +44699,7 @@ function _cmOpen(e) {
     <div class="cm-item" onclick="_cmCrossSectionHere()">${ic('ruler')} Cross section here</div>
     <div class="cm-item" onclick="_cmRadar3DDraw()">${ic('radar3d')} Draw a 3D radar zone</div>
     <div class="cm-item" onclick="_cmSat3DDraw()">${ic('satellite')} Draw a 3D satellite zone</div>
+    <div class="cm-item" onclick="_cmModel3DHere()">${ic('terrain3d')} 3D model volume here</div>
     ${typeof _l3dMenuItems === 'function' ? _l3dMenuItems(ic, e.originalEvent && e.originalEvent.clientX, e.originalEvent && e.originalEvent.clientY) : ''}
     <div class="cm-item" onclick="_cmRadiusHere()">${ic('target')} 50 mi radius here</div>
     <div class="cm-item" onclick="_cmSetRecenter()">${ic('compass')} Set as recenter</div>
@@ -45146,6 +45152,545 @@ function _cmMeteogramHere() {
   const lat = _cmLatLng.lat, lng = _cmLatLng.lng;
   _cmClose();
   openMeteogram(lat, lng);
+}
+
+// -- MODEL 3D: Vis5D-style model volumes --------------------------------------
+// A box of the atmosphere from a forecast model, drawn in 3D the way Vis5D
+// and D3D draw it: see-through isosurfaces (a surface through every point
+// where a field equals one value), a slice of wind arrows at one level, the
+// wind speed rendered as a glowing volume, all over the real ground.
+//
+// The fields are the ones quasi-geostrophic theory reads: temperature
+// advection and vorticity advection (what makes air rise), vertical motion
+// itself, potential vorticity (the 2 PVU surface is the dynamic tropopause,
+// and folds of it down into the troposphere are what spin storms up), plus
+// the freezing surface and cloud-humid air.
+//
+// Everything comes from Open-Meteo's pressure level forecasts in the browser,
+// on a 13 by 13 grid at ten levels from 1000 to 200 mb; the derived fields
+// are worked out here with finite differences on that grid. Drawn by a small
+// software renderer (painter's algorithm on a 2D canvas), so no WebGL.
+const M3D_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200];
+const M3D_STD_KM = { 1000: 0.11, 925: 0.76, 850: 1.46, 700: 3.01, 600: 4.21, 500: 5.57, 400: 7.18, 300: 9.16, 250: 10.36, 200: 11.78 };
+const M3D_N = 13;
+const M3D_SIZES = [600, 1200, 2000, 3000];
+const M3D_MODELS = [
+  { id: 'gfs_seamless', label: 'GFS' }, { id: 'ecmwf_ifs025', label: 'ECMWF' },
+  { id: 'icon_seamless', label: 'ICON' }, { id: 'gem_seamless', label: 'GEM' },
+];
+// signed: two surfaces, one each side of zero, warm red and cold blue.
+// auto: the slider is a share of the biggest value in the box, because a
+// good threshold for a 600 km box is not one for a 3000 km box.
+const M3D_FIELDS = [
+  { id: 'tadv', label: 'Temperature advection', unit: '°C/hr', signed: true, auto: true, pos: [255, 90, 60], neg: [70, 150, 255],
+    about: 'Warm air being blown in (red) and cold air being blown in (blue). Warm advection under a trough is lift; the surfaces lean with the fronts.' },
+  { id: 'vadv', label: 'Vorticity advection', unit: '×10⁻⁹ s⁻²', signed: true, auto: true, pos: [255, 200, 40], neg: [60, 220, 200],
+    about: 'Spin being carried in by the wind. Positive (gold) ahead of a trough aloft means rising air; negative (teal) behind it means sinking.' },
+  { id: 'omega', label: 'Vertical motion', unit: 'cm/s', signed: true, auto: true, pos: [255, 70, 70], neg: [90, 130, 255],
+    about: 'The model\'s own vertical wind: red where the air is rising, which is where clouds and rain come from, blue where it sinks.' },
+  { id: 'pv', label: 'Potential vorticity', unit: 'PVU', min: 0.5, max: 8, step: 0.5, def: 2, pos: [200, 110, 255],
+    about: 'The 2 PVU surface is the dynamic tropopause. Where it folds down into the lower atmosphere, stratospheric air is diving in, and storms under it deepen.' },
+  { id: 'temp', label: 'Temperature', unit: '°C', min: -60, max: 30, step: 1, def: 0, pos: [120, 230, 255],
+    about: 'A surface at one temperature. At 0 °C it is the freezing level: rain below it, snow and ice above.' },
+  { id: 'rh', label: 'Humidity (cloud)', unit: '%', min: 50, max: 100, step: 1, def: 90, pos: [235, 240, 250],
+    about: 'Where the air is nearly saturated, which is roughly where the model has cloud.' },
+  { id: 'none', label: 'No isosurface' },
+];
+let _m3d = null;   // the panel state
+
+function _m3dZone(lat, lng, km) {
+  const hKm = km, wKm = km;
+  const dLat = hKm / 2 / 110.54, dLng = wKm / 2 / (111.32 * Math.max(0.1, Math.cos(lat * Math.PI / 180)));
+  return { lat, lng, wKm, hKm, n: lat + dLat, s: lat - dLat, e: lng + dLng, w: lng - dLng };
+}
+function _m3dValidHour(fh) {
+  const t = new Date(); t.setUTCMinutes(0, 0, 0);
+  return new Date(t.getTime() + fh * 3600e3);
+}
+function _m3dUrl(pts, model, when) {
+  const vars = [];
+  M3D_LEVELS.forEach(p => ['temperature', 'relative_humidity', 'wind_speed', 'wind_direction', 'geopotential_height', 'vertical_velocity']
+    .forEach(v => vars.push(`${v}_${p}hPa`)));
+  const hr = when.toISOString().slice(0, 13) + ':00';
+  return 'https://api.open-meteo.com/v1/forecast?latitude=' + pts.map(p => p[0].toFixed(3)).join(',')
+    + '&longitude=' + pts.map(p => p[1].toFixed(3)).join(',') + '&hourly=' + vars.join(',')
+    + '&models=' + model + '&wind_speed_unit=ms&start_hour=' + hr + '&end_hour=' + hr + '&timezone=GMT';
+}
+
+// The raw grid: every variable at every point and level, [k][j][i] with j=0
+// the southern row and k=0 the lowest level.
+async function _m3dFetch(zone, model, when) {
+  const N = M3D_N, K = M3D_LEVELS.length, pts = [];
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++)
+    pts.push([zone.s + j / (N - 1) * (zone.n - zone.s), zone.w + i / (N - 1) * (zone.e - zone.w)]);
+  const chunks = [];
+  for (let a = 0; a < pts.length; a += 60) chunks.push(pts.slice(a, a + 60));
+  const answers = await Promise.all(chunks.map(async c => {
+    const r = await fetch(_m3dUrl(c, model, when));
+    if (!r.ok) throw new Error('Open-Meteo answered ' + r.status);
+    const j = await r.json();
+    return Array.isArray(j) ? j : [j];
+  }));
+  const rows = answers.flat();
+  const G = {};
+  ['t', 'rh', 'spd', 'dir', 'gh', 'w'].forEach(k => { G[k] = new Float32Array(N * N * K).fill(NaN); });
+  const map = { temperature: 't', relative_humidity: 'rh', wind_speed: 'spd', wind_direction: 'dir', geopotential_height: 'gh', vertical_velocity: 'w' };
+  rows.forEach((row, idx) => {
+    const h = (row && row.hourly) || {};
+    M3D_LEVELS.forEach((p, k) => Object.keys(map).forEach(v => {
+      const a = h[`${v}_${p}hPa`], x = Array.isArray(a) ? a[0] : null;
+      if (x != null && isFinite(x)) G[map[v]][k * N * N + idx] = x;
+    }));
+  });
+  if (!Array.from(G.t).some(isFinite)) throw new Error('this model sent no pressure level data here');
+  return G;
+}
+
+// Derived fields on the grid: winds as components, then the QG terms.
+function _m3dDerive(G, zone) {
+  const N = M3D_N, K = M3D_LEVELS.length, NN = N * N, len = NN * K;
+  const at = (k, j, i) => k * NN + j * N + i;
+  const u = new Float32Array(len), v = new Float32Array(len);
+  for (let x = 0; x < len; x++) {
+    const d = G.dir[x] * Math.PI / 180, s = G.spd[x];
+    u[x] = -s * Math.sin(d); v[x] = -s * Math.cos(d);
+  }
+  const dyM = (zone.n - zone.s) / (N - 1) * 110540;
+  const dxM = j => (zone.e - zone.w) / (N - 1) * 111320 * Math.cos((zone.s + j / (N - 1) * (zone.n - zone.s)) * Math.PI / 180);
+  const ddx = (F, k, j, i) => { const a = Math.max(0, i - 1), b = Math.min(N - 1, i + 1); return (F[at(k, j, b)] - F[at(k, j, a)]) / ((b - a) * dxM(j)); };
+  const ddy = (F, k, j, i) => { const a = Math.max(0, j - 1), b = Math.min(N - 1, j + 1); return (F[at(k, b, i)] - F[at(k, a, i)]) / ((b - a) * dyM); };
+  const eta = new Float32Array(len), theta = new Float32Array(len);
+  for (let k = 0; k < K; k++) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const x = at(k, j, i), lat = zone.s + j / (N - 1) * (zone.n - zone.s);
+    const f = 2 * 7.292e-5 * Math.sin(lat * Math.PI / 180);
+    eta[x] = ddx(v, k, j, i) - ddy(u, k, j, i) + f;
+    theta[x] = (G.t[x] + 273.15) * Math.pow(1000 / M3D_LEVELS[k], 0.2857);
+  }
+  const out = { u, v, spd: G.spd, temp: G.t, rh: G.rh, tadv: new Float32Array(len), vadv: new Float32Array(len),
+    omega: new Float32Array(len), pv: new Float32Array(len) };
+  for (let k = 0; k < K; k++) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const x = at(k, j, i);
+    out.tadv[x] = -(u[x] * ddx(G.t, k, j, i) + v[x] * ddy(G.t, k, j, i)) * 3600;
+    out.vadv[x] = -(u[x] * ddx(eta, k, j, i) + v[x] * ddy(eta, k, j, i)) * 1e9;
+    out.omega[x] = G.w[x] * 100;
+    // PV = -g (zeta + f) d(theta)/dp, the part that dominates; in PVU.
+    const ka = Math.max(0, k - 1), kb = Math.min(K - 1, k + 1);
+    const dth = (theta[at(kb, j, i)] - theta[at(ka, j, i)]) / ((M3D_LEVELS[kb] - M3D_LEVELS[ka]) * 100);
+    const lat = zone.s + j / (N - 1) * (zone.n - zone.s);
+    out.pv[x] = -9.81 * eta[x] * dth * 1e6 * (lat < 0 ? -1 : 1);
+  }
+  // Height of every node in km: the model's own geopotential height, or the
+  // standard atmosphere where it sent none.
+  out.zkm = new Float32Array(len);
+  for (let k = 0; k < K; k++) for (let x = 0; x < NN; x++) {
+    const g = G.gh[k * NN + x];
+    out.zkm[k * NN + x] = isFinite(g) ? g / 1000 : M3D_STD_KM[M3D_LEVELS[k]];
+  }
+  return out;
+}
+
+// Doubles the grid in every direction by blending neighbours, so the
+// isosurfaces come out as smooth shapes rather than 13-point blocks.
+function _m3dUpsample(F, N, K, s) {
+  const M = (N - 1) * s + 1, L = (K - 1) * s + 1, out = new Float32Array(M * M * L);
+  const src = (k, j, i) => F[k * N * N + j * N + i];
+  for (let kk = 0; kk < L; kk++) {
+    const fk = kk / s, k0 = Math.min(K - 2, Math.floor(fk)), tk = fk - k0;
+    for (let jj = 0; jj < M; jj++) {
+      const fj = jj / s, j0 = Math.min(N - 2, Math.floor(fj)), tj = fj - j0;
+      for (let ii = 0; ii < M; ii++) {
+        const fi = ii / s, i0 = Math.min(N - 2, Math.floor(fi)), ti = fi - i0;
+        const c = (k) => {
+          const a = src(k, j0, i0) * (1 - ti) + src(k, j0, i0 + 1) * ti;
+          const b = src(k, j0 + 1, i0) * (1 - ti) + src(k, j0 + 1, i0 + 1) * ti;
+          return a * (1 - tj) + b * tj;
+        };
+        out[kk * M * M + jj * M + ii] = c(k0) * (1 - tk) + c(k0 + 1) * tk;
+      }
+    }
+  }
+  return { F: out, M, L };
+}
+
+// Marching tetrahedra: each cube of the grid split into six tetrahedra, each
+// cut by the surface in at most two triangles. Simpler than marching cubes
+// and with no ambiguous cases. pos(x) gives a node's place in the world.
+const M3D_TETS = [[0, 5, 1, 6], [0, 1, 2, 6], [0, 2, 3, 6], [0, 3, 7, 6], [0, 7, 4, 6], [0, 4, 5, 6]];
+const M3D_CORNER = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]];
+function _m3dIso(F, M, L, iso, pos, sign) {
+  const tris = [];
+  const idx = (k, j, i) => k * M * M + j * M + i;
+  const val = new Array(8), node = new Array(8);
+  const cut = (a, b) => {
+    const va = val[a], vb = val[b], t = Math.abs(vb - va) < 1e-12 ? 0.5 : (iso - va) / (vb - va);
+    const pa = pos(node[a]), pb = pos(node[b]);
+    return [pa[0] + (pb[0] - pa[0]) * t, pa[1] + (pb[1] - pa[1]) * t, pa[2] + (pb[2] - pa[2]) * t];
+  };
+  for (let k = 0; k < L - 1; k++) for (let j = 0; j < M - 1; j++) for (let i = 0; i < M - 1; i++) {
+    let any = 0, all = 1;
+    for (let c = 0; c < 8; c++) {
+      const [di, dj, dk] = M3D_CORNER[c];
+      node[c] = idx(k + dk, j + dj, i + di);
+      val[c] = F[node[c]] * sign;
+      if (!isFinite(val[c])) { any = -1; break; }
+      if (val[c] > iso) any = 1; else all = 0;
+    }
+    if (any !== 1 || all) continue;
+    for (const t of M3D_TETS) {
+      const ins = t.filter(c => val[c] > iso), outs = t.filter(c => !(val[c] > iso));
+      if (ins.length === 1) tris.push([cut(ins[0], outs[0]), cut(ins[0], outs[1]), cut(ins[0], outs[2])]);
+      else if (ins.length === 3) tris.push([cut(outs[0], ins[0]), cut(outs[0], ins[1]), cut(outs[0], ins[2])]);
+      else if (ins.length === 2) {
+        const p1 = cut(ins[0], outs[0]), p2 = cut(ins[0], outs[1]), p3 = cut(ins[1], outs[1]), p4 = cut(ins[1], outs[0]);
+        tris.push([p1, p2, p3], [p1, p3, p4]);
+      }
+    }
+  }
+  return tris;
+}
+
+// -- The panel ----------------------------------------------------------------
+function _m3dPanelHtml() {
+  const opt = (a, sel) => a.map(x => `<option value="${x.v}"${x.v === sel ? ' selected' : ''}>${x.l}</option>`).join('');
+  return `
+  <div class="p3d-top">
+  <div class="xs-head">
+    <div class="dtb-drag" title="Drag to move">&#10303;</div>
+    <span class="xs-title">Model 3D</span>
+    <span class="xs-where" data-r="where"></span>
+    <div class="xs-spacer"></div>
+    <button class="xs-big" data-r="big" title="Expand">&#11036;</button>
+    <button class="xs-big" data-r="full" title="Fullscreen">&#9974;</button>
+    <button class="xs-x" data-r="x" title="Close">&#10005;</button>
+  </div>
+  <div class="r3d-controls">
+    <span class="l3d-status" data-r="status"></span>
+    <div class="xs-spacer"></div>
+    <select class="xsec-sel" data-r="model" title="Which model">${opt(M3D_MODELS.map(m => ({ v: m.id, l: m.label })), 'gfs_seamless')}</select>
+    <select class="xsec-sel" data-r="size" title="How big the box is">${opt(M3D_SIZES.map(k => ({ v: String(k), l: k.toLocaleString('en-US') + ' km' })), '1200')}</select>
+    <button class="dtb-btn" data-r="snap" type="button" title="Save this view as a picture">Save</button>
+  </div>
+  <div class="r3d-sliders">
+    <label class="r3d-slider-row">
+      <span>Surface</span>
+      <select class="xsec-sel" data-r="field" title="Which field the see-through surface is drawn through">${opt(M3D_FIELDS.map(f => ({ v: f.id, l: f.label })), 'tadv')}</select>
+      <input type="range" data-r="iso" min="0" max="100" value="35" step="1" title="The value the surface is drawn at">
+      <span data-r="iso-label"></span>
+    </label>
+    <label class="r3d-slider-row">
+      <span>Hour</span>
+      <input type="range" data-r="hour" min="0" max="120" value="0" step="3" title="Forecast hour">
+      <span data-r="hour-label">now</span>
+    </label>
+    <label class="r3d-slider-row">
+      <span>Wind volume</span>
+      <input type="range" data-r="vol" min="0" max="80" value="35" step="1" title="Glow where the wind is at least this fast (0 turns it off)">
+      <span data-r="vol-label"></span>
+    </label>
+    <label class="r3d-slider-row">
+      <span>Wind arrows</span>
+      <select class="xsec-sel" data-r="slice" title="A slice of wind arrows at one level">
+        <option value="-1">Off</option>${M3D_LEVELS.map((p, k) => `<option value="${k}"${p === 500 ? ' selected' : ''}>${p} mb</option>`).join('')}
+      </select>
+      <button class="dtb-btn on" data-r="terrain" type="button" title="The real ground under the box">Terrain</button>
+      <button class="dtb-btn" data-r="spin" type="button" title="Turn slowly on its own">Spin</button>
+    </label>
+  </div>
+  </div>
+  <div class="xs-plot"><canvas data-r="canvas"></canvas></div>
+  <div class="m3d-about" data-r="about"></div>`;
+}
+
+function openModel3D(lat, lng, opts) {
+  let el = document.getElementById('m3d-panel');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'm3d-panel';
+    el.className = 'l3d-panel';
+    el.innerHTML = _m3dPanelHtml();
+    document.body.appendChild(el);
+    const q = r => el.querySelector(`[data-r="${r}"]`);
+    _m3d = { el, q, yaw: -0.6, pitch: 0.55, dist: 3.2, spin: false, terrain: true, data: null, prims: null, gen: 0 };
+    q('x').onclick = () => _m3dClose();
+    q('big').onclick = () => { el.classList.toggle('big'); _m3dDraw(); };
+    q('full').onclick = () => {
+      const on = !el.classList.contains('fullscreen');
+      el.classList.toggle('fullscreen', on);
+      if (on && typeof _p3dFsEnter === 'function') _p3dFsEnter(el, () => { el.classList.remove('fullscreen'); _m3dDraw(); });
+      _m3dDraw();
+    };
+    q('snap').onclick = () => { if (typeof _p3dSnapshot === 'function') _p3dSnapshot(q('canvas'), 'model-3d'); };
+    q('model').onchange = () => _m3dLoad();
+    q('size').onchange = () => { _m3d.zone = _m3dZone(_m3d.zone.lat, _m3d.zone.lng, +q('size').value); _m3dLoad(); };
+    q('field').onchange = () => { _m3dSyncIsoSlider(true); _m3dBuild(); };
+    q('iso').oninput = () => { _m3dSyncIsoSlider(false); clearTimeout(_m3d.isoT); _m3d.isoT = setTimeout(_m3dBuild, 60); };
+    q('vol').oninput = () => { _m3dLabels(); clearTimeout(_m3d.volT); _m3d.volT = setTimeout(_m3dBuild, 60); };
+    q('slice').onchange = () => _m3dBuild();
+    q('hour').oninput = () => { _m3dLabels(); clearTimeout(_m3d.hourT); _m3d.hourT = setTimeout(_m3dLoad, 350); };
+    q('terrain').onclick = () => { _m3d.terrain = !_m3d.terrain; q('terrain').classList.toggle('on', _m3d.terrain); _m3dBuild(); };
+    q('spin').onclick = () => { _m3d.spin = !_m3d.spin; q('spin').classList.toggle('on', _m3d.spin); if (_m3d.spin) _m3dTick(); };
+    const cv = q('canvas');
+    let drag = null;
+    cv.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY }; try { cv.setPointerCapture(e.pointerId); } catch (err) {} cv.classList.add('r3d-dragging'); _m3d.spin = false; q('spin').classList.remove('on'); });
+    cv.addEventListener('pointermove', e => {
+      if (!drag) return;
+      _m3d.yaw += (e.clientX - drag.x) * 0.008;
+      _m3d.pitch = Math.max(0.05, Math.min(1.5, _m3d.pitch + (e.clientY - drag.y) * 0.006));
+      drag = { x: e.clientX, y: e.clientY };
+      _m3dDraw();
+    });
+    const up = () => { drag = null; cv.classList.remove('r3d-dragging'); };
+    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+    cv.addEventListener('wheel', e => { e.preventDefault(); _m3d.dist = Math.max(1.4, Math.min(8, _m3d.dist * Math.exp(e.deltaY * 0.001))); _m3dDraw(); }, { passive: false });
+    if (typeof _makeDraggable === 'function') { try { _makeDraggable(el, el.querySelector('.xs-head')); } catch (e) {} }
+    window.addEventListener('resize', () => { if (el.classList.contains('open')) _m3dDraw(); });
+  }
+  if (opts && opts.model && M3D_MODELS.some(m => m.id === opts.model)) _m3d.q('model').value = opts.model;
+  _m3d.zone = _m3dZone(lat, lng, +_m3d.q('size').value);
+  el.classList.add('open');
+  _m3dSyncIsoSlider(true);
+  if (_m3d.spin) _m3dTick();
+  return _m3dLoad();
+}
+function _m3dClose() {
+  if (!_m3d) return;
+  _m3d.el.classList.remove('open', 'fullscreen');
+  _m3d.gen++;
+}
+function _m3dField() { return M3D_FIELDS.find(f => f.id === _m3d.q('field').value) || M3D_FIELDS[0]; }
+// The biggest value of a field in the box, for the automatic slider.
+function _m3dMaxAbs(F) {
+  const a = Array.from(F).filter(isFinite).map(Math.abs).sort((x, y) => x - y);
+  return a.length ? a[Math.floor(a.length * 0.995)] || a[a.length - 1] : 1;
+}
+function _m3dIsoValue() {
+  const f = _m3dField(), s = _m3d.q('iso');
+  if (f.auto) return (+s.value / 100) * (_m3d.data ? _m3dMaxAbs(_m3d.data[f.id]) : 1);
+  return +s.value;
+}
+function _m3dSyncIsoSlider(reset) {
+  const f = _m3dField(), s = _m3d.q('iso');
+  s.disabled = f.id === 'none';
+  if (f.auto) { s.min = 1; s.max = 100; s.step = 1; if (reset) s.value = 35; }
+  else if (f.min != null) { s.min = f.min; s.max = f.max; s.step = f.step; if (reset) s.value = f.def; }
+  _m3d.q('about').textContent = f.about || '';
+  _m3dLabels();
+}
+function _m3dLabels() {
+  const f = _m3dField(), v = _m3dIsoValue();
+  const fmt = x => Math.abs(x) >= 10 ? x.toFixed(0) : x.toFixed(Math.abs(x) >= 1 ? 1 : 2);
+  _m3d.q('iso-label').textContent = f.id === 'none' ? '' : (f.signed ? '±' : '') + fmt(v) + ' ' + f.unit;
+  const vol = +_m3d.q('vol').value;
+  _m3d.q('vol-label').textContent = vol ? `${vol} m/s (${Math.round(vol * 1.944)} kt)` : 'off';
+  const fh = +_m3d.q('hour').value, t = _m3dValidHour(fh);
+  _m3d.q('hour-label').textContent = (fh ? '+' + fh + 'h ' : 'now ') + t.toISOString().slice(5, 13).replace('T', ' ') + 'Z';
+}
+function _m3dSay(msg, bad) {
+  const s = _m3d.q('status');
+  s.textContent = msg; s.classList.toggle('bad', !!bad);
+}
+
+async function _m3dLoad() {
+  const gen = ++_m3d.gen, zone = _m3d.zone, model = _m3d.q('model').value;
+  const when = _m3dValidHour(+_m3d.q('hour').value);
+  _m3d.q('where').textContent = `${zone.lat.toFixed(2)}, ${zone.lng.toFixed(2)}`;
+  _m3dSay('Loading the model...');
+  try {
+    const [G, ter] = await Promise.all([
+      _m3dFetch(zone, model, when),
+      (typeof _l3dTerrain === 'function' ? _l3dTerrain(zone, 48, 48).catch(() => null) : Promise.resolve(null)),
+    ]);
+    if (gen !== _m3d.gen) return;
+    _m3d.data = _m3dDerive(G, zone);
+    // No tiles at all is no ground, not a flat green plain at sea level.
+    _m3d.ter = ter && ter.tiles && ter.missing < ter.tiles ? ter : null;
+    const m = M3D_MODELS.find(x => x.id === model);
+    _m3dSay(`${m ? m.label : model}, valid ${when.toISOString().slice(0, 13).replace('T', ' ')}Z`);
+    _m3dLabels();
+    _m3dBuild();
+  } catch (e) {
+    if (gen !== _m3d.gen) return;
+    _m3dSay('Could not load: ' + (e && e.message || e), true);
+  }
+}
+
+// World units: the box is 2 across (x east, y north), heights stretched so
+// the 12 km of weather stands about a third as tall as the box is wide.
+function _m3dWorld() {
+  const z = _m3d.zone, W = Math.max(z.wKm, z.hKm);
+  return { W, zs: 0.7 / 12 };
+}
+function _m3dBuild() {
+  if (!_m3d || !_m3d.data) return;
+  const D = _m3d.data, N = M3D_N, K = M3D_LEVELS.length, S = 2;
+  const { zs } = _m3dWorld();
+  const prims = [];
+  // Every node's place in the world, on the upsampled grid.
+  const Z = _m3dUpsample(D.zkm, N, K, S), M = Z.M, L = Z.L;
+  const pos = x => {
+    const k = Math.floor(x / (M * M)), r = x - k * M * M, j = Math.floor(r / M), i = r - j * M;
+    return [i / (M - 1) * 2 - 1, j / (M - 1) * 2 - 1, Z.F[x] * zs];
+  };
+  // Terrain.
+  if (_m3d.terrain && _m3d.ter && _m3d.ter.m) {
+    const T = _m3d.ter.m, n = 48;
+    for (let j = 0; j < n - 1; j++) for (let i = 0; i < n - 1; i++) {
+      // Terrain rows run north to south; the world runs south to north.
+      const h = (a, b) => Math.max(0, T[b * n + a]) / 1000 * zs;
+      const X = a => a / (n - 1) * 2 - 1, Y = b => 1 - b / (n - 1) * 2;
+      const q = [[X(i), Y(j), h(i, j)], [X(i + 1), Y(j), h(i + 1, j)], [X(i + 1), Y(j + 1), h(i + 1, j + 1)], [X(i), Y(j + 1), h(i, j + 1)]];
+      const rgb = (typeof _l3dReliefRgb === 'function') ? _l3dReliefRgb(T[j * n + i]) : [90, 110, 90];
+      prims.push({ kind: 'poly', pts: q, rgb, alpha: 1, lit: true });
+    }
+  } else {
+    prims.push({ kind: 'poly', pts: [[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0]], rgb: [40, 46, 56], alpha: 1, lit: false });
+  }
+  // Isosurfaces.
+  const f = _m3dField();
+  let ntri = 0;
+  if (f.id !== 'none') {
+    const U = _m3dUpsample(D[f.id], N, K, S), iso = _m3dIsoValue();
+    const sides = f.signed ? [[1, f.pos], [-1, f.neg]] : [[1, f.pos]];
+    sides.forEach(([sign, rgb]) => {
+      _m3dIso(U.F, U.M, U.L, iso, pos, sign).forEach(t => { prims.push({ kind: 'poly', pts: t, rgb, alpha: 0.78, lit: true }); ntri++; });
+    });
+  }
+  // Wind volume: a glow in every cell faster than the threshold.
+  const vmin = +_m3d.q('vol').value;
+  let nvol = 0;
+  if (vmin > 0) {
+    const V = _m3dUpsample(D.spd, N, K, S);
+    for (let x = 0; x < V.F.length; x++) {
+      const s = V.F[x];
+      if (!(s >= vmin)) continue;
+      const t = Math.min(1, (s - vmin) / 30);
+      const rgb = t < 0.5 ? [80 + 350 * t, 200 + 80 * t, 255 - 200 * t] : [255, 240 - 300 * (t - 0.5), 55 + 300 * (t - 0.5)];
+      prims.push({ kind: 'dot', p: pos(x), rgb: rgb.map(c => Math.max(0, Math.min(255, c))), alpha: 0.05 + 0.2 * t, r: 0.8 / (M - 1) });
+      nvol++;
+    }
+  }
+  // A slice of wind arrows at one level.
+  const k = +_m3d.q('slice').value;
+  if (k >= 0) {
+    const sc = 0.012;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const x = k * N * N + j * N + i, u = D.u[x], v = D.v[x];
+      if (!isFinite(u) || !isFinite(v)) continue;
+      const p = [i / (N - 1) * 2 - 1, j / (N - 1) * 2 - 1, D.zkm[x] * zs];
+      const q = [p[0] + u * sc, p[1] + v * sc, p[2]];
+      const s = Math.hypot(u, v), t = Math.min(1, s / 60);
+      prims.push({ kind: 'arrow', a: p, b: q, rgb: [255, 255 - 160 * t, 255 - 230 * t] });
+    }
+  }
+  _m3d.prims = prims;
+  _m3d.counts = { tris: ntri, vol: nvol };
+  _m3dDraw();
+}
+
+function _m3dCam(w, h) {
+  const { yaw, pitch, dist } = _m3d, cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const F = Math.min(w, h) * 1.25, zc = 0.3;
+  return p => {
+    const x1 = p[0] * cy - p[1] * sy, y1 = p[0] * sy + p[1] * cy, z = p[2] - zc;
+    const depth = y1 * cp - z * sp + dist, up = y1 * sp + z * cp;
+    const d = Math.max(0.05, depth);
+    return [w / 2 + x1 * F / d, h * 0.54 - up * F / d, depth];
+  };
+}
+function _m3dDraw() {
+  if (!_m3d) return;
+  const cv = _m3d.q('canvas'), dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = cv.clientWidth || 520, h = cv.clientHeight || 300;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const bg = g.createLinearGradient(0, 0, 0, h);
+  bg.addColorStop(0, '#05070c'); bg.addColorStop(1, '#141a24');
+  g.fillStyle = bg; g.fillRect(0, 0, w, h);
+  if (!_m3d.prims) return;
+  const P = _m3dCam(w, h), light = [0.4, -0.5, 0.77];
+  const items = [];
+  _m3d.prims.forEach(pr => {
+    if (pr.kind === 'poly') {
+      const s = pr.pts.map(P);
+      if (s.some(q => q[2] <= 0.05)) return;
+      let shade = 1;
+      if (pr.lit) {
+        const a = pr.pts[0], b = pr.pts[1], c = pr.pts[2];
+        const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+        const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, nl = Math.hypot(nx, ny, nz) || 1;
+        shade = 0.38 + 0.62 * Math.abs((nx * light[0] + ny * light[1] + nz * light[2]) / nl);
+      }
+      items.push({ d: s.reduce((t, q) => t + q[2], 0) / s.length, s, pr, shade });
+    } else if (pr.kind === 'dot') {
+      const s = P(pr.p);
+      if (s[2] > 0.05) items.push({ d: s[2], s, pr });
+    } else {
+      const a = P(pr.a), b = P(pr.b);
+      if (a[2] > 0.05 && b[2] > 0.05) items.push({ d: (a[2] + b[2]) / 2 - 0.001, a, b, pr });
+    }
+  });
+  items.sort((x, y) => y.d - x.d);
+  const F = Math.min(w, h) * 1.25;
+  items.forEach(it => {
+    const pr = it.pr;
+    if (pr.kind === 'poly') {
+      const c = pr.rgb.map(v => Math.round(v * it.shade));
+      g.globalAlpha = pr.alpha;
+      g.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
+      g.beginPath(); g.moveTo(it.s[0][0], it.s[0][1]);
+      for (let i = 1; i < it.s.length; i++) g.lineTo(it.s[i][0], it.s[i][1]);
+      g.closePath(); g.fill();
+      // A hairline of the same colour hides the seams between triangles.
+      g.strokeStyle = g.fillStyle; g.lineWidth = 0.6; g.stroke();
+    } else if (pr.kind === 'dot') {
+      const r = Math.max(1.2, pr.r * F / it.s[2] * 1.4);
+      g.globalAlpha = pr.alpha;
+      g.fillStyle = `rgb(${pr.rgb[0] | 0},${pr.rgb[1] | 0},${pr.rgb[2] | 0})`;
+      g.fillRect(it.s[0] - r, it.s[1] - r, 2 * r, 2 * r);
+    } else {
+      g.globalAlpha = 0.95;
+      g.strokeStyle = `rgb(${pr.rgb.map(v => v | 0).join(',')})`; g.lineWidth = 1.4;
+      g.beginPath(); g.moveTo(it.a[0], it.a[1]); g.lineTo(it.b[0], it.b[1]);
+      const ang = Math.atan2(it.b[1] - it.a[1], it.b[0] - it.a[0]), hl = 4;
+      g.lineTo(it.b[0] - hl * Math.cos(ang - 0.45), it.b[1] - hl * Math.sin(ang - 0.45));
+      g.moveTo(it.b[0], it.b[1]);
+      g.lineTo(it.b[0] - hl * Math.cos(ang + 0.45), it.b[1] - hl * Math.sin(ang + 0.45));
+      g.stroke();
+    }
+  });
+  g.globalAlpha = 1;
+  // The box's edges, level labels and north.
+  const { zs } = _m3dWorld(), top = 12 * zs;
+  g.strokeStyle = 'rgba(255,255,255,0.25)'; g.lineWidth = 1;
+  const edge = (a, b) => { const A = P(a), B = P(b); if (A[2] > 0.05 && B[2] > 0.05) { g.beginPath(); g.moveTo(A[0], A[1]); g.lineTo(B[0], B[1]); g.stroke(); } };
+  [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([x, y], i, a) => {
+    const [x2, y2] = a[(i + 1) % 4];
+    edge([x, y, 0], [x2, y2, 0]); edge([x, y, top], [x2, y2, top]); edge([x, y, 0], [x, y, top]);
+  });
+  g.font = '9px Comfortaa, sans-serif'; g.fillStyle = 'rgba(255,255,255,0.65)';
+  [[0, 'sfc'], [1.5, '850'], [5.6, '500'], [9.2, '300'], [11.8, '200 mb']].forEach(([km, l]) => {
+    const A = P([-1, -1, km * zs]);
+    if (A[2] > 0.05) g.fillText(l, A[0] - 30, A[1] + 3);
+  });
+  const Np = P([0, 1.12, 0]);
+  if (Np[2] > 0.05) { g.fillStyle = 'rgba(255,230,120,0.9)'; g.font = 'bold 11px Comfortaa, sans-serif'; g.fillText('N', Np[0] - 4, Np[1] + 4); }
+}
+function _m3dTick() {
+  if (!_m3d || !_m3d.spin || !_m3d.el.classList.contains('open')) return;
+  const now = performance.now();
+  if (!_m3d.lastSpin || now - _m3d.lastSpin > 60) {
+    _m3d.yaw += 0.006;
+    _m3d.lastSpin = now;
+    _m3dDraw();
+  }
+  requestAnimationFrame(_m3dTick);
+}
+function _cmModel3DHere() {
+  if (!_cmLatLng) { _cmClose(); return; }
+  const lat = _cmLatLng.lat, lng = _cmLatLng.lng;
+  _cmClose();
+  openModel3D(lat, lng);
 }
 
 // A vertical profile at the clicked point. Read off the parsing server's own level
@@ -69885,6 +70430,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-f', date: 'Sep 24, 2026',
+    text: 'Model 3D, in the style of Vis5D: right-click the map and pick 3D model volume here to see a box of the GFS, ECMWF, ICON or GEM forecast in 3D over the real ground. Draw see-through surfaces of temperature advection, vorticity advection, rising and sinking air, potential vorticity (the dynamic tropopause), the freezing level or cloud-humid air, make the jet stream glow as a wind speed volume, add a slice of wind arrows at any level, and step through the forecast hours.' },
   { id: '2026-09-24-e', date: 'Sep 24, 2026',
     text: 'Meteograms: right-click (or long-press) the map and pick Meteogram here. A panel like the sounding panel opens with every ensemble member for that spot over the next two weeks: a temperature heatmap, boxes for each day\'s high and low, a rain total plume, wind and gusts, and CAPE. Hover the chart for the exact 10th to 90th percentile numbers, and switch between GEFS, ECMWF, ICON and GEM ensembles.' },
   { id: '2026-09-24-d', date: 'Sep 24, 2026',
