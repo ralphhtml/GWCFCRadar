@@ -2954,6 +2954,26 @@
     if (message.record.spectral_width_pointer > 0) {
       raf.skip(message.record.spare4);
     }
+    const r = message.record;
+    if (Array.isArray(r.reflect)) {
+      r.reflect = {
+        gate_count: r.reflect.length,
+        first_gate: r.surveillance_range,
+        gate_size: r.surveillance_range_sample_interval || 1,
+        moment_data: r.reflect,
+        name: "REF"
+      };
+    }
+    if (Array.isArray(r.velocity)) {
+      r.velocity = {
+        gate_count: r.velocity.length,
+        first_gate: r.doppler_range,
+        gate_size: r.doppler_range_sample_interval || 0.25,
+        moment_data: r.velocity,
+        name: "VEL"
+      };
+    }
+    r.volume = null;
     return message;
   };
 
@@ -7630,11 +7650,114 @@
     return new RandomAccessFile(data, BIG_ENDIAN);
   };
 
+  // src/parse/level2/src/lzwdecompress.js
+  init_inject_buffer();
+  var INIT_BITS = 9;
+  var CLEAR = 256;
+  var FIRST = 257;
+  function lzwDecompress(src) {
+    const data = src instanceof Uint8Array ? src : new Uint8Array(src);
+    if (data.length < 3 || data[0] !== 31 || data[1] !== 157) throw new Error("not a .Z (compress) stream");
+    const maxbits = data[2] & 31;
+    const blockMode = (data[2] & 128) !== 0;
+    if (maxbits < INIT_BITS || maxbits > 16) throw new Error(`.Z stream with ${maxbits} bit codes`);
+    const maxmaxcode = 1 << maxbits;
+    const prefix = new Uint16Array(maxmaxcode);
+    const suffix = new Uint8Array(maxmaxcode);
+    for (let i = 0; i < 256; i += 1) suffix[i] = i;
+    const stack = new Uint8Array(maxmaxcode);
+    let out = new Uint8Array(Math.max(1024, data.length * 4));
+    let outLen = 0;
+    const put = (b) => {
+      if (outLen >= out.length) {
+        const n = new Uint8Array(out.length * 2);
+        n.set(out);
+        out = n;
+      }
+      out[outLen] = b;
+      outLen += 1;
+    };
+    const body = data.subarray(3);
+    const inbits = body.length * 8;
+    let nbits = INIT_BITS;
+    let maxcode = (1 << nbits) - 1;
+    let bitmask = (1 << nbits) - 1;
+    let freeEnt = blockMode ? FIRST : 256;
+    let oldcode = -1;
+    let finchar = 0;
+    let posbits = 0;
+    let base = 0;
+    const align = () => {
+      const g = nbits << 3;
+      const rel = posbits - base;
+      posbits = base + (rel - 1) + (g - (rel - 1 + g) % g);
+      base = posbits;
+    };
+    while (posbits + nbits <= inbits) {
+      if (freeEnt > maxcode) {
+        align();
+        nbits += 1;
+        maxcode = nbits === maxbits ? maxmaxcode : (1 << nbits) - 1;
+        bitmask = (1 << nbits) - 1;
+        continue;
+      }
+      const p = posbits >> 3;
+      let code42 = (body[p] | (body[p + 1] || 0) << 8 | (body[p + 2] || 0) << 16) >> (posbits & 7);
+      code42 &= bitmask;
+      posbits += nbits;
+      if (oldcode === -1) {
+        if (code42 >= 256) throw new Error("corrupt .Z stream (first code)");
+        finchar = code42;
+        oldcode = code42;
+        put(code42);
+        continue;
+      }
+      if (code42 === CLEAR && blockMode) {
+        prefix.fill(0);
+        freeEnt = FIRST - 1;
+        align();
+        nbits = INIT_BITS;
+        maxcode = (1 << nbits) - 1;
+        bitmask = (1 << nbits) - 1;
+        continue;
+      }
+      const incode = code42;
+      let sp = maxmaxcode;
+      if (code42 >= freeEnt) {
+        if (code42 > freeEnt) break;
+        sp -= 1;
+        stack[sp] = finchar;
+        code42 = oldcode;
+      }
+      while (code42 >= 256) {
+        sp -= 1;
+        stack[sp] = suffix[code42];
+        code42 = prefix[code42];
+      }
+      finchar = suffix[code42];
+      sp -= 1;
+      stack[sp] = finchar;
+      for (let i = sp; i < maxmaxcode; i += 1) put(stack[i]);
+      if (freeEnt < maxmaxcode) {
+        prefix[freeEnt] = oldcode;
+        suffix[freeEnt] = finchar;
+        freeEnt += 1;
+      }
+      oldcode = incode;
+    }
+    return out.subarray(0, outLen);
+  }
+
   // src/parse/level2/src/decompress.js
   var decompress = (raf) => {
     const gZipHeader = raf.read(2);
     raf.seek(0);
     if (gZipHeader[0] === 31 && gZipHeader[1] === 139) return gzipdecompress_default(raf);
+    if (gZipHeader[0] === 31 && gZipHeader[1] === 157) {
+      const all = raf.read(raf.getLength());
+      raf.seek(0);
+      return new RandomAccessFile(import_buffer3.Buffer.from(lzwDecompress(new Uint8Array(all))), BIG_ENDIAN);
+    }
     if (raf.getLength() <= FILE_HEADER_SIZE) return raf;
     let headerSize = 0;
     const compressionRecord = readCompressionHeader(raf);
@@ -12376,14 +12499,23 @@
       return null;
     }
   };
+  var _siteFallback = null;
   var firstUsableHeader = (radar, elevations) => {
+    let firstAny = null;
     for (const el of elevations) {
       try {
         radar.setElevation(el);
         const h = radar.getHeader(0);
         if (h && h.volume && Number.isFinite(h.volume.latitude)) return h;
+        if (h && !firstAny) firstAny = h;
       } catch (e) {
       }
+    }
+    if (firstAny && _siteFallback) {
+      firstAny.volume = { latitude: _siteFallback[0], longitude: _siteFallback[1] };
+      if (!Number.isFinite(firstAny.radial_length)) firstAny.radial_length = 0;
+      if (elevations.length) radar.setElevation(elevations[0]);
+      return firstAny;
     }
     return null;
   };
@@ -12396,6 +12528,8 @@
   };
   self.onmessage = (event) => {
     const { type } = event.data || {};
+    const _o = event.data && event.data.options || {};
+    _siteFallback = Number.isFinite(_o.siteLat) && Number.isFinite(_o.siteLon) ? [_o.siteLat, _o.siteLon] : null;
     if (type === "process-chunks") {
       const { buffers: rawBuffers, layer: chunkLayer, options: chunkOptions = {} } = event.data;
       if (!Array.isArray(rawBuffers) || rawBuffers.length === 0) {

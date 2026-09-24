@@ -28,7 +28,7 @@ console.log('\n1. the machine is in the page');
 {
   ok('the mosaic has its own clock and floor',
      PAGE.includes('let _tmMosaicAt = null;')
-     && PAGE.includes('const MOSAIC_FLOOR = Date.UTC(2010, 10, 1);'));
+     && PAGE.includes('const MOSAIC_FLOOR = Date.UTC(1995, 0, 1);'));
   ok('the frame builder takes a moment to end at',
      PAGE.includes('function _generateL3Frames(count, endMs)')
      && PAGE.includes('_generateL3Frames(_loopFrameCount(), endMs)'));
@@ -124,8 +124,9 @@ console.log('\n3. the Composite menu offers the row, and the modal names the mos
   });
   ok('the Time Machine row sits in the Composite menu', r.row && /Time Machine/.test(r.label), r.label);
   ok('it opens the modal for the RADAR MOSAIC', r.open && /RADAR MOSAIC/.test(r.title) && r.scope === 'mosaic', r.title);
-  ok('the archive reaches back to November 2010',
-     r.min === '2010-11-01' && /2010/.test(r.note) && /NEXRAD composite/.test(r.note), r.min);
+  // N0Q from November 2010, and the older N0R composite before it, to 1995.
+  ok('the archive reaches back to 1995',
+     r.min === '1995-01-01' && /1995/.test(r.note) && /NEXRAD composite/.test(r.note), r.min);
 }
 
 console.log('\n4. a jump moves the mosaic, hands MRMS over, and raises the badge');

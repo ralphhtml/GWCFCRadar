@@ -8,6 +8,9 @@ import bzip from 'seek-bzip';
 // gzip
 import gzipDecompress from './gzipdecompress.js';
 
+// unix compress (.Z), the 1991-2008 archive volumes
+import lzwDecompress from './lzwdecompress.js';
+
 // structured byte access
 import { RandomAccessFile, BIG_ENDIAN } from './classes/RandomAccessFile.js';
 
@@ -19,6 +22,12 @@ const decompress = (raf) => {
 	const gZipHeader = raf.read(2);
 	raf.seek(0);
 	if (gZipHeader[0] === 31 && gZipHeader[1] === 139) return gzipDecompress(raf);
+	// Unix compress: the whole old volume is one LZW stream around plain records.
+	if (gZipHeader[0] === 0x1f && gZipHeader[1] === 0x9d) {
+		const all = raf.read(raf.getLength());
+		raf.seek(0);
+		return new RandomAccessFile(Buffer.from(lzwDecompress(new Uint8Array(all))), BIG_ENDIAN);
+	}
 
 	// if file length is less than or equal to the file header size then it is not compressed
 	if (raf.getLength() <= FILE_HEADER_SIZE) return raf;

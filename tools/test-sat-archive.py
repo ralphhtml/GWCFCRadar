@@ -82,9 +82,12 @@ ok("only band 13, only real scans",
    all("C13_" in f["key"] and sa.KEY_RE.match(f["key"]) for f in got["frames"]))
 ok("the newest is the 12:30 scan", got["frames"][-1]["stamp"].startswith("2023150123017"),
    got["frames"][-1]["stamp"])
-ok("a moment before the satellite existed is refused, not searched",
-   sa.frames_around("west", 13, "conus", int(utc(2018, 1, 1).timestamp() * 1000), 5,
-                    lister=fake_keys) is None)
+# Before GOES-West's first GOES-R scan the answer is the GridSat-B1 record, and
+# the GOES buckets are never searched for it.
+_early = sa.frames_around("west", 13, "conus", int(utc(2018, 1, 1).timestamp() * 1000), 5,
+                          lister=lambda b, p: (_ for _ in ()).throw(RuntimeError("searched S3")))
+ok("a moment before the satellite existed goes to GridSat, not searched in S3",
+   _early is not None and _early["bucket"] == sa.GRIDSAT_BUCKET)
 
 print("\n3. NOAA's key pattern is the only shape the door accepts")
 real = "ABI-L2-CMIPC/2023/150/12/OR_ABI-L2-CMIPC-M6C13_G16_s20231501201172_e20231501203556_c20231501204056.nc"
@@ -184,6 +187,63 @@ else:
        sa.render("noaa-goes16", real, 13, "conus", cache_dir=cache,
                  fetch=lambda b, k: (_ for _ in ()).throw(RuntimeError("no")), edge=800)[0] == png)
     print(f"  (rendered in {secs:.1f}s)")
+
+print("\nGridSat-B1: before GOES-R, back to 1980")
+got = sa.frames_around("east", 2, "conus", int(datetime(2005, 8, 29, 13, 20, tzinfo=timezone.utc).timestamp() * 1000), 5,
+                       lister=lambda b, p: (_ for _ in ()).throw(RuntimeError("no S3 before 2017")))
+ok("a 2005 moment is answered from GridSat, not the GOES buckets", got and got["bucket"] == sa.GRIDSAT_BUCKET, str(got)[:120])
+ok("every three hours, ending at the hour at or before the moment",
+   [f["stamp"] for f in got["frames"]] == ["2005082900", "2005082903", "2005082906", "2005082909", "2005082912"],
+   str([f["stamp"] for f in got["frames"]]))
+ok("with NOAA's own file names", got["frames"][-1]["key"] == "GRIDSAT-B1.2005.08.29.12.v02r01.nc"
+   and sa.GRIDSAT_RE.match(got["frames"][-1]["key"]))
+ok("the West before GOES-17 (2018) is GridSat too",
+   sa.frames_around("west", 13, "conus", int(datetime(2018, 5, 1, tzinfo=timezone.utc).timestamp() * 1000), 2)["bucket"] == sa.GRIDSAT_BUCKET)
+ok("before 1980 there is nothing", sa.frames_around("east", 13, "conus", int(datetime(1979, 6, 1, tzinfo=timezone.utc).timestamp() * 1000), 2) is None)
+ok("a GOES-R era moment still goes to the GOES buckets",
+   sa.frames_around("east", 13, "conus", int(datetime(2023, 5, 30, 12, tzinfo=timezone.utc).timestamp() * 1000), 1,
+                    lister=lambda b, p: [])["bucket"] == "noaa-goes16")
+
+
+class _GV:
+    def __init__(self, data, ndim):
+        self.data, self.ndim = data, ndim
+
+    def __getitem__(self, k):
+        return self.data[k]
+
+
+class _GDS:
+    # A quarter of the real grid's spacing is plenty for the test: 70S-70N.
+    def __init__(self):
+        lat = np.arange(-70.0, 70.01, 0.5)
+        lon = np.arange(-180.0, 180.0, 0.5)
+        tb = np.full((1, len(lat), len(lon)), 290.0, dtype=np.float32)
+        # A cold cloud shield over the Gulf, and a missing strip.
+        la, lo = np.meshgrid(lat, lon, indexing="ij")
+        tb[0][(np.abs(la - 27) < 3) & (np.abs(lo + 89) < 3)] = 200.0
+        tb[0][(np.abs(la - 40) < 0.3)] = -31999.0
+        self.variables = {"irwin_cdr": _GV(np.ma.masked_less(tb, 0), 3), "lat": _GV(lat, 1), "lon": _GV(lon, 1)}
+
+    def close(self):
+        pass
+
+
+cache = tempfile.mkdtemp()
+png, bounds = sa.render_gridsat("GRIDSAT-B1.2005.08.29.12.v02r01.nc", "conus", "east", cache_dir=cache,
+                                open_ds=lambda k: _GDS())
+from PIL import Image  # noqa: E402
+a = np.asarray(Image.open(png))
+ok("rendered over the East CONUS box", 14 < bounds[0][0] < 16 and 57 < bounds[1][0] < 59
+   and -136 < bounds[0][1] < -134 and -56 < bounds[1][1] < -54, str(bounds))
+ny = a.shape[0]
+row = int((bounds[1][0] - 27) / (bounds[1][0] - bounds[0][0]) * ny)
+col = int((-89 - bounds[0][1]) / (bounds[1][1] - bounds[0][1]) * a.shape[1])
+ok("north up, and the cold cloud over the Gulf reads bright", a[row, col, 0] > 170 and a[5, 5, 0] < 60,
+   f"cloud {a[row, col, 0]} ground {a[5, 5, 0]}")
+ok("missing data is transparent", (a[..., 3] == 0).any())
+ok("and cached like a GOES frame", sa.render(sa.GRIDSAT_BUCKET, "GRIDSAT-B1.2005.08.29.12.v02r01.nc", 13, "conus",
+                                              cache_dir=cache, post="east")[0] == png)
 
 print(f"\n{failed} FAILED, {passed} passed" if failed else f"\nall {passed} passed")
 sys.exit(1 if failed else 0)

@@ -489,7 +489,8 @@ else {
   });
   await b.close();
 
-  ok('the token rows render', r.rows === 12, String(r.rows));
+  // Thirteen since Brand red (search bar, time controls) joined the tokens.
+  ok('the token rows render', r.rows === 13, String(r.rows));
   ok('and one block per surface', r.surfaceBlocks === 5, String(r.surfaceBlocks));
   ok('a preset changes the accent', r.midAccent === '#5ec8ff', r.midAccent);
   // Liquid glass rewrites each stop as rgba at the level's alpha, so the
@@ -555,7 +556,7 @@ else {
      r.pairFromColorInput === '#00ff0066', r.pairFromColorInput);
   ok('dragging only the color leaves the alpha slider\'s own live value in the result',
      r.pairAfterColorOnlyChange === '#ff00ff66', r.pairAfterColorOnlyChange);
-  ok('every token swatch has its own opacity slider', r.tokenAlphaSliders === 12, String(r.tokenAlphaSliders));
+  ok('every token swatch has its own opacity slider', r.tokenAlphaSliders === 13, String(r.tokenAlphaSliders));
   ok('a part card has one for fill, text and border alike',
      r.partAlphaSlidersOnFirstCard >= 3, String(r.partAlphaSlidersOnFirstCard));
   ok('the border swatch reflects the opaque colour just set',

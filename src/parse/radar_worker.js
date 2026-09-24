@@ -746,13 +746,25 @@ const meanElevationAngle = (radar, elevationNumber) => {
 // the parser lands on first can have none: a moment-filtered parse leaves a
 // split cut's surveillance sweep empty when only velocity was asked for.
 // Walk the cuts until one has it - every volume has it somewhere.
+// Volumes older than 2008 (message 1, the legacy format) carry no volume
+// block at all: the radar's position is not in the file. The page passes the
+// site's position in (options.siteLat / siteLon) and it is used then.
+let _siteFallback = null;
 const firstUsableHeader = (radar, elevations) => {
+    let firstAny = null;
     for (const el of elevations) {
         try {
             radar.setElevation(el);
             const h = radar.getHeader(0);
             if (h && h.volume && Number.isFinite(h.volume.latitude)) return h;
+            if (h && !firstAny) firstAny = h;
         } catch (e) { /* next cut */ }
+    }
+    if (firstAny && _siteFallback) {
+        firstAny.volume = { latitude: _siteFallback[0], longitude: _siteFallback[1] };
+        if (!Number.isFinite(firstAny.radial_length)) firstAny.radial_length = 0;
+        if (elevations.length) radar.setElevation(elevations[0]);
+        return firstAny;
     }
     return null;
 };
@@ -770,6 +782,8 @@ const level2TimeIso = (header) => {
 
 self.onmessage = (event) => {
     const { type } = event.data || {};
+    const _o = (event.data && event.data.options) || {};
+    _siteFallback = (Number.isFinite(_o.siteLat) && Number.isFinite(_o.siteLon)) ? [_o.siteLat, _o.siteLon] : null;
 
     // --- Chunk-combine path (Level-II streaming) ---
     if (type === 'process-chunks') {

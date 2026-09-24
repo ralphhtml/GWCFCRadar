@@ -40,8 +40,9 @@ console.log('\n1. the fixes are in the page');
      && PAGE.includes('No satellite imagery is archived for that moment.'));
   ok('the modal tells the truth about what a jump will do',
      /Choose a moment and the satellite switches on there/.test(PAGE));
-  ok('a travelled band routes to the parsing server archive door, back to July 2017',
-     PAGE.includes('const SAT_ARC_FLOOR = Date.UTC(2017, 6, 10);')
+  // GOES-R from July 2017, and GridSat-B1 infrared before it, to 1980.
+  ok('a travelled band routes to the parsing server archive door, back to 1980',
+     PAGE.includes('const SAT_ARC_FLOOR = Date.UTC(1980, 0, 1);')
      && /function _goesArcOk\(\)/.test(PAGE)
      && PAGE.includes('fetch(`${base}/sat/archive/index?${qs}`')
      && PAGE.includes("if (_goesArcOk()) { _goesApplyFrames([]); _goesLoadArcFrames(); return; }"));

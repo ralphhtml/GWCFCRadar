@@ -10,6 +10,13 @@ keep three days. NOAA's public buckets keep every scan the satellites have
 ever made (GOES-16 from mid 2017, GOES-West from 2019), but as raw NetCDF
 files a browser cannot read. This module reads them for it.
 
+Before GOES-16 (mid 2017 in the East, 2019 in the West) there is NOAA's
+GridSat-B1 climate record instead: the infrared window channel of every
+geostationary satellite since 1980, merged onto one global grid every three
+hours (about 7 km). It is one band, infrared, and it is three hourly, but it
+is the whole satellite era. A moment older than the post's first GOES-R scan
+is answered from it (see frames_gridsat and render_gridsat).
+
 serve.py opens two doors on it:
 
     GET /sat/archive/index?post=east&band=13&sector=conus&at=<ms>&n=24
@@ -58,6 +65,83 @@ POSTS = {
              ("noaa-goes18", datetime(2023, 1, 10, tzinfo=timezone.utc), None)],
 }
 SECTOR_PRODUCT = {"conus": "ABI-L2-CMIPC", "fulldisk": "ABI-L2-CMIPF"}
+
+# -- GridSat-B1, 1980 onward ---------------------------------------------------
+GRIDSAT_BUCKET = "gridsat-b1"
+GRIDSAT_START = datetime(1980, 1, 1, tzinfo=timezone.utc)
+GRIDSAT_RE = re.compile(r"^GRIDSAT-B1\.(\d{4})\.(\d{2})\.(\d{2})\.(\d{2})\.v02r01\.nc$")
+# THREDDS (OPeNDAP) first, so only the wanted box crosses the network; the
+# plain file (about 30 MB) as the fallback.
+GRIDSAT_DAP = "https://www.ncei.noaa.gov/thredds/dodsC/cdr/gridsat/{y}/{key}"
+GRIDSAT_HTTP = ("https://www.ncei.noaa.gov/data/geostationary-ir-channel-brightness-temperature-"
+                "gridsat-b1/access/{y}/{key}")
+GRIDSAT_MAX_FRAMES = 16
+# The box drawn for each post and sector, as (south, north, west, east).
+GRIDSAT_BOX = {
+    ("east", "conus"): (15.0, 58.0, -135.0, -55.0),
+    ("west", "conus"): (15.0, 62.0, -175.0, -100.0),
+    ("east", "fulldisk"): (-65.0, 65.0, -155.0, 5.0),
+    ("west", "fulldisk"): (-65.0, 65.0, 140.0 - 360.0, -60.0),
+}
+
+
+def gridsat_key(t):
+    return f"GRIDSAT-B1.{t.year:04d}.{t.month:02d}.{t.day:02d}.{t.hour:02d}.v02r01.nc"
+
+
+def frames_gridsat(at_ms, n):
+    """The n GridSat-B1 frames (every three hours) up to a moment, oldest first."""
+    when = datetime.fromtimestamp(at_ms / 1000.0, tz=timezone.utc)
+    if when < GRIDSAT_START:
+        return None
+    t = when.replace(minute=0, second=0, microsecond=0)
+    t = t - timedelta(hours=t.hour % 3)
+    n = max(1, min(GRIDSAT_MAX_FRAMES, int(n)))
+    out = []
+    for i in range(n):
+        ti = t - timedelta(hours=3 * i)
+        if ti < GRIDSAT_START:
+            break
+        out.append({"t": int(ti.timestamp() * 1000), "stamp": ti.strftime("%Y%m%d%H"), "key": gridsat_key(ti)})
+    out.reverse()
+    return {"bucket": GRIDSAT_BUCKET, "source": "GridSat-B1 infrared (every 3 hours, since 1980)",
+            "frames": out}
+
+
+def _gridsat_open(key):
+    """An open netCDF4 dataset for one GridSat file: OPeNDAP, else the file."""
+    import netCDF4
+    m = GRIDSAT_RE.match(key)
+    y = m.group(1)
+    try:
+        return netCDF4.Dataset(GRIDSAT_DAP.format(y=y, key=key))
+    except Exception as e:
+        log(f"  gridsat dap {key}: {e}; downloading the file")
+    req = urllib.request.Request(GRIDSAT_HTTP.format(y=y, key=key), headers={"User-Agent": "gwcfc-sat-archive"})
+    with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as r:
+        raw = r.read()
+    return netCDF4.Dataset("inmem", mode="r", memory=raw)
+
+
+def read_gridsat(ds, box):
+    """(brightness temperature K, lats, lons) over a box, from an open dataset."""
+    names = {k.lower(): k for k in ds.variables}
+    vk = names.get("irwin_cdr") or names.get("irwin_vza_adj") or names.get("irwin")
+    if vk is None:
+        raise RuntimeError("GridSat file has no infrared window variable")
+    lat = np.asarray(ds.variables[names.get("lat", "lat")][:], dtype=np.float64)
+    lon = np.asarray(ds.variables[names.get("lon", "lon")][:], dtype=np.float64)
+    s, n, w, e = box
+    iy = np.where((lat >= s) & (lat <= n))[0]
+    ix = np.where((lon >= w) & (lon <= e))[0]
+    if not len(iy) or not len(ix):
+        raise RuntimeError("that box is outside the GridSat grid")
+    var = ds.variables[vk]
+    sl = (slice(int(iy[0]), int(iy[-1]) + 1), slice(int(ix[0]), int(ix[-1]) + 1))
+    arr = var[(0,) + sl] if var.ndim == 3 else var[sl]
+    vals = np.ma.filled(np.ma.asarray(arr, dtype=np.float32), np.nan)
+    vals = np.where((vals > 150) & (vals < 340), vals, np.nan)
+    return vals, lat[sl[0]], lon[sl[1]]
 KEY_RE = re.compile(
     r"^ABI-L2-CMIP[CF]/\d{4}/\d{3}/\d{2}/OR_ABI-L2-CMIP[CF]-M\dC(\d{2})_G1[6-9]"
     r"_s(\d{14})_e\d{14}_c\d{14}\.nc$")
@@ -117,6 +201,10 @@ def frames_around(post, band, sector, at_ms, n, lister=list_keys):
     when = datetime.fromtimestamp(at_ms / 1000.0, tz=timezone.utc)
     bucket = bucket_for(post, when)
     if not bucket:
+        # Before this post's first GOES-R scan: the GridSat-B1 record.
+        first = POSTS.get(post, [(None, None, None)])[0][1]
+        if first is not None and when < first:
+            return frames_gridsat(at_ms, n)
         return None
     product = SECTOR_PRODUCT[sector]
     tag = f"C{int(band):02d}_"
@@ -270,9 +358,59 @@ def prune_cache(cache_dir, keep=CACHE_MAX_FILES):
                 pass
 
 
+def render_gridsat(key, sector, post="east", cache_dir=CACHE_DIR, open_ds=None):
+    """One GridSat-B1 frame to a PNG on disk, shaded like GOES infrared."""
+    m = GRIDSAT_RE.match(key)
+    if not m:
+        raise ValueError("not a GridSat-B1 file name")
+    d = os.path.join(cache_dir, GRIDSAT_BUCKET, f"{post}-{sector}")
+    stamp = "".join(m.groups())
+    png, side = os.path.join(d, f"{stamp}.png"), os.path.join(d, f"{stamp}.json")
+    if os.path.exists(png) and os.path.exists(side):
+        try:
+            with open(side) as fh:
+                meta = json.load(fh)
+            os.utime(png, None)
+            return png, meta["bounds"]
+        except Exception:
+            pass
+    from PIL import Image
+    box = GRIDSAT_BOX.get((post, sector), GRIDSAT_BOX[("east", "conus")])
+    ds = (open_ds or _gridsat_open)(key)
+    try:
+        vals, lats, lons = read_gridsat(ds, box)
+    finally:
+        try:
+            ds.close()
+        except Exception:
+            pass
+    if lats[0] < lats[-1]:                      # row 0 north, like every other frame
+        vals, lats = vals[::-1], lats[::-1]
+    grey = colorize(vals, 13)
+    a8 = np.where(np.isfinite(vals), 255, 0).astype(np.uint8)
+    os.makedirs(d, exist_ok=True)
+    Image.fromarray(np.dstack([grey, grey, grey, a8]), mode="RGBA").save(png, optimize=True)
+    dlat = abs(float(lats[1] - lats[0])) if len(lats) > 1 else 0.07
+    dlon = abs(float(lons[1] - lons[0])) if len(lons) > 1 else 0.07
+    bounds = [[float(lats[-1]) - dlat / 2, float(lons[0]) - dlon / 2],
+              [float(lats[0]) + dlat / 2, float(lons[-1]) + dlon / 2]]
+    tmp = side + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump({"bounds": bounds, "band": 13, "sector": sector, "key": key, "source": "gridsat-b1",
+                   "built": datetime.now(timezone.utc).isoformat()}, fh)
+    os.replace(tmp, side)
+    try:
+        prune_cache(cache_dir)
+    except Exception:
+        pass
+    return png, bounds
+
+
 def render(bucket, key, band, sector, cache_dir=CACHE_DIR, fetch=_download,
-           edge=None):
+           edge=None, post="east"):
     """One scan to a PNG on disk. Returns (png_path, bounds)."""
+    if bucket == GRIDSAT_BUCKET:
+        return render_gridsat(key, sector, post, cache_dir)
     png, side = _cache_paths(cache_dir, bucket, key, band, sector)
     if os.path.exists(png) and os.path.exists(side):
         try:

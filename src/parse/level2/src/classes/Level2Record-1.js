@@ -98,5 +98,25 @@ export default (raf, message, options) => {
 		raf.skip(message.record.spare4);
 	}
 
+	// GWCFC: hand the moments on in the same shape message 31 uses (gate
+	// count, first gate and gate size in km, and the values), so everything
+	// downstream of the parser reads a 1995 volume exactly like a 2015 one.
+	// Message 1 reflectivity is 1 km gates, velocity 250 m.
+	const r = message.record;
+	if (Array.isArray(r.reflect)) {
+		r.reflect = {
+			gate_count: r.reflect.length, first_gate: r.surveillance_range,
+			gate_size: r.surveillance_range_sample_interval || 1, moment_data: r.reflect, name: 'REF',
+		};
+	}
+	if (Array.isArray(r.velocity)) {
+		r.velocity = {
+			gate_count: r.velocity.length, first_gate: r.doppler_range,
+			gate_size: r.doppler_range_sample_interval || 0.25, moment_data: r.velocity, name: 'VEL',
+		};
+	}
+	// No volume block in message 1: the radar's position comes from the page.
+	r.volume = null;
+
 	return message;
 };
