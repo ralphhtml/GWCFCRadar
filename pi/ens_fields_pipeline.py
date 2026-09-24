@@ -34,6 +34,8 @@ Where each ensemble comes from, and what it costs a run:
   gefs      NOAA GEFS, 31 members, NOMADS filter cut to the box. About 200 MB.
   geps      Canadian GEPS (CMCE on NOMADS, half of NAEFS), 21 members. About 130 MB.
   sref      NCEP SREF, 26 members (ARW and NMMB cores), 40 km, to 84 h. About 90 MB.
+  gfs       the ordinary GFS run (one member), for the layer stack. About 10 MB.
+  ecmwf     the ordinary ECMWF run (one member), by byte range. About 350 MB.
   ecmwfens  ECMWF ENS, 51 members, from the open data by byte range. The
             open data has no way to ask for a box, so every record is the
             whole globe: this is by far the heaviest, so it takes fewer
@@ -140,6 +142,25 @@ ENSEMBLES = {
         "members": [f"{core}.{m}" for core in ("arw", "nmb")
                     for m in ["ctl"] + [f"n{i}" for i in range(1, 7)] + [f"p{i}" for i in range(1, 7)]],
         "steps": list(range(3, 85, 3)),
+    },
+    # The ordinary single runs, as one-member "ensembles", so the layer
+    # stack can put GFS, ECMWF and any ensemble on the same map.
+    "gfs": {
+        "label": "GFS", "kind": "noaa", "cycle_h": 6, "lag_h": 5, "single": True,
+        "filter": "filter_gfs_0p50.pl",
+        "dir": "/gfs.{date}/{cyc}/atmos",
+        "file": "gfs.t{cyc}z.pgrb2full.0p50.f{fhr:03d}",
+        "raw": "gfs/prod/gfs.{date}/{cyc}/atmos/",
+        "members": ["gfs00"],
+        "steps": list(range(6, 241, 6)),
+    },
+    "ecmwf": {
+        "label": "ECMWF", "kind": "ecmwf", "cycle_h": 12, "lag_h": 8, "single": True,
+        "stream": "oper", "type": "fc",
+        "members": [0],
+        "steps": list(range(6, 145, 6)) + list(range(156, 241, 12)),
+        "params": {"2t": None, "2d": None, "msl": None, "tp": None, "gh": "500", "t": "850",
+                   "ptype": None, "10u": None, "10v": None, "10fg": None, "mucape": None},
     },
     "ecmwfens": {
         "label": "ECMWF ENS", "kind": "ecmwf", "cycle_h": 24, "lag_h": 9,
@@ -512,8 +533,9 @@ def _has_tp(body):
 
 def ecmwf_rows(gp, ens, date_str, cyc, fhr):
     """{member: [(offset, length)]} of the wanted records, from the index."""
+    stream, kind = ens.get("stream", "enfo"), ens.get("type", "ef")
     for base in ECMWF_BASES:
-        url = (f"{base}/{date_str}/{cyc}z/ifs/0p25/enfo/{date_str}{cyc}0000-{fhr}h-enfo-ef")
+        url = (f"{base}/{date_str}/{cyc}z/ifs/0p25/{stream}/{date_str}{cyc}0000-{fhr}h-{stream}-{kind}")
         try:
             r = gp.http_get(url + ".index", timeout=60)
         except Exception:
@@ -532,7 +554,7 @@ def ecmwf_rows(gp, ens, date_str, cyc, fhr):
             want_lev = ens["params"][p]
             if want_lev is not None and str(rec.get("levelist", "")) != want_lev:
                 continue
-            m = 0 if rec.get("type") == "cf" else int(rec.get("number", 0) or 0)
+            m = 0 if rec.get("type") in ("cf", "fc") else int(rec.get("number", 0) or 0)
             rows.setdefault(m, []).append((int(rec["_offset"]), int(rec["_length"])))
         if rows:
             return url + ".grib2", rows
@@ -612,6 +634,7 @@ def build(model, date_str, cyc, fetch=None, out_dir=None, steps=None, members=No
     manifest = {"model": model, "label": ens["label"], "run": run,
                 "base": base.strftime("%Y-%m-%dT%H:00:00Z"),
                 "members": [str(m) for m in mems], "grid": dict(GRID, ny=len(tlats), nx=len(tlons)),
+                "single": bool(ens.get("single")),
                 "fields": {}, "hours": [], "complete": False}
     totals = {}                         # member -> running precipitation (in)
     last_tp = {}                        # member -> (hour, value as published)
@@ -664,14 +687,14 @@ def build(model, date_str, cyc, fetch=None, out_dir=None, steps=None, members=No
         write_json(os.path.join(run_dir, "manifest.json"), manifest)
         update_index(model, {"label": ens["label"], "run": run, "base": manifest["base"],
                              "hours": manifest["hours"], "fields": sorted(manifest["fields"]),
-                             "members": len(mems), "complete": False}, out_dir)
+                             "members": len(mems), "single": bool(ens.get("single")), "complete": False}, out_dir)
         log(f"  {model} f{fhr:03d}: {have}/{len(mems)} members, {len(per_field)} fields")
     manifest["complete"] = bool(manifest["hours"])
     write_json(os.path.join(run_dir, "manifest.json"), manifest)
     if manifest["hours"]:
         update_index(model, {"label": ens["label"], "run": run, "base": manifest["base"],
                              "hours": manifest["hours"], "fields": sorted(manifest["fields"]),
-                             "members": len(mems), "complete": True}, out_dir)
+                             "members": len(mems), "single": bool(ens.get("single")), "complete": True}, out_dir)
         prune(model, keep=run, out_dir=out_dir)
     return manifest
 
