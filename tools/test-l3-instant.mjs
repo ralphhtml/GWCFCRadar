@@ -403,7 +403,7 @@ console.log('\n10. asking for a numbered cut is never answered with another');
 console.log('\n11. a touch screen warms too, since it has no hover');
 {
   const r = await page.evaluate(() => {
-    const src = String(_buildNexradSiteMarkers);
+    const src = String(_buildNexradSiteMarkers) + String(typeof _addNexradSiteMarker === 'function' ? _addNexradSiteMarker : '');
     return { hover: /'mouseover'/.test(src),
              down: /pointerdown/.test(src),
              bound: /getElement/.test(src) };

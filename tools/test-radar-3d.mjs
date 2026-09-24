@@ -1481,7 +1481,7 @@ console.log('\n11c. a black gradient panel with gold gradient text, inside the b
   ok('the top of the panel is a black gradient',
      /linear-gradient/.test(r.topBg) && /rgb\(28, 28, 34\)/.test(r.topBg) && /rgb\(0, 0, 0\)/.test(r.topBg), r.topBg);
   ok('and the rest is heavy frost: thin dark glass with a 24px blur',
-     /rgba\(24, 28, 34, 0\.36\)/.test(r.panelBg) && /blur\(24px\)/.test(r.panelBlur || ''), r.panelBg + ' ' + r.panelBlur);
+     /rgba\(24, 28, 34, 0\.58\)/.test(r.panelBg) && /blur\(24px\)/.test(r.panelBlur || ''), r.panelBg + ' ' + r.panelBlur);
   ok('the title is gold gradient text (a gradient clipped to the glyphs)',
      /linear-gradient/.test(r.titleBg) && /232, 184, 0/.test(r.titleBg) && r.titleClip === 'text'
      && /transparent|rgba\(0, 0, 0, 0\)/.test(r.titleFill),

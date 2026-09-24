@@ -3049,7 +3049,7 @@
       dcount: raf.readShort()
     };
     try {
-      if (!record.id.match(/[A-Z]{4}/)) throw new Error(`Invalid record id: ${record.id}`);
+      if (!/^[A-Za-z0-9_]{4}$/.test(record.id)) throw new Error(`Invalid record id: ${record.id}`);
       if (record.mseconds > 86401e3) throw new Error(`Invalid timestamp (ms): ${record.mseconds}`);
     } catch (e) {
       options.logger.warn(e.message);

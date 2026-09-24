@@ -16,3 +16,4 @@ services/bot/status.json
 # spend one of Discord's tight avatar-change allowance re-sending the same
 # picture. Local state, not source.
 services/bot/.avatar-stamp
+__pycache__/
