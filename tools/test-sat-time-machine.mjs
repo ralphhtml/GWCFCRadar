@@ -281,6 +281,51 @@ console.log('\n5. a travelled band asks NOAA\'s archive through the parsing serv
      JSON.stringify({ n: r.fallbackN, wms: r.fallbackWms, t: r.fallbackToast }));
 }
 
+console.log('\n5b. before GOES-R (Andrew, 1992): GridSat through the parsing server, never today\'s picture');
+{
+  const r = await p.evaluate(async () => {
+    const sleep = ms => new Promise(res => setTimeout(res, ms));
+    const out = {};
+    const realFetch = window.fetch, realBase = _hdBase, realToast = window.showToast;
+    const toasts = [];
+    window.showToast = t => toasts.push(String(t));
+    _hdBase = 'http://pi.test';
+    const at = Date.UTC(1992, 7, 24, 5, 0);
+    window.fetch = async (url) => {
+      if (/\/sat\/archive\/index/.test(url)) {
+        const frames = [0, 1, 2].map(i => ({ t: Date.UTC(1992, 7, 23, 21 + 3 * i) , stamp: 'g' + i,
+          key: `GRIDSAT-B1.1992.08.${i ? 24 : 23}.${['21', '00', '03'][i]}.v02r01.nc` }));
+        return new Response(JSON.stringify({ bucket: 'gridsat-b1', bounds: [[15, -135], [58, -55]], frames }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response('', { status: 404 });
+    };
+    // A composite, not a single band: before 2017 it still goes to GridSat.
+    _goesProductId = (GOES_PRODUCTS.find(x => !x.ch) || {}).id || _goesProductId;
+    out.composite = !_goesProduct().ch;
+    _tmSatAt = at;
+    activeLayers.satellite = true;
+    _reloadGoesIfActive();
+    await sleep(400);
+    out.n = goesFrames.length;
+    out.gridsat = goesFrames.every(f => /bucket=gridsat-b1&key=GRIDSAT-B1\.199/.test(f.url || ''));
+    out.said = toasts.some(t => /GridSat/.test(t));
+    // The parsing server cannot answer: nothing, and why. Never the live picture.
+    toasts.length = 0;
+    window.fetch = async () => new Response('{"error":"could not render that scan"}', { status: 502 });
+    _reloadGoesIfActive();
+    await sleep(400);
+    out.failN = goesFrames.length;
+    out.failToast = toasts.join(' | ');
+    window.showToast = realToast; window.fetch = realFetch; _hdBase = realBase;
+    _tmSatAt = null; _disableSatellite();
+    return out;
+  });
+  ok('a 1992 moment, even on a composite, is GridSat frames from the parsing server', r.composite && r.n === 3 && r.gridsat && r.said, JSON.stringify(r));
+  ok('when that fails nothing is shown, rather than today\'s satellite with a 1992 label',
+     r.failN === 0 && /Could not get the 1992 satellite: could not render that scan/.test(r.failToast), JSON.stringify(r));
+}
+
 console.log('\n6. tapping Satellite lights nothing until a product is picked');
 {
   const r = await p.evaluate(async () => {
