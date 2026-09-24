@@ -60,7 +60,7 @@ await p.evaluate(() => {
   window._ensToggle = async () => { _ensOn = !_ensOn; };
 });
 
-console.log('\n1. the sub-bubble');
+console.log('\n1. one simple panel');
 const rows = () => p.evaluate(() => [...document.querySelectorAll('#sub-bubbles .sub-bubble')].map(e =>
   (e.classList.contains('active') ? '*' : '') + e.querySelector('.sb-label').textContent));
 {
@@ -68,29 +68,34 @@ const rows = () => p.evaluate(() => [...document.querySelectorAll('#sub-bubbles 
   const r = await rows();
   ok('Models lists Ensemble Models right under Run Models', r.join('|').startsWith('Back|Run Models|Ensemble Models|'), r.join('|'));
   await p.evaluate(() => document.getElementById('sub-ensemble-models').click());
-  const e = await rows();
-  ok('it opens a menu of every ensemble feature',
-     e.join('|') === 'Ensemble Models|Ensemble Charts|Members & Stats|Chance Maps|Postage Stamps|Model Layer Stack|Low Tracks|ECMWF TC Probability|GEFS Cyclone Centres|Ensemble Meteogram', e.join('|'));
-  const info = await p.evaluate(() => [...document.querySelectorAll('#sub-bubbles .sub-bubble:not(.sb-back)')].every(x => x.querySelector('.ov-info-btn')));
-  ok('each row explains itself', info);
+  const e = await p.evaluate(() => {
+    const el = document.getElementById('ens-models-panel');
+    return { shown: !!el && getComputedStyle(el).display === 'flex',
+      text: [...el.querySelectorAll('.sev-section-label, button:not(.models-close-btn)')].map(x => x.textContent.trim()).join('|'),
+      titled: [...el.querySelectorAll('.ens-panel-grid button')].every(b => b.title.length > 20) };
+  });
+  ok('it opens one panel', e.shown);
+  ok('with every ensemble feature grouped',
+     e.text === 'Charts|Ensemble Charts|Model Layer Stack|Members & chances|Members & Stats|Chance Maps|Postage Stamps|On the map|Low Tracks|ECMWF TC Probability|GEFS Cyclone Centres|At a point|Ensemble Meteogram', e.text);
+  ok('each button explains itself on hover', e.titled);
 }
 
 console.log('\n2. the rows work and light up');
 {
   for (const [id, flag] of [['ens-lows', '_lowsOn'], ['ens-tcprob', '_ectcOn'], ['ens-centres', '_ensOn']]) {
-    await p.evaluate(i => document.getElementById('sub-' + i).click(), id);
+    await p.evaluate(i => document.getElementById(i).click(), id);
     await p.waitForTimeout(450);
-    const r = await p.evaluate(([i, f]) => ({ on: eval(f), lit: document.getElementById('sub-' + i).classList.contains('active') }), [id, flag]);
+    const r = await p.evaluate(([i, f]) => ({ on: eval(f), lit: document.getElementById(i).classList.contains('on') }), [id, flag]);
     ok(`${id} turns on and lights`, r.on && r.lit, JSON.stringify(r));
-    await p.evaluate(i => document.getElementById('sub-' + i).click(), id);
+    await p.evaluate(i => document.getElementById(i).click(), id);
     await p.waitForTimeout(450);
-    const r2 = await p.evaluate(([i, f]) => ({ on: eval(f), lit: document.getElementById('sub-' + i).classList.contains('active') }), [id, flag]);
+    const r2 = await p.evaluate(([i, f]) => ({ on: eval(f), lit: document.getElementById(i).classList.contains('on') }), [id, flag]);
     ok(`${id} turns off again`, !r2.on && !r2.lit, JSON.stringify(r2));
   }
-  await p.evaluate(() => document.getElementById('sub-ens-meteogram').click());
+  await p.evaluate(() => document.getElementById('ens-meteogram').click());
   await p.waitForTimeout(500);
   ok('the meteogram row opens the meteogram', await p.evaluate(() => _mtgPanelIsOpen()));
-  await p.evaluate(() => document.getElementById('sub-ens-meteogram').click());
+  await p.evaluate(() => document.getElementById('ens-meteogram').click());
   await p.waitForTimeout(300);
   ok('and closes it', !(await p.evaluate(() => _mtgPanelIsOpen())));
 }
@@ -106,7 +111,7 @@ console.log('\n3. the old homes');
 
 console.log('\n4. ensemble charts and ordinary runs, split');
 {
-  await p.evaluate(() => { toggleEnsembleModelsSub(); document.getElementById('sub-ens-charts').click(); });
+  await p.evaluate(() => { toggleEnsembleModelsSub(); document.getElementById('ens-charts').click(); });
   await p.waitForTimeout(600);
   const vis = () => p.evaluate(() => ({
     title: document.querySelector('#run-models-panel .models-panel-title').textContent.trim(),
@@ -115,7 +120,7 @@ console.log('\n4. ensemble charts and ordinary runs, split');
   let v = await vis();
   ok('Ensemble Charts opens the models panel as Ensemble Models', v.title === 'Ensemble Models', v.title);
   ok('listing only the ensembles, and showing one', v.shown.join(',') === 'pi:gefs,pi:gefsspr' && v.value === 'pi:gefs', JSON.stringify(v));
-  ok('and the row is lit', await p.evaluate(() => document.getElementById('sub-ens-charts').classList.contains('active')));
+  ok('and the row is lit', await p.evaluate(() => document.getElementById('ens-charts').classList.contains('on')));
   await p.evaluate(() => { toggleModelsSub(); document.getElementById('sub-run-models').click(); });
   await p.waitForTimeout(600);
   v = await vis();

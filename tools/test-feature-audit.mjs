@@ -237,6 +237,9 @@ console.log('\n5. updateLoadStatus: terminal messages surface, in-progress ones 
   ok('a terminal message (no trailing …) does reach it',
      r.terminal === 'No active Mesoscale Discussions.', JSON.stringify(r));
   ok('clearing with an empty string hides it', r.cleared === 'none', JSON.stringify(r));
+  const shown = await page.evaluate(() => { updateLoadStatus('Surface analysis unavailable.');
+    const d = document.getElementById('load-status').style.display; updateLoadStatus(''); return d; });
+  ok('but the blue pill is never shown on the map after boot', shown === 'none', shown);
 }
 
 console.log('\n6. summary');

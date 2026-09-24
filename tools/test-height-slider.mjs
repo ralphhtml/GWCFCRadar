@@ -2,7 +2,7 @@
 /*
  * The height slider: Temperature, Wind and Pressure can read the air above
  * the ground at Open-Meteo's pressure levels, picked on a small elevator of
- * notches that floats beside the right-hand menu while one of them is on.
+ * notches that sits right under the left-hand menu while one of them is on.
  *
  *     node tools/test-height-slider.mjs
  *
@@ -196,11 +196,12 @@ console.log('\n5. placement, reload, leaving');
 {
   const box = await p.evaluate(() => {
     const a = document.getElementById('lvl-dock').getBoundingClientRect();
-    const m = document.getElementById('right-menu'); const r = m && m.getBoundingClientRect();
-    return { right: a.right, menuLeft: r ? r.left : null, w: innerWidth, top: a.top, bottom: a.bottom, h: innerHeight };
+    const r = document.getElementById('sub-bubbles').getBoundingClientRect();
+    return { left: a.left, top: a.top, bottom: a.bottom, h: innerHeight, menuLeft: r.left, menuRight: r.right, menuBottom: r.bottom };
   });
-  ok('it sits on screen, left of the right-hand menu',
-     box.top >= 0 && box.bottom <= box.h && (box.menuLeft == null || !box.menuLeft || box.right <= box.menuLeft), JSON.stringify(box));
+  ok('it sits on screen, right under the left-hand menu (or beside it when the menu is long)',
+     box.top >= 0 && box.bottom <= box.h
+     && ((Math.abs(box.left - box.menuLeft) < 2 && box.top >= box.menuBottom) || box.left >= box.menuRight), JSON.stringify(box));
   await p.evaluate(() => { const m = document.getElementById('mode-modal'); if (m) m.style.display = 'none'; });
   await p.screenshot({ path: process.env.SHOT || '/tmp/height-slider.png' });
   await boot();

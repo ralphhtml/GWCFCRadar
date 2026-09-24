@@ -88,7 +88,7 @@ await p.evaluate(() => { const m = document.getElementById('mode-modal'); if (m)
 
 console.log('\n1. opening');
 {
-  await p.evaluate(() => { toggleEnsembleModelsSub(); document.getElementById('sub-ens-stack').click(); });
+  await p.evaluate(() => { toggleEnsembleModelsSub(); document.getElementById('ens-stack').click(); });
   await p.waitForTimeout(1500);
   const r = await p.evaluate(() => ({ open: _enslPanelIsOpen(), n: _ensl.layers.length, times: _ensl.times.map(t => new Date(t).toISOString().slice(8, 13)),
     models: [...document.querySelectorAll('#ensl-panel [data-k="model"]')[0].options].map(o => o.textContent) }));

@@ -747,7 +747,9 @@ body {
 }
 /* -- Height slider: which level Temperature, Wind and Pressure read ------- */
 #lvl-dock {
-  position: absolute; top: 50%; right: var(--lvl-right, 76px); transform: translateY(-50%);
+  /* Right under the left-hand menu, the way Windy keeps its altitude picker
+     beside the menu: _lvlPlace measures the menu and sets --lvl-top. */
+  position: absolute; top: var(--lvl-top, 62px); left: var(--lvl-left, 12px);
   z-index: 790; display: none; gap: 6px; padding: 8px 7px 7px; border-radius: 12px;
   background: linear-gradient(180deg, rgba(0,0,0,0.82) 0%, rgba(8,11,15,0.62) 100%);
   border: 1px solid rgba(var(--accent-rgb),0.45); color: #eee;
@@ -774,7 +776,7 @@ body {
 #lvl-dock .lvl-col.locked .lvl-notch.active { opacity: 1; }
 #lvl-dock .lvl-ft { font-size: 8px; opacity: .7; white-space: nowrap; }
 body.shot-mode #lvl-dock, body.ss-live #lvl-dock { display: none !important; }
-@media (max-width: 640px) { #lvl-dock { top: auto; bottom: calc(var(--menu-clearance, 120px) + 8px); transform: none; } }
+@media (max-width: 640px) { #lvl-dock { top: auto; bottom: calc(var(--menu-clearance, 120px) + 8px); } }
 #zoom-controls {
   /* Horizontal now, by request: two full-size buttons side by side rather
      than the half-height stacked pair. */
@@ -2448,7 +2450,7 @@ body.shot-mode #lvl-dock, body.ss-live #lvl-dock { display: none !important; }
   padding: 24px 30px 28px;
   /* Heavy gloss: a strong blur pulls the polygon art through a thin dark
      fill, and the bright inset top edge is the sheen that sells the glass. */
-  background: linear-gradient(180deg, rgba(22,26,32,0.38) 0%, rgba(6,8,12,0.48) 100%);
+  background: linear-gradient(180deg, rgba(22,26,32,0.60) 0%, rgba(6,8,12,0.70) 100%);
   backdrop-filter: blur(24px) saturate(1.5);
   -webkit-backdrop-filter: blur(24px) saturate(1.5);
   border: 1px solid rgba(255,255,255,0.16);
@@ -3218,6 +3220,30 @@ img.wx-model-smooth {
   margin: 5px 0 0; line-height: 1.5;
 }
 #spag-legend { display: flex; flex-wrap: wrap; gap: 3px; margin: 5px 0 0; }
+/* Spaghetti Models wears the DeepMind Models layout: the same inner
+   padding, the same gold chips in even grids, and a quiet status line. */
+#spaghetti-models-panel > :not(.models-panel-header) { margin-left: 10px; margin-right: 10px; }
+#ens-models-panel > :not(.models-panel-header) { margin-left: 10px; margin-right: 10px; }
+#ens-models-panel > :last-child { margin-bottom: 10px; }
+#ens-models-panel .ens-panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 3px 10px 6px; }
+#ens-models-panel .ens-panel-grid button {
+  font-family: 'Comfortaa', sans-serif; font-size: 10px; font-weight: 700; padding: 6px 6px; border-radius: 6px; cursor: pointer;
+  background: rgba(255,209,102,0.10); border: 1px solid rgba(255,209,102,0.35); color: #ffd166; text-align: center;
+}
+#ens-models-panel .ens-panel-grid button:hover { background: rgba(255,209,102,0.22); }
+#ens-models-panel .ens-panel-grid button.on { background: #ffd166; color: #1a1200; border-color: #ffd166; }
+#spaghetti-models-panel > :last-child { margin-bottom: 10px; }
+#spaghetti-models-panel #spag-groups { gap: 4px; }
+#spaghetti-models-panel .spag-chip,
+#spaghetti-models-panel #spag-layer-row button {
+  font-family: 'Comfortaa', sans-serif; font-size: 10px; font-weight: 700; padding: 5px 6px; border-radius: 6px;
+  background: rgba(255,209,102,0.10); border: 1px solid rgba(255,209,102,0.35); color: #ffd166;
+}
+#spaghetti-models-panel .spag-chip:hover,
+#spaghetti-models-panel #spag-layer-row button:hover { background: rgba(255,209,102,0.22); color: #ffd166; }
+#spaghetti-models-panel .spag-chip.on,
+#spaghetti-models-panel #spag-layer-row #spag-btn.on { background: #ffd166; color: #1a1200; border-color: #ffd166; }
+#spaghetti-models-panel #spag-status { opacity: 0.7; }
 .spag-leg {
   font-family: var(--mono); font-size: 8.5px; font-weight: 700;
   padding: 2px 6px; border-radius: 5px; cursor: pointer; user-select: none;
@@ -5045,7 +5071,7 @@ body.lite-mode #export-modal { display: none !important; }
    shows around and below the picture, is heavy frost: the same thin dark
    glass and 24px blur the outlook legends wear. */
 #r3d-panel, #s3d-panel, .l3d-panel {
-  background: linear-gradient(180deg, rgba(24,28,34,0.36) 0%, rgba(6,9,13,0.44) 100%) !important;
+  background: linear-gradient(180deg, rgba(24,28,34,0.58) 0%, rgba(6,9,13,0.68) 100%) !important;
 }
 .p3d-top {
   background: linear-gradient(180deg, #1c1c22 0%, #0b0b0e 55%, #000 100%);
@@ -6616,7 +6642,7 @@ html.tb-logo-right     #logo-wrap       { left: auto !important; right: 18px !im
   min-width: 168px; max-width: 220px;
   /* Heavy gloss, the Did You Know card's recipe: a strong blur pulls the map
      through a thin dark fill, and the bright inset top edge is the sheen. */
-  background: linear-gradient(180deg, rgba(22,26,32,0.42) 0%, rgba(6,8,12,0.55) 100%);
+  background: linear-gradient(180deg, rgba(22,26,32,0.60) 0%, rgba(6,8,12,0.70) 100%);
   backdrop-filter: blur(24px) saturate(1.5);
   -webkit-backdrop-filter: blur(24px) saturate(1.5);
   border: 1px solid rgba(255,255,255,0.18); border-radius: 12px;
@@ -10729,6 +10755,9 @@ body.gwcfc-crosshair #map::after {
 .ov-panel-header-row { display: flex; align-items: center; gap: 4px; margin-bottom: 1px; }
 .ov-panel-header-row .dtb-drag { padding: 0 2px; margin-bottom: 0; }
 .ov-panel-header-row [class$="-float-title"] { flex: 1; margin-bottom: 0; }
+/* The overlay's own name leads its legend panel: bigger than every other
+   line in it, so it reads at a glance which legend this is. */
+.ov-panel-header-row [class$="-float-title"] { font-size: 13px; letter-spacing: 1.2px; line-height: 1.25; }
 
 /* Button row */
 .spc-picker-row { display: flex; gap: 4px; }
@@ -11613,12 +11642,15 @@ body.clean-mode #clean-hint { opacity: 1; }
       </div>
       <div style="border-top:1px solid rgba(255,255,255,0.08);margin:5px 0 6px;"></div>
 
-      <!-- One section, laid out like Run Models, for the same reason the AI
-           Cyclones panel is: the guidance and the animation were never two
-           subjects. The animation animates the guidance. Splitting them into
-           two folding cards meant the play button could be folded away from
-           the lines it plays, and a person who closed the second card was
-           left with no way to know a clock existed. -->
+      <!-- Laid out like DeepMind Models: what goes on the map first, then
+           which families of guidance, then one quiet status line. -->
+      <div class="sev-section-label">On the map</div>
+      <div id="spag-layer-row">
+        <button id="spag-btn" onclick="_spagToggle()" title="Draw the NHC a-deck guidance for the open storm">Guidance</button>
+        <button id="tanim-stop" onclick="_tanimStop()" title="Stop the clock and bring the still lines back">Reset clock</button>
+      </div>
+
+      <div class="sev-section-label">Guidance</div>
       <div id="spag-groups">
         <span class="spag-chip on" data-group="official" onclick="_spagGroupToggle('official')">Official</span>
         <span class="spag-chip on" data-group="consensus" onclick="_spagGroupToggle('consensus')">Consensus</span>
@@ -11627,11 +11659,6 @@ body.clean-mode #clean-hint { opacity: 1; }
         <span class="spag-chip on" data-group="mean" onclick="_spagGroupToggle('mean')">GEFS mean</span>
         <span class="spag-chip" data-group="members" onclick="_spagGroupToggle('members')">GEFS members</span>
         <span class="spag-chip" data-group="past" onclick="_spagGroupToggle('past')" title="A-decks persist all season; this shows guidance for storms that have already died">Past storms</span>
-      </div>
-
-      <div id="spag-layer-row">
-        <button id="spag-btn" onclick="_spagToggle()" title="Draw the NHC a-deck guidance for the open storm">Guidance</button>
-        <button id="tanim-stop" onclick="_tanimStop()" title="Stop the clock and bring the still lines back">Reset clock</button>
       </div>
 
       <div id="spag-status">Open a storm and the guidance loads from the parsing server.</div>
@@ -29885,11 +29912,29 @@ function _lvlRender(force) {
     const v = b.dataset.lvl;
     _lvlSet(b.dataset.layer, /^-?\d+$/.test(v) ? Number(v) : v);
   });
-  // Sit just left of the right-hand menu, wherever that is on this screen.
-  const rm = document.getElementById('right-menu');
-  const r = rm && rm.getBoundingClientRect();
-  if (r && r.width) dock.style.setProperty('--lvl-right', Math.max(12, window.innerWidth - r.left + 8) + 'px');
   dock.classList.add('open');
+  _lvlPlace();
+}
+// Tuck the slider right under the left-hand menu (the bubble column, which
+// is #sub-bubbles). The menu grows and shrinks as sections open, so this is
+// re-measured every tick rather than once. When a long menu leaves no room
+// below it, the slider steps out beside the menu instead of covering it.
+function _lvlPlace() {
+  const dock = document.getElementById('lvl-dock');
+  if (!dock || !dock.classList.contains('open')) return;
+  const menu = document.getElementById('sub-bubbles') || document.getElementById('sidebar');
+  const r = menu && menu.getBoundingClientRect();
+  const main = (document.getElementById('main') || document.body).getBoundingClientRect();
+  const h = dock.offsetHeight || 0;
+  let top = 62, left = 12;
+  if (r && r.height) {
+    top = r.bottom - main.top + 8; left = r.left - main.left;
+    if (r.bottom + 8 + h > window.innerHeight - 12) { top = r.top - main.top; left = r.right - main.left + 10; }
+  }
+  top = Math.max(8, Math.min(top, window.innerHeight - main.top - h - 12));
+  const t = Math.round(top) + 'px', l = Math.round(left) + 'px';
+  if (dock.style.getPropertyValue('--lvl-top') !== t) dock.style.setProperty('--lvl-top', t);
+  if (dock.style.getPropertyValue('--lvl-left') !== l) dock.style.setProperty('--lvl-left', l);
 }
 function _lvlSet(layer, v) {
   const def = LVL_LAYERS.find(l => l.id === layer);
@@ -29903,7 +29948,7 @@ function _lvlSet(layer, v) {
     def.load();
   }
 }
-setInterval(() => { try { _lvlRender(false); } catch (e) {} }, 600);
+setInterval(() => { try { _lvlRender(false); _lvlPlace(); } catch (e) {} }, 600);
 
 // -- TEMPERATURE LAYER (Open-Meteo Forecast API) ------------------------------
 let temperatureActive = false;
@@ -38341,7 +38386,10 @@ function updateLoadStatus(msg) {
   // ordinary use read as a stray glitch, not information.
   if (!onBootScreen && typeof msg === 'string' && msg.trim().endsWith('…')) return;
   el.textContent = msg;
-  el.style.display = msg ? '' : 'none';
+  // After boot the pill is never shown: the floating blue box at the top of
+  // the screen read as clutter, by request. The text is still written so
+  // the latest outcome can be read back (the tests do), just not displayed.
+  el.style.display = msg && onBootScreen ? '' : 'none';
 }
 
 // -- FUN FACTS (real GWCFCRadar app features) --
@@ -38840,7 +38888,9 @@ const _MODELS_PANELS = {
                         open: () => { _runModelsEns = false; openRunModelsPanel(); _runModelsApplyMode(); },
                         close: () => closeRunModelsPanel() },
   // Not a panel: a menu of every ensemble feature, opened in place.
-  'ensemble-models':  { isOpen: () => _ensModelsAnyOn(), menu: () => toggleEnsembleModelsSub() },
+  'ensemble-models':  { isOpen: () => _ensPanelIsOpen(),
+                        open: () => openEnsembleModelsPanel(),
+                        close: () => closeEnsembleModelsPanel() },
   'spaghetti-models': { isOpen: () => _spaghettiModelsPanelIsOpen(),
                         open: () => openSpaghettiModelsPanel(),
                         close: () => closeSpaghettiModelsPanel() },
@@ -40315,31 +40365,72 @@ const ENS_MODEL_ROWS = [
 function _ensModelsAnyOn() {
   return ENS_MODEL_ROWS.some(r => { try { return !!r.on(); } catch (e) { return false; } });
 }
-function toggleEnsembleModelsSub() {
-  const wrap = document.getElementById('sub-bubbles');
-  wrap.innerHTML = '';
-  wrap.dataset.mode = 'ensemble-models';
-  const back = document.createElement('div');
-  back.className = 'sub-bubble sb-back';
-  back.innerHTML = `<span class="sb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(180deg)><use href=#ic-arrow></use></svg></span><span class="sb-label">Ensemble Models</span>`;
-  back.onclick = () => { _syncParentBubble('models'); toggleModelsSub(); };
-  wrap.appendChild(back);
+// One simple panel, laid out like DeepMind Models: every ensemble feature is
+// a switch in a short grid under a plain heading, lit while it is on.
+const ENS_PANEL_GROUPS = [
+  { label: 'Charts', ids: ['ens-charts', 'ens-stack'] },
+  { label: 'Members & chances', ids: ['ens-explorer', 'ens-prob', 'ens-stamps'] },
+  { label: 'On the map', ids: ['ens-lows', 'ens-tcprob', 'ens-centres'] },
+  { label: 'At a point', ids: ['ens-meteogram'] },
+];
+function _ensPanelIsOpen() {
+  const el = document.getElementById('ens-models-panel');
+  return !!el && el.style.display === 'flex';
+}
+function _ensPanelSync() {
+  const el = document.getElementById('ens-models-panel');
+  if (!el) return;
   ENS_MODEL_ROWS.forEach(r => {
-    const el = document.createElement('div');
-    el.className = 'sub-bubble' + (r.on() ? ' active' : '');
-    el.id = 'sub-' + r.id;
-    el.innerHTML = `<span class="sb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-${r.icon}></use></svg></span><span class="sb-label">${r.label}</span>`;
-    el.onclick = async () => {
-      try { await r.click(); } catch (e) { console.warn('ensemble row', r.id, e); }
-      // Several of these finish a moment later (a fetch, a panel), so the
-      // light is checked again rather than guessed.
-      const sync = () => { el.classList.toggle('active', !!r.on()); _syncParentBubble('models'); };
-      sync(); setTimeout(sync, 400); setTimeout(sync, 1500);
-    };
-    if (LAYER_DESCRIPTIONS[r.id]) el.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS[r.id]));
-    wrap.appendChild(el);
+    const b = document.getElementById(r.id);
+    if (b) { let on = false; try { on = !!r.on(); } catch (e) {} b.classList.toggle('on', on); }
   });
-  wrap.style.display = 'flex';
+  const btn = document.getElementById('sub-ensemble-models');
+  if (btn) btn.classList.toggle('active', _ensPanelIsOpen() || _ensModelsAnyOn());
+}
+function openEnsembleModelsPanel() {
+  let el = document.getElementById('ens-models-panel');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'ens-models-panel';
+    el.className = 'models-style-panel';
+    const rowOf = id => ENS_MODEL_ROWS.find(r => r.id === id);
+    el.innerHTML = `
+      <div class="models-panel-header">
+        <div class="dtb-drag" title="Drag to move">&#x28FF;</div>
+        <div class="models-panel-title"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-signal></use></svg> Ensemble Models</div>
+        <button class="models-close-btn" title="Close panel (what is on the map stays on)">&times;</button>
+      </div>
+      ${ENS_PANEL_GROUPS.map(g => `<div class="sev-section-label">${g.label}</div><div class="ens-panel-grid">`
+        + g.ids.map(id => { const r = rowOf(id); return r ? `<button type="button" id="${r.id}" title="${_ccEsc(LAYER_DESCRIPTIONS[r.id] || r.label)}">${r.label}</button>` : ''; }).join('')
+        + `</div>`).join('')}`;
+    document.body.appendChild(el);
+    el.querySelector('.models-close-btn').onclick = () => closeEnsembleModelsPanel();
+    ENS_MODEL_ROWS.forEach(r => {
+      const b = el.querySelector('#' + r.id);
+      if (!b) return;
+      b.onclick = async () => {
+        try { await r.click(); } catch (e) { console.warn('ensemble switch', r.id, e); }
+        // Several of these finish a moment later (a fetch, a panel), so the
+        // light is checked again rather than guessed.
+        _ensPanelSync(); setTimeout(_ensPanelSync, 400); setTimeout(_ensPanelSync, 1500);
+      };
+    });
+    if (typeof _makeDraggable === 'function') { try { _makeDraggable(el, el.querySelector('.models-panel-header')); } catch (e) {} }
+    setInterval(() => { if (_ensPanelIsOpen()) _ensPanelSync(); }, 1500);
+  }
+  el.style.display = 'flex';
+  activeBubbles['ensemble-models'] = true;
+  _ensPanelSync();
+}
+function closeEnsembleModelsPanel() {
+  const el = document.getElementById('ens-models-panel');
+  if (el) el.style.display = 'none';
+  activeBubbles['ensemble-models'] = false;
+  _ensPanelSync();
+}
+// Kept by name: the sub-bubble and older callers open the panel through it.
+function toggleEnsembleModelsSub() {
+  if (_ensPanelIsOpen()) closeEnsembleModelsPanel(); else openEnsembleModelsPanel();
 }
 
 function toggleModelsSub() {
@@ -71777,6 +71868,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-q', date: 'Sep 24, 2026',
+    text: "Tidier panels. Spaghetti Models is laid out like DeepMind Models: what is on the map first, then the guidance, with gold switches. Ensemble Models is now one simple panel with every ensemble tool as a button, grouped into Charts, Members & chances, On the map and At a point. The overlay name at the top of each legend panel (NHC, SPC, WPC outlooks and the rest) is bigger so it stands out. The heavy frost panels are less see-through but still blurred. The height and depth slider (which level Temperature, Wind, Pressure, Ocean Depth and Isotherm read from) now sits right under the left menu, like Windy's altitude picker. And the blue status box that popped up at the top of the screen is gone." },
   { id: '2026-09-24-p', date: 'Sep 24, 2026',
     text: 'The DeepMind Models panel is redesigned: model first, then one grid of switches for what goes on the map (Tracks, Mean track, Lows, Wind chance, Ensemble stats), the wind speed as three buttons, and genesis on its own row. The model panels are back to the subtle frost, each playback bar now has just the one speed box where you type any speed (the extra cycling button is gone), and the credit paragraphs at the bottom of the panels are gone too, since everyone is already credited in Credits in the account panel.' },
   { id: '2026-09-24-o', date: 'Sep 24, 2026',
@@ -80991,7 +81084,7 @@ body {
 :root[data-glass] .nwr-popup .leaflet-popup-content-wrapper {
   background-color: transparent !important;
   background-image: linear-gradient(180deg,
-    rgba(22,26,32,0.38) 0%, rgba(6,8,12,0.46) 100%) !important;
+    rgba(22,26,32,0.60) 0%, rgba(6,8,12,0.70) 100%) !important;
   backdrop-filter: blur(24px) saturate(1.5) !important;
   -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
 }
@@ -81007,7 +81100,7 @@ body {
 :root[data-glass] #storm-reports-panel, :root[data-glass] #tornado-tracks-panel {
   background-color: transparent !important;
   background-image: linear-gradient(180deg,
-    rgba(24,28,34,0.36) 0%, rgba(6,9,13,0.44) 100%);
+    rgba(24,28,34,0.58) 0%, rgba(6,9,13,0.68) 100%);
   backdrop-filter: blur(24px) saturate(1.5) !important;
   -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
 }
@@ -81025,20 +81118,20 @@ body {
    the token fill for the same thin dark the outlook legends wear. */
 :root[data-glass] #alerts-panel {
   background-image: linear-gradient(180deg,
-    rgba(20,24,30,0.36) 0%, rgba(5,7,10,0.44) 100%);
+    rgba(20,24,30,0.58) 0%, rgba(5,7,10,0.68) 100%);
   backdrop-filter: blur(24px) saturate(1.5) !important;
   -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
 }
 :root[data-glass] #eas-panel {
   background-image: linear-gradient(180deg,
-    rgba(138,68,0,0.42) 0%, rgba(85,37,0,0.40) 42%, rgba(42,16,0,0.46) 100%);
+    rgba(138,68,0,0.62) 0%, rgba(85,37,0,0.62) 42%, rgba(42,16,0,0.70) 100%);
   backdrop-filter: blur(24px) saturate(1.5) !important;
   -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
 }
 /* The weather forecast panel joins the heavy family, same request. */
 :root[data-glass] #forecast-panel {
   background-image: linear-gradient(180deg,
-    rgba(20,24,30,0.38) 0%, rgba(5,7,10,0.46) 100%) !important;
+    rgba(20,24,30,0.60) 0%, rgba(5,7,10,0.70) 100%) !important;
   backdrop-filter: blur(24px) saturate(1.5) !important;
   -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
 }
