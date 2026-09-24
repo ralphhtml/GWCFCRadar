@@ -285,6 +285,12 @@ class CORSHandler(SimpleHTTPRequestHandler):
         if head == "/sounding":
             self._sounding()
             return
+        if head == "/model3d/sources":
+            self._model3d_sources()
+            return
+        if head == "/model3d":
+            self._model3d()
+            return
         super().do_GET()
 
     def _relay_ncei(self):
@@ -712,6 +718,81 @@ class CORSHandler(SimpleHTTPRequestHandler):
             return
         except Exception as e:
             self._reply_json(502, {"error": "the sounding could not be built: "
+                                            f"{e.__class__.__name__}"})
+            return
+        finally:
+            _sounding_gate.release()
+        self._reply_json(200, out)
+
+    def _model3d_sources(self):
+        """GET /model3d/sources -> which models a 3D box can be cut from."""
+        try:
+            import model_volume as mv
+            models = mv.models()
+        except Exception as e:
+            self._reply_json(501, {"error": f"model_volume.py is not beside serve.py ({e})"})
+            return
+        self._reply_json(200, {"models": [{"key": k, **v} for k, v in
+                                          sorted(models.items(), key=lambda kv: (not kv[1].get("upper"), kv[0]))]})
+
+    def _model3d(self):
+        """GET /model3d?model=&s=&n=&w=&e=&fhr=&run= -> a 3D box of one model run.
+
+        Temperature, humidity, heights, winds and omega at ten pressure levels
+        over the box, cut from the real model files (model_volume.py). Every
+        field is checked for shape before anything upstream is asked.
+        """
+        from urllib.parse import parse_qs, urlparse
+        q = parse_qs(urlparse(self.path).query)
+
+        def one(name, default=""):
+            v = q.get(name, [default])
+            return (v[0] if v else default).strip()
+
+        try:
+            s_, n_, w_, e_ = (float(one(k)) for k in ("s", "n", "w", "e"))
+        except ValueError:
+            self._reply_json(400, {"error": "s, n, w and e are required, as numbers"})
+            return
+        if not (-90 <= s_ < n_ <= 90) or not (-360 <= w_ < e_ <= 360):
+            self._reply_json(400, {"error": "that box is not on Earth"})
+            return
+        model = one("model", "gfs") or "gfs"
+        if not re.fullmatch(r"[a-z0-9]{1,24}", model):
+            self._reply_json(400, {"error": "model must be a catalogue key"})
+            return
+        try:
+            fhr = int(one("fhr", "0") or 0)
+        except ValueError:
+            self._reply_json(400, {"error": "fhr must be a whole number of hours"})
+            return
+        if not (0 <= fhr <= 384):
+            self._reply_json(400, {"error": "fhr is out of range"})
+            return
+        run = one("run") or None
+        if run and not re.fullmatch(r"\d{8}/\d{2}", run):
+            self._reply_json(400, {"error": "run must be YYYYMMDD/HH"})
+            return
+        try:
+            import model_volume as mv
+        except Exception as e:
+            self._reply_json(501, {"error": f"model_volume.py is not beside serve.py ({e})"})
+            return
+        if model not in mv.models():
+            self._reply_json(400, {"error": f"this parsing server has no model called {model!r} "
+                                            "to cut a 3D box from"})
+            return
+        if not _sounding_gate.acquire(timeout=SOUNDING_QUEUE_WAIT_S):
+            self._reply_json(503, {"error": "the parsing server is busy with other model "
+                                            "cuts. Try again in a moment.", "retry": True})
+            return
+        try:
+            out = mv.volume(model, s_, n_, w_, e_, fhr, run)
+        except (RuntimeError, ValueError) as e:
+            self._reply_json(502, {"error": str(e)})
+            return
+        except Exception as e:
+            self._reply_json(502, {"error": "the 3D box could not be built: "
                                             f"{e.__class__.__name__}"})
             return
         finally:

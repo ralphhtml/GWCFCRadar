@@ -44699,7 +44699,7 @@ function _cmOpen(e) {
     <div class="cm-item" onclick="_cmCrossSectionHere()">${ic('ruler')} Cross section here</div>
     <div class="cm-item" onclick="_cmRadar3DDraw()">${ic('radar3d')} Draw a 3D radar zone</div>
     <div class="cm-item" onclick="_cmSat3DDraw()">${ic('satellite')} Draw a 3D satellite zone</div>
-    <div class="cm-item" onclick="_cmModel3DHere()">${ic('terrain3d')} 3D model volume here</div>
+    <div class="cm-item" onclick="_cmModel3DHere()">${ic('terrain3d')} 3D model volume here${pm ? `: ${esc(pm.label)} &middot; F+${String(pm.fhr).padStart(3, '0')}` : ''}</div>
     ${typeof _l3dMenuItems === 'function' ? _l3dMenuItems(ic, e.originalEvent && e.originalEvent.clientX, e.originalEvent && e.originalEvent.clientY) : ''}
     <div class="cm-item" onclick="_cmRadiusHere()">${ic('target')} 50 mi radius here</div>
     <div class="cm-item" onclick="_cmSetRecenter()">${ic('compass')} Set as recenter</div>
@@ -45166,17 +45166,23 @@ function _cmMeteogramHere() {
 // and folds of it down into the troposphere are what spin storms up), plus
 // the freezing surface and cloud-humid air.
 //
-// Everything comes from Open-Meteo's pressure level forecasts in the browser,
-// on a 13 by 13 grid at ten levels from 1000 to 200 mb; the derived fields
-// are worked out here with finite differences on that grid. Drawn by a small
-// software renderer (painter's algorithm on a 2D canvas), so no WebGL.
+// Everything comes from the real model runs: the parsing server cuts the box
+// out of the model's own GRIB files (pi/model_volume.py, the /model3d door),
+// the same runs the models panel draws, onto a 13 by 13 grid at ten levels
+// from 1000 to 200 mb. The derived fields are worked out here with finite
+// differences on that grid. When a model chart is on the map, this is also
+// that chart's 3D view: same model, run and hour, with the chart itself
+// draped over the ground under the volume. Drawn by a small software
+// renderer (painter's algorithm on a 2D canvas), so no WebGL.
 const M3D_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200];
 const M3D_STD_KM = { 1000: 0.11, 925: 0.76, 850: 1.46, 700: 3.01, 600: 4.21, 500: 5.57, 400: 7.18, 300: 9.16, 250: 10.36, 200: 11.78 };
 const M3D_N = 13;
 const M3D_SIZES = [600, 1200, 2000, 3000];
-const M3D_MODELS = [
-  { id: 'gfs_seamless', label: 'GFS' }, { id: 'ecmwf_ifs025', label: 'ECMWF' },
-  { id: 'icon_seamless', label: 'ICON' }, { id: 'gem_seamless', label: 'GEM' },
+// Until the parsing server's own list arrives (/model3d/sources).
+let M3D_MODELS = [
+  { id: 'gfs', label: 'GFS', out: 384, step: 3 }, { id: 'ecmwf', label: 'ECMWF', out: 240, step: 6 },
+  { id: 'nam', label: 'NAM', out: 84, step: 3 }, { id: 'rap', label: 'RAP', out: 21, step: 1 },
+  { id: 'hrrr', label: 'HRRR', out: 18, step: 1 },
 ];
 // signed: two surfaces, one each side of zero, warm red and cold blue.
 // auto: the slider is a share of the biggest value in the box, because a
@@ -45186,8 +45192,8 @@ const M3D_FIELDS = [
     about: 'Warm air being blown in (red) and cold air being blown in (blue). Warm advection under a trough is lift; the surfaces lean with the fronts.' },
   { id: 'vadv', label: 'Vorticity advection', unit: '×10⁻⁹ s⁻²', signed: true, auto: true, pos: [255, 200, 40], neg: [60, 220, 200],
     about: 'Spin being carried in by the wind. Positive (gold) ahead of a trough aloft means rising air; negative (teal) behind it means sinking.' },
-  { id: 'omega', label: 'Vertical motion', unit: 'cm/s', signed: true, auto: true, pos: [255, 70, 70], neg: [90, 130, 255],
-    about: 'The model\'s own vertical wind: red where the air is rising, which is where clouds and rain come from, blue where it sinks.' },
+  { id: 'omega', label: 'Vertical motion (omega)', unit: 'µb/s', signed: true, auto: true, pos: [255, 70, 70], neg: [90, 130, 255],
+    about: 'The model\'s own omega, shown as upward motion: red where the air is rising, which is where clouds and rain come from, blue where it sinks.' },
   { id: 'pv', label: 'Potential vorticity', unit: 'PVU', min: 0.5, max: 8, step: 0.5, def: 2, pos: [200, 110, 255],
     about: 'The 2 PVU surface is the dynamic tropopause. Where it folds down into the lower atmosphere, stratospheric air is diving in, and storms under it deepen.' },
   { id: 'temp', label: 'Temperature', unit: '°C', min: -60, max: 30, step: 1, def: 0, pos: [120, 230, 255],
@@ -45203,46 +45209,51 @@ function _m3dZone(lat, lng, km) {
   const dLat = hKm / 2 / 110.54, dLng = wKm / 2 / (111.32 * Math.max(0.1, Math.cos(lat * Math.PI / 180)));
   return { lat, lng, wKm, hKm, n: lat + dLat, s: lat - dLat, e: lng + dLng, w: lng - dLng };
 }
-function _m3dValidHour(fh) {
-  const t = new Date(); t.setUTCMinutes(0, 0, 0);
-  return new Date(t.getTime() + fh * 3600e3);
+// The model chart on the map, if there is one: model, run and hour, so the
+// 3D view is a cut through the same forecast rather than a different one.
+function _m3dChart() {
+  const pm = typeof _cmPiModel === 'function' ? _cmPiModel() : null;
+  if (!pm) return null;
+  const r = (typeof _hdManifest !== 'undefined' && _hdManifest && _hdManifest.run) || '';
+  const m = /^(\d{8})_?(\d{2})$/.exec(String(r));
+  return { key: pm.key, label: pm.label, fhr: pm.fhr, run: m ? m[1] + '/' + m[2] : null };
 }
-function _m3dUrl(pts, model, when) {
-  const vars = [];
-  M3D_LEVELS.forEach(p => ['temperature', 'relative_humidity', 'wind_speed', 'wind_direction', 'geopotential_height', 'vertical_velocity']
-    .forEach(v => vars.push(`${v}_${p}hPa`)));
-  const hr = when.toISOString().slice(0, 13) + ':00';
-  return 'https://api.open-meteo.com/v1/forecast?latitude=' + pts.map(p => p[0].toFixed(3)).join(',')
-    + '&longitude=' + pts.map(p => p[1].toFixed(3)).join(',') + '&hourly=' + vars.join(',')
-    + '&models=' + model + '&wind_speed_unit=ms&start_hour=' + hr + '&end_hour=' + hr + '&timezone=GMT';
+async function _m3dBase() {
+  const base = (typeof _hdBase !== 'undefined' && _hdBase) || (typeof _hdResolveBase === 'function' ? await _hdResolveBase() : null);
+  if (base && typeof _hdBase !== 'undefined') _hdBase = base;
+  if (!base) throw new Error('Model 3D reads the real model runs through the parsing server, and no parsing server address is set');
+  return base;
+}
+// Which models the parsing server can cut a box from, and how far each goes.
+async function _m3dLoadSources() {
+  try {
+    const base = await _m3dBase();
+    const r = await fetch(`${base}/model3d/sources?t=${Date.now()}`, { cache: 'no-store' });
+    if (!r.ok) return;
+    const j = await r.json();
+    if (Array.isArray(j.models) && j.models.length)
+      M3D_MODELS = j.models.map(m => ({ id: m.key, label: m.label || m.key, out: +m.out || 120, step: +m.step || 3, run: m.run }));
+  } catch (e) {}
 }
 
-// The raw grid: every variable at every point and level, [k][j][i] with j=0
-// the southern row and k=0 the lowest level.
-async function _m3dFetch(zone, model, when) {
-  const N = M3D_N, K = M3D_LEVELS.length, pts = [];
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++)
-    pts.push([zone.s + j / (N - 1) * (zone.n - zone.s), zone.w + i / (N - 1) * (zone.e - zone.w)]);
-  const chunks = [];
-  for (let a = 0; a < pts.length; a += 60) chunks.push(pts.slice(a, a + 60));
-  const answers = await Promise.all(chunks.map(async c => {
-    const r = await fetch(_m3dUrl(c, model, when));
-    if (!r.ok) throw new Error('Open-Meteo answered ' + r.status);
-    const j = await r.json();
-    return Array.isArray(j) ? j : [j];
-  }));
-  const rows = answers.flat();
+// The raw grid from the parsing server: every variable at every point and
+// level, [k][j][i] with j=0 the southern row and k=0 the lowest level.
+async function _m3dFetch(zone, model, fhr, run) {
+  const base = await _m3dBase();
+  const q = `model=${encodeURIComponent(model)}&s=${zone.s.toFixed(3)}&n=${zone.n.toFixed(3)}`
+    + `&w=${zone.w.toFixed(3)}&e=${zone.e.toFixed(3)}&fhr=${fhr | 0}` + (run ? '&run=' + encodeURIComponent(run) : '');
+  const r = await fetch(`${base}/model3d?${q}`);
+  let j = null;
+  try { j = await r.json(); } catch (e) {}
+  if (!r.ok || !j || !j.fields) throw new Error((j && j.error) || ('the parsing server answered ' + r.status));
+  const N = M3D_N, K = M3D_LEVELS.length;
+  if (j.nx !== N || j.ny !== N || String(j.levels) !== String(M3D_LEVELS)) throw new Error('the parsing server sent a grid of a different shape');
   const G = {};
-  ['t', 'rh', 'spd', 'dir', 'gh', 'w'].forEach(k => { G[k] = new Float32Array(N * N * K).fill(NaN); });
-  const map = { temperature: 't', relative_humidity: 'rh', wind_speed: 'spd', wind_direction: 'dir', geopotential_height: 'gh', vertical_velocity: 'w' };
-  rows.forEach((row, idx) => {
-    const h = (row && row.hourly) || {};
-    M3D_LEVELS.forEach((p, k) => Object.keys(map).forEach(v => {
-      const a = h[`${v}_${p}hPa`], x = Array.isArray(a) ? a[0] : null;
-      if (x != null && isFinite(x)) G[map[v]][k * N * N + idx] = x;
-    }));
+  [['t', 't'], ['rh', 'rh'], ['u', 'u'], ['v', 'v'], ['gh', 'gh'], ['omega', 'omega']].forEach(([k, f]) => {
+    const a = j.fields[f] || [];
+    G[k] = Float32Array.from({ length: N * N * K }, (_, x) => (a[x] == null ? NaN : +a[x]));
   });
-  if (!Array.from(G.t).some(isFinite)) throw new Error('this model sent no pressure level data here');
+  G.meta = { model: j.model, label: j.label, run: j.run, fhr: j.fhr, valid: j.valid };
   return G;
 }
 
@@ -45250,11 +45261,8 @@ async function _m3dFetch(zone, model, when) {
 function _m3dDerive(G, zone) {
   const N = M3D_N, K = M3D_LEVELS.length, NN = N * N, len = NN * K;
   const at = (k, j, i) => k * NN + j * N + i;
-  const u = new Float32Array(len), v = new Float32Array(len);
-  for (let x = 0; x < len; x++) {
-    const d = G.dir[x] * Math.PI / 180, s = G.spd[x];
-    u[x] = -s * Math.sin(d); v[x] = -s * Math.cos(d);
-  }
+  const u = G.u, v = G.v, spd = new Float32Array(len);
+  for (let x = 0; x < len; x++) spd[x] = Math.hypot(u[x], v[x]);
   const dyM = (zone.n - zone.s) / (N - 1) * 110540;
   const dxM = j => (zone.e - zone.w) / (N - 1) * 111320 * Math.cos((zone.s + j / (N - 1) * (zone.n - zone.s)) * Math.PI / 180);
   const ddx = (F, k, j, i) => { const a = Math.max(0, i - 1), b = Math.min(N - 1, i + 1); return (F[at(k, j, b)] - F[at(k, j, a)]) / ((b - a) * dxM(j)); };
@@ -45266,13 +45274,14 @@ function _m3dDerive(G, zone) {
     eta[x] = ddx(v, k, j, i) - ddy(u, k, j, i) + f;
     theta[x] = (G.t[x] + 273.15) * Math.pow(1000 / M3D_LEVELS[k], 0.2857);
   }
-  const out = { u, v, spd: G.spd, temp: G.t, rh: G.rh, tadv: new Float32Array(len), vadv: new Float32Array(len),
+  const out = { u, v, spd, temp: G.t, rh: G.rh, tadv: new Float32Array(len), vadv: new Float32Array(len),
     omega: new Float32Array(len), pv: new Float32Array(len) };
   for (let k = 0; k < K; k++) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const x = at(k, j, i);
     out.tadv[x] = -(u[x] * ddx(G.t, k, j, i) + v[x] * ddy(G.t, k, j, i)) * 3600;
     out.vadv[x] = -(u[x] * ddx(eta, k, j, i) + v[x] * ddy(eta, k, j, i)) * 1e9;
-    out.omega[x] = G.w[x] * 100;
+    // Omega is Pa/s, negative rising; shown as upward motion in microbars/s.
+    out.omega[x] = -G.omega[x] * 10;
     // PV = -g (zeta + f) d(theta)/dp, the part that dominates; in PVU.
     const ka = Math.max(0, k - 1), kb = Math.min(K - 1, k + 1);
     const dth = (theta[at(kb, j, i)] - theta[at(ka, j, i)]) / ((M3D_LEVELS[kb] - M3D_LEVELS[ka]) * 100);
@@ -45366,7 +45375,8 @@ function _m3dPanelHtml() {
   <div class="r3d-controls">
     <span class="l3d-status" data-r="status"></span>
     <div class="xs-spacer"></div>
-    <select class="xsec-sel" data-r="model" title="Which model">${opt(M3D_MODELS.map(m => ({ v: m.id, l: m.label })), 'gfs_seamless')}</select>
+    <select class="xsec-sel" data-r="model" title="Which model">${opt(M3D_MODELS.map(m => ({ v: m.id, l: m.label })), 'gfs')}</select>
+    <button class="dtb-btn" data-r="follow" type="button" title="Follow the model chart on the map: its model, run and hour, with the chart draped over the ground">Chart</button>
     <select class="xsec-sel" data-r="size" title="How big the box is">${opt(M3D_SIZES.map(k => ({ v: String(k), l: k.toLocaleString('en-US') + ' km' })), '1200')}</select>
     <button class="dtb-btn" data-r="snap" type="button" title="Save this view as a picture">Save</button>
   </div>
@@ -45380,7 +45390,7 @@ function _m3dPanelHtml() {
     <label class="r3d-slider-row">
       <span>Hour</span>
       <input type="range" data-r="hour" min="0" max="120" value="0" step="3" title="Forecast hour">
-      <span data-r="hour-label">now</span>
+      <span data-r="hour-label">F+000</span>
     </label>
     <label class="r3d-slider-row">
       <span>Wind volume</span>
@@ -45401,7 +45411,7 @@ function _m3dPanelHtml() {
   <div class="m3d-about" data-r="about"></div>`;
 }
 
-function openModel3D(lat, lng, opts) {
+async function openModel3D(lat, lng, opts) {
   let el = document.getElementById('m3d-panel');
   if (!el) {
     el = document.createElement('div');
@@ -45420,13 +45430,14 @@ function openModel3D(lat, lng, opts) {
       _m3dDraw();
     };
     q('snap').onclick = () => { if (typeof _p3dSnapshot === 'function') _p3dSnapshot(q('canvas'), 'model-3d'); };
-    q('model').onchange = () => _m3dLoad();
+    q('model').onchange = () => { _m3dFollow(false); _m3dSyncHourSlider(); _m3dLoad(); };
+    q('follow').onclick = () => { _m3dFollow(!_m3d.follow); if (_m3d.follow) _m3dFromChart(true); };
     q('size').onchange = () => { _m3d.zone = _m3dZone(_m3d.zone.lat, _m3d.zone.lng, +q('size').value); _m3dLoad(); };
     q('field').onchange = () => { _m3dSyncIsoSlider(true); _m3dBuild(); };
     q('iso').oninput = () => { _m3dSyncIsoSlider(false); clearTimeout(_m3d.isoT); _m3d.isoT = setTimeout(_m3dBuild, 60); };
     q('vol').oninput = () => { _m3dLabels(); clearTimeout(_m3d.volT); _m3d.volT = setTimeout(_m3dBuild, 60); };
     q('slice').onchange = () => _m3dBuild();
-    q('hour').oninput = () => { _m3dLabels(); clearTimeout(_m3d.hourT); _m3d.hourT = setTimeout(_m3dLoad, 350); };
+    q('hour').oninput = () => { _m3dFollow(false); _m3dLabels(); clearTimeout(_m3d.hourT); _m3d.hourT = setTimeout(_m3dLoad, 350); };
     q('terrain').onclick = () => { _m3d.terrain = !_m3d.terrain; q('terrain').classList.toggle('on', _m3d.terrain); _m3dBuild(); };
     q('spin').onclick = () => { _m3d.spin = !_m3d.spin; q('spin').classList.toggle('on', _m3d.spin); if (_m3d.spin) _m3dTick(); };
     const cv = q('canvas');
@@ -45445,13 +45456,56 @@ function openModel3D(lat, lng, opts) {
     if (typeof _makeDraggable === 'function') { try { _makeDraggable(el, el.querySelector('.xs-head')); } catch (e) {} }
     window.addEventListener('resize', () => { if (el.classList.contains('open')) _m3dDraw(); });
   }
-  if (opts && opts.model && M3D_MODELS.some(m => m.id === opts.model)) _m3d.q('model').value = opts.model;
   _m3d.zone = _m3dZone(lat, lng, +_m3d.q('size').value);
   el.classList.add('open');
   _m3dSyncIsoSlider(true);
   if (_m3d.spin) _m3dTick();
+  await _m3dLoadSources();
+  _m3dFillModels();
+  // With a model chart on the map, this is that chart in 3D.
+  if (_m3dChart() && !(opts && opts.model)) { _m3dFollow(true); return _m3dFromChart(false); }
+  _m3dFollow(false);
+  if (opts && opts.model && M3D_MODELS.some(m => m.id === opts.model)) _m3d.q('model').value = opts.model;
+  _m3dSyncHourSlider();
+  if (opts && opts.fhr != null) { _m3d.q('hour').value = opts.fhr; }
+  _m3d.run = (opts && opts.run) || null;
   return _m3dLoad();
 }
+function _m3dFillModels() {
+  const sel = _m3d.q('model'), cur = sel.value;
+  sel.innerHTML = M3D_MODELS.map(m => `<option value="${m.id}">${m.label}</option>`).join('');
+  if (M3D_MODELS.some(m => m.id === cur)) sel.value = cur;
+}
+function _m3dSyncHourSlider() {
+  const m = M3D_MODELS.find(x => x.id === _m3d.q('model').value) || { out: 120, step: 3 };
+  const h = _m3d.q('hour');
+  h.max = m.out; h.step = m.step;
+  if (+h.value > m.out) h.value = m.out;
+  _m3dLabels();
+}
+function _m3dFollow(on) {
+  _m3d.follow = !!on;
+  _m3d.q('follow').classList.toggle('on', _m3d.follow);
+  if (!on) _m3d.drape = null;
+}
+// Takes the chart's model, run and hour, and reloads when any of them moved.
+function _m3dFromChart(force) {
+  const c = _m3dChart();
+  if (!c) { _m3dFollow(false); return Promise.resolve(); }
+  const sig = [c.key, c.run, c.fhr].join('|');
+  if (!force && sig === _m3d.chartSig) return Promise.resolve();
+  _m3d.chartSig = sig;
+  if (!M3D_MODELS.some(m => m.id === c.key)) M3D_MODELS.push({ id: c.key, label: c.label, out: Math.max(c.fhr, 120), step: 1 });
+  _m3dFillModels();
+  _m3d.q('model').value = c.key;
+  _m3dSyncHourSlider();
+  _m3d.q('hour').value = c.fhr;
+  _m3d.run = c.run;
+  return _m3dLoad();
+}
+setInterval(() => {
+  try { if (_m3d && _m3d.follow && _m3d.el.classList.contains('open')) _m3dFromChart(false); } catch (e) {}
+}, 1000);
 function _m3dClose() {
   if (!_m3d) return;
   _m3d.el.classList.remove('open', 'fullscreen');
@@ -45482,8 +45536,8 @@ function _m3dLabels() {
   _m3d.q('iso-label').textContent = f.id === 'none' ? '' : (f.signed ? '±' : '') + fmt(v) + ' ' + f.unit;
   const vol = +_m3d.q('vol').value;
   _m3d.q('vol-label').textContent = vol ? `${vol} m/s (${Math.round(vol * 1.944)} kt)` : 'off';
-  const fh = +_m3d.q('hour').value, t = _m3dValidHour(fh);
-  _m3d.q('hour-label').textContent = (fh ? '+' + fh + 'h ' : 'now ') + t.toISOString().slice(5, 13).replace('T', ' ') + 'Z';
+  const fh = +_m3d.q('hour').value;
+  _m3d.q('hour-label').textContent = 'F+' + String(fh).padStart(3, '0');
 }
 function _m3dSay(msg, bad) {
   const s = _m3d.q('status');
@@ -45492,20 +45546,26 @@ function _m3dSay(msg, bad) {
 
 async function _m3dLoad() {
   const gen = ++_m3d.gen, zone = _m3d.zone, model = _m3d.q('model').value;
-  const when = _m3dValidHour(+_m3d.q('hour').value);
+  const fhr = +_m3d.q('hour').value, run = _m3d.run || null;
   _m3d.q('where').textContent = `${zone.lat.toFixed(2)}, ${zone.lng.toFixed(2)}`;
-  _m3dSay('Loading the model...');
+  _m3dSay('Cutting the box out of the model run...');
   try {
     const [G, ter] = await Promise.all([
-      _m3dFetch(zone, model, when),
+      _m3dFetch(zone, model, fhr, run),
       (typeof _l3dTerrain === 'function' ? _l3dTerrain(zone, 48, 48).catch(() => null) : Promise.resolve(null)),
     ]);
     if (gen !== _m3d.gen) return;
     _m3d.data = _m3dDerive(G, zone);
     // No tiles at all is no ground, not a flat green plain at sea level.
     _m3d.ter = ter && ter.tiles && ter.missing < ter.tiles ? ter : null;
-    const m = M3D_MODELS.find(x => x.id === model);
-    _m3dSay(`${m ? m.label : model}, valid ${when.toISOString().slice(0, 13).replace('T', ' ')}Z`);
+    // The model chart on the map, draped over the ground, when following it.
+    _m3d.drape = null;
+    if (_m3d.follow && typeof _l3dSampleDrape === 'function' && typeof _l3dSpec === 'function' && _l3dSpec('models')) {
+      try { const d = _l3dSampleDrape(_l3dSpec('models'), zone, 48, 48); if (d && d.painted) _m3d.drape = d; } catch (e) {}
+    }
+    const mt = G.meta || {}, rr = String(mt.run || '');
+    _m3dSay(`${mt.label || model} ${rr.slice(4, 6)}/${rr.slice(6, 8)} ${rr.slice(9, 11)}z F+${String(mt.fhr | 0).padStart(3, '0')}, `
+      + `valid ${String(mt.valid || '').slice(0, 13).replace('T', ' ')}Z` + (_m3d.drape ? ', chart draped' : ''));
     _m3dLabels();
     _m3dBuild();
   } catch (e) {
@@ -45539,8 +45599,21 @@ function _m3dBuild() {
       const h = (a, b) => Math.max(0, T[b * n + a]) / 1000 * zs;
       const X = a => a / (n - 1) * 2 - 1, Y = b => 1 - b / (n - 1) * 2;
       const q = [[X(i), Y(j), h(i, j)], [X(i + 1), Y(j), h(i + 1, j)], [X(i + 1), Y(j + 1), h(i + 1, j + 1)], [X(i), Y(j + 1), h(i, j + 1)]];
-      const rgb = (typeof _l3dReliefRgb === 'function') ? _l3dReliefRgb(T[j * n + i]) : [90, 110, 90];
+      let rgb = (typeof _l3dReliefRgb === 'function') ? _l3dReliefRgb(T[j * n + i]) : [90, 110, 90];
+      const dr = _m3d.drape, k4 = (j * n + i) * 4;
+      if (dr && dr.rgba[k4 + 3]) {
+        const a = dr.rgba[k4 + 3] / 255;
+        rgb = [0, 1, 2].map(c => rgb[c] * (1 - a) + dr.rgba[k4 + c] * a);
+      }
       prims.push({ kind: 'poly', pts: q, rgb, alpha: 1, lit: true });
+    }
+  } else if (_m3d.drape) {
+    const n = 48, dr = _m3d.drape;
+    for (let j = 0; j < n - 1; j++) for (let i = 0; i < n - 1; i++) {
+      const X = a => a / (n - 1) * 2 - 1, Y = b => 1 - b / (n - 1) * 2, k4 = (j * n + i) * 4;
+      const a = dr.rgba[k4 + 3] / 255;
+      prims.push({ kind: 'poly', pts: [[X(i), Y(j), 0], [X(i + 1), Y(j), 0], [X(i + 1), Y(j + 1), 0], [X(i), Y(j + 1), 0]],
+        rgb: [0, 1, 2].map(c => 40 * (1 - a) + dr.rgba[k4 + c] * a), alpha: 1, lit: false });
     }
   } else {
     prims.push({ kind: 'poly', pts: [[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0]], rgb: [40, 46, 56], alpha: 1, lit: false });
@@ -70430,6 +70503,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-g', date: 'Sep 24, 2026',
+    text: 'Model 3D now uses the real model runs instead of Open-Meteo: the parsing server cuts the box straight out of the GFS, NAM, RAP, HRRR, ECMWF and other model files the models panel already draws, and vertical motion is the model\'s own omega. It is also the 3D model chart now: with a model chart on the map, 3D model volume here opens on that chart\'s model, run and hour, drapes the chart over the ground under the volume, and follows along as you step the chart through its hours. The separate Draw a 3D model chart zone row is gone.' },
   { id: '2026-09-24-f', date: 'Sep 24, 2026',
     text: 'Model 3D, in the style of Vis5D: right-click the map and pick 3D model volume here to see a box of the GFS, ECMWF, ICON or GEM forecast in 3D over the real ground. Draw see-through surfaces of temperature advection, vorticity advection, rising and sinking air, potential vorticity (the dynamic tropopause), the freezing level or cloud-humid air, make the jet stream glow as a wind speed volume, add a slice of wind arrows at any level, and step through the forecast hours.' },
   { id: '2026-09-24-e', date: 'Sep 24, 2026',
@@ -87921,7 +87996,9 @@ function _cmLayer3DDraw(id) {
 // only the layer of the pane that was pressed, so the 3D view is of what
 // is actually showing there.
 function _l3dMenuItems(ic, cx, cy) {
-  let ids = L3D_LAYERS.filter(s => _l3dIsOn(s.id)).map(s => s.id);
+  // Model charts have no row of their own: "3D model volume here" is the
+  // chart in 3D, the real model volume with the chart draped under it.
+  let ids = L3D_LAYERS.filter(s => s.id !== 'models' && _l3dIsOn(s.id)).map(s => s.id);
   const pane = (typeof _xcLayerAt === 'function' && cx != null) ? _xcLayerAt(cx, cy) : null;
   if (pane) ids = ids.filter(id => id === pane);
   return ids.map(id => {
