@@ -201,29 +201,33 @@ The distinction matters: a refused key is worth falling back from, but a quota
 message or a retired model name would fail exactly the same way through the
 worker, so those are reported rather than retried.
 
-## /map only offers what the site has
+## /map picks layers the way the site does
+
+`/map` takes four options: `place`, `layer`, `overlay` and `zoom`.
+
+A layer is a path through the site's left menu, the same taps a person makes
+there: `Waves > SST > Coral Reef Watch > Actual`, `Radar > Level 2 > Velocity`.
+Start typing any words from it, in any order (`coral actual`), and the box
+offers the matching paths. Several layers go in one box joined with `|`.
+
+The picture comes from a `?menu=` link: the page goes back to the top of its
+own menu and taps each label in turn, so a path shows exactly what those taps
+show by hand, for every layer.
+
+Overlays are the site's row of overlay switches, by name. The outlooks carry
+their day and hazard as a path too: `SPC Outlook > Day 2 > Tornado`,
+`WPC Outlook > Day 1`, `CPC Outlook > 6-10 Day Temperature`.
+
+The layer paths live in `services/bot/map-menu.json`, written by walking the
+real menu in a headless browser:
+
+    node tools/crawl-map-menu.mjs
+
+Run it (with the network on, so rows filled from the network are walked too)
+after changing the site's menus, then restart the bot so the command
+re-registers. Overlay names still come from `services/bot/map-options.json`:
 
     node tools/extract-map-options.js
-
-Reads `index.html` and writes `services/bot/map-options.json`: every layer, overlay,
-basemap, satellite band and product family the site really offers. The command
-is built from that file, so the two cannot drift apart. Typed by hand they
-already had: the command offered six radar products where the page shows five,
-and eight satellite bands where the page has sixteen.
-
-The generator keeps only what a visitor can actually click, checked against
-the site's own real menus (`RADAR_L2_BUBBLES`, `PR_PRODUCTS`) rather than
-guessed at. Radar and satellite each have too many real products for one
-25-choice dropdown to hold honestly, so `/map` offers them as two linked
-options apiece: `radar-type` (Level 2, Level 3, or the national composite
-mosaic) then `radar-product` (typed and autocompleted, scoped to whichever
-type is picked), and the same shape for `satellite-type`/`satellite-product`
-(an ABI band, an RGB composite, or the global mosaic). Picking a type alone
-does nothing; it only narrows what the product option completes to, and a
-product's own value is still checked on its own even if no type was given.
-
-Run it after adding a layer, an overlay or a product to the site, then restart
-the bot so the command re-registers.
 
     node services/bot/test-map-command.mjs
 

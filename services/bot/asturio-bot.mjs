@@ -566,46 +566,8 @@ function queueShot(fn) {
 }
 
 async function screenshotMap(opt) {
-  const { place, lat, lon, z } = opt;
-  const spot = PLACES[String(place || '').toLowerCase()] || {};
-  const q = new URLSearchParams({ shot: '1' });
-  const setNum = (k, v) => { if (v !== null && v !== undefined && v !== '') q.set(k, String(v)); };
-  setNum('lat', lat ?? spot.lat);
-  setNum('lon', lon ?? spot.lon);
-  setNum('z',   z   ?? spot.z);
-  // Each family option rides under the page's own name for it, taken from
-  // the same FAMILY_OPTIONS table the command is built from, so the command
-  // and the URL cannot drift apart.
-  for (const [name, , param] of FAMILY_OPTIONS) {
-    if (opt[name]) q.set(param, String(opt[name]));
-  }
-  // Radar and satellite are two linked options apiece (a type, then a
-  // product scoped to it) rather than one flat family: too many real
-  // products to fit in one 25-choice dropdown honestly. The type itself
-  // never rides in the URL - each product's own value already says which
-  // menu it came from to the page's own ?product=/?satproduct= reader, the
-  // same way it does to _prSetLevel/_setGoesProduct on the page itself.
-  if (opt['radar-product'])     q.set('product', String(opt['radar-product']));
-  if (opt['satellite-product']) q.set('satproduct', String(opt['satellite-product']));
-  // Everything else passes through verbatim under the name the page uses.
-  for (const k of ['basemap','layers','overlays','model','modelvar',
-                   'spcday','spchaz','wpcday','fwday','cpctype']) {
-    if (opt[k]) q.set(k, String(opt[k]));
-  }
-  // Asking for an outlook's dial means asking for the outlook: a day or
-  // hazard on its own would otherwise set state nothing draws. The dial
-  // implies its overlay, exactly as a radar product implies radar.
-  const overlays = new Set(String(q.get('overlays') || '')
-    .split(',').map(x => x.trim()).filter(Boolean));
-  if (opt.spcday || opt.spchaz) overlays.add('spc-outlook');
-  if (opt.wpcday)               overlays.add('wpc-outlook');
-  if (opt.fwday)                overlays.add('fire-outlook');
-  if (opt.cpctype)              overlays.add('cpc-outlook');
-  if (overlays.size) q.set('overlays', [...overlays].join(','));
-  // A region without a product would aim the camera with nothing in front
-  // of it, so it brings the everyday Clean IR band along.
-  if (opt.satregion && !opt['satellite-product']) q.set('satproduct', 'ch13');
-
+  // Everything the page needs is in the link; see mapUrlParams below.
+  const q = mapUrlParams(opt);
   const url = `${SITE_URL}?${q}`;
   return queueShot(async () => {
     const browser = await getBrowser();
@@ -916,22 +878,31 @@ async function handleEconomy(i) {
 
 // -- Discord ---------------------------------------------------------------
 // -- /map, built from what the site actually offers -------------------------
-// The lists come from services/bot/map-options.json, which tools/extract-map-options.js
-// reads out of index.html. Typed by hand they had already drifted: the command
-// offered six radar products where the page shows five, and eight satellite
-// bands where the page has sixteen.
+// Four options, the way someone asks for a picture: where (place), what
+// (layer), what on top of it (overlay), and how close (zoom).
 //
-// The generator takes only what a visitor can really click. The dual polarity
-// radar products sit in the page commented out, so they are absent here too:
-// a command that offered them would promise a picture nobody can see. That is
-// the rule this file follows everywhere, and it is why nothing below is a
-// literal list.
+// A layer is picked the way it is on the site: by walking the left menu.
+// "Waves > SST > Coral Reef Watch > Actual" is the four taps a person makes
+// there, and it rides to the page as ?menu=, which taps them in the page's
+// own menu. So the picture is exactly what those taps give by hand, for every
+// layer, with no second list of products kept in step with the page.
+// services/bot/map-menu.json lists every path; tools/crawl-map-menu.js
+// writes it by walking the real menu.
+//
+// Overlays are one row of switches on the site, so an overlay is its name.
+// The outlooks carry their own day and hazard the same way, as a path:
+// "SPC Outlook > Day 2 > Tornado".
 const MAP_OPTIONS = JSON.parse(
   readFileSync(new URL('./map-options.json', import.meta.url), 'utf8'));
+const MAP_MENU = JSON.parse(
+  readFileSync(new URL('./map-menu.json', import.meta.url), 'utf8'));
 
-// Discord allows 25 fixed choices on an option. Anything longer, and anything
-// that takes several values at once, is completed as it is typed instead.
+// Discord allows 25 fixed choices on an option, and 100 characters in a value.
 const CHOICE_LIMIT = 25;
+const VALUE_LIMIT = 100;
+// Several layers or overlays at once ride in one box, split on this. Not a
+// comma: menu labels have commas in them ("1,000 m Deep").
+const MULTI_SEP = '|';
 
 function choicesFor(list) {
   return list.slice(0, CHOICE_LIMIT).map(p => ({
@@ -939,227 +910,111 @@ function choicesFor(list) {
   }));
 }
 
-// One command option per product family. Each row is
-// [command option, list in map-options.json, URL parameter, description]:
-// the command speaks the word a person would say ('satregion', 'wind') and
-// the URL parameter is whatever the page happens to call it, translated in
-// exactly one place. A family added to the site appears here on the next
-// run of the generator with no edit to this file.
-//
-// Radar and satellite are NOT in this table. Both have too many real
-// products for one 25-choice dropdown to hold honestly (radar alone is 19
-// once Level 2, Level 3 and the composite mosaic are counted for real,
-// rather than the 6 the command used to offer), so each gets its own pair
-// of linked options below instead: a type, then a product scoped to it.
-const FAMILY_OPTIONS = [
-  ['satregion',  'satregions',  'satregion',  'Satellite view: CONUS, meso box, full disk, world sector'],
-  ['wind',       'wind',        'wind',       'Wind product'],
-  ['temperature','temperature', 'temperature','Temperature product'],
-  ['waves',      'waves',       'waves',      'Wave product'],
-  ['air',        'air',         'air',        'Air quality product'],
-  ['pressure',   'pressure',    'pressure',   'Pressure product'],
-];
+// Every layer path the menu has, as "A > B > C".
+const LAYER_PATHS = (MAP_MENU.layers || []).filter(x => x.length <= VALUE_LIMIT);
 
-// The three radar menus and the three satellite menus, named the way the
-// site itself names them (PR_LEVELS, and the chNN/rgb-/glb- id prefixes the
-// generator already splits satellite on). Picking one of these alone does
-// nothing; it only scopes what radar-product/satellite-product complete to.
-const RADAR_TYPES = [
-  { value: 'l2',        name: 'Level 2 (single station, full detail)' },
-  { value: 'l3',        name: 'Level 3 (single station, lighter)' },
-  { value: 'composite', name: 'Composite (national mosaic)' },
-];
-const SATELLITE_TYPES = [
-  { value: 'band',      name: 'ABI Band (ch01-ch16)' },
-  { value: 'composite', name: 'RGB Composite' },
-  { value: 'global',    name: 'Global Mosaic' },
-];
+// Every overlay, and each outlook's own days and hazards. Each path maps to
+// the URL parameters that switch it on: the overlay itself, plus its dial.
+const OVERLAY_PATHS = (() => {
+  const out = new Map();
+  const name = id => ((MAP_OPTIONS.overlays.find(o => o.value === id) || {}).name || id);
+  for (const o of MAP_OPTIONS.overlays) out.set(o.name, { overlay: o.value });
+  const spc = name('spc-outlook');
+  const HAZ = [['Categorical', 'cat'], ['Tornado', 'torn'], ['Wind', 'wind'], ['Hail', 'hail']];
+  for (const d of [1, 2]) {
+    for (const [h, v] of HAZ) out.set(`${spc} > Day ${d} > ${h}`, { overlay: 'spc-outlook', spcday: d, spchaz: v });
+  }
+  out.set(`${spc} > Day 3 > Categorical`, { overlay: 'spc-outlook', spcday: 3, spchaz: 'cat' });
+  for (let d = 4; d <= 8; d++) out.set(`${spc} > Day ${d} > Probabilistic`, { overlay: 'spc-outlook', spcday: d, spchaz: 'prob' });
+  const wpc = name('wpc-outlook');
+  for (const d of [1, 2, 3]) out.set(`${wpc} > Day ${d}`, { overlay: 'wpc-outlook', wpcday: d });
+  const fw = name('fire-outlook');
+  for (const d of [1, 2]) out.set(`${fw} > Day ${d}`, { overlay: 'fire-outlook', fwday: d });
+  const cpc = name('cpc-outlook');
+  for (const c of (MAP_OPTIONS.cpctypes || [])) out.set(`${cpc} > ${c.name}`, { overlay: 'cpc-outlook', cpctype: c.value });
+  return out;
+})();
 
-// Every string option the /map handler reads, family and plain alike, so the
-// handler and the validator never chase a list of names by hand again.
-const MAP_STRING_OPTIONS = [
-  'place', 'basemap', 'layers', 'overlays', 'spchaz', 'cpctype',
-  'radar-type', 'radar-product', 'satellite-type', 'satellite-product',
-  ...FAMILY_OPTIONS.map(f => f[0]),
-];
-const MAP_INT_OPTIONS = ['zoom', 'spcday', 'wpcday', 'fwday'];
-
-function addFamilyOption(c, name) {
-  const row = FAMILY_OPTIONS.find(f => f[0] === name);
-  const list = MAP_OPTIONS.families[row[1]] || MAP_OPTIONS[row[1]] || [];
-  if (!list.length) return c;
-  return c.addStringOption(o => {
-    o.setName(row[0]).setDescription(row[3]);
-    // Past 25 choices Discord insists it be typed, hence autocomplete.
-    if (list.length <= CHOICE_LIMIT) o.addChoices(...choicesFor(list));
-    else o.setAutocomplete(true);
-    return o;
-  });
-}
+const MAP_STRING_OPTIONS = ['place', 'layer', 'overlay'];
+const MAP_INT_OPTIONS = ['zoom'];
 
 function mapCommand() {
-  // Ordered the way someone builds a picture: where, then the main picture
-  // (radar or satellite), then what to draw on top, then the fine print.
-  let c = new SlashCommandBuilder()
+  return new SlashCommandBuilder()
     .setName('map')
     .setDescription('Post a picture of the radar map')
     .addStringOption(o => o.setName('place')
       .setDescription('Where to look')
       .addChoices(...choicesFor(
-        Object.keys(PLACES).map(k => ({ value: k, name: k })))));
-
-  // Radar and satellite: a type first (choices, always short), then a
-  // product scoped to it (typed and autocompleted, since even one menu -
-  // satellite's 16 bands, or radar's 11 Level 3 products - can run past
-  // what a plain dropdown holds). Picking a type alone does nothing; it
-  // only narrows what the product option completes to.
-  c = c
-    .addStringOption(o => o.setName('radar-type')
-      .setDescription('Which radar menu: Level 2, Level 3, or the composite mosaic')
-      .addChoices(...choicesFor(RADAR_TYPES)))
-    .addStringOption(o => o.setName('radar-product')
-      .setDescription('Radar product within radar-type. Switches radar on by itself')
+        Object.keys(PLACES).map(k => ({ value: k, name: k })))))
+    .addStringOption(o => o.setName('layer')
+      .setDescription(`Pick it like the site's menu, e.g. Waves > SST > Coral Reef Watch > Actual. Join more with ${MULTI_SEP}`)
       .setAutocomplete(true))
-    .addStringOption(o => o.setName('satellite-type')
-      .setDescription('Which satellite menu: an ABI band, an RGB composite, or the global mosaic')
-      .addChoices(...choicesFor(SATELLITE_TYPES)))
-    .addStringOption(o => o.setName('satellite-product')
-      .setDescription('Satellite product within satellite-type')
-      .setAutocomplete(true));
-
-  c = addFamilyOption(c, 'satregion');
-
-  // Several at once, so completed as typed rather than picked from a list.
-  c = c
-    .addStringOption(o => o.setName('layers')
-      .setDescription(`Comma separated. ${MAP_OPTIONS.layers.length} available`)
+    .addStringOption(o => o.setName('overlay')
+      .setDescription(`On top, e.g. SPC Outlook > Day 1 > Tornado. Join more with ${MULTI_SEP}`)
       .setAutocomplete(true))
-    .addStringOption(o => o.setName('overlays')
-      .setDescription(`Comma separated. ${MAP_OPTIONS.overlays.length} available`)
-      .setAutocomplete(true))
-    // The outlook dials. Naming any of these switches its overlay on by
-    // itself, the same way naming a radar product switches radar on.
-    .addIntegerOption(o => o.setName('spcday')
-      .setDescription('SPC outlook day. Switches the SPC outlook on')
-      .setMinValue(1).setMaxValue(8))
-    .addStringOption(o => o.setName('spchaz')
-      .setDescription('SPC hazard view. Switches the SPC outlook on')
-      .addChoices(
-        { name: 'Categorical',              value: 'cat'  },
-        { name: 'Tornado',                  value: 'torn' },
-        { name: 'Wind',                     value: 'wind' },
-        { name: 'Hail',                     value: 'hail' },
-        { name: 'Probabilistic (day 4-8)',  value: 'prob' },
-      ))
-    .addIntegerOption(o => o.setName('wpcday')
-      .setDescription('WPC excessive rain day. Switches the WPC outlook on')
-      .setMinValue(1).setMaxValue(3))
-    .addIntegerOption(o => o.setName('fwday')
-      .setDescription('SPC fire weather day. Switches the fire outlook on')
-      .setMinValue(1).setMaxValue(2))
-    .addStringOption(o => o.setName('cpctype')
-      .setDescription('CPC extended outlook. Switches the CPC outlook on')
-      .addChoices(...choicesFor(MAP_OPTIONS.cpctypes || [])));
-
-  for (const [name] of FAMILY_OPTIONS) {
-    if (name === 'satregion') continue;
-    c = addFamilyOption(c, name);
-  }
-
-  return c
-    .addStringOption(o => o.setName('basemap')
-      .setDescription('Basemap style')
-      .addChoices(...choicesFor(
-        MAP_OPTIONS.basemaps.map(b => ({ value: b, name: b })))))
-    .addNumberOption(o => o.setName('lat')
-      .setDescription('Latitude, overrides place'))
-    .addNumberOption(o => o.setName('lon')
-      .setDescription('Longitude, overrides place'))
     .addIntegerOption(o => o.setName('zoom')
       .setDescription('Zoom, 3 to 12').setMinValue(3).setMaxValue(12));
 }
 
-// What each autocompleting option is completing against. radar-product and
-// satellite-product take the interaction's own current options so they can
-// read the sibling -type value and complete against only that menu; every
-// other source ignores the argument, plain functions of no arguments.
-const AUTOCOMPLETE_SOURCE = {
-  layers:   () => MAP_OPTIONS.layers.map(v => ({ value: v, name: v })),
-  overlays: () => MAP_OPTIONS.overlays,
-  'radar-product': (opts) => {
-    const type = (opts && opts.getString('radar-type')) || 'l2';
-    return MAP_OPTIONS.families.radar[type] || [];
-  },
-  'satellite-product': (opts) => {
-    const type = (opts && opts.getString('satellite-type')) || 'band';
-    return MAP_OPTIONS.satelliteTypes[type] || [];
-  },
-  ...Object.fromEntries(FAMILY_OPTIONS.map(([opt, fam]) =>
-    [opt, () => MAP_OPTIONS.families[fam] || MAP_OPTIONS[fam] || []])),
-};
+const splitMulti = v => String(v || '').split(MULTI_SEP).map(x => x.trim()).filter(Boolean);
+// Matching ignores case and spacing, so "waves>sst" still finds its path.
+const normPath = v => String(v || '').split('>').map(x => x.trim().toLowerCase()).filter(Boolean).join(' > ');
 
-// Completes the value being typed, not the whole string: these take a comma
-// separated list, so what is being finished is whatever follows the last comma
-// and everything before it has to be handed back untouched.
-function completeList(optName, typed, opts) {
-  const list = (AUTOCOMPLETE_SOURCE[optName] || (() => []))(opts);
-  const multi = optName === 'layers' || optName === 'overlays';
-  const cut = multi ? typed.lastIndexOf(',') : -1;
-  const head = cut >= 0 ? typed.slice(0, cut + 1) : '';
-  const tail = (cut >= 0 ? typed.slice(cut + 1) : typed).trim().toLowerCase();
-  const already = new Set(head.split(',').map(x => x.trim()).filter(Boolean));
-
+// Completes the value being typed. Every word typed has to appear somewhere
+// in the path, in any order, so "crw actual" or "coral actual" both find
+// "Waves > SST > Coral Reef Watch > Actual". What comes before the last |
+// is handed back untouched.
+function completeList(optName, typed) {
+  const list = optName === 'layer' ? LAYER_PATHS
+    : optName === 'overlay' ? [...OVERLAY_PATHS.keys()] : [];
+  const cut = typed.lastIndexOf(MULTI_SEP);
+  const head = cut >= 0 ? typed.slice(0, cut + 1) + ' ' : '';
+  const tail = (cut >= 0 ? typed.slice(cut + 1) : typed).toLowerCase();
+  const words = tail.split(/[\s>]+/).filter(Boolean);
+  const already = new Set(splitMulti(typed.slice(0, Math.max(cut, 0))).map(normPath));
   return list
-    .filter(p => !already.has(p.value))
-    .filter(p => !tail
-      || p.value.toLowerCase().includes(tail)
-      || (p.name || '').toLowerCase().includes(tail))
-    .slice(0, CHOICE_LIMIT)
-    .map(p => ({
-      name: `${p.name || p.value}`.slice(0, 100),
-      // Discord rejects a value over 100 characters, and a long list of
-      // overlays reaches that, so the completion is dropped rather than the
-      // whole box being refused.
-      value: (head + p.value).slice(0, 100),
-    }));
+    .filter(pth => !already.has(normPath(pth)))
+    .filter(pth => { const l = pth.toLowerCase(); return words.every(w => l.includes(w)); })
+    .map(pth => ({ name: pth.slice(0, 100), value: head + pth }))
+    .filter(c => c.value.length <= VALUE_LIMIT)
+    .slice(0, CHOICE_LIMIT);
 }
 
-// Anything the site does not offer is refused here rather than quietly
-// producing a picture without it. Silently ignoring a name is how someone ends
-// up believing a layer is switched on when it never was.
-function validateMapOptions(opt) {
+// Resolve what was typed to real paths, or say which pieces the site lacks.
+function resolveMapOptions(opt) {
   const bad = [];
-  const check = (name, wanted, list) => {
-    if (!wanted) return;
-    for (const v of String(wanted).split(',').map(x => x.trim()).filter(Boolean)) {
-      if (!list.includes(v)) bad.push(`${name}: ${v}`);
-    }
-  };
-  check('layer', opt.layers, MAP_OPTIONS.layers);
-  check('overlay', opt.overlays, MAP_OPTIONS.overlays.map(o => o.value));
-  check('basemap', opt.basemap, MAP_OPTIONS.basemaps);
-  check('spchaz', opt.spchaz, ['cat', 'torn', 'wind', 'hail', 'prob']);
-  check('cpctype', opt.cpctype, (MAP_OPTIONS.cpctypes || []).map(c => c.value));
-  if (opt.place && !(String(opt.place).toLowerCase() in PLACES)) {
-    bad.push(`place: ${opt.place}`);
+  const layers = [], overlays = [];
+  const layerIdx = new Map(LAYER_PATHS.map(x => [normPath(x), x]));
+  const ovIdx = new Map([...OVERLAY_PATHS.keys()].map(x => [normPath(x), x]));
+  for (const v of splitMulti(opt.layer)) {
+    const hit = layerIdx.get(normPath(v));
+    if (hit) layers.push(hit); else bad.push(`layer: ${v}`);
   }
-  for (const [name, family] of FAMILY_OPTIONS) {
-    const list = (MAP_OPTIONS.families[family] || MAP_OPTIONS[family] || [])
-      .map(p => p.value);
-    check(name, opt[name], list);
+  for (const v of splitMulti(opt.overlay)) {
+    const hit = ovIdx.get(normPath(v));
+    if (hit) overlays.push(OVERLAY_PATHS.get(hit)); else bad.push(`overlay: ${v}`);
   }
-  // Checked against the union of every menu rather than only the one named
-  // in -type: someone can leave -type unset and still type a valid product
-  // (the type is just what autocomplete narrows to, not a hard gate), and
-  // refusing that would be exactly the "the site has this but the command
-  // won't let you ask for it" bug the whole reorganisation set out to fix.
-  check('radar-type', opt['radar-type'], RADAR_TYPES.map(t => t.value));
-  check('radar-product', opt['radar-product'],
-    Object.values(MAP_OPTIONS.families.radar).flat().map(p => p.value));
-  check('satellite-type', opt['satellite-type'], SATELLITE_TYPES.map(t => t.value));
-  check('satellite-product', opt['satellite-product'],
-    Object.values(MAP_OPTIONS.satelliteTypes).flat().map(p => p.value));
-  return bad;
+  if (opt.place && !(String(opt.place).toLowerCase() in PLACES)) bad.push(`place: ${opt.place}`);
+  return { bad, layers, overlays };
+}
+function validateMapOptions(opt) { return resolveMapOptions(opt).bad; }
+
+// The link the page reads: where, then the menu paths, then the overlays.
+function mapUrlParams(opt) {
+  const { layers, overlays } = resolveMapOptions(opt);
+  const spot = PLACES[String(opt.place || '').toLowerCase()] || {};
+  const q = new URLSearchParams({ shot: '1' });
+  const setNum = (k, v) => { if (v !== null && v !== undefined && v !== '') q.set(k, String(v)); };
+  setNum('lat', spot.lat);
+  setNum('lon', spot.lon);
+  setNum('z', opt.zoom ?? spot.z);
+  if (layers.length) q.set('menu', layers.map(x => x.split('>').map(s => s.trim()).join('>')).join('|'));
+  const ids = [...new Set(overlays.map(o => o.overlay))];
+  if (ids.length) q.set('overlays', ids.join(','));
+  for (const o of overlays) {
+    for (const k of ['spcday', 'spchaz', 'wpcday', 'fwday', 'cpctype']) if (o[k] !== undefined) q.set(k, String(o[k]));
+  }
+  return q;
 }
 
 // -- /economy -------------------------------------------------------------
@@ -1490,12 +1345,7 @@ client.on(Events.InteractionCreate, async (i) => {
       // Launching a browser and waiting for tiles runs well past Discord's
       // three second reply window.
       await i.deferReply();
-      const { image, url } = await screenshotMap({
-        ...asked,
-        z:   asked.zoom,
-        lat: i.options.getNumber('lat'),
-        lon: i.options.getNumber('lon'),
-      });
+      const { image, url } = await screenshotMap(asked);
       return i.editReply({
         content: `<${url}>`,
         files: [{ attachment: image, name: 'radar.jpg' }],

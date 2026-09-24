@@ -71144,8 +71144,9 @@ function _applyUrlView(p) {
 // would otherwise creep back into the picture.
 function _shotIsolate(p) {
   const list = (k) => (p.get(k) || '').split(',').map(s => s.trim()).filter(Boolean);
-  const askedLayers = new Set(list('layers'));
-  const askedOv = new Set(list('overlays'));
+  // What a ?menu= path switched on counts as asked for too.
+  const askedLayers = new Set([...list('layers'), ..._menuKeep.layers]);
+  const askedOv = new Set([...list('overlays'), ..._menuKeep.ov]);
   // The alert polygon categories (tornado/tstm/flood) are what the
   // 'alerts' overlay draws, so asking for it keeps all three.
   if (askedOv.has('alerts')) ['tornado', 'tstm', 'flood'].forEach(k => askedLayers.add(k));
@@ -71169,6 +71170,79 @@ function _shotIsolate(p) {
   });
 }
 
+// -- ?menu=: pick a layer the way a person does, through the menu -----------
+// A path is the labels you would tap in the left menu, in order:
+//
+//   ?menu=Waves>SST>Coral Reef Watch>Actual
+//
+// and several ride together separated by |. The page goes back to the top of
+// its own menu and taps each label in turn, so a path does exactly what the
+// same taps by hand do, whatever machinery sits behind each row, and a menu
+// changed later needs no second list kept in step with it. The Discord
+// bot's /map layer option offers every path the menu has (see
+// tools/crawl-map-menu.mjs, which walks the menu to list them).
+const _menuKeep = { layers: new Set(), ov: new Set() };
+function _menuNorm(t) { return String(t || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
+function _menuRowItems() {
+  const wrap = document.getElementById('sub-bubbles');
+  if (!wrap) return [];
+  return [...wrap.querySelectorAll('.sub-bubble:not(.sb-back)')].map(el => {
+    const lab = el.querySelector('.sb-label');
+    return { el, label: (lab ? lab.textContent : el.textContent).replace(/\s+/g, ' ').trim() };
+  }).filter(x => x.label);
+}
+function _menuFind(label) {
+  const want = _menuNorm(label);
+  return _menuRowItems().find(x => _menuNorm(x.label) === want) || null;
+}
+// Back to the top of the left menu, the eight main bubbles.
+function _menuHome() {
+  try {
+    const tab = (typeof currentTab !== 'undefined' && TAB_BUBBLES[currentTab]) ? currentTab : 'regular';
+    renderSubBubbles(tab);
+  } catch (e) { renderSubBubbles('regular'); }
+}
+// Tap through one path. Each step waits for its label to appear, since a
+// row can be built after something loads (a source list, a run list).
+async function _menuPlay(path, stepWait = 6000) {
+  const steps = (Array.isArray(path) ? path : String(path).split('>'))
+    .map(x => String(x).trim()).filter(Boolean);
+  if (!steps.length) return { ok: false, at: 0 };
+  _menuHome();
+  for (let i = 0; i < steps.length; i++) {
+    let hit = null;
+    const t0 = Date.now();
+    while (!(hit = _menuFind(steps[i])) && Date.now() - t0 < stepWait) {
+      await new Promise(r => setTimeout(r, 60));
+    }
+    if (!hit) return { ok: false, at: i, missing: steps[i] };
+    const last = i === steps.length - 1;
+    // The last tap picks something; tapping a pick that is already lit
+    // would switch it back off, so it is left alone.
+    if (last && hit.el.classList.contains('active')) break;
+    try { hit.el.click(); } catch (e) { return { ok: false, at: i, error: String(e) }; }
+    await new Promise(r => setTimeout(r, 30));
+  }
+  return { ok: true, at: steps.length };
+}
+async function _menuPlayAll(raw) {
+  const paths = String(raw || '').split('|').map(x => x.trim()).filter(Boolean).slice(0, 8);
+  if (!paths.length) return [];
+  const onLayers = () => new Set(Object.keys(activeLayers).filter(k => activeLayers[k]));
+  const onOv = () => new Set([...document.querySelectorAll('.ov-pill.active')].map(x => x.dataset.ovid));
+  const beforeL = onLayers(), beforeO = onOv();
+  const out = [];
+  for (const path of paths) {
+    const r = await _menuPlay(path);
+    if (!r.ok) console.warn('url menu: could not follow', path, r);
+    out.push(r);
+  }
+  onLayers().forEach(k => { if (!beforeL.has(k)) _menuKeep.layers.add(k); });
+  onOv().forEach(k => { if (!beforeO.has(k)) _menuKeep.ov.add(k); });
+  _menuHome();
+  return out;
+}
+
 // Every parameter _applyUrlView understands. Kept beside it so adding one there
 // cannot be forgotten here, which would leave the parameter silently ignored
 // whenever it is the only one in the link.
@@ -71176,7 +71250,7 @@ const _URL_VIEW_PARAMS = [
   'lat','lon','z','basemap','layers','overlays','shot',
   'product','satproduct','satregion','model','modelvar',
   'waves','air','temperature','pressure','wind',
-  'spcday','spchaz','wpcday','fwday','cpctype',
+  'spcday','spchaz','wpcday','fwday','cpctype','menu',
 ];
 
 // Resolves once no tile in the document is still loading, so a screenshot is
@@ -71205,6 +71279,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   _whenMapReady(async () => {
     _applyUrlView(p);
+    if (p.get('menu')) { try { await _menuPlayAll(p.get('menu')); } catch (e) { console.warn('url menu:', e); } }
     await _whenTilesSettled();
     // The second strip, for the defaults that initialise themselves later
     // in the boot (the city temperatures) and crept back over the first.
