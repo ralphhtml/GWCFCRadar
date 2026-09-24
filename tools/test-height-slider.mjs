@@ -122,8 +122,8 @@ console.log('\n2. temperature');
      /current=temperature_2m,apparent_temperature,dew_point_2m&temperature_unit=fahrenheit/.test(last()) && !/hourly/.test(last()), last().slice(-120));
   let d = await dock();
   ok('the slider appears with the layer', d && d.open && d.cols.length === 1 && d.cols[0].id === 'temperature', JSON.stringify(d));
-  ok('top to bottom, jet stream to ground, on the ground',
-     d && d.cols[0].notches.join(',') === '250,300,500,700,850,925,1000,sfc' && d.cols[0].active === 'sfc', JSON.stringify(d?.cols[0]));
+  ok('left to right, ground to jet stream, on the ground',
+     d && d.cols[0].notches.join(',') === 'sfc,1000,925,850,700,500,300,250' && d.cols[0].active === 'sfc', JSON.stringify(d?.cols[0]));
   asked.length = 0;
   await click('temperature', 500);
   ok('500 mb asks for that level in the hourly shape',
@@ -194,6 +194,20 @@ console.log('\n4. pressure becomes heights aloft');
 
 console.log('\n5. placement, reload, leaving');
 {
+  const slid = await p.evaluate(() => {
+    const r = document.querySelector('#lvl-dock .lvl-range[data-layer="pressure"]');
+    const box = document.getElementById('lvl-dock').getBoundingClientRect();
+    r.value = String(LVL_STEPS.pressure.indexOf(300)); r.dispatchEvent(new Event('input'));
+    const preview = r.closest('.lvl-col').querySelector('.lvl-ft').textContent, still = _omLevel.pressure;
+    r.dispatchEvent(new Event('change'));
+    return { type: r.type, wide: box.width > box.height * 0.6 || document.querySelectorAll('#lvl-dock .lvl-col').length > 2,
+             preview, still, after: _omLevel.pressure };
+  });
+  ok('each layer is a plain horizontal slider', slid.type === 'range' && slid.wide, JSON.stringify(slid));
+  ok('dragging previews the level and releasing picks it', /300 mb, ~30,000 ft/.test(slid.preview) && slid.still === 500 && slid.after === 300, JSON.stringify(slid));
+  await p.waitForTimeout(600);
+  await p.evaluate(() => _lvlSet('pressure', 500));
+  await p.waitForTimeout(600);
   const box = await p.evaluate(() => {
     const a = document.getElementById('lvl-dock').getBoundingClientRect();
     const r = document.getElementById('sub-bubbles').getBoundingClientRect();
