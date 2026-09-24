@@ -757,34 +757,32 @@ body {
 }
 :root[data-glass] #lvl-dock { backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4); }
 #lvl-dock.open { display: flex; }
-/* One row per layer: a name and reading on top, a plain horizontal slider,
-   and the level names under it (each one a tap target too). Ground or sea
-   surface is on the left; higher up (or deeper) is to the right. */
-#lvl-dock { flex-direction: column; width: 230px; padding: 8px 10px 7px; gap: 9px; }
-#lvl-dock .lvl-col { display: flex; flex-direction: column; gap: 3px; }
-#lvl-dock .lvl-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
-#lvl-dock .lvl-title { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--accent); }
-#lvl-dock .lvl-ft { font-size: 9px; opacity: .8; white-space: nowrap; }
+/* No box and no names, by request: just a bare slider per layer floating
+   on the map, and one small label riding above the dot that says the
+   height it is on. Ground or sea surface is on the left; higher up (or
+   deeper) is to the right. A text shadow keeps it readable over any map. */
+#lvl-dock, :root[data-glass] #lvl-dock {
+  flex-direction: column; width: 200px; padding: 0; gap: 6px;
+  background: none; border: 0; box-shadow: none; border-radius: 0;
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+#lvl-dock .lvl-col { position: relative; padding-top: 14px; }
+#lvl-dock .lvl-ft {
+  position: absolute; top: 0; font-size: 10px; font-weight: 700; line-height: 1; white-space: nowrap;
+  color: #fff; text-shadow: 0 1px 2px #000, 0 0 4px #000; pointer-events: none;
+}
 #lvl-dock .lvl-range {
-  -webkit-appearance: none; appearance: none; width: 100%; height: 16px; margin: 0;
+  -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 16px; margin: 0;
   background: transparent; cursor: pointer;
 }
-#lvl-dock .lvl-range::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.22); }
-#lvl-dock .lvl-range::-moz-range-track { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.22); }
+#lvl-dock .lvl-range::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.55); box-shadow: 0 0 3px rgba(0,0,0,0.8); }
+#lvl-dock .lvl-range::-moz-range-track { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.55); box-shadow: 0 0 3px rgba(0,0,0,0.8); }
 #lvl-dock .lvl-range::-webkit-slider-thumb {
   -webkit-appearance: none; width: 12px; height: 12px; margin-top: -4px; border-radius: 50%;
   background: var(--accent); border: 2px solid #000; box-shadow: 0 0 0 1px var(--accent);
 }
 #lvl-dock .lvl-range::-moz-range-thumb { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 2px solid #000; }
-#lvl-dock .lvl-ticks { position: relative; height: 12px; }
-#lvl-dock .lvl-notch {
-  position: absolute; top: 0; transform: translateX(-50%); font: inherit; font-size: 8px; line-height: 1;
-  padding: 1px 2px; border: 0; background: none; color: rgba(255,255,255,0.6); cursor: pointer; white-space: nowrap;
-}
-#lvl-dock .lvl-notch:hover { color: #fff; }
-#lvl-dock .lvl-notch.active { color: var(--accent); font-weight: 700; }
-#lvl-dock .lvl-col.locked .lvl-range, #lvl-dock .lvl-col.locked .lvl-notch { opacity: .35; cursor: not-allowed; }
-#lvl-dock .lvl-col.locked .lvl-notch.active { opacity: 1; }
+#lvl-dock .lvl-col.locked .lvl-range { opacity: .45; cursor: not-allowed; }
 body.shot-mode #lvl-dock, body.ss-live #lvl-dock { display: none !important; }
 @media (max-width: 640px) { #lvl-dock { top: auto; bottom: calc(var(--menu-clearance, 120px) + 8px); } }
 #zoom-controls {
@@ -29831,6 +29829,9 @@ function _lvlIsoLoad(v) {
 }
 const LVL_HEIGHT = { sfc: 'ground', '80m': '260 ft', 1000: '~360 ft', 925: '~2,500 ft', 850: '~5,000 ft',
   700: '~10,000 ft', 500: '~18,000 ft', 300: '~30,000 ft', 250: '~34,000 ft' };
+// Roughly how high each level sits, in km (the standard atmosphere), for
+// Layer 3D, which floats a layer read aloft as a sheet at this height.
+const LVL_KM = { '80m': 0.08, 1000: 0.11, 925: 0.76, 850: 1.46, 700: 3.01, 500: 5.57, 300: 9.16, 250: 10.36 };
 let _omLevel = { temperature: 'sfc', wind: 'sfc', pressure: 'sfc', ocean: 0, isotherm: 0 };
 (function _lvlRestore() {
   try {
@@ -29859,6 +29860,13 @@ function _lvlNotch(l, layer) {
 function _lvlReadout(l, layer) {
   if (layer === 'ocean' || layer === 'isotherm') return _lvlHeight(l, layer);
   return l === 'sfc' ? 'Surface' : `${_lvlNotch(l, layer)}${_lvlIsPl(l) ? ' mb' : ''}, ${_lvlHeight(l, layer)}`;
+}
+// The label rides above the dot. The dot's centre runs from 6px to the
+// width minus 6px; sliding the label's own anchor from its left edge to its
+// right edge along the way keeps it on screen at both ends.
+function _lvlLabelPos(i, n) {
+  const f = n > 1 ? i / (n - 1) : 0;
+  return `left:calc(6px + (100% - 12px) * ${f});transform:translateX(${-f * 100}%)`;
 }
 function _lvlIsPl(l) { return typeof l === 'number'; }
 // The level a layer is really reading. Feels Like only exists at the ground
@@ -29893,6 +29901,30 @@ const LVL_LAYERS = [
     load: () => _sstEnable('hycom', 't' + _omLevel.ocean) },
   { id: 'isotherm', title: 'Isotherm', on: () => _lvlIsoOn() !== null, load: () => _lvlIsoLoad(_omLevel.isotherm) },
 ];
+// Every level already fetched is kept for ten minutes, so stepping back to
+// one is instant, and a level being fetched is shared by whoever asks next
+// (the slider's early start while dragging, then the real load on release).
+const LVL_CACHE_MS = 10 * 60 * 1000;
+const _lvlGrids = new Map(), _lvlInflight = new Map();
+function _lvlFetchOnce(key, make, fresh) {
+  if (fresh) _lvlGrids.delete(key);
+  const hit = _lvlGrids.get(key);
+  if (hit && Date.now() - hit.t < LVL_CACHE_MS) return Promise.resolve(hit.data);
+  if (_lvlInflight.has(key)) return _lvlInflight.get(key);
+  const pr = make().then(d => { _lvlGrids.set(key, { t: Date.now(), data: d }); return d; })
+    .finally(() => _lvlInflight.delete(key));
+  _lvlInflight.set(key, pr);
+  return pr;
+}
+function _lvlCached(key) { const h = _lvlGrids.get(key); return !!(h && Date.now() - h.t < LVL_CACHE_MS); }
+// Starts a level downloading without drawing it, while the dot rests on it.
+function _lvlPrefetch(layer, v) {
+  try {
+    if (layer === 'temperature' && temperatureActive && !_lvlLocked(layer)) _temperatureGridsFor(v).catch(() => {});
+    else if (layer === 'pressure' && pressureActive && !_lvlLocked(layer)) _pressureGridsFor(v).catch(() => {});
+    else if (layer === 'wind' && windActive && !_lvlLocked(layer)) _windGridsFor(_windProduct, v).catch(() => {});
+  } catch (e) {}
+}
 let _lvlSig = '';
 function _lvlSignature() {
   return LVL_LAYERS.map(l => l.on() ? l.id + ':' + _lvlFor(l.id) + (_lvlLocked(l.id) ? '!' : '') : '').join('|');
@@ -29916,33 +29948,24 @@ function _lvlRender(force) {
   dock.innerHTML = on.map(l => {
     const cur = _lvlFor(l.id), locked = _lvlLocked(l.id);
     // Left to right: ground (or the sea surface) first, then up (or down).
-    const steps = LVL_STEPS[l.id], n = steps.length, at = Math.max(0, steps.indexOf(cur));
-    // Each name sits under its stop on the track. The thumb is 12px wide, so
-    // its centre runs from 6px to the width minus 6px.
-    const ticks = steps.map((v, i) =>
-      `<button type="button" class="lvl-notch${v === cur ? ' active' : ''}" data-layer="${l.id}" data-lvl="${v}"`
-      + ` style="left:calc(6px + (100% - 12px) * ${n > 1 ? i / (n - 1) : 0})"`
-      + ` title="${_lvlName(v, l.id)} (${_lvlHeight(v, l.id)})">${_lvlNotch(v, l.id)}</button>`).join('');
-    const why = locked ? (l.id === 'wind' ? 'Jet Stream is 250 mb' : l.id === 'pressure' ? 'Surface only' : 'Ground only')
+    const steps = LVL_STEPS[l.id], at = Math.max(0, steps.indexOf(cur));
+    const text = locked ? (l.id === 'wind' ? 'Jet Stream is 250 mb' : l.id === 'pressure' ? 'Surface only' : 'Ground only')
       : _lvlReadout(cur, l.id);
-    return `<div class="lvl-col${locked ? ' locked' : ''}" data-layer="${l.id}">`
-      + `<div class="lvl-head"><span class="lvl-title">${l.title}</span><span class="lvl-ft">${why}</span></div>`
-      + `<input type="range" class="lvl-range" data-layer="${l.id}" min="0" max="${n - 1}" step="1" value="${at}"`
-      + `${locked ? ' disabled' : ''} aria-label="${l.title} height">`
-      + `<div class="lvl-ticks">${ticks}</div></div>`;
+    return `<div class="lvl-col${locked ? ' locked' : ''}" data-layer="${l.id}" data-lvl="${cur}">`
+      + `<span class="lvl-ft" style="${_lvlLabelPos(at, steps.length)}">${text}</span>`
+      + `<input type="range" class="lvl-range" data-layer="${l.id}" min="0" max="${steps.length - 1}" step="1" value="${at}"`
+      + `${locked ? ' disabled' : ''} aria-label="${l.title} height" aria-valuetext="${text}"></div>`;
   }).join('');
-  dock.querySelectorAll('.lvl-notch').forEach(b => b.onclick = () => {
-    const v = b.dataset.lvl;
-    _lvlSet(b.dataset.layer, /^-?\d+$/.test(v) ? Number(v) : v);
-  });
-  // Dragging only previews the name; the data loads once, on release, so a
+  // Dragging only moves the label; the data loads once, on release, so a
   // quick drag across the track does not fire a download for every stop.
   dock.querySelectorAll('.lvl-range').forEach(r => {
     const steps = LVL_STEPS[r.dataset.layer];
     r.oninput = () => {
-      const v = steps[Number(r.value)], col = r.closest('.lvl-col');
-      col.querySelector('.lvl-ft').textContent = _lvlReadout(v, r.dataset.layer);
-      col.querySelectorAll('.lvl-notch').forEach(t => t.classList.toggle('active', t.dataset.lvl === String(v)));
+      const i = Number(r.value), v = steps[i], ft = r.closest('.lvl-col').querySelector('.lvl-ft');
+      ft.textContent = _lvlReadout(v, r.dataset.layer);
+      ft.style.cssText = _lvlLabelPos(i, steps.length);
+      clearTimeout(r._pre);
+      r._pre = setTimeout(() => _lvlPrefetch(r.dataset.layer, v), 150);
     };
     r.onchange = () => _lvlSet(r.dataset.layer, steps[Number(r.value)]);
   });
@@ -30065,7 +30088,6 @@ function toggleTemperatureSub() {
 }
 
 let _temperatureAllGrids = null; // {cols, rows, grids: {temperature_2m:[...], ...}} - every product's data, one fetch
-let _temperatureFetchPromise = null; // collapses overlapping fetches from rapid clicking into one in-flight request
 
 // Same fixed-domain approach as Waves/Air - renders once over WORLD_MAP_BOUNDS,
 // panning/zooming doesn't re-trigger this. All 3 Temperature products are
@@ -30084,25 +30106,7 @@ async function _loadTemperatureLayer(forceRefresh) {
   }
 
   try {
-    if (!_temperatureFetchPromise || _temperatureFetchPromise.level !== lvl) {
-      const pts = _sampleGrid(TEMPERATURE_COLS, TEMPERATURE_ROWS, WORLD_MAP_BOUNDS);
-      const pl = _lvlIsPl(lvl);
-      const fields = pl ? [`temperature_${lvl}hPa`, `dew_point_${lvl}hPa`] : Object.values(TEMPERATURE_FIELD);
-      const pr = _fetchGridChunked(pts, chunk => {
-        const latStr = chunk.map(p => p.lat.toFixed(3)).join(',');
-        const lngStr = chunk.map(p => p.lng.toFixed(3)).join(',');
-        return `https://api.open-meteo.com/v1/forecast?latitude=${latStr}&longitude=${lngStr}` +
-          (pl ? `&hourly=${fields.join(',')}&forecast_days=1` : `&current=${fields.join(',')}`) + `&temperature_unit=fahrenheit`;
-      }, fields).then(g => {
-        // A level's fields are stored under the ground names, so the painter
-        // and the Inspector read them the same way.
-        if (pl) return { temperature_2m: g[fields[0]], dew_point_2m: g[fields[1]] };
-        return g;
-      }).finally(() => { if (_temperatureFetchPromise === pr) _temperatureFetchPromise = null; });
-      pr.level = lvl;
-      _temperatureFetchPromise = pr;
-    }
-    const grids = await _temperatureFetchPromise;
+    const grids = await _temperatureGridsFor(lvl, forceRefresh);
     if (token !== _temperatureLoadToken) return; // a newer request/toggle already superseded this one
     _temperatureAllGrids = { cols: TEMPERATURE_COLS, rows: TEMPERATURE_ROWS, grids, level: lvl };
     _paintAndShowTemperature(_temperatureAllGrids, token);
@@ -30112,6 +30116,26 @@ async function _loadTemperatureLayer(forceRefresh) {
   }
 }
 
+// One level's temperature and dew point for the whole world, fetched once
+// and shared (see _lvlFetchOnce).
+function _temperatureGridsFor(lvl, fresh) {
+  return _lvlFetchOnce('temperature|' + lvl, () => {
+    const pts = _sampleGrid(TEMPERATURE_COLS, TEMPERATURE_ROWS, WORLD_MAP_BOUNDS);
+    const pl = _lvlIsPl(lvl);
+    const fields = pl ? [`temperature_${lvl}hPa`, `dew_point_${lvl}hPa`] : Object.values(TEMPERATURE_FIELD);
+    return _fetchGridChunked(pts, chunk => {
+      const latStr = chunk.map(p => p.lat.toFixed(3)).join(',');
+      const lngStr = chunk.map(p => p.lng.toFixed(3)).join(',');
+      return `https://api.open-meteo.com/v1/forecast?latitude=${latStr}&longitude=${lngStr}` +
+        (pl ? `&hourly=${fields.join(',')}&forecast_days=1` : `&current=${fields.join(',')}`) + `&temperature_unit=fahrenheit`;
+    }, fields).then(g => {
+      // A level's fields are stored under the ground names, so the painter
+      // and the Inspector read them the same way.
+      if (pl) return { temperature_2m: g[fields[0]], dew_point_2m: g[fields[1]] };
+      return g;
+    });
+  }, fresh);
+}
 function _paintAndShowTemperature(allGrids, token) {
   const field = TEMPERATURE_FIELD[_temperatureProduct] || 'temperature_2m';
   const grid = allGrids.grids[field] || allGrids.grids.temperature_2m;
@@ -30198,7 +30222,6 @@ function togglePressureSub() {
 }
 
 let _pressureAllGrids = null; // {cols, rows, grids: {pressure_msl:[...], surface_pressure:[...]}} - every product's data, one fetch
-let _pressureFetchPromise = null; // collapses overlapping fetches from rapid clicking into one in-flight request
 
 async function _loadPressureLayer(forceRefresh) {
   if (!pressureActive) return;
@@ -30213,21 +30236,7 @@ async function _loadPressureLayer(forceRefresh) {
   }
 
   try {
-    if (!_pressureFetchPromise || _pressureFetchPromise.level !== lvl) {
-      const pts = _sampleGrid(PRESSURE_COLS, PRESSURE_ROWS, WORLD_MAP_BOUNDS);
-      const pl = _lvlIsPl(lvl);
-      const fields = pl ? [`geopotential_height_${lvl}hPa`] : Object.values(PRESSURE_FIELD);
-      const pr = _fetchGridChunked(pts, chunk => {
-        const latStr = chunk.map(p => p.lat.toFixed(3)).join(',');
-        const lngStr = chunk.map(p => p.lng.toFixed(3)).join(',');
-        return `https://api.open-meteo.com/v1/forecast?latitude=${latStr}&longitude=${lngStr}` +
-          (pl ? `&hourly=${fields.join(',')}&forecast_days=1` : `&current=${fields.join(',')}`);
-      }, fields).then(g => pl ? { pressure_msl: g[fields[0]] } : g)
-        .finally(() => { if (_pressureFetchPromise === pr) _pressureFetchPromise = null; });
-      pr.level = lvl;
-      _pressureFetchPromise = pr;
-    }
-    const grids = await _pressureFetchPromise;
+    const grids = await _pressureGridsFor(lvl, forceRefresh);
     if (token !== _pressureLoadToken) return; // a newer request/toggle already superseded this one
     _pressureAllGrids = { cols: PRESSURE_COLS, rows: PRESSURE_ROWS, grids, level: lvl };
     _paintAndShowPressure(_pressureAllGrids, token);
@@ -30237,6 +30246,19 @@ async function _loadPressureLayer(forceRefresh) {
   }
 }
 
+function _pressureGridsFor(lvl, fresh) {
+  return _lvlFetchOnce('pressure|' + lvl, () => {
+    const pts = _sampleGrid(PRESSURE_COLS, PRESSURE_ROWS, WORLD_MAP_BOUNDS);
+    const pl = _lvlIsPl(lvl);
+    const fields = pl ? [`geopotential_height_${lvl}hPa`] : Object.values(PRESSURE_FIELD);
+    return _fetchGridChunked(pts, chunk => {
+      const latStr = chunk.map(p => p.lat.toFixed(3)).join(',');
+      const lngStr = chunk.map(p => p.lng.toFixed(3)).join(',');
+      return `https://api.open-meteo.com/v1/forecast?latitude=${latStr}&longitude=${lngStr}` +
+        (pl ? `&hourly=${fields.join(',')}&forecast_days=1` : `&current=${fields.join(',')}`);
+    }, fields).then(g => pl ? { pressure_msl: g[fields[0]] } : g);
+  }, fresh);
+}
 function _paintAndShowPressure(allGrids, token) {
   const field = PRESSURE_FIELD[_pressureProduct] || 'pressure_msl';
   const grid = allGrids.grids[field] || allGrids.grids.pressure_msl;
@@ -30481,26 +30503,25 @@ function _hourlyNowIndex(loc) {
 // Surface wind is available from the cheap `current` endpoint; the 250hPa jet
 // product is a pressure-level variable, which `current` does not carry, so it
 // has to come from the hourly series.
-function _windUsesCurrent(product) { return product !== 'wind-jet' && !_lvlIsPl(_lvlFor('wind')); }
+function _windUsesCurrent(product, lvl = _lvlFor('wind')) { return product !== 'wind-jet' && !_lvlIsPl(lvl); }
 // The speed and direction fields for the level the slider is on.
-function _windFieldsNow() {
-  const lvl = _lvlFor('wind');
+function _windFieldsNow(lvl = _lvlFor('wind')) {
   if (_windProduct === 'wind-jet' || lvl === 'sfc') return WIND_FIELDS[_windProduct];
   if (lvl === '80m') return { speed: 'wind_speed_80m', dir: 'wind_direction_80m' };
   return { speed: `wind_speed_${lvl}hPa`, dir: `wind_direction_${lvl}hPa` };
 }
 function _windCacheKey() { return _windProduct + '@' + _lvlFor('wind'); }
 
-function _windQuery(fields, product) {
-  return _windUsesCurrent(product)
+function _windQuery(fields, product, lvl) {
+  return _windUsesCurrent(product, lvl)
     ? `&current=${fields.speed},${fields.dir}&wind_speed_unit=mph`
     : `&hourly=${fields.speed},${fields.dir}&forecast_days=1&wind_speed_unit=mph`;
 }
 
 // Returns [speed, direction] for one location response, from whichever of the
 // two shapes the query asked for.
-function _windReadPoint(loc, fields, product) {
-  if (_windUsesCurrent(product)) return [loc?.current?.[fields.speed], loc?.current?.[fields.dir]];
+function _windReadPoint(loc, fields, product, lvl) {
+  if (_windUsesCurrent(product, lvl)) return [loc?.current?.[fields.speed], loc?.current?.[fields.dir]];
   const k = _hourlyNowIndex(loc);
   return [loc?.hourly?.[fields.speed]?.[k], loc?.hourly?.[fields.dir]?.[k]];
 }
@@ -30565,26 +30586,9 @@ async function _loadWindLayer(forceRefresh) {
   }
 
   try {
-    const fields = _windFieldsNow();
     const key = _windCacheKey();
-    const pts = _sampleGrid(WIND_COLS, WIND_ROWS, WORLD_MAP_BOUNDS);
-    const locations = await _fetchGridChunkedRaw(pts, chunk => {
-      const latStr = chunk.map(p => p.lat.toFixed(3)).join(',');
-      const lngStr = chunk.map(p => p.lng.toFixed(3)).join(',');
-      return `https://api.open-meteo.com/v1/forecast?latitude=${latStr}&longitude=${lngStr}` +
-        _windQuery(fields, _windProduct);
-    }, 300);
+    const { grid, dirGrid } = await _windGridsFor(_windProduct, _lvlFor('wind'), forceRefresh);
     if (token !== _windLoadToken) return;
-
-    const grid = new Array(pts.length).fill(null);
-    const dirGrid = new Array(pts.length).fill(null);
-    locations.forEach((loc, i) => {
-      const [s, d] = _windReadPoint(loc, fields, _windProduct);
-      if (s == null || !isFinite(s)) return;
-      grid[i] = s;
-      if (d != null && isFinite(d)) dirGrid[i] = d;
-    });
-    if (!grid.some(v => v != null)) throw new Error('no wind data in response');
     _windGridCache = { grid, dirGrid, cols: WIND_COLS, rows: WIND_ROWS };
     _windFetchedProduct = key;
     _paintAndShowWind(token);
@@ -30594,6 +30598,30 @@ async function _loadWindLayer(forceRefresh) {
   }
 }
 
+function _windGridsFor(product, lvl, fresh) {
+  // The Jet Stream is always 250 mb, whatever the slider says.
+  if (product === 'wind-jet') lvl = 250;
+  return _lvlFetchOnce('wind|' + product + '@' + lvl, async () => {
+    const fields = product === 'wind-jet' || lvl === 'sfc' ? WIND_FIELDS[product] : _windFieldsNow(lvl);
+    const pts = _sampleGrid(WIND_COLS, WIND_ROWS, WORLD_MAP_BOUNDS);
+    const locations = await _fetchGridChunkedRaw(pts, chunk => {
+      const latStr = chunk.map(p => p.lat.toFixed(3)).join(',');
+      const lngStr = chunk.map(p => p.lng.toFixed(3)).join(',');
+      return `https://api.open-meteo.com/v1/forecast?latitude=${latStr}&longitude=${lngStr}` +
+        _windQuery(fields, product, lvl);
+    }, 300);
+    const grid = new Array(pts.length).fill(null);
+    const dirGrid = new Array(pts.length).fill(null);
+    locations.forEach((loc, i) => {
+      const [sp, d] = _windReadPoint(loc, fields, product, lvl);
+      if (sp == null || !isFinite(sp)) return;
+      grid[i] = sp;
+      if (d != null && isFinite(d)) dirGrid[i] = d;
+    });
+    if (!grid.some(v => v != null)) throw new Error('no wind data in response');
+    return { grid, dirGrid };
+  }, fresh);
+}
 function _paintAndShowWind(token) {
   const layer = _paintInterpolatedOverlay(_windGridCache.grid, WIND_COLS, WIND_ROWS, WORLD_MAP_BOUNDS, false, _windColorFor, _windLayerOpacity, _bubblePane('wind'));
   if (token !== _windLoadToken) return;
@@ -71902,6 +71930,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-s', date: 'Sep 24, 2026',
+    text: "The height slider is now just a bare slider floating under the left menu: no box and no names, only a small label riding on the dot that says the height it is on. It is quicker too: every height you have looked at is kept for ten minutes so going back is instant, and resting the dot on a new height starts downloading it before you even let go. In Layer 3D, Temperature, Wind and Pressure read up high now float as a sheet at that height over the ground (mountains taller than the level poke through), and Ocean Depth puts the water's colours at that depth under the sea." },
   { id: '2026-09-24-r', date: 'Sep 24, 2026',
     text: "The height slider is now a simple horizontal slider: one row per layer (Temp, Wind, Heights, Ocean Depth, Isotherm) with the ground or sea surface on the left and higher up (or deeper) to the right. Drag it and the reading shows the level as you go; let go and the layer loads that level. You can also tap a level name under the track to jump straight to it." },
   { id: '2026-09-24-q', date: 'Sep 24, 2026',
@@ -88686,7 +88716,23 @@ class Layer3DPanel {
     return out;
   }
   lowKm() { return this.ground ? Math.min(0, this.spec.ocean ? this.ground.minM : 0) / 1000 : 0; }
-  highKm() { return this.ground ? Math.max(0.05, this.ground.maxM) / 1000 : 1; }
+  highKm() { return Math.max(this.ground ? Math.max(0.05, this.ground.maxM) / 1000 : 1, this.airKm() || 0); }
+  // Temperature, Wind and Pressure read at a height on the height slider
+  // float in 3D as a sheet at that height over the bare ground, instead of
+  // being painted on the ground as if they were measured there.
+  airLevel() {
+    const id = this.spec.id;
+    if (!/^(temperature|wind|pressure)$/.test(id) || typeof _lvlFor !== 'function') return null;
+    const l = _lvlFor(id);
+    return LVL_KM[l] != null && l !== 'sfc' ? l : null;
+  }
+  airKm() { const l = this.airLevel(); return l == null ? 0 : LVL_KM[l]; }
+  // Re-aims the automatic stretch so the ground and the sheet both fit.
+  fitExag() {
+    const relief = (this.highKm() - this.lowKm());
+    this.exagAuto = Math.max(1, Math.min(L3D_EXAG_AUTO_MAX, this.span() * 0.15 / Math.max(0.02, relief)));
+    this.syncExag();
+  }
 
   build() {
     const p = document.createElement('div');
@@ -88774,9 +88820,8 @@ class Layer3DPanel {
       g = { m: new Float32Array(n), minM: 0, maxM: 0, server: false, flat: true, missing: 0, tiles: 0, src: '' };
     }
     this.ground = g; this._fk = null;
-    const relief = (this.highKm() - this.lowKm());
-    this.exagAuto = Math.max(1, Math.min(L3D_EXAG_AUTO_MAX, this.span() * 0.15 / Math.max(0.02, relief)));
-    this.syncExag();
+    this._airKey = String(this.airLevel()) + (this.spec.id === 'ocean' && typeof _lvlFor === 'function' ? '|' + _lvlFor('ocean') : '');
+    this.fitExag();
     this.sayWhere();
     this.sayState();
     this.dirty = true;
@@ -88785,6 +88830,10 @@ class Layer3DPanel {
   // so a still layer costs one read and nothing more.
   resample(force) {
     if (!this.on || !this.zone) return;
+    const ak = String(this.airLevel()) + (this.spec.id === 'ocean' && typeof _lvlFor === 'function' ? '|' + _lvlFor('ocean') : '');
+    if (this.ground && ak !== this._airKey) {
+      this._airKey = ak; this.colours = null; this.fitExag(); this.sayWhere(); this.dirty = true; force = true;
+    }
     if (this.fast && !force) return;
     let d;
     try { d = _l3dSampleDrape(this.spec, this.zone, this.nx, this.ny); } catch (e) { return; }
@@ -88829,6 +88878,8 @@ class Layer3DPanel {
     if (!on) { this.say('turn ' + this.spec.label + ' on to drape it · ' + src, 'bad'); return; }
     if (this.tainted && !this.painted) { this.say('this layer’s pictures cannot be read here · ' + src, 'bad'); return; }
     if (this.visible < 0.5) { this.say('move the map back over the box to follow playback · ' + src); return; }
+    const al = this.airLevel();
+    if (al != null) { this.say(this.spec.label + ' at ' + _lvlName(al, this.spec.id) + ' (' + _lvlHeight(al, this.spec.id) + '), floating at that height · ' + src); return; }
     this.say(this.spec.label + ' draped · ' + src);
   }
 
@@ -88836,10 +88887,12 @@ class Layer3DPanel {
   // by its own opacity. For an ocean layer with Water on, the seafloor keeps
   // its relief colours and the layer rides on the sea's surface instead.
   cellColours() {
-    const ck = [this.water, this.drapeKey, this.aboveM, this.uptoM, this.drapeAlpha].join('|');
+    const air = this.airLevel() != null;
+    const ck = [this.water, this.drapeKey, this.aboveM, this.uptoM, this.drapeAlpha, air].join('|');
     if (this.colours && this.coloursKey === ck) return this.colours;
     const g = this.ground, n = this.nx * this.ny;
     const floor = new Uint8Array(n * 3), sea = new Uint8Array(n * 3), seaA = new Float32Array(n);
+    const sky = air ? new Uint8Array(n * 3) : null, skyA = air ? new Float32Array(n) : null;
     const dr = this.drape;
     let anySea = false;
     for (let k = 0; k < n; k++) {
@@ -88850,7 +88903,12 @@ class Layer3DPanel {
       const inBand = m >= this.aboveM && m <= this.uptoM;
       const a = dr && inBand ? dr[k * 4 + 3] / 255 * this.drapeAlpha : 0;
       const lr = dr ? dr[k * 4] : 0, lg = dr ? dr[k * 4 + 1] : 0, lb = dr ? dr[k * 4 + 2] : 0;
-      if (this.spec.ocean && this.water && isSea) {
+      if (air) {
+        // Bare ground below, the layer up on its sheet.
+        floor[k * 3] = base[0]; floor[k * 3 + 1] = base[1]; floor[k * 3 + 2] = base[2];
+        sky[k * 3] = lr; sky[k * 3 + 1] = lg; sky[k * 3 + 2] = lb;
+        skyA[k] = dr ? dr[k * 4 + 3] / 255 * this.drapeAlpha * 0.9 : 0;
+      } else if (this.spec.ocean && this.water && isSea) {
         floor[k * 3] = base[0]; floor[k * 3 + 1] = base[1]; floor[k * 3 + 2] = base[2];
         sea[k * 3] = a ? lr : 60; sea[k * 3 + 1] = a ? lg : 140; sea[k * 3 + 2] = a ? lb : 200;
         seaA[k] = 0.35 + 0.4 * a;
@@ -88861,7 +88919,7 @@ class Layer3DPanel {
         floor[k * 3 + 2] = base[2] * (1 - a) + lb * a;
       }
     }
-    this.colours = { floor, sea, seaA, anySea };
+    this.colours = { floor, sea, seaA, anySea, sky, skyA };
     this.coloursKey = ck;
     return this.colours;
   }
@@ -88956,11 +89014,33 @@ class Layer3DPanel {
       if (g && zone && fk) {
         const col = this.cellColours();
         const water = this.spec.ocean && this.water && col.anySea;
+        const sky = col.sky && this.mode !== 'height';
         const dF = { w: this.nx, h: this.ny, hm: fk, rgb: col.floor };
         const px = _s3dRaster(dF, zone, v, rw, rh, exag, 1, 1,
-          { hm: fk, mode: this.mode, box, heightRgb, wantZ: water });
+          { hm: fk, mode: this.mode, box, heightRgb, wantZ: water || sky });
+        if (sky) {
+          const km = this.airKm();
+          if (!this._airHm || this._airHm.length !== fk.length || this._airHm[0] !== Math.fround(km)) this._airHm = new Float32Array(fk.length).fill(km);
+          const dA = { w: this.nx, h: this.ny, hm: this._airHm, rgb: col.sky };
+          const ap = _s3dRaster(dA, zone, v, rw, rh, exag, 1, 1,
+            { hm: this._airHm, mode: 'flat', box, alphaArr: col.skyA, wantZ: true });
+          // The sheet over the ground wherever the sheet is nearer the eye;
+          // a mountain taller than the level pokes up through it.
+          const fz = px.zb, az = ap.zb;
+          for (let p = 0, o = 0; p < fz.length; p++, o += 4) {
+            const aa = ap[o + 3] / 255;
+            if (aa <= 0 || !(az[p] < fz[p])) continue;
+            px[o] = px[o] * (1 - aa) + ap[o] * aa;
+            px[o + 1] = px[o + 1] * (1 - aa) + ap[o + 1] * aa;
+            px[o + 2] = px[o + 2] * (1 - aa) + ap[o + 2] * aa;
+            px[o + 3] = Math.max(px[o + 3], ap[o + 3]);
+          }
+        }
         if (water && this.mode !== 'height') {
-          if (!this._seaHm || this._seaHm.length !== fk.length) this._seaHm = new Float32Array(fk.length);
+          // Ocean Depth on the height slider: the water's colours sit at that
+          // depth inside the sea rather than on its surface.
+          const seaKm = this.spec.id === 'ocean' && typeof _lvlFor === 'function' ? -(Number(_lvlFor('ocean')) || 0) / 1000 : 0;
+          if (!this._seaHm || this._seaHm.length !== fk.length || this._seaHm[0] !== Math.fround(seaKm)) this._seaHm = new Float32Array(fk.length).fill(seaKm);
           const dW = { w: this.nx, h: this.ny, hm: this._seaHm, rgb: col.sea };
           const wp = _s3dRaster(dW, zone, v, rw, rh, exag, 1, 1,
             { hm: this._seaHm, mode: 'flat', box, alphaArr: col.seaA, wantZ: true });

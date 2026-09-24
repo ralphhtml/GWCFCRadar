@@ -109,9 +109,7 @@ ok('the page boots clean', errs.length === 0, errs[0]);
 const dock = () => p.evaluate(() => {
   const col = document.querySelector('#lvl-dock.open .lvl-col[data-layer="ocean"]');
   if (!col) return null;
-  return { notches: [...col.querySelectorAll('.lvl-notch')].map(n => n.dataset.lvl),
-           labels: [...col.querySelectorAll('.lvl-notch')].map(n => n.textContent),
-           active: (col.querySelector('.lvl-notch.active') || {}).dataset?.lvl,
+  return { notches: LVL_STEPS.ocean.map(String), active: col.dataset.lvl,
            ft: col.querySelector('.lvl-ft').textContent };
 });
 
@@ -121,8 +119,8 @@ console.log('\n2. turning it on');
   await p.waitForTimeout(900);
   const d = await dock();
   ok('an Ocean column appears on the slider', !!d, JSON.stringify(d));
-  ok('surface at the top, 1,000 m at the bottom',
-     d && d.notches.join(',') === '0,50,100,200,300,500,1000' && d.labels[0] === 'Sfc' && d.labels[6] === '1000 m', JSON.stringify(d));
+  ok('surface on the left, 1,000 m on the right',
+     d && d.notches.join(',') === '0,50,100,200,300,500,1000', JSON.stringify(d));
   ok('starting at the surface', d && d.active === '0' && /sea surface/.test(d.ft), JSON.stringify(d));
   ok('the surface picture was fetched', asked.some(u => /hycom\/t0\/20260923\.png$/.test(u)), asked.slice(-3).join(' '));
 }
@@ -130,7 +128,8 @@ console.log('\n2. turning it on');
 console.log('\n3. stepping down');
 {
   asked.length = 0;
-  await p.evaluate(() => document.querySelector('#lvl-dock .lvl-notch[data-layer="ocean"][data-lvl="500"]').click());
+  await p.evaluate(() => { const r = document.querySelector('#lvl-dock .lvl-range[data-layer="ocean"]');
+    r.value = String(LVL_STEPS.ocean.indexOf(500)); r.dispatchEvent(new Event('change')); });
   await p.waitForTimeout(1200);
   const r = await p.evaluate(() => {
     const vals = Array.from(_sstGrid.vals).filter(v => isFinite(v));
@@ -148,7 +147,7 @@ console.log('\n3. stepping down');
      r.row.value === f && /F/.test(r.row.unit), JSON.stringify(r.row));
   ok('the depth is remembered', r.saved === 500, r.saved);
   const d = await dock();
-  ok('the notch moved and says how deep', d.active === '500' && /1,641 ft down/.test(d.ft), JSON.stringify(d));
+  ok('the dot moved and its label says how deep', d.active === '500' && /1,641 ft down/.test(d.ft), JSON.stringify(d));
 }
 
 console.log('\n4. and away');
