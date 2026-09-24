@@ -11572,12 +11572,6 @@ body.clean-mode #clean-hint { opacity: 1; }
         <div class="sev-dd-wrap">
           <label class="sev-dd-label">Model</label>
           <select id="sev-model-sel" onchange="_sevSetSection(this.value)">
-            <optgroup label="Map Charts">
-              <option value="dwd">DWD ICON (Global)</option>
-              <option value="ecmwf">ECMWF IFS (Global)</option>
-              <option value="hrdps">HRDPS (Hi-Res N. America)</option>
-              <option value="hrrr">HRRR (18h)</option>
-            </optgroup>
             <!-- NDFD and RTMA moved to the NWS bubble in the left menu: they
                  are the Weather Service's analysis and official forecast, not
                  computer models. Hidden rather than deleted so the dropdown
@@ -11590,7 +11584,14 @@ body.clean-mode #clean-hint { opacity: 1; }
                  answers; adding a model on the parsing server should not need an edit
                  here, and a model the parsing server is not building should not be
                  offered. -->
-            <optgroup id="sev-pi-group" label="From the parsing server (full resolution)">
+            <!-- One list of models. DWD ICON used to sit in its own "Map
+                 Charts" group with ECMWF IFS, HRDPS and the 18 h HRRR; those
+                 three are gone (the parsing server's own HRRR, and the
+                 ECMWF and ensemble panels, cover them) and DWD joined this
+                 list. _hdFillModelPicker keeps it at the top when it
+                 rebuilds the list. -->
+            <optgroup id="sev-pi-group" label="Models">
+              <option value="dwd">DWD ICON (Global)</option>
               <option value="pi:gfs">GFS (parsing server, 0.25 deg)</option>
               <option value="pi:nam">NAM (parsing server, 12 km)</option>
               <option value="pi:hrrr">HRRR (parsing server, 3 km)</option>
@@ -20240,6 +20241,11 @@ function _hdFillModelPicker() {
   if (!names.length) return;             // keep the placeholders over an empty list
   const chosen = sel && sel.value;
   group.innerHTML = '';
+  // DWD ICON is not built by the parsing server but belongs to the same
+  // list, so it is put back first every time the list is rebuilt.
+  const dwd = document.createElement('option');
+  dwd.value = 'dwd'; dwd.textContent = 'DWD ICON (Global)';
+  group.appendChild(dwd);
   names.forEach(k => {
     const o = document.createElement('option');
     o.value = 'pi:' + k;
@@ -35094,7 +35100,11 @@ function _sevPopulateRuns() {
     if (!_sevRun) _sevRun = val;
   }
 }
+// The three map charts taken out of the model list. A saved comparison or
+// an old choice that still names one lands on DWD ICON instead.
+const SEV_RETIRED = { ecmwf: 1, hrdps: 1, hrrr: 1 };
 function _sevSetSection(s){
+  if (SEV_RETIRED[s]) s = 'dwd';
   _sevSection=s;
   const el=document.getElementById('sev-model-sel');if(el&&el.value!==s)el.value=s;
   _sevVar=SEV_DEFAULT_VAR[s]||(SEV_PRODUCTS[s]||SEV_PRODUCTS.hrrr)[0].v;
@@ -35394,7 +35404,8 @@ function _sevValidTimeISOFor(run, frame, stepHours) {
 }
 
 function _sevMakeSlot(section, varr, run, piRegion) {
-  section = section || 'ecmwf';
+  section = section || 'dwd';
+  if (SEV_RETIRED[section]) { section = 'dwd'; varr = ''; run = ''; }
   // A "pi:" slot's defaults come from the parsing server's index when the row is filled
   // in, not from the WMS product tables, so an empty var here is deliberate:
   // _sevFillPiSlotSelects replaces it with the first product the model
@@ -35807,12 +35818,11 @@ function _sevRenderSlotRows() {
         <div class="sev-dd-wrap">
           <label class="sev-dd-label">Model</label>
           <select onchange="_sevSetSlotSection('${slot.id}', this.value)">
-            <option value="dwd" ${slot.section==='dwd'?'selected':''}>DWD ICON (Global)</option>
-            <option value="ecmwf" ${slot.section==='ecmwf'?'selected':''}>ECMWF IFS (Global)</option>
-            <option value="hrdps" ${slot.section==='hrdps'?'selected':''}>HRDPS (Hi-Res N. America)</option>
             <option value="ndfd" ${slot.section==='ndfd'?'selected':''}>NWS NDFD (US Forecast)</option>
-            <option value="hrrr" ${slot.section==='hrrr'?'selected':''}>HRRR (18h)</option>
-            ${piOpts ? `<optgroup label="GWCFC parsing server Models">${piOpts}</optgroup>` : ''}
+            <optgroup label="Models">
+              <option value="dwd" ${slot.section==='dwd'?'selected':''}>DWD ICON (Global)</option>
+              ${piOpts || ''}
+            </optgroup>
           </select>
         </div>
         ${regionRow}
@@ -35919,7 +35929,7 @@ function _sevSetSlotPiRegion(id, r) {
 }
 
 function _sevAddSlot() {
-  _sevExtraSlots.push(_sevMakeSlot('ecmwf'));
+  _sevExtraSlots.push(_sevMakeSlot('dwd'));
   _sevCurrentGroup = ''; // manual edit detaches from whatever group was loaded
   _sevSyncGroupSelector();
   _sevRecalcEvenSplits();
@@ -36058,7 +36068,7 @@ function _sevToggleCompare() {
 
   if (_sevCompareOn) {
     if (!_sevExtraSlots.length) {
-      _sevExtraSlots.push(_sevMakeSlot('ecmwf'));
+      _sevExtraSlots.push(_sevMakeSlot('dwd'));
       _sevRecalcEvenSplits();
     }
     _sevSyncGroupSelector();
@@ -72340,6 +72350,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-zb', date: 'Sep 24, 2026',
+    text: "Run Models has one list of models now. ECMWF IFS, HRDPS and the 18 hour HRRR map charts are gone (the parsing server's own HRRR, the ECMWF items and the ensemble panel cover them), and DWD ICON moved into the main list with GFS, NAM, HRRR and the rest, in the comparison rows too. Panels also stay clear of the search bar: drag Run Models (or any panel) up to the top right and it stops just under the bar instead of sliding beneath it and hiding its title and close button." },
   { id: '2026-09-24-za', date: 'Sep 24, 2026',
     text: "Every satellite product has colour now. The Time Machine's old pictures (like Hurricane Andrew in 1992 on Clean IR) were coming up plain grey, because the parsing server draws its archive in grey while the live Clean IR arrives already coloured. The page now colours them as they load, with the same look as live: grey ground, then white, purple, blue, green, yellow and red as cloud tops get colder. Water vapour gets its own colours too, and the bands that were grey even live (visible, shortwave, fire temperature, CO2) and the global mosaic now have colour ramps of their own. Nothing to update on the parsing server." },
   { id: '2026-09-24-z', date: 'Sep 24, 2026',
@@ -73872,8 +73884,41 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // -- Draggable panels --
+// The search bar floats over everything at the top right, so a panel
+// dragged up there used to slide underneath it and lose its header (the Run
+// Models title and close button hid behind the bar). The lowest a panel's
+// top may go is just under the bar, but only while the two overlap side to
+// side: anywhere else along the top edge is still free.
+function _searchBarFloor(left, width) {
+  const bar = document.getElementById('top-search-bar');
+  if (!bar) return 0;
+  const cs = getComputedStyle(bar);
+  if (cs.display === 'none' || cs.visibility === 'hidden') return 0;
+  const r = bar.getBoundingClientRect();
+  if (!r.width || left >= r.right || left + width <= r.left) return 0;
+  return Math.ceil(r.bottom + 8);
+}
+// Nudge a shown panel down out from under the bar, if it is under it.
+function _clearOfSearchBar(el) {
+  if (!el || !el.getBoundingClientRect) return;
+  // A centred dialog (placed with a transform) is left where it is: moving
+  // its top would not move it the way the numbers say.
+  const cs = getComputedStyle(el);
+  if (cs.position !== 'fixed' || cs.transform !== 'none') return;
+  const r = el.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  const floor = _searchBarFloor(r.left, r.width);
+  if (r.top >= floor) return;
+  el.style.setProperty('top', floor + 'px', 'important');
+  el.style.setProperty('bottom', 'auto', 'important');
+}
 function _makeDraggable(el, handle) {
   if (!el || !handle) return;
+  // Whenever the panel is shown, it starts clear of the search bar too.
+  try {
+    new MutationObserver(() => requestAnimationFrame(() => _clearOfSearchBar(el)))
+      .observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
+  } catch (e) {}
   let active = false, ox = 0, oy = 0;
   handle.style.cursor = 'grab';
 
@@ -73910,7 +73955,7 @@ function _makeDraggable(el, handle) {
     const cx = e.touches ? e.touches[0].clientX : e.clientX;
     const cy = e.touches ? e.touches[0].clientY : e.clientY;
     const x = Math.max(0, Math.min(window.innerWidth  - el.offsetWidth,  cx - ox));
-    const y = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, cy - oy));
+    const y = Math.max(_searchBarFloor(x, el.offsetWidth), Math.min(window.innerHeight - el.offsetHeight, cy - oy));
     _set('left', x + 'px');
     _set('top',  y + 'px');
     e.preventDefault();
