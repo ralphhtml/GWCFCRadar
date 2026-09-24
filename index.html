@@ -3949,7 +3949,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
    default is a compact draggable card in the corner, with the skew-T at a
    readable size and the numbers that matter under it, and a button to expand
    it when a proper look is wanted. */
-#snd-panel, #mtg-panel {
+#snd-panel, #mtg-panel, #ensx-panel {
   /* -- The panel's palette IS the radar's palette --------------------------
      Every colour below is lifted straight out of the NWS reflectivity table
      this app already paints radar with (NWS_DBZ_META, further down the file),
@@ -3996,24 +3996,24 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   max-height: calc(100vh - 160px);
   overflow: hidden auto;
 }
-#snd-panel.open, #mtg-panel.open { display: block; animation: sndIn 0.22s cubic-bezier(.2,.9,.3,1); }
+#snd-panel.open, #mtg-panel.open, #ensx-panel.open { display: block; animation: sndIn 0.22s cubic-bezier(.2,.9,.3,1); }
 @keyframes sndIn {
   from { opacity: 0; transform: translateY(10px) scale(0.985); }
   to   { opacity: 1; transform: none; }
 }
 /* An expanded panel is centred, and centring is a transform, so the opening
    animation must not fight it by animating transform too. */
-#snd-panel.big.open, #mtg-panel.big.open { animation: sndFade 0.2s ease; }
+#snd-panel.big.open, #mtg-panel.big.open, #ensx-panel.big.open { animation: sndFade 0.2s ease; }
 @keyframes sndFade { from { opacity: 0; } to { opacity: 1; } }
 
 /* Expanded: still a panel, just a big one, so the map is never fully gone. */
-#snd-panel.big, #mtg-panel.big {
+#snd-panel.big, #mtg-panel.big, #ensx-panel.big {
   right: 50%; bottom: 50%; transform: translate(50%, 50%);
   width: min(1140px, calc(100vw - 32px));
   max-height: calc(100vh - 32px); overflow: auto;
 }
-#snd-panel::-webkit-scrollbar, #mtg-panel::-webkit-scrollbar { width: 10px; }
-#snd-panel::-webkit-scrollbar-thumb, #mtg-panel::-webkit-scrollbar-thumb {
+#snd-panel::-webkit-scrollbar, #mtg-panel::-webkit-scrollbar, #ensx-panel::-webkit-scrollbar { width: 10px; }
+#snd-panel::-webkit-scrollbar-thumb, #mtg-panel::-webkit-scrollbar-thumb, #ensx-panel::-webkit-scrollbar-thumb {
   background: rgba(253,0,0,0.34); border-radius: 8px;
   border: 3px solid transparent; background-clip: padding-box;
 }
@@ -4050,20 +4050,20 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
 .snd-head-spacer { order: 5; flex: 1 1 100%; height: 0; }
 .snd-src { order: 6; }
 .snd-hour-wrap { order: 7; display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
-#snd-panel.big .snd-head, #mtg-panel.big .snd-head { flex-wrap: nowrap; }
-#snd-panel.big .snd-title, #mtg-panel.big .snd-title,
-#snd-panel.big .snd-where, #mtg-panel.big .snd-where { order: 0; margin-right: 0; }
-#snd-panel.big .snd-head-spacer, #mtg-panel.big .snd-head-spacer { order: 0; flex: 1 1 auto; height: auto; }
-#snd-panel.big .snd-src, #mtg-panel.big .snd-src,
-#snd-panel.big .snd-hour-wrap, #mtg-panel.big .snd-hour-wrap { order: 0; flex: 0 0 auto; }
-#snd-panel.big .snd-big, #mtg-panel.big .snd-big { order: 0; }
-#snd-panel.big .snd-x, #mtg-panel.big .snd-x { order: 0; }
+#snd-panel.big .snd-head, #mtg-panel.big .snd-head, #ensx-panel.big .snd-head { flex-wrap: nowrap; }
+#snd-panel.big .snd-title, #mtg-panel.big .snd-title, #ensx-panel.big .snd-title,
+#snd-panel.big .snd-where, #mtg-panel.big .snd-where, #ensx-panel.big .snd-where { order: 0; margin-right: 0; }
+#snd-panel.big .snd-head-spacer, #mtg-panel.big .snd-head-spacer, #ensx-panel.big .snd-head-spacer { order: 0; flex: 1 1 auto; height: auto; }
+#snd-panel.big .snd-src, #mtg-panel.big .snd-src, #ensx-panel.big .snd-src,
+#snd-panel.big .snd-hour-wrap, #mtg-panel.big .snd-hour-wrap, #ensx-panel.big .snd-hour-wrap { order: 0; flex: 0 0 auto; }
+#snd-panel.big .snd-big, #mtg-panel.big .snd-big, #ensx-panel.big .snd-big { order: 0; }
+#snd-panel.big .snd-x, #mtg-panel.big .snd-x, #ensx-panel.big .snd-x { order: 0; }
 .snd-hour-lbl {
   font-family: var(--mono); font-size: 10px; opacity: 0.75; min-width: 40px;
   font-variant-numeric: tabular-nums;
 }
 .snd-hour { width: 100%; min-width: 60px; accent-color: var(--r-red); }
-#snd-panel.big .snd-hour, #mtg-panel.big .snd-hour { width: 190px; }
+#snd-panel.big .snd-hour, #mtg-panel.big .snd-hour, #ensx-panel.big .snd-hour { width: 190px; }
 .snd-src {
   background: rgba(253,0,0,0.08); border: 1px solid rgba(253,0,0,0.3);
   color: #e8edf5; border-radius: 8px; font-size: 10px; padding: 4px 5px;
@@ -4073,7 +4073,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   font-family: var(--sans); cursor: pointer;
 }
 .snd-src:hover { background: rgba(253,0,0,0.18); border-color: rgba(253,0,0,0.5); }
-#snd-panel.big .snd-src, #mtg-panel.big .snd-src { max-width: none; font-size: 11px; }
+#snd-panel.big .snd-src, #mtg-panel.big .snd-src, #ensx-panel.big .snd-src { max-width: none; font-size: 11px; }
 .snd-src option { background: #14090b; color: #e8edf5; }
 .snd-x, .snd-big {
   background: rgba(253,0,0,0.08); border: 1px solid rgba(253,0,0,0.3);
@@ -4165,7 +4165,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px; padding: 0 10px 10px;
 }
-#snd-panel.big .snd-hodo-read, #mtg-panel.big .snd-hodo-read { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+#snd-panel.big .snd-hodo-read, #mtg-panel.big .snd-hodo-read, #ensx-panel.big .snd-hodo-read { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .snd-hodo-read:empty { display: none; }
 .snd-hr {
   background: linear-gradient(180deg, rgba(253,0,0,0.09), rgba(253,0,0,0.02));
@@ -4195,7 +4195,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 7px; padding: 0 10px 10px;
 }
-#snd-panel.big .snd-quick, #mtg-panel.big .snd-quick { display: none; }
+#snd-panel.big .snd-quick, #mtg-panel.big .snd-quick, #ensx-panel.big .snd-quick { display: none; }
 .snd-q {
   background: linear-gradient(180deg, rgba(253,0,0,0.09), rgba(253,0,0,0.02));
   border: 1px solid rgba(253,0,0,0.18);
@@ -4238,7 +4238,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   display: grid; grid-template-columns: minmax(0, 1fr);
   gap: 10px; padding: 10px;
 }
-#snd-panel.big .snd-tables, #mtg-panel.big .snd-tables {
+#snd-panel.big .snd-tables, #mtg-panel.big .snd-tables, #ensx-panel.big .snd-tables {
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 12px; padding: 10px 12px 14px;
 }
@@ -4294,7 +4294,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
 }
 /* Stretched across 1140px the four segments read as four buttons that happen
    to touch, so the track stops growing once it is comfortably wide. */
-#snd-panel.big .snd-tabs, #mtg-panel.big .snd-tabs {
+#snd-panel.big .snd-tabs, #mtg-panel.big .snd-tabs, #ensx-panel.big .snd-tabs {
   max-width: 780px; margin: 10px 12px 0;
   grid-template-columns: repeat(8, 1fr);
 }
@@ -4304,6 +4304,35 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   color: #ffd9d5; font-weight: 700;
 }
 .snd-pane[hidden] { display: none; }
+
+/* Ensemble Explorer: the sounding panel's shell, plus its own rows. */
+#ensx-panel .ensx-row { display: flex; align-items: center; gap: 6px; padding: 6px 11px 0; flex-wrap: wrap; }
+#ensx-panel .ensx-row select, #ensx-panel .ensx-row input[type=number] {
+  background: rgba(0,0,0,0.35); color: var(--text); border: 1px solid rgba(253,0,0,0.3); border-radius: 7px;
+  padding: 3px 6px; font-size: 11px; font-family: var(--sans); max-width: 100%;
+}
+#ensx-panel .ensx-row input[type=number] { width: 70px; }
+#ensx-panel .ensx-row button {
+  background: rgba(253,0,0,0.12); color: var(--text); border: 1px solid rgba(253,0,0,0.3); border-radius: 7px;
+  padding: 3px 8px; font-size: 11px; cursor: pointer;
+}
+#ensx-panel .ensx-row input[type=range] { flex: 1 1 120px; accent-color: var(--r-red); }
+#ensx-panel .ensx-hl, #ensx-panel .ensx-unit, #ensx-panel .ensx-read { font-family: var(--mono); font-size: 10px; opacity: 0.8; }
+#ensx-panel .ensx-read { margin-left: auto; }
+#ensx-panel .snd-tabs.ensx-modes, #ensx-panel.big .snd-tabs.ensx-modes { grid-template-columns: repeat(7, 1fr); max-width: none; }
+#ensx-panel .ensx-op { font-size: 10px; display: flex; align-items: center; gap: 6px; opacity: 0.85; }
+#ensx-panel .ensx-legend { padding: 8px 11px 0; }
+#ensx-panel .ensx-lt { font-size: 10.5px; margin-bottom: 4px; opacity: 0.9; }
+#ensx-panel .ensx-bar { height: 9px; border-radius: 4px; }
+#ensx-panel .ensx-ticks { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 9px; opacity: 0.7; margin-top: 2px; }
+#ensx-panel .ensx-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; margin-right: 10px; }
+#ensx-panel .ensx-chip i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+#ensx-panel .ensx-stamps { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; padding: 8px 11px 0; max-height: 46vh; overflow: auto; }
+#ensx-panel.big .ensx-stamps { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); max-height: 70vh; }
+#ensx-panel .ensx-stamp { position: relative; padding: 0; border: 1px solid rgba(253,0,0,0.25); border-radius: 6px; background: #111; cursor: pointer; overflow: hidden; }
+#ensx-panel .ensx-stamp.on { border-color: var(--r-red); box-shadow: 0 0 0 1px var(--r-red); }
+#ensx-panel .ensx-stamp canvas { display: block; width: 100%; image-rendering: pixelated; }
+#ensx-panel .ensx-stamp span { position: absolute; left: 4px; top: 2px; font-family: var(--mono); font-size: 9px; color: #fff; text-shadow: 0 1px 2px #000; }
 /* Moved into Models > Ensemble Models. The rows stay in the page (hidden)
    because their lights and panels are still driven through them. */
 #op-ecmwf-tc, #op-low-tracks, #cyc-ens-centres-btn { display: none !important; }
@@ -4311,16 +4340,16 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
 /* Meteogram: the sounding panel's shell (the rules above name both), plus a
    chart, a hover cursor and the readout under it. */
 #mtg-chart { height: 240px; cursor: crosshair; touch-action: pan-y; }
-#mtg-panel.big #mtg-chart { height: min(62vh, 560px); }
-#mtg-panel .snd-tabs { grid-template-columns: repeat(5, 1fr); }
-#mtg-panel.big .snd-tabs { grid-template-columns: repeat(5, 1fr); max-width: 520px; }
+#mtg-panel.big #mtg-chart, #ensx-panel.big #mtg-chart { height: min(62vh, 560px); }
+#mtg-panel .snd-tabs, #ensx-panel .snd-tabs { grid-template-columns: repeat(5, 1fr); }
+#mtg-panel.big .snd-tabs, #ensx-panel.big .snd-tabs { grid-template-columns: repeat(5, 1fr); max-width: 520px; }
 .mtg-card { position: relative; }
 .mtg-cursor { position: absolute; width: 1px; background: rgba(255,255,255,0.7); pointer-events: none; display: none; }
 .mtg-read { padding: 0 12px; font-family: var(--mono); font-size: 10px; line-height: 1.55; min-height: 16px; }
 .mtg-read b { color: var(--r-red-txt); }
 .mtg-legend { padding: 4px 12px 8px; font-size: 10px; opacity: 0.65; line-height: 1.45; }
-#mtg-panel.big .mtg-read { font-size: 12px; padding: 0 16px; }
-#mtg-panel.big .mtg-legend { font-size: 11.5px; padding: 6px 16px 10px; }
+#mtg-panel.big .mtg-read, #ensx-panel.big .mtg-read { font-size: 12px; padding: 0 16px; }
+#mtg-panel.big .mtg-legend, #ensx-panel.big .mtg-legend { font-size: 11.5px; padding: 6px 16px 10px; }
 /* Always on, and no longer behind a tab. Where a number came from is not a
    footnote to go looking for: two panels that look identical can disagree by
    four hundred joules, and this line is the only thing that says which one is
@@ -4331,7 +4360,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   border-top: 1px solid rgba(253,0,0,0.12);
 }
 .snd-note:empty { display: none; }
-#snd-panel.big .snd-note, #mtg-panel.big .snd-note { padding: 8px 14px 14px; font-size: 10.5px; }
+#snd-panel.big .snd-note, #mtg-panel.big .snd-note, #ensx-panel.big .snd-note { padding: 8px 14px 14px; font-size: 10.5px; }
 /* A fallback is not an error, but it is not nothing either: the numbers on
    screen came from somewhere other than what was asked for, and that has to
    be readable without expanding the panel. */
@@ -4566,12 +4595,12 @@ body.lite-mode #export-modal { display: none !important; }
 }
 .snd-fix button.snd-fix-go:hover { background: rgba(var(--accent-rgb),0.3); }
 @media (max-width: 640px) {
-  #snd-panel, #mtg-panel { right: 8px; bottom: 108px; width: calc(100vw - 16px); }
+  #snd-panel, #mtg-panel, #ensx-panel { right: 8px; bottom: 108px; width: calc(100vw - 16px); }
   #snd-skewt { height: 200px; }
   .snd-quick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) {
-  #snd-panel.open, #mtg-panel.open { animation: none; }
+  #snd-panel.open, #mtg-panel.open, #ensx-panel.open { animation: none; }
   .snd-meter i { transition: none; }
 }
 
@@ -32859,6 +32888,9 @@ const LAYER_DESCRIPTIONS = {
   'ai-cyclones': 'AI hurricane forecasts in their own panel: Google DeepMind\'s FNV3 and GenCast ensembles. Experimental research output, shown beside the official guidance rather than instead of it.',
   'ensemble-models': 'Everything built from an ensemble: many runs of the same model started a little differently, so where they agree the forecast is sure and where they spread it is not. Ensemble charts (GEFS, ECMWF ENS, HREF and more), low pressure tracks, ECMWF tropical cyclone probabilities, GEFS cyclone centres and the ensemble meteogram.',
   'ens-charts': 'The ensemble model charts in the Run Models panel: GEFS mean and spread, the GEFS control and a member, ECMWF ENS mean, HREF mean and spread, the Canadian ensemble and whatever else the parsing server builds. The ordinary single runs stay under Run Models.',
+  'ens-explorer': 'Every member of GEFS, the Canadian GEPS, SREF and ECMWF ENS for one field at one hour: step through the members with the arrows (or [ and ]) while the place and time stay put, or show the mean, the median, the spread (where the members disagree) or the spread compared with its usual size.',
+  'ens-prob': 'The chance of something happening: the share of ensemble members that meet a condition, like more than an inch of rain or a temperature below freezing, or several at once joined with AND or OR, like CAPE over 1000 AND dew point over 60. Pick a ready-made one or build your own.',
+  'ens-stamps': 'Every ensemble member at once as a grid of small maps, the classic postage stamp page. Click one to put that member on the map.',
   'ens-lows': 'Low Tracks: every low pressure centre in the GEFS and ECMWF ensembles, member by member, and in the GFS and ECMWF runs, as tracks or L markers with pressures.',
   'ens-tcprob': 'ECMWF TC Probability: the chance a tropical depression, storm or hurricane passes within 120 km, from all 51 ECMWF ensemble members, including storms that have not formed yet.',
   'ens-centres': 'GEFS Cyclone Centres: the tropical cyclones the parsing server finds itself in the raw GEFS ensemble, one track per member, coloured by peak intensity.',
@@ -39127,6 +39159,524 @@ function _nwsRefreshMenu() {
   };
 });
 
+// -- ENSEMBLE EXPLORER -------------------------------------------------------
+// Every member of GEFS, GEPS, SREF and ECMWF ENS, read from the parsing
+// server's member grids (pi/ens_fields_pipeline.py, under /ens/). One field
+// at one forecast hour at a time, shown as:
+//   Member     any single member, stepped through with the arrows while the
+//              map and the hour stay put
+//   Mean, Median  side by side they show whether the members lean one way
+//   Spread     the standard deviation across members: where they disagree
+//   Norm. spread  spread divided by its average over the map, so 2 means
+//              twice as uncertain as usual for this hour
+//   Chance     the share of members meeting a condition, or several joined
+//              with AND or OR (the Pivotal-style joint probability maps)
+// plus a postage stamp grid of every member at once. Everything is worked out
+// here from the members, so any threshold is instant and needs nothing new
+// from the parsing server.
+const ENSX_MISSING = 65535;
+const ENSX_FIELDS = {
+  t2m:    { label: '2 m temperature', unit: '°F' },
+  td2m:   { label: '2 m dew point', unit: '°F' },
+  wind10: { label: '10 m wind', unit: 'mph' },
+  gust:   { label: 'Wind gust', unit: 'mph' },
+  mslp:   { label: 'Sea level pressure', unit: 'hPa' },
+  h500:   { label: '500 mb height', unit: 'dam' },
+  t850:   { label: '850 mb temperature', unit: '°C' },
+  qpf:    { label: 'Total precipitation', unit: 'in' },
+  cape:   { label: 'CAPE', unit: 'J/kg' },
+  ptype:  { label: 'Precipitation type', unit: '' },
+};
+const ENSX_PTYPES = [null, { l: 'Rain', c: [60, 190, 60] }, { l: 'Snow', c: [90, 160, 255] },
+  { l: 'Freezing rain', c: [255, 90, 170] }, { l: 'Sleet', c: [170, 90, 230] }];
+const ENSX_SCALES = {
+  wind10: [[0, [40, 40, 70]], [10, [0, 120, 220]], [20, [0, 200, 140]], [30, [255, 204, 0]], [45, [255, 110, 0]], [60, [210, 0, 0]], [80, [150, 0, 140]]],
+  mslp: [[976, [120, 0, 160]], [992, [0, 90, 215]], [1004, [0, 190, 140]], [1014, [225, 225, 225]], [1024, [255, 190, 0]], [1040, [210, 40, 0]]],
+  h500: [[510, [120, 0, 160]], [534, [0, 90, 215]], [552, [0, 190, 140]], [570, [255, 204, 0]], [588, [210, 40, 0]], [600, [150, 0, 0]]],
+  t850: [[-30, [130, 0, 200]], [-15, [40, 40, 205]], [0, [0, 160, 205]], [10, [100, 210, 70]], [20, [255, 140, 0]], [30, [180, 0, 0]]],
+  qpf: [[0.01, [170, 235, 170]], [0.1, [60, 190, 60]], [0.5, [0, 120, 220]], [1, [120, 60, 220]], [2, [220, 0, 160]], [4, [255, 80, 0]], [8, [255, 230, 150]]],
+  cape: [[100, [140, 210, 140]], [500, [200, 230, 90]], [1000, [255, 220, 0]], [2000, [255, 120, 0]], [3000, [220, 0, 0]], [5000, [200, 0, 200]]],
+  prob: [[5, [200, 230, 255]], [20, [120, 190, 255]], [40, [0, 200, 120]], [60, [255, 220, 0]], [80, [255, 110, 0]], [95, [210, 0, 0]]],
+  nspread: [[0.25, [40, 60, 120]], [0.75, [0, 140, 200]], [1, [0, 200, 140]], [1.5, [255, 220, 0]], [2, [255, 120, 0]], [3, [210, 0, 0]]],
+};
+ENSX_SCALES.gust = ENSX_SCALES.wind10;
+// Values below these are left clear, so rain and storms show on the map
+// rather than a wash of "none".
+const ENSX_CLEAR_BELOW = { qpf: 0.01, cape: 100, prob: 2, spread: 1e-6, nspread: 0.05 };
+const ENSX_OPS = { '>': (a, b) => a > b, '>=': (a, b) => a >= b, '<': (a, b) => a < b, '<=': (a, b) => a <= b, '=': (a, b) => Math.round(a) === b };
+// Ready-made joint probabilities, in the spirit of Pivotal's.
+const ENSX_PRESETS = [
+  { id: 'rain1', label: 'Heavy rain: total > 1 in', join: 'and', conds: [['qpf', '>', 1]] },
+  { id: 'rain2', label: 'Very heavy rain: total > 2 in', join: 'and', conds: [['qpf', '>', 2]] },
+  { id: 'freeze', label: 'Freezing: 2 m temp < 32 °F', join: 'and', conds: [['t2m', '<', 32]] },
+  { id: 'hardfreeze', label: 'Hard freeze: 2 m temp < 28 °F', join: 'and', conds: [['t2m', '<', 28]] },
+  { id: 'heat', label: 'Heat: temp > 95 °F', join: 'and', conds: [['t2m', '>', 95]] },
+  { id: 'muggy', label: 'Hot and humid: temp > 90 °F AND dew point > 70 °F', join: 'and', conds: [['t2m', '>', 90], ['td2m', '>', 70]] },
+  { id: 'fuel', label: 'Storm fuel: CAPE > 1000 AND dew point > 60 °F', join: 'and', conds: [['cape', '>', 1000], ['td2m', '>', 60]] },
+  { id: 'bigfuel', label: 'Big storm fuel: CAPE > 2500', join: 'and', conds: [['cape', '>', 2500]] },
+  { id: 'wind', label: 'Windy: gust > 40 mph OR wind > 30 mph', join: 'or', conds: [['gust', '>', 40], ['wind10', '>', 30]] },
+  { id: 'snow', label: 'Snow falling: type is snow', join: 'and', conds: [['ptype', '=', 2]] },
+  { id: 'ice', label: 'Ice: freezing rain OR sleet', join: 'or', conds: [['ptype', '=', 3], ['ptype', '=', 4]] },
+  { id: 'cold850', label: 'Snow-cold air aloft: 850 mb < 0 °C AND total > 0.1 in', join: 'and', conds: [['t850', '<', 0], ['qpf', '>', 0.1]] },
+  { id: 'deep', label: 'Deep low: pressure < 990 hPa', join: 'and', conds: [['mslp', '<', 990]] },
+];
+let _ensx = null;              // panel state
+const _ensxCache = new Map();  // url -> Promise<{codes, spec}>
+
+function _ensxScale(field) {
+  if (field === 't2m') return typeof TEMP_SCALE !== 'undefined' ? TEMP_SCALE : ENSX_SCALES.t850;
+  if (field === 'td2m') return typeof DEWPOINT_SCALE !== 'undefined' ? DEWPOINT_SCALE : ENSX_SCALES.t850;
+  return ENSX_SCALES[field] || ENSX_SCALES.t850;
+}
+function _ensxColor(stops, v) {
+  if (typeof _colorScale === 'function') return _colorScale(v, stops);
+  let c = stops[0][1];
+  for (const [t, rgb] of stops) if (v >= t) c = rgb;
+  return c;
+}
+
+async function _ensxBase() {
+  const base = (typeof _hdBase !== 'undefined' && _hdBase) || (typeof _hdResolveBase === 'function' ? await _hdResolveBase() : null);
+  if (base && typeof _hdBase !== 'undefined') _hdBase = base;
+  if (!base) throw new Error('the ensemble members come from the parsing server, and no parsing server address is set');
+  return base;
+}
+async function _ensxJson(url) {
+  const r = await fetch(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now(), { cache: 'no-store' });
+  if (!r.ok) throw new Error('the parsing server answered ' + r.status);
+  return r.json();
+}
+// One field at one hour for every member: members x rows x columns of codes.
+function _ensxLoadField(model, run, field, fhr) {
+  const url = `${_ensx.base}/ens/${model}/${run}/${field}_f${String(fhr).padStart(3, '0')}.bin.gz`;
+  if (_ensxCache.has(url)) return _ensxCache.get(url);
+  const p = (async () => {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`${ENSX_FIELDS[field] ? ENSX_FIELDS[field].label : field} is not built for this hour`);
+    let buf;
+    if (typeof DecompressionStream === 'function') {
+      buf = await new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+    } else {
+      throw new Error('this browser cannot unpack the member grids (it has no DecompressionStream)');
+    }
+    return new Uint16Array(buf);
+  })();
+  _ensxCache.set(url, p);
+  p.catch(() => _ensxCache.delete(url));
+  while (_ensxCache.size > 40) _ensxCache.delete(_ensxCache.keys().next().value);
+  return p;
+}
+// Codes to values for one member, or NaN where it has none.
+function _ensxVal(codes, spec, k) { const c = codes[k]; return c === ENSX_MISSING ? NaN : c * spec.scale + spec.offset; }
+
+// The statistics, point by point across the members.
+function _ensxStat(codes, spec, M, P, mode, member) {
+  const out = new Float32Array(P);
+  const col = new Float64Array(M);
+  for (let p = 0; p < P; p++) {
+    if (mode === 'member') { out[p] = _ensxVal(codes, spec, member * P + p); continue; }
+    let n = 0, sum = 0;
+    for (let m = 0; m < M; m++) { const v = _ensxVal(codes, spec, m * P + p); if (v === v) { col[n++] = v; sum += v; } }
+    if (!n) { out[p] = NaN; continue; }
+    const mean = sum / n;
+    if (mode === 'mean') out[p] = mean;
+    else if (mode === 'median') {
+      const s = Array.prototype.slice.call(col, 0, n).sort((a, b) => a - b);
+      out[p] = n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2;
+    } else if (mode === 'mode') {
+      const cnt = {}; let best = 0, bv = 0;
+      for (let i = 0; i < n; i++) { const c = Math.round(col[i]); cnt[c] = (cnt[c] || 0) + 1; if (cnt[c] > best) { best = cnt[c]; bv = c; } }
+      out[p] = bv;
+    } else {
+      let ss = 0; for (let i = 0; i < n; i++) ss += (col[i] - mean) * (col[i] - mean);
+      out[p] = Math.sqrt(ss / n);
+    }
+  }
+  if (mode === 'nspread') {
+    let s = 0, n = 0;
+    for (let p = 0; p < P; p++) if (out[p] === out[p]) { s += out[p]; n++; }
+    const avg = n ? s / n : 1;
+    for (let p = 0; p < P; p++) out[p] = avg > 0 ? out[p] / avg : NaN;
+  }
+  return out;
+}
+// The share of members meeting the conditions, joined by AND or OR.
+function _ensxProb(grids, conds, join, M, P) {
+  const out = new Float32Array(P);
+  for (let p = 0; p < P; p++) {
+    let yes = 0, n = 0;
+    for (let m = 0; m < M; m++) {
+      let any = false, all = true, known = true;
+      for (const c of conds) {
+        const g = grids[c.field];
+        const v = g ? _ensxVal(g.codes, g.spec, m * P + p) : NaN;
+        if (v !== v) { known = false; break; }
+        const hit = ENSX_OPS[c.op](v, +c.value);
+        any = any || hit; all = all && hit;
+      }
+      if (!known) continue;
+      n++;
+      if (join === 'or' ? any : all) yes++;
+    }
+    out[p] = n ? yes / n * 100 : NaN;
+  }
+  return out;
+}
+
+// -- The panel --------------------------------------------------------------
+function _ensxPanelHtml() {
+  return `
+  <div class="snd-head">
+    <span class="snd-title">Ensemble Explorer</span>
+    <span class="snd-where" data-e="run"></span>
+    <div class="snd-head-spacer"></div>
+    <select class="snd-src" data-e="model" title="Which ensemble"></select>
+    <button class="snd-big" data-e="big" title="Expand">&#11036;</button>
+    <button class="snd-x" data-e="x" title="Close">&#10005;</button>
+  </div>
+  <div class="snd-alert" data-e="alert" role="status" aria-live="polite"></div>
+  <div class="ensx-row">
+    <select data-e="field" title="Which field"></select>
+    <button type="button" data-e="hprev" title="Earlier">&#9664;</button>
+    <input type="range" data-e="hour" min="0" max="0" value="0" step="1" title="Forecast hour">
+    <button type="button" data-e="hnext" title="Later">&#9654;</button>
+    <span data-e="hlabel" class="ensx-hl"></span>
+  </div>
+  <nav class="snd-tabs ensx-modes" role="tablist" aria-label="What to show">
+    ${[['member', 'Member'], ['mean', 'Mean'], ['median', 'Median'], ['spread', 'Spread'], ['nspread', 'Norm. spread'], ['prob', 'Chance'], ['stamps', 'Stamps']]
+      .map(([id, l], i) => `<button type="button" role="tab" class="snd-tab${i === 1 ? ' on' : ''}" data-mode="${id}">${l}</button>`).join('')}
+  </nav>
+  <div class="ensx-row" data-e="memrow">
+    <button type="button" data-e="mprev" title="Previous member">&#9664;</button>
+    <select data-e="member" title="Which member"></select>
+    <button type="button" data-e="mnext" title="Next member">&#9654;</button>
+  </div>
+  <div class="ensx-prob" data-e="probbox">
+    <div class="ensx-row">
+      <select data-e="preset" title="Ready-made conditions"><option value="">Custom&hellip;</option>
+        ${ENSX_PRESETS.map(p => `<option value="${p.id}">${p.label}</option>`).join('')}</select>
+    </div>
+    <div data-e="conds"></div>
+    <div class="ensx-row">
+      <button type="button" data-e="addc" title="Add a condition">+ condition</button>
+      <select data-e="join" title="All conditions (AND) or any of them (OR)">
+        <option value="and">AND: all of them</option><option value="or">OR: any of them</option></select>
+    </div>
+  </div>
+  <div class="ensx-stamps" data-e="stamps"></div>
+  <div class="ensx-legend" data-e="legend"></div>
+  <div class="ensx-row">
+    <label class="ensx-op">Opacity <input type="range" data-e="alpha" min="10" max="100" value="80" step="5"></label>
+    <span class="ensx-read" data-e="read"></span>
+  </div>
+  <div class="snd-note" data-e="note"></div>`;
+}
+function _ensxQ(r) { return _ensx.el.querySelector(`[data-e="${r}"]`); }
+function _ensxPanelIsOpen() { return !!(_ensx && _ensx.el.classList.contains('open')); }
+
+async function openEnsembleExplorer(opts) {
+  if (!_ensx) {
+    const el = document.createElement('div');
+    el.id = 'ensx-panel';
+    el.innerHTML = _ensxPanelHtml();
+    document.body.appendChild(el);
+    _ensx = { el, mode: 'mean', member: 0, conds: [{ field: 'qpf', op: '>', value: 1 }], join: 'and', alpha: 0.8,
+      model: null, field: 't2m', hourIdx: 0, gen: 0 };
+    _ensxQ('x').onclick = () => closeEnsembleExplorer();
+    _ensxQ('big').onclick = () => { el.classList.toggle('big'); if (_ensx.mode === 'stamps') _ensxRender(); };
+    _ensxQ('model').onchange = e => { _ensx.model = e.target.value; _ensxLoadModel(); };
+    _ensxQ('field').onchange = e => { _ensx.field = e.target.value; _ensxRender(); };
+    _ensxQ('hour').oninput = e => { _ensx.hourIdx = +e.target.value; _ensxSyncHour(); clearTimeout(_ensx.ht); _ensx.ht = setTimeout(_ensxRender, 120); };
+    _ensxQ('hprev').onclick = () => _ensxStepHour(-1);
+    _ensxQ('hnext').onclick = () => _ensxStepHour(1);
+    _ensxQ('member').onchange = e => { _ensx.member = +e.target.value; _ensxRender(); };
+    _ensxQ('mprev').onclick = () => _ensxStepMember(-1);
+    _ensxQ('mnext').onclick = () => _ensxStepMember(1);
+    _ensxQ('preset').onchange = e => {
+      const p = ENSX_PRESETS.find(x => x.id === e.target.value);
+      if (!p) return;
+      _ensx.conds = p.conds.map(([field, op, value]) => ({ field, op, value }));
+      _ensx.join = p.join;
+      _ensxQ('join').value = p.join;
+      _ensxCondsUi(); _ensxRender();
+    };
+    _ensxQ('join').onchange = e => { _ensx.join = e.target.value; _ensxQ('preset').value = ''; _ensxRender(); };
+    _ensxQ('addc').onclick = () => { _ensx.conds.push({ field: 't2m', op: '>', value: 32 }); _ensxQ('preset').value = ''; _ensxCondsUi(); _ensxRender(); };
+    _ensxQ('alpha').oninput = e => { _ensx.alpha = +e.target.value / 100; if (_ensx.layer) _ensx.layer.setOpacity(_ensx.alpha); };
+    el.querySelectorAll('.ensx-modes .snd-tab').forEach(b => { b.onclick = () => _ensxSetMode(b.dataset.mode); });
+    if (typeof _makeDraggable === 'function') { try { _makeDraggable(el, el.querySelector('.snd-head')); } catch (e) {} }
+    document.addEventListener('keydown', e => {
+      if (!_ensxPanelIsOpen() || /INPUT|SELECT|TEXTAREA/.test((e.target && e.target.tagName) || '')) return;
+      if (e.key === '[' ) { _ensxStepMember(-1); e.preventDefault(); }
+      if (e.key === ']') { _ensxStepMember(1); e.preventDefault(); }
+    });
+    map.on('mousemove', _ensxHover);
+  }
+  _ensx.el.classList.add('open');
+  if (opts && opts.mode) _ensx.mode = opts.mode;
+  _ensxCondsUi();
+  _ensxSyncModeUi();
+  const alert = _ensxQ('alert');
+  alert.textContent = 'Asking the parsing server for the ensembles...';
+  try {
+    _ensx.base = await _ensxBase();
+    _ensx.index = await _ensxJson(`${_ensx.base}/ens/index.json`);
+  } catch (e) {
+    alert.textContent = 'No ensemble members yet: ' + (e && e.message || e) + '. The parsing server builds them with the gwcfc-ensfields timer.';
+    return;
+  }
+  const models = Object.keys((_ensx.index && _ensx.index.models) || {}).filter(k => (_ensx.index.models[k].hours || []).length);
+  if (!models.length) { alert.textContent = 'The parsing server has not finished an ensemble run yet.'; return; }
+  const sel = _ensxQ('model');
+  sel.innerHTML = models.map(k => `<option value="${k}">${_ccEsc(_ensx.index.models[k].label || k)}</option>`).join('');
+  _ensx.model = (opts && opts.model && models.includes(opts.model)) ? opts.model : (models.includes(_ensx.model) ? _ensx.model : models[0]);
+  sel.value = _ensx.model;
+  alert.textContent = '';
+  return _ensxLoadModel();
+}
+function closeEnsembleExplorer() {
+  if (!_ensx) return;
+  _ensx.el.classList.remove('open');
+  _ensx.gen++;
+  if (_ensx.layer) { try { map.removeLayer(_ensx.layer); } catch (e) {} _ensx.layer = null; }
+}
+async function _ensxLoadModel() {
+  const e = _ensx.index.models[_ensx.model];
+  try {
+    _ensx.man = await _ensxJson(`${_ensx.base}/ens/${_ensx.model}/${e.run}/manifest.json`);
+  } catch (err) { _ensxQ('alert').textContent = 'Could not read that run: ' + err.message; return; }
+  const m = _ensx.man;
+  const fields = Object.keys(m.fields).filter(f => ENSX_FIELDS[f]);
+  if (!fields.includes(_ensx.field)) _ensx.field = fields.includes('t2m') ? 't2m' : fields[0];
+  _ensxQ('field').innerHTML = fields.map(f => `<option value="${f}">${ENSX_FIELDS[f].label}${ENSX_FIELDS[f].unit ? ' (' + ENSX_FIELDS[f].unit + ')' : ''}</option>`).join('');
+  _ensxQ('field').value = _ensx.field;
+  _ensxQ('member').innerHTML = m.members.map((id, i) => `<option value="${i}">Member ${String(i).padStart(2, '0')}${i === 0 ? ' (control)' : ''}</option>`).join('');
+  _ensx.member = Math.min(_ensx.member, m.members.length - 1);
+  _ensxQ('member').value = _ensx.member;
+  const h = _ensxQ('hour');
+  h.max = m.hours.length - 1;
+  _ensx.hourIdx = Math.min(_ensx.hourIdx, m.hours.length - 1);
+  h.value = _ensx.hourIdx;
+  const r = m.run || '';
+  _ensxQ('run').textContent = `${r.slice(4, 6)}/${r.slice(6, 8)} ${r.slice(9, 11)}z run`;
+  _ensxQ('note').textContent = `${m.label}: ${m.members.length} members, ${m.hours.length} forecast hours`
+    + (m.complete ? '' : ' so far (still building)') + `. Half-degree grid from the parsing server.`;
+  _ensxCondsUi();
+  _ensxSyncHour();
+  return _ensxRender();
+}
+function _ensxSyncHour() {
+  const m = _ensx.man; if (!m) return;
+  const fhr = m.hours[_ensx.hourIdx] || 0;
+  const valid = new Date(Date.parse(m.base) + fhr * 3600e3);
+  _ensxQ('hlabel').textContent = `F+${String(fhr).padStart(3, '0')} · ${DAYS[valid.getUTCDay()]} ${String(valid.getUTCHours()).padStart(2, '0')}Z`;
+}
+function _ensxStepHour(d) {
+  if (!_ensx.man) return;
+  _ensx.hourIdx = Math.max(0, Math.min(_ensx.man.hours.length - 1, _ensx.hourIdx + d));
+  _ensxQ('hour').value = _ensx.hourIdx; _ensxSyncHour(); _ensxRender();
+}
+// Stepping through members keeps the place and the hour: only the member moves.
+function _ensxStepMember(d) {
+  if (!_ensx.man) return;
+  const n = _ensx.man.members.length;
+  _ensx.member = (_ensx.member + d + n) % n;
+  _ensxQ('member').value = _ensx.member;
+  if (_ensx.mode !== 'member') _ensxSetMode('member'); else _ensxRender();
+}
+function _ensxSetMode(mode) { _ensx.mode = mode; _ensxSyncModeUi(); _ensxRender(); }
+function _ensxSyncModeUi() {
+  _ensx.el.querySelectorAll('.ensx-modes .snd-tab').forEach(b => b.classList.toggle('on', b.dataset.mode === _ensx.mode));
+  _ensxQ('memrow').style.display = _ensx.mode === 'member' ? '' : 'none';
+  _ensxQ('probbox').style.display = _ensx.mode === 'prob' ? '' : 'none';
+  _ensxQ('stamps').style.display = _ensx.mode === 'stamps' ? '' : 'none';
+  _ensxQ('field').disabled = _ensx.mode === 'prob';
+}
+function _ensxCondsUi() {
+  const box = _ensxQ('conds');
+  const fields = _ensx.man ? Object.keys(_ensx.man.fields).filter(f => ENSX_FIELDS[f]) : Object.keys(ENSX_FIELDS);
+  box.innerHTML = _ensx.conds.map((c, i) => `<div class="ensx-row ensx-cond" data-i="${i}">
+      <select data-c="field">${Object.keys(ENSX_FIELDS).map(f => `<option value="${f}"${f === c.field ? ' selected' : ''}${fields.includes(f) ? '' : ' disabled'}>${ENSX_FIELDS[f].label}</option>`).join('')}</select>
+      <select data-c="op">${Object.keys(ENSX_OPS).map(o => `<option${o === c.op ? ' selected' : ''}>${o}</option>`).join('')}</select>
+      ${c.field === 'ptype'
+        ? `<select data-c="value">${ENSX_PTYPES.map((t, k) => t ? `<option value="${k}"${+c.value === k ? ' selected' : ''}>${t.l}</option>` : '').join('')}</select>`
+        : `<input type="number" data-c="value" value="${c.value}" step="any">`}
+      <span class="ensx-unit">${ENSX_FIELDS[c.field] ? ENSX_FIELDS[c.field].unit : ''}</span>
+      ${_ensx.conds.length > 1 ? '<button type="button" data-c="del" title="Remove">&#10005;</button>' : ''}
+    </div>`).join('');
+  box.querySelectorAll('.ensx-cond').forEach(row => {
+    const c = _ensx.conds[+row.dataset.i];
+    row.querySelectorAll('[data-c]').forEach(inp => {
+      const k = inp.dataset.c;
+      if (k === 'del') { inp.onclick = () => { _ensx.conds.splice(+row.dataset.i, 1); _ensxQ('preset').value = ''; _ensxCondsUi(); _ensxRender(); }; return; }
+      inp.onchange = () => {
+        c[k] = k === 'value' ? +inp.value : inp.value;
+        if (k === 'field' && c.field === 'ptype') { c.op = '='; c.value = 2; }
+        _ensxQ('preset').value = '';
+        _ensxCondsUi(); _ensxRender();
+      };
+    });
+  });
+}
+
+async function _ensxRender() {
+  if (!_ensx || !_ensx.man) return;
+  const gen = ++_ensx.gen, m = _ensx.man, fhr = m.hours[_ensx.hourIdx];
+  const M = m.members.length, P = m.grid.nx * m.grid.ny, alert = _ensxQ('alert');
+  try {
+    let values, scaleKey, legend;
+    if (_ensx.mode === 'prob') {
+      const need = [...new Set(_ensx.conds.map(c => c.field))];
+      const grids = {};
+      await Promise.all(need.map(async f => {
+        if (!m.fields[f]) throw new Error(`${m.label} has no ${ENSX_FIELDS[f].label.toLowerCase()}`);
+        grids[f] = { codes: await _ensxLoadField(_ensx.model, m.run, f, fhr), spec: m.fields[f] };
+      }));
+      if (gen !== _ensx.gen) return;
+      values = _ensxProb(grids, _ensx.conds, _ensx.join, M, P);
+      scaleKey = 'prob';
+      legend = 'Chance: ' + _ensx.conds.map(c => `${ENSX_FIELDS[c.field].label} ${c.op} ${c.field === 'ptype' ? ENSX_PTYPES[+c.value].l : c.value + ' ' + ENSX_FIELDS[c.field].unit}`)
+        .join(_ensx.join === 'or' ? ' OR ' : ' AND ');
+    } else {
+      const codes = await _ensxLoadField(_ensx.model, m.run, _ensx.field, fhr);
+      if (gen !== _ensx.gen) return;
+      const spec = m.fields[_ensx.field];
+      _ensx.codes = codes; _ensx.spec = spec;
+      if (_ensx.mode === 'stamps') { alert.textContent = ''; return _ensxStamps(codes, spec); }
+      let mode = _ensx.mode;
+      if (_ensx.field === 'ptype' && mode !== 'member') mode = 'mode';
+      values = _ensxStat(codes, spec, M, P, mode, _ensx.member);
+      scaleKey = _ensx.field === 'ptype' ? 'ptype' : (mode === 'spread' ? 'spread' : mode === 'nspread' ? 'nspread' : _ensx.field);
+      const f = ENSX_FIELDS[_ensx.field];
+      legend = ({ member: `Member ${String(_ensx.member).padStart(2, '0')}`, mean: 'Mean', median: 'Median', mode: 'Most likely',
+        spread: 'Spread (standard deviation)', nspread: 'Spread compared with its average over the map' })[mode]
+        + ` · ${f.label}` + (mode === 'nspread' ? '' : f.unit ? ` (${f.unit})` : '');
+    }
+    alert.textContent = '';
+    _ensx.values = values; _ensx.scaleKey = scaleKey;
+    _ensxPaint(values, scaleKey);
+    _ensxLegend(scaleKey, legend, values);
+  } catch (e) {
+    if (gen !== _ensx.gen) return;
+    alert.textContent = 'Could not draw it: ' + (e && e.message || e);
+    // Nothing on the map is better than the last picture under a new title.
+    if (_ensx.layer) { try { map.removeLayer(_ensx.layer); } catch (err) {} _ensx.layer = null; }
+    _ensx.values = null;
+    _ensxQ('legend').innerHTML = '';
+  }
+}
+function _ensxPixel(v, key, spreadMax) {
+  if (v !== v) return null;
+  if (key === 'ptype') { const t = ENSX_PTYPES[Math.round(v)]; return t ? t.c : null; }
+  if (key === 'spread') {
+    if (v <= ENSX_CLEAR_BELOW.spread) return null;
+    return _ensxColor(ENSX_SCALES.nspread, v / (spreadMax || 1) * 3);
+  }
+  if (ENSX_CLEAR_BELOW[key] != null && v < ENSX_CLEAR_BELOW[key]) return null;
+  return _ensxColor(key === 'prob' || key === 'nspread' ? ENSX_SCALES[key] : _ensxScale(key), v);
+}
+function _ensxSpreadMax(values) {
+  const a = Array.from(values).filter(v => v === v).sort((x, y) => x - y);
+  return a.length ? a[Math.floor(a.length * 0.98)] || a[a.length - 1] : 1;
+}
+// Paints the grid onto the map, row by row in Mercator so it lands on the
+// right coastlines rather than being stretched as a flat picture.
+function _ensxPaint(values, key) {
+  const g = _ensx.man.grid, W = Math.min(900, g.nx * 4), H = Math.min(700, g.ny * 6);
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d'), img = ctx.createImageData(W, H);
+  const s = g.s - g.d / 2, n = g.n + g.d / 2, w = g.w - g.d / 2, e = g.e + g.d / 2;
+  const my = lat => Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360));
+  const y0 = my(n), y1 = my(s);
+  const spreadMax = key === 'spread' ? _ensxSpreadMax(values) : 0;
+  for (let py = 0; py < H; py++) {
+    const lat = (2 * Math.atan(Math.exp(y0 + (py + 0.5) / H * (y1 - y0))) - Math.PI / 2) * 180 / Math.PI;
+    const fj = (lat - g.s) / g.d;
+    const j0 = Math.max(0, Math.min(g.ny - 1, Math.floor(fj))), j1 = Math.min(g.ny - 1, j0 + 1), tj = Math.max(0, Math.min(1, fj - j0));
+    for (let px = 0; px < W; px++) {
+      const lon = w + (px + 0.5) / W * (e - w), fi = (lon - g.w) / g.d;
+      const i0 = Math.max(0, Math.min(g.nx - 1, Math.floor(fi))), i1 = Math.min(g.nx - 1, i0 + 1), ti = Math.max(0, Math.min(1, fi - i0));
+      let v;
+      if (key === 'ptype') v = values[Math.round(fj < 0 ? 0 : Math.min(g.ny - 1, fj)) * g.nx + Math.round(fi < 0 ? 0 : Math.min(g.nx - 1, fi))];
+      else {
+        const a = values[j0 * g.nx + i0], b = values[j0 * g.nx + i1], c = values[j1 * g.nx + i0], d = values[j1 * g.nx + i1];
+        v = (a * (1 - ti) + b * ti) * (1 - tj) + (c * (1 - ti) + d * ti) * tj;
+        if (v !== v) v = values[Math.round(Math.min(g.ny - 1, Math.max(0, fj))) * g.nx + Math.round(Math.min(g.nx - 1, Math.max(0, fi)))];
+      }
+      const rgb = _ensxPixel(v, key, spreadMax), o = (py * W + px) * 4;
+      if (!rgb) continue;
+      img.data[o] = rgb[0]; img.data[o + 1] = rgb[1]; img.data[o + 2] = rgb[2]; img.data[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const url = cv.toDataURL('image/png');
+  const bounds = [[s, w], [n, e]];
+  if (_ensx.layer) _ensx.layer.setUrl(url);
+  else {
+    const pane = map.getPane('modelPane') ? 'modelPane' : undefined;
+    _ensx.layer = L.imageOverlay(url, bounds, { opacity: _ensx.alpha, interactive: false, pane }).addTo(map);
+  }
+}
+function _ensxLegend(key, title, values) {
+  const box = _ensxQ('legend');
+  let stops;
+  if (key === 'ptype') {
+    box.innerHTML = `<div class="ensx-lt">${_ccEsc(title)}</div>` + ENSX_PTYPES.filter(Boolean).map(t =>
+      `<span class="ensx-chip"><i style="background:rgb(${t.c.join(',')})"></i>${t.l}</span>`).join('');
+    return;
+  }
+  if (key === 'spread') {
+    const mx = _ensxSpreadMax(values);
+    stops = ENSX_SCALES.nspread.map(([v, c]) => [+(v / 3 * mx).toFixed(mx < 10 ? 1 : 0), c]);
+  } else stops = key === 'prob' || key === 'nspread' ? ENSX_SCALES[key] : _ensxScale(key);
+  const unit = key === 'prob' ? '%' : key === 'nspread' ? 'x' : '';
+  box.innerHTML = `<div class="ensx-lt">${_ccEsc(title)}</div><div class="ensx-bar" style="background:linear-gradient(90deg,${stops.map(s => `rgb(${s[1].join(',')})`).join(',')})"></div>`
+    + `<div class="ensx-ticks">${stops.map(s => `<span>${s[0]}${unit}</span>`).join('')}</div>`;
+}
+// Every member at once, small, the classic postage stamp page. Clicking one
+// shows that member on the map.
+function _ensxStamps(codes, spec) {
+  const m = _ensx.man, g = m.grid, M = m.members.length, P = g.nx * g.ny;
+  const box = _ensxQ('stamps');
+  box.innerHTML = '';
+  const key = _ensx.field;
+  for (let k = 0; k < M; k++) {
+    const cell = document.createElement('button');
+    cell.type = 'button'; cell.className = 'ensx-stamp' + (k === _ensx.member ? ' on' : '');
+    cell.title = `Member ${String(k).padStart(2, '0')}`;
+    const cv = document.createElement('canvas');
+    cv.width = g.nx; cv.height = g.ny;
+    const ctx = cv.getContext('2d'), img = ctx.createImageData(g.nx, g.ny);
+    for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) {
+      const v = _ensxVal(codes, spec, k * P + j * g.nx + i);
+      const rgb = key === 'ptype' ? (ENSX_PTYPES[Math.round(v)] || {}).c : (v === v && !(ENSX_CLEAR_BELOW[key] != null && v < ENSX_CLEAR_BELOW[key])) ? _ensxColor(_ensxScale(key), v) : null;
+      const o = ((g.ny - 1 - j) * g.nx + i) * 4;
+      if (rgb) { img.data[o] = rgb[0]; img.data[o + 1] = rgb[1]; img.data[o + 2] = rgb[2]; img.data[o + 3] = 255; }
+      else { img.data[o] = 18; img.data[o + 1] = 20; img.data[o + 2] = 26; img.data[o + 3] = 255; }
+    }
+    ctx.putImageData(img, 0, 0);
+    cell.appendChild(cv);
+    const lab = document.createElement('span'); lab.textContent = String(k).padStart(2, '0'); cell.appendChild(lab);
+    cell.onclick = () => { _ensx.member = k; _ensxQ('member').value = k; _ensxSetMode('member'); };
+    box.appendChild(cell);
+  }
+}
+// What is under the pointer, in the panel's corner.
+function _ensxHover(e) {
+  if (!_ensxPanelIsOpen() || !_ensx.values || !_ensx.man || _ensx.mode === 'stamps') return;
+  const g = _ensx.man.grid, j = Math.round((e.latlng.lat - g.s) / g.d), i = Math.round((e.latlng.lng - g.w) / g.d);
+  const out = _ensxQ('read');
+  if (j < 0 || j >= g.ny || i < 0 || i >= g.nx) { out.textContent = ''; return; }
+  const v = _ensx.values[j * g.nx + i];
+  if (v !== v) { out.textContent = ''; return; }
+  const f = ENSX_FIELDS[_ensx.field] || {};
+  out.textContent = _ensx.scaleKey === 'prob' ? `${Math.round(v)}% of members`
+    : _ensx.scaleKey === 'ptype' ? (ENSX_PTYPES[Math.round(v)] || { l: 'None' }).l
+    : _ensx.scaleKey === 'nspread' ? `${v.toFixed(2)}x the usual spread`
+    : `${v.toFixed(Math.abs(v) < 10 ? 2 : 1)} ${f.unit || ''}`;
+}
+
 // -- ENSEMBLE MODELS -----------------------------------------------------------
 // Everything built from an ensemble, in one place under Models: the ensemble
 // charts (GEFS, ECMWF ENS, HREF and the rest, shown in the Run Models panel
@@ -39173,6 +39723,15 @@ const ENS_MODEL_ROWS = [
   { id: 'ens-charts', label: 'Ensemble Charts', icon: 'chart-up',
     on: () => _runModelsPanelIsOpen() && _runModelsEns,
     click: () => { if (_runModelsPanelIsOpen() && _runModelsEns) closeRunModelsPanel(); else openEnsembleChartsPanel(); } },
+  { id: 'ens-explorer', label: 'Members & Stats', icon: 'sliders',
+    on: () => _ensxPanelIsOpen() && !['prob', 'stamps'].includes(_ensx.mode),
+    click: () => { if (_ensxPanelIsOpen() && !['prob', 'stamps'].includes(_ensx.mode)) closeEnsembleExplorer(); else openEnsembleExplorer({ mode: _ensx && !['prob', 'stamps'].includes(_ensx.mode) ? _ensx.mode : 'mean' }); } },
+  { id: 'ens-prob', label: 'Chance Maps', icon: 'target',
+    on: () => _ensxPanelIsOpen() && _ensx.mode === 'prob',
+    click: () => { if (_ensxPanelIsOpen() && _ensx.mode === 'prob') closeEnsembleExplorer(); else openEnsembleExplorer({ mode: 'prob' }); } },
+  { id: 'ens-stamps', label: 'Postage Stamps', icon: 'image',
+    on: () => _ensxPanelIsOpen() && _ensx.mode === 'stamps',
+    click: () => { if (_ensxPanelIsOpen() && _ensx.mode === 'stamps') closeEnsembleExplorer(); else openEnsembleExplorer({ mode: 'stamps' }); } },
   { id: 'ens-lows', label: 'Low Tracks', icon: 'noodles',
     on: () => typeof _lowsOn !== 'undefined' && _lowsOn, click: () => _lowsToggle() },
   { id: 'ens-tcprob', label: 'ECMWF TC Probability', icon: 'cyclone',
@@ -70608,6 +71167,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-j', date: 'Sep 24, 2026',
+    text: 'Ensemble Explorer, in Models > Ensemble Models. Members & Stats shows any single member of GEFS, the Canadian GEPS, SREF or ECMWF ENS (step through them with the arrows or the [ and ] keys while the place and hour stay put), or the mean, median, spread and normalised spread. Chance Maps shows the share of members meeting a condition, or several joined with AND or OR, with ready-made ones like heavy rain, freezing, storm fuel, wind and ice. Postage Stamps shows every member at once; click one to put it on the map.' },
   { id: '2026-09-24-i', date: 'Sep 24, 2026',
     text: 'Groundwork for the ensemble tools: the parsing server now gathers every member of GEFS (31), the Canadian GEPS (21), SREF (26) and ECMWF ENS (51) over the lower 48, with temperature, dew point, wind, gusts, pressure, 500 mb height, 850 mb temperature, rain totals, CAPE and precipitation type. The member picker, postage stamps, mean, median, spread and probability maps that read it come next.' },
   { id: '2026-09-24-h', date: 'Sep 24, 2026',
@@ -78881,7 +79442,7 @@ function closeCredits() {
 #nwr-rec-panel,
 #tropical-model-panel,
 #severe-model-panel,
-#snd-panel, #mtg-panel,
+#snd-panel, #mtg-panel, #ensx-panel,
 #hd-panel,
 #fnv3-panel,
 #stormcone-panel,
@@ -79712,7 +80273,7 @@ body {
 :root[data-glass] #nwr-rec-panel,
 :root[data-glass] #tropical-model-panel,
 :root[data-glass] #severe-model-panel,
-:root[data-glass] #snd-panel, :root[data-glass] #mtg-panel,
+:root[data-glass] #snd-panel, :root[data-glass] #mtg-panel, :root[data-glass] #ensx-panel,
 :root[data-glass] #hd-panel,
 :root[data-glass] #fnv3-panel,
 :root[data-glass] #stormcone-panel,

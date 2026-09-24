@@ -70,7 +70,7 @@ const rows = () => p.evaluate(() => [...document.querySelectorAll('#sub-bubbles 
   await p.evaluate(() => document.getElementById('sub-ensemble-models').click());
   const e = await rows();
   ok('it opens a menu of every ensemble feature',
-     e.join('|') === 'Ensemble Models|Ensemble Charts|Low Tracks|ECMWF TC Probability|GEFS Cyclone Centres|Ensemble Meteogram', e.join('|'));
+     e.join('|') === 'Ensemble Models|Ensemble Charts|Members & Stats|Chance Maps|Postage Stamps|Low Tracks|ECMWF TC Probability|GEFS Cyclone Centres|Ensemble Meteogram', e.join('|'));
   const info = await p.evaluate(() => [...document.querySelectorAll('#sub-bubbles .sub-bubble:not(.sb-back)')].every(x => x.querySelector('.ov-info-btn')));
   ok('each row explains itself', info);
 }
