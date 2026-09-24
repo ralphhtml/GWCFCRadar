@@ -757,24 +757,34 @@ body {
 }
 :root[data-glass] #lvl-dock { backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4); }
 #lvl-dock.open { display: flex; }
-#lvl-dock .lvl-col { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 50px; }
-#lvl-dock .lvl-title { font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); }
-#lvl-dock .lvl-track { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 2px 0; }
-#lvl-dock .lvl-track::before {
-  content: ''; position: absolute; left: 50%; top: 6px; bottom: 6px; width: 2px; margin-left: -1px;
-  background: linear-gradient(180deg, rgba(120,180,255,0.7), rgba(var(--accent-rgb),0.7));
-  border-radius: 2px; pointer-events: none;
+/* One row per layer: a name and reading on top, a plain horizontal slider,
+   and the level names under it (each one a tap target too). Ground or sea
+   surface is on the left; higher up (or deeper) is to the right. */
+#lvl-dock { flex-direction: column; width: 230px; padding: 8px 10px 7px; gap: 9px; }
+#lvl-dock .lvl-col { display: flex; flex-direction: column; gap: 3px; }
+#lvl-dock .lvl-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+#lvl-dock .lvl-title { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--accent); }
+#lvl-dock .lvl-ft { font-size: 9px; opacity: .8; white-space: nowrap; }
+#lvl-dock .lvl-range {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 16px; margin: 0;
+  background: transparent; cursor: pointer;
 }
+#lvl-dock .lvl-range::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.22); }
+#lvl-dock .lvl-range::-moz-range-track { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.22); }
+#lvl-dock .lvl-range::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px; margin-top: -4px; border-radius: 50%;
+  background: var(--accent); border: 2px solid #000; box-shadow: 0 0 0 1px var(--accent);
+}
+#lvl-dock .lvl-range::-moz-range-thumb { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 2px solid #000; }
+#lvl-dock .lvl-ticks { position: relative; height: 12px; }
 #lvl-dock .lvl-notch {
-  position: relative; z-index: 1; font: inherit; font-size: 9px; line-height: 1; min-width: 46px;
-  padding: 3px 4px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(20,24,30,0.92); color: #ddd; cursor: pointer;
+  position: absolute; top: 0; transform: translateX(-50%); font: inherit; font-size: 8px; line-height: 1;
+  padding: 1px 2px; border: 0; background: none; color: rgba(255,255,255,0.6); cursor: pointer; white-space: nowrap;
 }
-#lvl-dock .lvl-notch:hover { border-color: rgba(var(--accent-rgb),0.8); }
-#lvl-dock .lvl-notch.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
-#lvl-dock .lvl-col.locked .lvl-notch { opacity: .35; cursor: not-allowed; }
+#lvl-dock .lvl-notch:hover { color: #fff; }
+#lvl-dock .lvl-notch.active { color: var(--accent); font-weight: 700; }
+#lvl-dock .lvl-col.locked .lvl-range, #lvl-dock .lvl-col.locked .lvl-notch { opacity: .35; cursor: not-allowed; }
 #lvl-dock .lvl-col.locked .lvl-notch.active { opacity: 1; }
-#lvl-dock .lvl-ft { font-size: 8px; opacity: .7; white-space: nowrap; }
 body.shot-mode #lvl-dock, body.ss-live #lvl-dock { display: none !important; }
 @media (max-width: 640px) { #lvl-dock { top: auto; bottom: calc(var(--menu-clearance, 120px) + 8px); } }
 #zoom-controls {
@@ -29844,6 +29854,12 @@ function _lvlNotch(l, layer) {
   if (layer === 'isotherm') return `${l}°`;
   return l === 'sfc' ? 'Sfc' : l === '80m' ? '80 m' : String(l);
 }
+// The reading beside a slider's name: "500 mb, ~18,000 ft" in the air, and
+// just the depth or the isotherm on the others (their names say it already).
+function _lvlReadout(l, layer) {
+  if (layer === 'ocean' || layer === 'isotherm') return _lvlHeight(l, layer);
+  return l === 'sfc' ? 'Surface' : `${_lvlNotch(l, layer)}${_lvlIsPl(l) ? ' mb' : ''}, ${_lvlHeight(l, layer)}`;
+}
 function _lvlIsPl(l) { return typeof l === 'number'; }
 // The level a layer is really reading. Feels Like only exists at the ground
 // and the Jet Stream product is fixed at 250 mb, so those ignore the slider.
@@ -29899,18 +29915,36 @@ function _lvlRender(force) {
   }
   dock.innerHTML = on.map(l => {
     const cur = _lvlFor(l.id), locked = _lvlLocked(l.id);
-    // Up for the air (top is the jet stream), down for the sea (top is the surface).
-    const steps = l.id === 'ocean' ? LVL_STEPS[l.id] : LVL_STEPS[l.id].slice().reverse();
-    const notches = steps.map(v =>
+    // Left to right: ground (or the sea surface) first, then up (or down).
+    const steps = LVL_STEPS[l.id], n = steps.length, at = Math.max(0, steps.indexOf(cur));
+    // Each name sits under its stop on the track. The thumb is 12px wide, so
+    // its centre runs from 6px to the width minus 6px.
+    const ticks = steps.map((v, i) =>
       `<button type="button" class="lvl-notch${v === cur ? ' active' : ''}" data-layer="${l.id}" data-lvl="${v}"`
+      + ` style="left:calc(6px + (100% - 12px) * ${n > 1 ? i / (n - 1) : 0})"`
       + ` title="${_lvlName(v, l.id)} (${_lvlHeight(v, l.id)})">${_lvlNotch(v, l.id)}</button>`).join('');
-    const why = locked ? (l.id === 'wind' ? 'Jet Stream is 250 mb' : l.id === 'pressure' ? 'Surface only' : 'Ground only') : _lvlHeight(cur, l.id);
-    return `<div class="lvl-col${locked ? ' locked' : ''}" data-layer="${l.id}"><div class="lvl-title">${l.title}</div>`
-      + `<div class="lvl-track">${notches}</div><div class="lvl-ft">${why}</div></div>`;
+    const why = locked ? (l.id === 'wind' ? 'Jet Stream is 250 mb' : l.id === 'pressure' ? 'Surface only' : 'Ground only')
+      : _lvlReadout(cur, l.id);
+    return `<div class="lvl-col${locked ? ' locked' : ''}" data-layer="${l.id}">`
+      + `<div class="lvl-head"><span class="lvl-title">${l.title}</span><span class="lvl-ft">${why}</span></div>`
+      + `<input type="range" class="lvl-range" data-layer="${l.id}" min="0" max="${n - 1}" step="1" value="${at}"`
+      + `${locked ? ' disabled' : ''} aria-label="${l.title} height">`
+      + `<div class="lvl-ticks">${ticks}</div></div>`;
   }).join('');
   dock.querySelectorAll('.lvl-notch').forEach(b => b.onclick = () => {
     const v = b.dataset.lvl;
     _lvlSet(b.dataset.layer, /^-?\d+$/.test(v) ? Number(v) : v);
+  });
+  // Dragging only previews the name; the data loads once, on release, so a
+  // quick drag across the track does not fire a download for every stop.
+  dock.querySelectorAll('.lvl-range').forEach(r => {
+    const steps = LVL_STEPS[r.dataset.layer];
+    r.oninput = () => {
+      const v = steps[Number(r.value)], col = r.closest('.lvl-col');
+      col.querySelector('.lvl-ft').textContent = _lvlReadout(v, r.dataset.layer);
+      col.querySelectorAll('.lvl-notch').forEach(t => t.classList.toggle('active', t.dataset.lvl === String(v)));
+    };
+    r.onchange = () => _lvlSet(r.dataset.layer, steps[Number(r.value)]);
   });
   dock.classList.add('open');
   _lvlPlace();
@@ -71868,6 +71902,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-r', date: 'Sep 24, 2026',
+    text: "The height slider is now a simple horizontal slider: one row per layer (Temp, Wind, Heights, Ocean Depth, Isotherm) with the ground or sea surface on the left and higher up (or deeper) to the right. Drag it and the reading shows the level as you go; let go and the layer loads that level. You can also tap a level name under the track to jump straight to it." },
   { id: '2026-09-24-q', date: 'Sep 24, 2026',
     text: "Tidier panels. Spaghetti Models is laid out like DeepMind Models: what is on the map first, then the guidance, with gold switches. Ensemble Models is now one simple panel with every ensemble tool as a button, grouped into Charts, Members & chances, On the map and At a point. The overlay name at the top of each legend panel (NHC, SPC, WPC outlooks and the rest) is bigger so it stands out. The heavy frost panels are less see-through but still blurred. The height and depth slider (which level Temperature, Wind, Pressure, Ocean Depth and Isotherm read from) now sits right under the left menu, like Windy's altitude picker. And the blue status box that popped up at the top of the screen is gone." },
   { id: '2026-09-24-p', date: 'Sep 24, 2026',

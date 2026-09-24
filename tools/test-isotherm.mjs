@@ -94,8 +94,8 @@ console.log('\n3. the Isotherm column');
   await p.evaluate(() => _mrmsToggle('reflm10c'));
   await p.waitForTimeout(900);
   let d = await dock();
-  ok('a slice brings it, coldest at the top, on -10',
-     d && d.open && d.iso && d.iso.notches.join(',') === '-20,-15,-10,-5,0' && d.iso.active === '-10', JSON.stringify(d));
+  ok('a slice brings it, warmest on the left, on -10',
+     d && d.open && d.iso && d.iso.notches.join(',') === '0,-5,-10,-15,-20' && d.iso.active === '-10', JSON.stringify(d));
   await p.evaluate(() => document.querySelector('#lvl-dock .lvl-notch[data-layer="isotherm"][data-lvl="-20"]').click());
   await p.waitForTimeout(900);
   let on = await p.evaluate(() => Object.keys(_mrmsOn).filter(k => _mrmsOn[k]).join(','));
