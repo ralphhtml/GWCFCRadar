@@ -284,14 +284,15 @@ console.log('\n5. travelling to a moment');
      r.picked);
   // The floor moved: before March 2022 the machine reads the Level 2 tape
   // mirror, so the picker now opens all the way back to 2008.
+  // The legacy volumes decode now, so the floor is the archive's own start.
   ok('the picker opens, back to the Level 2 tape era',
-     r.open && r.min === '2008-01-01', JSON.stringify({ o: r.open, m: r.min }));
+     r.open && r.min === '1991-06-01', JSON.stringify({ o: r.open, m: r.min }));
   ok('nor for a date in the future',
      r.max === new Date().toISOString().slice(0, 10), r.max);
   ok('with quick jumps, which is how anyone actually travels',
      r.quickJumps >= 8, String(r.quickJumps));
   ok('and it says how far back it reaches, and which radar',
-     /2008-01-01/.test(r.note) && /KTLX/.test(r.note)
+     /1991-06-01/.test(r.note) && /KTLX/.test(r.note)
      && /Level 2/.test(r.note), r.note.slice(0, 90));
   // Opened from the radar row (the no-argument default is the radar scope),
   // the machine drives the radar alone now - the satellite has its own - so

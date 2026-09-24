@@ -32,8 +32,10 @@ console.log('\n1. the pieces are in the page');
 {
   ok('the strip containers exist beside the radar comparison\'s',
      /id="sc-dividers"/.test(PAGE) && /id="sc-labels"/.test(PAGE));
-  ok('the Compare bubble is drawn at every level of the satellite menu',
-     (PAGE.match(/_scCompareBubble\(wrap\);/g) || []).length === 3);
+  // The Compare button was taken out of the satellite product list by request;
+  // the comparison itself stays (the strips, adding and removing them).
+  ok('the Compare bubble is no longer in the satellite product list',
+     (PAGE.match(/_scCompareBubble\(wrap\);/g) || []).length === 0);
   ok('a product tap adds a strip while a comparison is running, picking up any pending sector',
      /if \(typeof _scOn !== 'undefined' && _scOn && activeLayers\.satellite\) \{[\s\S]{0,600}_scAddSlot\(p\.id, region !== null \? region : undefined\);/.test(PAGE));
   ok('a sector tap adds the current product from that sector',
@@ -166,8 +168,8 @@ console.log('\n2. strips are added, planned, clipped and labelled');
     return out;
   });
   ok('with the layer off, Compare turns the satellite on and starts', r.onFromOff === true);
-  ok('with the satellite on it starts, and the bubble lights',
-     r.satOn && r.on && r.bubbleLit === true, JSON.stringify(r.bubbleLit));
+  ok('with the satellite on it starts (and no bubble is drawn for it)',
+     r.satOn && r.on && r.bubbleLit === 'no bubble', JSON.stringify(r.bubbleLit));
   ok('a channel strip and a sector strip both join',
      JSON.stringify(r.slots) === '["ch08/auto","ch13/west"]', JSON.stringify(r.slots));
   ok('each strip is a WMS layer of its own product and sector',

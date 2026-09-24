@@ -383,8 +383,9 @@ class CORSHandler(SimpleHTTPRequestHandler):
             self._reply_json(400, {"error": "band must be 1 to 16"})
             return
         now_ms = int(time.time() * 1000)
-        if not 1483228800000 <= at <= now_ms + 3600000:
-            self._reply_json(400, {"error": "at must be a moment since 2017"})
+        # Back to 1980: before GOES-R the archive answers from GridSat-B1.
+        if not 315532800000 <= at <= now_ms + 3600000:
+            self._reply_json(400, {"error": "at must be a moment since 1980"})
             return
         got = sat_archive.frames_around(post, band, sector, at, n)
         if got is None:
@@ -401,7 +402,7 @@ class CORSHandler(SimpleHTTPRequestHandler):
             return
         try:
             _png, bounds = sat_archive.render(got["bucket"], newest["key"], band, sector,
-                                              self._sat_cache_dir())
+                                              self._sat_cache_dir(), post=post)
         except Exception as e:
             self._reply_json(502, {"error": f"could not render that scan ({e})"})
             return
@@ -409,7 +410,7 @@ class CORSHandler(SimpleHTTPRequestHandler):
             _sat_gate.release()
         self._reply_json(200, {"post": post, "bucket": got["bucket"], "band": band,
                                "sector": sector, "at": at, "bounds": bounds,
-                               "frames": got["frames"]})
+                               "source": got.get("source"), "frames": got["frames"]})
 
     def _sat_archive_frame(self):
         """GET /sat/archive/frame?bucket=&key=&band=&sector= -> image/png"""
@@ -420,11 +421,16 @@ class CORSHandler(SimpleHTTPRequestHandler):
             return
         one = self._sat_query()
         bucket, key, sector = one("bucket"), one("key"), one("sector")
-        if bucket not in sat_archive.BUCKETS:
+        post = one("post") or "east"
+        gridsat = bucket == getattr(sat_archive, "GRIDSAT_BUCKET", None)
+        if bucket not in sat_archive.BUCKETS and not gridsat:
             self._reply_json(400, {"error": "unknown bucket"})
             return
-        if not sat_archive.KEY_RE.match(key):
+        if not (sat_archive.GRIDSAT_RE.match(key) if gridsat else sat_archive.KEY_RE.match(key)):
             self._reply_json(400, {"error": "key is not a GOES scan"})
+            return
+        if post not in ("east", "west"):
+            self._reply_json(400, {"error": "post must be east or west"})
             return
         if sector not in sat_archive.SECTOR_PRODUCT:
             self._reply_json(400, {"error": "sector must be conus or fulldisk"})
@@ -441,7 +447,7 @@ class CORSHandler(SimpleHTTPRequestHandler):
             self._reply_json(503, {"error": "the archive is busy, try again shortly"})
             return
         try:
-            png, _bounds = sat_archive.render(bucket, key, band, sector, self._sat_cache_dir())
+            png, _bounds = sat_archive.render(bucket, key, band, sector, self._sat_cache_dir(), post=post)
             with open(png, "rb") as fh:
                 body = fh.read()
         except Exception as e:

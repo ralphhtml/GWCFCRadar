@@ -6525,20 +6525,44 @@ body.lite-mode #export-modal { display: none !important; }
   box-shadow: 0 0 10px rgba(var(--accent2-rgb),0.9);
 }
 
+/* -- TOP BAR LAYOUT (Settings > Themes) -----------------------------------
+   The logo, the account button and the search bar each take one of three
+   spots. A class per item on <html> says which; the default (account left,
+   logo centre, search right) needs no class at all. !important because
+   the base rules and their phone variants set left/right in several places. */
+html.tb-account-center #lqm-profile-btn { left: 50% !important; right: auto !important; transform: translateX(-50%) !important; }
+html.tb-account-right  #lqm-profile-btn { left: auto !important; right: 18px !important; }
+html.tb-search-left    #top-search-bar  { left: 18px !important; right: auto !important; }
+html.tb-search-center  #top-search-bar  { left: 50% !important; right: auto !important; transform: translateX(-50%) !important; }
+html.tb-logo-left      #logo-wrap       { left: 18px !important; right: auto !important; transform: none !important; align-items: flex-start !important; }
+html.tb-logo-right     #logo-wrap       { left: auto !important; right: 18px !important; transform: none !important; align-items: flex-end !important; }
+
 /* -- THE SITE POPUP -- two choices, floated above a tapped radar pill */
 #site-pop {
   position: fixed; z-index: 3100; display: none; flex-direction: column; gap: 4px;
   min-width: 168px; max-width: 220px;
-  background: rgb(8,12,16); border: 1px solid rgba(var(--accent2-rgb),0.45); border-radius: 9px;
-  padding: 7px; box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+  /* Heavy gloss, the Did You Know card's recipe: a strong blur pulls the map
+     through a thin dark fill, and the bright inset top edge is the sheen. */
+  background: linear-gradient(180deg, rgba(22,26,32,0.42) 0%, rgba(6,8,12,0.55) 100%);
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  border: 1px solid rgba(255,255,255,0.18); border-radius: 12px;
+  padding: 7px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.24),
+              inset 0 22px 34px -26px rgba(255,255,255,0.26),
+              0 10px 40px rgba(0,0,0,0.5);
   font-family: var(--sans); transform: translate(-50%, -100%);
 }
+/* Where blur is switched off (touch screens, iOS), a solid dark fill so the
+   text still reads. */
+@media (hover: none) { #site-pop { background: linear-gradient(180deg, rgba(22,26,32,0.94) 0%, rgba(6,8,12,0.96) 100%); } }
+html.ios-lite #site-pop { background: linear-gradient(180deg, rgba(22,26,32,0.94) 0%, rgba(6,8,12,0.96) 100%); }
 #site-pop.open { display: flex; }
 #site-pop.below { transform: translate(-50%, 0); }
 #site-pop::after {
   content: ''; position: absolute; left: 50%; bottom: -6px; width: 10px; height: 10px;
-  background: rgb(8,12,16);
-  border-right: 1px solid rgba(var(--accent2-rgb),0.45); border-bottom: 1px solid rgba(var(--accent2-rgb),0.45);
+  background: rgb(8,11,15);
+  border-right: 1px solid rgba(255,255,255,0.18); border-bottom: 1px solid rgba(255,255,255,0.18);
   transform: translateX(-50%) rotate(45deg);
 }
 #site-pop.below::after { bottom: auto; top: -6px; transform: translateX(-50%) rotate(225deg); }
@@ -6550,6 +6574,8 @@ body.lite-mode #export-modal { display: none !important; }
 .site-pop-btn b { font-size: 11px; }
 .site-pop-btn span { font-size: 9px; color: rgba(255,255,255,0.55); }
 .site-pop-btn:hover { background: rgba(var(--accent2-rgb),0.28); border-color: rgba(var(--accent2-rgb),0.5); }
+.site-pop-btn { background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04)); box-shadow: inset 0 1px 0 rgba(255,255,255,0.18); }
+.site-pop-past b { color: var(--accent); }
 
 /* -- RADAR COMPARE STRIP LABELS -- the model comparison's label, plus a
    small × on it, since the strips have no panel: the label on the map is
@@ -12964,6 +12990,48 @@ function _iosFlatTiles() {
   };
 }
 
+// -- TOP BAR LAYOUT ---------------------------------------------------------------
+const TOPBAR_KEY = 'gwcfc_topbar';
+const TOPBAR_ITEMS = { account: 'Account', logo: 'Logo', search: 'Search bar' };
+const TOPBAR_DEFAULT = { left: 'account', center: 'logo', right: 'search' };
+let _topbar = Object.assign({}, TOPBAR_DEFAULT);
+function _topbarValid(t) {
+  const vals = [t.left, t.center, t.right];
+  return vals.every(v => v in TOPBAR_ITEMS) && new Set(vals).size === 3;
+}
+function _topbarApply() {
+  const r = document.documentElement;
+  [...r.classList].filter(c => /^tb-(account|logo|search)-/.test(c)).forEach(c => r.classList.remove(c));
+  ['left', 'center', 'right'].forEach(slot => {
+    const item = _topbar[slot];
+    if (TOPBAR_DEFAULT[slot] !== item) r.classList.add(`tb-${item}-${slot}`);
+  });
+  ['left', 'center', 'right'].forEach(slot => {
+    const sel = document.getElementById('lqm-tb-' + slot);
+    if (!sel) return;
+    if (!sel.options.length) sel.innerHTML = Object.keys(TOPBAR_ITEMS).map(k => `<option value="${k}">${TOPBAR_ITEMS[k]}</option>`).join('');
+    sel.value = _topbar[slot];
+  });
+}
+// Putting an item in a spot swaps it with whatever held that spot, so the
+// three always stay three different things.
+function topbarSetSlot(slot, item) {
+  if (!(item in TOPBAR_ITEMS) || !(slot in _topbar)) return;
+  const from = Object.keys(_topbar).find(k => _topbar[k] === item);
+  if (from && from !== slot) _topbar[from] = _topbar[slot];
+  _topbar[slot] = item;
+  try { localStorage.setItem(TOPBAR_KEY, JSON.stringify(_topbar)); } catch (e) {}
+  _topbarApply();
+}
+(function _topbarRestore() {
+  try {
+    const v = JSON.parse(localStorage.getItem(TOPBAR_KEY) || 'null');
+    if (v && _topbarValid(v)) _topbar = { left: v.left, center: v.center, right: v.right };
+  } catch (e) {}
+  _topbarApply();
+  document.addEventListener('DOMContentLoaded', _topbarApply);
+})();
+
 // -- INIT MAP --
 function initMap() {
   // iOS: Leaflet draws every canvas renderer at two device pixels per CSS
@@ -13367,7 +13435,7 @@ function _generateL3Frames(count, endMs) {
     const d = new Date(t);
     const key = `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}`;
     const iso = d.toISOString().slice(0,16) + ':00Z';
-    frames.push({ time: Math.floor(t / 1000), tileKey: key, iso, forecast: false });
+    frames.push({ time: Math.floor(t / 1000), tileKey: key, iso, forecast: false, n0r: t < IEM_N0Q_START });
   }
   return frames;
 }
@@ -13474,6 +13542,13 @@ let _firstValidFrame = 0;  // oldest frame index with confirmed tile data
 const IEM_TILE_BASE    = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-';
 const IEM_NEXRAD_WMS   = 'https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q-t.cgi';
 const IEM_NEXRAD_LAYER = 'nexrad-n0q-wmst';
+// Before N0Q existed (it starts November 2010), Iowa Mesonet's national
+// composite was built from N0R, the older 0.5 dBZ-step base reflectivity, and
+// that archive runs back to 1995. The mosaic time machine reads it for any
+// moment older than N0Q, the same way, through its own time-enabled WMS.
+const IEM_N0R_WMS    = 'https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0r-t.cgi';
+const IEM_N0R_LAYER  = 'nexrad-n0r-wmst';
+const IEM_N0Q_START  = Date.UTC(2010, 10, 1);
 let _nexradCacheFailed  = false; // set true when IEM appears globally unreliable; future slots use WMS
 let _nexradWmsSlotCount = 0;    // how many individual slots switched to WMS; gates global failure
 
@@ -13597,13 +13672,13 @@ function _switchSlotToWms(i) {
   if (_radarLayerPool[i] && _radarLayerLoaded[i]) return; // already has tiles - don't blank it
   if (_radarLayerPool[i]) { try { map.removeLayer(_radarLayerPool[i]); } catch(e){} _radarLayerPool[i] = null; }
   const frame = radarFrames[i];
-  const l = L.tileLayer.wms(IEM_NEXRAD_WMS, {
-    layers: IEM_NEXRAD_LAYER, format: 'image/png', transparent: true,
+  const l = L.tileLayer.wms(frame.n0r ? IEM_N0R_WMS : IEM_NEXRAD_WMS, {
+    layers: frame.n0r ? IEM_N0R_LAYER : IEM_NEXRAD_LAYER, format: 'image/png', transparent: true,
     version: '1.1.1', TIME: frame.iso,
     opacity: 0, zIndex: 10, pane: 'radarPane',
     crossOrigin: 'anonymous', noWrap: true, tileSize: 256,
     keepBuffer: _isIOS ? 1 : 2, updateWhenIdle: _isIOS, updateWhenZooming: false,
-    attribution: 'Radar: NOAA NEXRAD N0Q via Iowa Mesonet',
+    attribution: frame.n0r ? 'Radar: NOAA NEXRAD N0R archive via Iowa Mesonet' : 'Radar: NOAA NEXRAD N0Q via Iowa Mesonet',
   });
   l.on('tileloadstart', (e) => { e.tile.decoding = 'async'; });
   l.on('tileload', (e) => {
@@ -13643,7 +13718,8 @@ function _ensureNexradLayer(i) {
   if (_radarLayerPool[i]) return;
   const frame = radarFrames[i];
 
-  if (_nexradCacheFailed) { _switchSlotToWms(i); return; }
+  // The tile cache is N0Q only; an N0R-era frame always goes through the WMS.
+  if (_nexradCacheFailed || (frame && frame.n0r)) { _switchSlotToWms(i); return; }
 
   // IEM pre-rendered tile cache - NOAA NEXRAD L3 data via Iowa Mesonet.
   // maxNativeZoom:9 - above z9 Leaflet upscales; pixelated keeps edges crisp.
@@ -26394,15 +26470,18 @@ const TM_FLOOR = Date.UTC(2022, 2, 1);
 // volumes, so getting one scan means walking tar headers by ranged reads
 // and gunzipping the one entry wanted - no server anywhere in between.
 //
-// The honest floor: this browser's decoder reads the dual-pol era format.
-// Proven against real archive volumes: a 2015 AR2V0006 file decodes to a
-// full mesh, while the 2006 AR2V0001 and 1991 ARCHIVE2 formats do not, and
-// those eras are stored in Unix .Z compression besides. Sites switched to
-// the readable era across 2008-2010, so the machine offers 2008 onward and
-// says exactly why when a picked moment turns out to predate this site's
-// switch.
+// The floor is the archive's own start, June 1991. The older volumes are
+// the legacy format (message 1: reflectivity and velocity, no dual-pol, no
+// radar position in the file) and many are stored in Unix .Z compression; the
+// worker's parser reads both now (src/parse/level2/src/lzwdecompress.js and
+// Level2Record-1.js), and the page supplies the site's position, which the
+// old format does not carry. Dual-pol products (CC, ZDR, KDP) only exist from
+// 2011-2013 on, as each radar was upgraded.
 const L2ARC_API = 'https://storage.googleapis.com/storage/v1/b/gcp-public-data-nexrad-l2/o';
-const L2ARC_FLOOR = Date.UTC(2008, 0, 1);
+const L2ARC_FLOOR = Date.UTC(1991, 5, 1);
+// The site the last archive volume came from: the legacy format has no radar
+// position inside, so the worker is told it (see _workerProcess).
+let _l2ArcSiteHint = null;
 
 function _l2ArcStampMs(name) {
   const m = /(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/.exec(String(name || ''));
@@ -26475,6 +26554,7 @@ async function _l2AwsDayKeys(site, dayMs) {
 // bytes read of each volume (a ranged read; the records are whole enough for
 // the decoder's tolerant tail).
 async function _l2AwsVolumes(site, at, n, cap, startBack) {
+  _l2ArcSiteHint = site;
   let keys = await _l2AwsDayKeys(site, at);
   // The volumes just before midnight live in the previous day's listing.
   const near = keys.length ? Math.abs(_l2AwsStampMs(keys[0]) - at) : Infinity;
@@ -26571,10 +26651,9 @@ function _l2ArcNearest(vols, at) {
 // Read one volume out of an indexed tar, up to `cap` bytes of it (the flat
 // picture wants only the low sweeps; Radar 3D wants the whole thing).
 async function _l2ArcRead(idx, entry, cap) {
-  if (/\.Z$/.test(entry.name)) {
-    throw new Error(`${idx.sid}'s archive at that date is still in the pre-2009 tape format`
-      + ' this decoder cannot read yet. Try 2009 or later for this site.');
-  }
+  // A .Z volume (1991-2008) goes to the worker as it is: its parser unpacks
+  // Unix compress itself, and a capped read decodes as far as it reaches.
+  _l2ArcSiteHint = idx.sid;
   const byteCap = Math.min(entry.size, cap || L2_DIRECT_CAP);
   const body = await idx.range(entry.start, entry.start + byteCap - 1);
   const raw = /\.gz$/.test(entry.name) ? await _l2ArcGunzip(body, byteCap < entry.size) : body;
@@ -26649,15 +26728,19 @@ async function _l2ArcShow(site, at) {
 
 let _tmAt = null;      // the radar's moment
 let _tmSatAt = null;   // the satellite's moment
-// How far back the satellite can go when the parsing server is there to read NOAA's own
-// buckets: GOES-16 has kept every scan since mid 2017 (see pi/sat_archive.py).
-const SAT_ARC_FLOOR = Date.UTC(2017, 6, 10);
+// How far back the satellite can go when the parsing server is there to read
+// NOAA's archives: every GOES-R scan since mid 2017, and before that the
+// GridSat-B1 infrared record, every three hours back to 1980 (see
+// pi/sat_archive.py).
+const SAT_ARC_FLOOR = Date.UTC(1980, 0, 1);
+const SAT_GOESR_START = Date.UTC(2017, 6, 10);
 // The radar MOSAIC's own clock, the third machine. The Composite menu's MRMS
 // 1 km mosaic only advertises its last few hours, so the archive behind this
 // one is the NEXRAD national composite Iowa Mesonet has kept every five
-// minutes since November 2010, which is what the Normal mosaic draws anyway.
+// minutes: N0Q since November 2010, and before that N0R back to 1995 (see
+// IEM_N0R_WMS), so the machine goes back to the start of 1995.
 let _tmMosaicAt = null;
-const MOSAIC_FLOOR = Date.UTC(2010, 10, 1);
+const MOSAIC_FLOOR = Date.UTC(1995, 0, 1);
 // Which picture the open modal is set to drive: the radar row opens it as
 // 'radar', the satellite row as 'sat'. Every jump goes to this one only.
 let _tmScope = 'radar';
@@ -26882,7 +26965,8 @@ function _tmOpen(scope) {
     [['1 HR', 3600e3], ['6 HR', 6 * 3600e3], ['1 DAY', 86400e3],
      ['3 DAY', 3 * 86400e3], ['1 WK', 7 * 86400e3], ['1 MO', 30 * 86400e3],
      ['6 MO', 182 * 86400e3], ['1 YR', 365 * 86400e3],
-     ['2 YR', 730 * 86400e3]].forEach(([label, back]) => {
+     ['2 YR', 730 * 86400e3], ['5 YR', 1826 * 86400e3],
+     ['10 YR', 3652 * 86400e3], ['20 YR', 7305 * 86400e3]].forEach(([label, back]) => {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'tm-chip';
@@ -32019,10 +32103,15 @@ async function _goesArcFrames() {
   if (!r.ok) throw new Error('index HTTP ' + r.status);
   const idx = await r.json();
   if (!idx || !Array.isArray(idx.frames) || !idx.bounds) throw new Error('bad index');
+  // Before GOES-R the answer is GridSat-B1: infrared only, every three hours.
+  // Said once, so a visible band showing infrared is not a surprise.
+  if (idx.bucket === 'gridsat-b1' && typeof showToast === 'function') {
+    showToast('Before 2017 the satellite archive is GridSat-B1: infrared, every 3 hours, back to 1980.', 5500);
+  }
   return idx.frames.map(f => ({
     time: new Date(f.t), timeStr: f.stamp, bounds: idx.bounds,
     url: `${base}/sat/archive/frame?bucket=${encodeURIComponent(idx.bucket)}`
-       + `&key=${encodeURIComponent(f.key)}&band=${t.band}&sector=${t.sector}`,
+       + `&key=${encodeURIComponent(f.key)}&band=${t.band}&sector=${t.sector}&post=${t.post}`,
   })).filter(f => isFinite(f.time.getTime())).sort((a, b) => a.time - b.time);
 }
 async function _goesLoadArcFrames() {
@@ -32392,7 +32481,6 @@ function toggleSatelliteSub() {
   });
 
   _satTimeMachineBubble(wrap);
-  _scCompareBubble(wrap);
   _satRegionRow(wrap);
   wrap.style.display = 'flex';
 }
@@ -32442,7 +32530,6 @@ function _satKindSub(k) {
   });
 
   _satTimeMachineBubble(wrap);
-  _scCompareBubble(wrap);
   _satRegionRow(wrap, k.id);
   wrap.style.display = 'flex';
 }
@@ -32456,7 +32543,6 @@ function _satCatSub(k, c, items) {
   _radarBackBubble(wrap, () => _satKindSub(k), c.label);
   items.forEach(p => wrap.appendChild(_goesProductBubble(p)));
   _satTimeMachineBubble(wrap);
-  _scCompareBubble(wrap);
   _satRegionRow(wrap, k.id);
   wrap.style.display = 'flex';
 }
@@ -47477,7 +47563,7 @@ let _radarWorkerPending = null;  // { resolve, reject } for current request
 // is a new URL, and a page from before the build keeps the URL its decoder
 // answers to. A mismatched pair is how "Parse failed" appears on one device
 // while the same click works everywhere else.
-var RADAR_WORKER_V = '0da718d3';
+var RADAR_WORKER_V = 'f60c87a2';
 
 function _getRadarWebWorker() {
   if (_radarWebWorker) return _radarWebWorker;
@@ -47527,6 +47613,14 @@ function _workerProcess(buffer, layer, extraOptions) {
   var far = (layer === 'VEL' || layer === 'SRV' || /^N.U$|^N.V$/.test(String(layer || '')))
     ? RADAR_VEL_RANGE_KM : RADAR_RANGE_KM;
   var options = Object.assign({ range_limit_km: far }, extraOptions);
+  // Where the radar is, for a legacy (pre-2008) volume that does not say. The
+  // worker only uses it when the file itself has no position.
+  if (!Number.isFinite(options.siteLat)) {
+    var sid = String(options.station || _l2ArcSiteHint || (typeof _l2Site !== 'undefined' && _l2Site) || '').toLowerCase();
+    if (sid.length === 3) sid = 'k' + sid;
+    var st = sid && NEXRAD_STATIONS.find(function (x) { return x.id === sid; });
+    if (st) { options.siteLat = st.lat; options.siteLon = st.lon; }
+  }
   return new Promise(function(resolve, reject) {
     // One slot, so a new request must fully retire the old one first. The
     // slot used to be overwritten in place, and then the OLD reply settled
@@ -50675,7 +50769,9 @@ function _sitePopEl() {
   el.innerHTML = '<button type="button" class="site-pop-btn site-pop-view" onclick="_sitePopView()">'
     + '<b>View this site</b><span>Load this radar on its own</span></button>'
     + '<button type="button" class="site-pop-btn site-pop-compare" onclick="_sitePopCompare()">'
-    + '<b>Compare radar sites</b><span>Several radars side by side</span></button>';
+    + '<b>Compare radar sites</b><span>Several radars side by side</span></button>'
+    + '<button type="button" class="site-pop-btn site-pop-past" onclick="_sitePopPast()">'
+    + '<b>View Past Radar</b><span>This radar on any past date</span></button>';
   document.body.appendChild(el);
   document.addEventListener('pointerdown', e => {
     if (!el.classList.contains('open') || el.contains(e.target)) return;
@@ -50717,6 +50813,15 @@ function _sitePopCompare() {
   const s = _sitePopStation;
   _sitePopClose();
   if (s) return _rcStart(s);
+}
+// Load this radar, then open the radar Time Machine on it: pick a date and
+// time and the site's archived scans come up.
+async function _sitePopPast() {
+  const s = _sitePopStation;
+  _sitePopClose();
+  if (!s) return;
+  try { await _siteView(s); } catch (e) {}
+  if (typeof _tmOpen === 'function') _tmOpen('radar');
 }
 
 // -- COMPARING RADAR SITES SIDE BY SIDE ------------------------------------
@@ -58600,7 +58705,19 @@ function selectProduct(p) {
        DATA VALUES, and mixing "what dBZ is red" with "what colour is a
        button" in one place would make both harder to find. -->
   <div class="lqm-settings-group" data-cat="app-colors">
-    <div class="lqm-settings-category"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-palette></use></svg> App Colors</div>
+    <div class="lqm-settings-category"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-palette></use></svg> Themes</div>
+    <div class="lqm-settings-row" style="flex-wrap:wrap;gap:6px">
+      <span class="lqm-settings-lbl">Top bar layout</span>
+      <span style="display:flex;gap:4px;flex-wrap:wrap" id="lqm-topbar-row">
+        <label style="font-size:9px">Left <select class="lqm-settings-select" id="lqm-tb-left" onchange="topbarSetSlot('left', this.value)"></select></label>
+        <label style="font-size:9px">Center <select class="lqm-settings-select" id="lqm-tb-center" onchange="topbarSetSlot('center', this.value)"></select></label>
+        <label style="font-size:9px">Right <select class="lqm-settings-select" id="lqm-tb-right" onchange="topbarSetSlot('right', this.value)"></select></label>
+      </span>
+    </div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:0 0 8px;line-height:1.5;">
+      Which of the logo, the account button and the search bar sits on the left, in the middle and on
+      the right. Picking one for a spot swaps it with whatever was there.
+    </div>
     <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:2px 0 6px;line-height:1.5;">
       The colours of the app itself: buttons, bubbles, panels, menus and popups. Radar, model and
       satellite colours live in their own sections, since those stand for measurements rather than
@@ -58758,7 +58875,7 @@ const THEME_PRESETS = {
   ralphred: { label: "Ralph's Red",
     tokens: { '--bg': '#5a0000', '--surface': '#720000', '--panel': '#850000', '--brand-red': '#aa0000',
               '--border': '#aa0000', '--border2': '#aa0000', '--accent': '#e8b800',
-              '--accent2': '#4EA2DA', '--text': '#DAEEFB', '--muted': '#5B819A' },
+              '--accent2': '#4ea2da', '--text': '#daeefb', '--muted': '#5b819a' },
     surfaces: {
       '--grad-panel':   { type: 'grad', angle: 180, stops: ['#7e1010', '#560303', '#2e0000'] },
       '--grad-surface': { type: 'grad', angle: 180, stops: ['#6b0c0c', '#3a0101'] },
@@ -69257,6 +69374,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-c', date: 'Sep 24, 2026',
+    text: 'The Time Machines reach much further back. Single radar sites now go back to June 1991, the start of the Level 2 archive: the older tape format and its old compression are read now (reflectivity and velocity; dual-pol starts around 2012). The national radar mosaic goes back to 1995, and the satellite to 1980 through the parsing server (infrared every 3 hours before 2017). The quick jumps gained 5, 10 and 20 years. Also: radar site popups have a new View Past Radar button and a glossy look, the logo, account button and search bar can be arranged left, centre or right in Settings, whose colour section is now called Themes, and the Compare button left the satellite product list.' },
   { id: '2026-09-24-b', date: 'Sep 24, 2026',
     text: 'Themes now recolour the whole app. Hundreds of places still had the default gold, blue, text colour or red written straight in, so a theme left gold tabs, blue borders and red buttons behind. They all follow the theme now, see-through tints included, and there is a new Brand red colour in the theme editor for the search bar and time controls (a preset without its own takes its second accent).' },
   { id: '2026-09-24-a', date: 'Sep 24, 2026',
