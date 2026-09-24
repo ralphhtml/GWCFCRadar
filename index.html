@@ -7455,6 +7455,28 @@ body.shot-mode #map-wrap > div:not(#map) {
   border-radius: 9px;
 }
 #lqm-search-input:focus { border-color: var(--accent2); }
+/* The tung tung tung sahur flood (see _tungFlood). Above everything, but it
+   never takes a click: the map keeps working underneath. */
+#tung-flood { position: fixed; inset: 0; z-index: 99999; pointer-events: none; overflow: hidden; transition: opacity .6s; }
+#tung-flood.tung-bye { opacity: 0; }
+#tung-flood .tung-one {
+  position: absolute; width: auto; transform: rotate(var(--tilt, 0deg));
+  filter: drop-shadow(0 6px 14px rgba(0,0,0,.55));
+  animation: tung-pop .35s cubic-bezier(.2,1.6,.4,1) both;
+}
+#tung-flood .tung-banner {
+  position: absolute; left: 50%; top: 50%; z-index: 2; transform: translate(-50%, -50%);
+  font: 900 clamp(28px, 7vw, 88px)/1 'Comfortaa', sans-serif; letter-spacing: .04em;
+  color: #ffd21f; text-align: center; white-space: nowrap;
+  -webkit-text-stroke: 3px #000; paint-order: stroke fill;
+  text-shadow: 0 6px 18px rgba(0,0,0,.7);
+  animation: tung-banner .5s ease-in-out infinite alternate;
+}
+@keyframes tung-pop { from { transform: rotate(var(--tilt, 0deg)) scale(0); } to { transform: rotate(var(--tilt, 0deg)) scale(1); } }
+@keyframes tung-banner { from { transform: translate(-50%, -50%) scale(.94) rotate(-2deg); } to { transform: translate(-50%, -50%) scale(1.06) rotate(2deg); } }
+@media (prefers-reduced-motion: reduce) {
+  #tung-flood .tung-one, #tung-flood .tung-banner { animation: none; }
+}
 #lqm-search-input::placeholder { color: var(--muted); }
 #lqm-search-go {
   background: rgba(133,0,0,0.85);
@@ -63138,12 +63160,66 @@ document.addEventListener('click', (e) => {
   const bar = document.getElementById('top-search-bar');
   if (bar && bar.classList.contains('expanded') && !bar.contains(e.target)) lqmCloseSearch();
 });
+// -- Tung tung tung sahur ----------------------------------------------------
+// Search for it and the screen floods. The GIF is a copy kept in the site's
+// own files (assets/img, an animated WebP a tenth the size of Tenor's GIF),
+// shown as a plain <img>: Tenor's embed script is never loaded, so nothing
+// from outside runs on the page. Every copy is the same picture, so the
+// browser decodes it once however many are on screen, and the whole flood
+// ignores the mouse so the map underneath still works.
+const TUNG_RE = /^\s*(tung[\s-]*){2,}sahur\s*!*\s*$/i;
+let _tungOn = false;
+function _tungFlood() {
+  if (_tungOn) return;
+  _tungOn = true;
+  const calm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const box = document.createElement('div');
+  box.id = 'tung-flood';
+  box.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(box);
+  const banner = document.createElement('div');
+  banner.className = 'tung-banner';
+  banner.textContent = 'TUNG TUNG TUNG SAHUR';
+  box.appendChild(banner);
+  const W = innerWidth, H = innerHeight;
+  const total = calm ? 12 : 70;
+  const timers = [];
+  for (let i = 0; i < total; i++) {
+    timers.push(setTimeout(() => {
+      const img = new Image();
+      img.src = 'assets/img/tung-tung-sahur.webp';
+      img.alt = '';
+      img.className = 'tung-one';
+      const h = Math.round(90 + Math.random() * Math.min(260, H * 0.35));
+      img.style.height = h + 'px';
+      img.style.left = Math.round(Math.random() * (W - h * 0.55)) + 'px';
+      img.style.top = Math.round(Math.random() * (H - h)) + 'px';
+      img.style.setProperty('--tilt', (calm ? 0 : Math.round(Math.random() * 50 - 25)) + 'deg');
+      box.appendChild(img);
+    }, Math.round((i / total) * (calm ? 1500 : 3000))));
+  }
+  const end = () => {
+    if (!_tungOn) return;
+    timers.forEach(clearTimeout);
+    box.classList.add('tung-bye');
+    setTimeout(() => { box.remove(); _tungOn = false; }, 600);
+    document.removeEventListener('keydown', onKey, true);
+    document.removeEventListener('pointerdown', end, true);
+  };
+  const onKey = e => { if (e.key === 'Escape') end(); };
+  document.addEventListener('keydown', onKey, true);
+  // Armed a beat later, so the Enter or tap that asked for it does not end it.
+  setTimeout(() => document.addEventListener('pointerdown', end, true), 400);
+  setTimeout(end, 7000);
+}
+
 async function lqmDoSearch() {
   const inp = document.getElementById('lqm-search-input');
   const status = document.getElementById('lqm-search-status');
   if (!inp || !status) return;
   const q = inp.value.trim();
   if (!q) return;
+  if (TUNG_RE.test(q)) { _tungFlood(); return; }
   status.style.color = 'var(--muted)';
   status.textContent = 'Searching…';
   try {
@@ -72424,6 +72500,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-zd', date: 'Sep 24, 2026',
+    text: "Try searching tung tung tung sahur. That's all. (Esc or a click clears it, and the map keeps working underneath.)" },
   { id: '2026-09-24-zc', date: 'Sep 24, 2026',
     text: "Layer Order in Settings is one list now. Map layers and overlays used to be two separate lists, with every overlay always drawn above every map layer; now they are rows of the same list, so radar can go over the SPC outlook, satellite under the storm reports, anything over or under anything. And it goes down to the last sub-bubble: every product you pick from a menu, however deep (Waves > SST > Coral Reef Watch > Actual, Radar > Level 2 > Velocity), gets its own indented row under its layer once it has been on the map, and those rows reorder among themselves. A saved order carries over, and the overlay fly-out stays in the same order as the list." },
   { id: '2026-09-24-zb', date: 'Sep 24, 2026',
@@ -73202,6 +73280,8 @@ function _srchHighlight(items) {
 function lqmSearchInput(q) {
   _srchActiveIdx = -1;
   clearTimeout(_srchDebounce);
+  // Typed in full, it goes off without waiting for Enter.
+  if (TUNG_RE.test(q) && /sahur\s*!*\s*$/i.test(q)) _tungFlood();
   if (!q.trim()) { _srchShowDefault(); return; }
   // Immediate catalog filter
   const qLow = q.toLowerCase();
