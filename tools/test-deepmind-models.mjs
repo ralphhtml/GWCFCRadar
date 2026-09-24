@@ -98,8 +98,10 @@ console.log('\n2. WNV3, the newest, by default');
     opts: [...document.querySelectorAll('#cyc-variant-sel option')].map(o => o.value + ':' + o.textContent) }));
   ok('WNV3 is chosen and drawn', r.on && r.v === 'WNV3' && r.frames === '0,6,12,18,24,30,36,42,48', JSON.stringify(r));
   ok('and named in the picker', r.opts.some(o => /^WNV3:.*64 members/.test(o)), r.opts.join(' | '));
-  const terms = await p.evaluate(() => document.getElementById('cyc-terms').textContent);
-  ok('the data terms are on the panel', /Experimental research forecasts from Google DeepMind/.test(terms) && /CC BY 4.0/.test(terms), terms);
+  const c = await p.evaluate(() => ({ credits: document.getElementById('credits-modal-body').textContent,
+    panel: document.getElementById('ai-cyclones-panel').textContent }));
+  ok('DeepMind and its terms are credited in the account panel\'s Credits', /Google DeepMind Weather Lab/.test(c.credits) && /CC BY 4.0/.test(c.credits) && /terms of use/.test(c.credits));
+  ok('and there is no credits paragraph on the panel any more', !/Triple-A Tropics|terms of use|used under their terms/.test(c.panel), c.panel.slice(-300));
 }
 
 console.log('\n3. Lows (L)');
@@ -126,12 +128,12 @@ console.log('\n4. Wind chance');
   let r = await p.evaluate(() => {
     const G = _cycWindLayer && _cycWindLayer._grid;
     const at = (lat, lon) => { const j = Math.round((lat - G.s) / G.d), i = Math.round((lon - G.w) / G.d); if (j < 0 || j >= G.ny || i < 0 || i >= G.nx) return 0; return G.count[j * G.nx + i] / G.members * 100; };
-    return { on: _cycWindOn, members: G && G.members, centre: G && at(24, -59.25), far: G && at(24, -54), edge: G && at(24, -61.9), sel: getComputedStyle(document.getElementById('cyc-wind-kt')).display,
+    return { on: _cycWindOn, members: G && G.members, centre: G && at(24, -59.25), far: G && at(24, -54), edge: G && at(24, -61.9), sel: getComputedStyle(document.getElementById('cyc-wind-kt')).display, lit: [...document.querySelectorAll('#cyc-wind-kt button.on')].map(b => b.dataset.kt).join(),
       legend: document.getElementById('cyc-wind-legend').textContent };
   });
   ok('34 kt chance: every member over the middle of the track, none far away', r.on && r.members === 4 && r.centre === 100 && r.far === 0, JSON.stringify(r));
-  ok('with the wind speed picker and a legend', r.sel !== 'none' && /Chance of 34 kt winds/.test(r.legend), JSON.stringify(r));
-  await p.evaluate(() => { const s = document.getElementById('cyc-wind-kt'); s.value = '64'; s.dispatchEvent(new Event('change')); });
+  ok('with three wind speed buttons, 34 lit, and a legend', r.sel !== 'none' && r.lit === '34' && /Chance of 34 kt winds/.test(r.legend), JSON.stringify(r));
+  await p.evaluate(() => document.querySelector('#cyc-wind-kt button[data-kt="64"]').click());
   await p.waitForTimeout(400);
   r = await p.evaluate(() => { const G = _cycWindLayer._grid; let mx = 0; for (const c of G.count) mx = Math.max(mx, c); return { mx, members: G.members }; });
   ok('64 kt: only the two members strong enough', r.mx === 2 && r.members === 4, JSON.stringify(r));
@@ -156,14 +158,16 @@ console.log('\n5. GenCast has no wind radii');
   ok('Lows still work on GenCast', await p.evaluate(() => _cycLowsAt(_cycUpto()).length === 2));
 }
 
-console.log('\n6. heavy frost on every models panel');
+console.log('\n6. subtle frost on every models panel, one speed control each');
 {
   const r = await p.evaluate(() => {
     document.documentElement.setAttribute('data-glass', 'subtle');
     const f = id => { const el = document.getElementById(id); if (!el) return 'missing'; const cs = getComputedStyle(el); return (cs.backdropFilter || cs.webkitBackdropFilter || '') + ' ' + cs.backgroundColor; };
     return ['ai-cyclones-panel', 'run-models-panel', 'spaghetti-models-panel'].map(f);
   });
-  ok('DeepMind, Run and Spaghetti Models all wear the 24px frost', r.every(x => /blur\(24px\)/.test(x) && /rgba\(0, 0, 0, 0\)/.test(x)), r.join(' | '));
+  ok('DeepMind, Run and Spaghetti Models all wear the subtle frost, not the heavy', r.every(x => /blur\(/.test(x) && !/blur\(24px\)/.test(x)), r.join(' | '));
+  const sp = await p.evaluate(() => ['sev', 'tanim', 'cyc'].map(k => `${!!document.getElementById(k + '-speed-btn')}/${!!document.getElementById(k + '-speed-in')}`).join());
+  ok('each playbar has only the typed speed box', sp === 'false/true,false/true,false/true', sp);
   ok('no page errors along the way', errs.length === 0, errs[0]);
 }
 

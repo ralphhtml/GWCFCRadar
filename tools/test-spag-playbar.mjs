@@ -251,12 +251,12 @@ console.log('\n6. speed is a multiple, and it cycles');
     _tanim.speed = 24;
     const seen = [];
     for (let i = 0; i < 5; i++) { _tanimCycleSpeed(); seen.push(_tanim.speed); }
-    return { seen, label: document.getElementById('tanim-speed-btn').textContent };
+    return { seen, label: document.getElementById('tanim-speed-in').value, dup: !!document.getElementById('tanim-speed-btn') };
   });
   ok('the speeds cycle round',
      JSON.stringify(r.seen) === JSON.stringify([48, 96, 12, 24, 48]),
      JSON.stringify(r.seen));
-  ok('shown as a multiple, like the other two panels', /×/.test(r.label), r.label);
+  ok('shown in the one speed box, with no second control', r.label === '2' && !r.dup, JSON.stringify(r));
 }
 
 console.log('\n6b. any speed can be typed');

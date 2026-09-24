@@ -3301,20 +3301,26 @@ img.wx-model-smooth {
   font-family: var(--mono); font-size: 9px; color: rgba(var(--text-rgb),0.75);
   margin: 2px 0; line-height: 1.5;
 }
-/* Whose work this is, and what the data may and may not be used for. Small,
-   but never behind a control: an attribution nobody can find is not one. */
-#cyc-credits {
-  font-family: var(--mono); font-size: 8.5px; line-height: 1.55;
-  color: rgba(var(--text-rgb),0.45); margin: 8px 0 2px;
-  border-top: 1px dashed rgba(255,255,255,0.12); padding-top: 5px;
-}
-#cyc-credits b { color: rgba(var(--text-rgb),0.75); font-weight: 700; }
 /* The four switches, as one even grid rather than a scatter of pills.
    Two columns, so a name never has to be shortened to fit and the panel
    stays the same width as Run Models beside it. */
 #cyc-layer-row {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 3px 0 5px;
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin: 3px 0 5px;
 }
+.cyc-section { margin: 2px 0 6px; }
+.cyc-genesis-row { display: flex; align-items: center; gap: 8px; }
+.cyc-genesis-row .sev-dd-label { margin: 0; }
+/* Breathing room inside the panel: the rows used to run to its very edge. */
+#ai-cyclones-panel > :not(.models-panel-header) { margin-left: 10px; margin-right: 10px; }
+#ai-cyclones-panel > :last-child { margin-bottom: 10px; }
+.cyc-genesis-row select { flex: 1; }
+#cyc-wind-kt.cyc-seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 0 10px 5px; }
+#cyc-wind-kt.cyc-seg button {
+  font-family: 'Comfortaa', sans-serif; font-size: 10px; font-weight: 700; padding: 4px 6px; cursor: pointer;
+  border-radius: 6px; background: rgba(255,209,102,0.08); border: 1px solid rgba(255,209,102,0.3); color: #ffd166;
+}
+#cyc-wind-kt.cyc-seg button.on { background: #ffd166; color: #1a1200; border-color: #ffd166; }
+#cyc-lab-status, #cyc-ens-status { opacity: 0.7; }
 #cyc-layer-row button {
   font-family: 'Comfortaa', sans-serif; font-size: 10px; font-weight: 700;
   padding: 5px 6px; cursor: pointer; border-radius: 6px; text-align: center;
@@ -3336,19 +3342,10 @@ img.wx-model-smooth {
 #cyc-layer-row #cyc-ens-centres-btn.on {
   background: #8fe3a8; color: #04200f; border-color: #8fe3a8;
 }
-#cyc-layer-row #cyc-wind-kt {
-  grid-column: 1 / -1; font-family: 'Comfortaa', sans-serif; font-size: 10px; padding: 4px 6px;
-  background: rgba(0,0,0,0.35); color: #ffd166; border: 1px solid rgba(255,209,102,0.35); border-radius: 6px;
-}
 #cyc-wind-legend { font-family: var(--mono); font-size: 9px; color: rgba(var(--text-rgb),0.8); margin: 2px 0 6px; }
 #cyc-wind-legend .cyc-wind-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 3px; }
 #cyc-wind-legend .cyc-wind-bar i { flex: 1; }
 #cyc-wind-legend .cyc-wind-ticks { display: flex; justify-content: space-between; opacity: 0.7; }
-#cyc-terms {
-  font-family: var(--mono); font-size: 8.5px; line-height: 1.5; color: rgba(var(--text-rgb),0.5);
-  margin: 6px 0 2px;
-}
-#cyc-terms a { color: rgba(var(--text-rgb),0.75); }
 #cyc-run-lbl {
   font-family: var(--mono); font-size: 10px; color: rgba(var(--text-rgb),0.8);
 }
@@ -11553,7 +11550,6 @@ body.clean-mode #clean-hint { opacity: 1; }
       </div>
       <div id="sev-playbar-row" class="sev-playbar-row">
         <button id="sev-play-btn2" class="sev-play-btn" onclick="_sevTogglePlay()"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg></button>
-        <button id="sev-speed-btn" class="sev-speed-btn" onclick="_sevCycleSpeed()" title="Playback speed">1×</button>
         <input type="number" class="sev-speed-in" id="sev-speed-in" value="1" min="0.05" step="any" title="Type any playback speed" oninput="_sevSetSpeed(this.value)" onkeydown="if(event.key==='Enter')this.blur()">
         <div id="sev-playbar-track" class="sev-playbar-track" onpointerdown="_sevPlaybarDown(event)">
           <div id="sev-playbar-fill" class="sev-playbar-fill"></div>
@@ -11602,7 +11598,6 @@ body.clean-mode #clean-hint { opacity: 1; }
            not two things that happen to be near each other. -->
       <div id="tanim-playbar-row" class="sev-playbar-row">
         <button id="tanim-play" class="sev-play-btn" onclick="_tanimToggle()" title="Play or pause the forecast-hour clock"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg></button>
-        <button id="tanim-speed-btn" class="sev-speed-btn" onclick="_tanimCycleSpeed()" title="How fast forecast time runs">1×</button>
         <input type="number" class="sev-speed-in" id="tanim-speed-in" value="1" min="0.05" step="any" title="Type any playback speed" oninput="_tanimSetSpeed(this.value)" onkeydown="if(event.key==='Enter')this.blur()">
         <div id="tanim-playbar-track" class="sev-playbar-track" onpointerdown="_tanimPlaybarDown(event)">
           <div id="tanim-playbar-fill" class="sev-playbar-fill"></div>
@@ -11663,7 +11658,6 @@ body.clean-mode #clean-hint { opacity: 1; }
            valid time and the forecast hour travel with it. -->
       <div id="cyc-playbar-row" class="sev-playbar-row">
         <button id="cyc-play-btn" class="sev-play-btn" onclick="_cycTogglePlay()" title="Walk the tracks forward through the forecast"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg></button>
-        <button id="cyc-speed-btn" class="sev-speed-btn" onclick="_cycCycleSpeed()" title="Playback speed">1×</button>
         <input type="number" class="sev-speed-in" id="cyc-speed-in" value="1" min="0.05" step="any" title="Type any playback speed" oninput="_cycSetSpeed(this.value)" onkeydown="if(event.key==='Enter')this.blur()">
         <div id="cyc-playbar-track" class="sev-playbar-track" onpointerdown="_cycPlaybarDown(event)">
           <div id="cyc-playbar-fill" class="sev-playbar-fill"></div>
@@ -11676,59 +11670,49 @@ body.clean-mode #clean-hint { opacity: 1; }
       </div>
       <div style="border-top:1px solid rgba(255,255,255,0.08);margin:5px 0 6px;"></div>
 
-      <!-- One panel, laid out like Run Models, because it does the same job:
-           pick a model, pick a field, then walk forward through the forecast.
-           It used to be a collapsible card holding two separate halves, the
-           DeepMind tracks and the GEFS centres, split by a paragraph of prose
-           and each with its own button somewhere down the page. They are two
-           views of the same question and are now two switches in one row. -->
-      <div class="sev-dropdowns">
+      <!-- Model first, then what goes on the map, then the ensemble tools.
+           Every on/off is one chip in one grid, the wind speed is three
+           buttons rather than a dropdown, and the status is one quiet line.
+           Credits live in the account panel's Credits, not down here. -->
+      <div class="cyc-section">
         <div class="sev-dd-wrap">
           <label class="sev-dd-label">Model</label>
           <select id="cyc-variant-sel" onchange="_spagCycVariant(this.value)"></select>
         </div>
-        <div class="sev-dd-wrap">
-          <label class="sev-dd-label">Genesis</label>
-          <select id="cyc-genesis-sel" onchange="_spagCycGenesis(this.value)" title="Where the ensemble thinks a storm could FORM, as a probability wash">
-            <option value="cumulative">Cumulative</option>
-            <option value="instantaneous">Instantaneous</option>
-            <option value="off">Off</option>
-          </select>
+        <div id="cyc-run-row" class="sev-run-row">
+          <span class="trop-run-lbl">Run:</span>
+          <span id="cyc-run-lbl">-</span>
         </div>
       </div>
 
-      <div id="cyc-run-row" class="sev-run-row">
-        <span class="trop-run-lbl">Run:</span>
-        <span id="cyc-run-lbl">-</span>
-      </div>
-
-      <div class="sev-section-label">Layers</div>
+      <div class="sev-section-label">On the map</div>
       <div id="cyc-layer-row">
-        <button id="cyc-lab-btn" onclick="_spagCycToggle()" title="DeepMind's ensemble tracks for the chosen model">AI tracks</button>
-        <button id="cyc-ens-centres-btn" onclick="_ensToggle()" title="Cyclone centres the parsing server finds itself in the raw GEFS ensemble, coloured by peak intensity">GEFS centres</button>
+        <button id="cyc-lab-btn" onclick="_spagCycToggle()" title="DeepMind's ensemble tracks for the chosen model">Tracks</button>
         <button id="cyc-mean-btn" onclick="_spagCycMeanTrack()" title="Draw the ensemble-mean track, coloured by how strong the mean is">Mean track</button>
-        <button id="cyc-ens-btn" onclick="_cycEnsOpen()" title="Read the ensemble as a distribution: intensity spread, genesis timing and peak strength">Ensemble stats</button>
         <button id="cyc-lows-btn" onclick="_cycLowsToggle()" title="An L with its central pressure at every member's storm centre at the playbar hour, coloured by strength">Lows (L)</button>
         <button id="cyc-wind-btn" onclick="_cycWindToggle()" title="The chance of 34, 50 or 64 knot winds at each place by the playbar hour, from every member's wind radii (WNV3 and FNV3)">Wind chance</button>
-        <select id="cyc-wind-kt" onchange="_cycWindPick(this.value)" style="display:none" title="Which wind speed">
-          <option value="34">34 kt (tropical storm)</option><option value="50">50 kt</option><option value="64">64 kt (hurricane)</option>
-        </select>
+        <button id="cyc-ens-btn" onclick="_cycEnsOpen()" title="Read the ensemble as a distribution: intensity spread, genesis timing and peak strength">Ensemble stats</button>
+        <button id="cyc-ens-centres-btn" onclick="_ensToggle()" title="Cyclone centres the parsing server finds itself in the raw GEFS ensemble, coloured by peak intensity">GEFS centres</button>
+      </div>
+      <div id="cyc-wind-kt" class="cyc-seg" style="display:none" role="group" aria-label="Wind speed">
+        <button type="button" data-kt="34" onclick="_cycWindPick(34)" title="Tropical storm force">34 kt</button>
+        <button type="button" data-kt="50" onclick="_cycWindPick(50)">50 kt</button>
+        <button type="button" data-kt="64" onclick="_cycWindPick(64)" title="Hurricane force">64 kt</button>
       </div>
       <div id="cyc-wind-legend" style="display:none"></div>
+
+      <div class="cyc-section cyc-genesis-row sev-dd-wrap">
+        <label class="sev-dd-label" for="cyc-genesis-sel">Genesis</label>
+        <select id="cyc-genesis-sel" onchange="_spagCycGenesis(this.value)" title="Where the ensemble thinks a storm could FORM, as a probability wash">
+          <option value="cumulative">Cumulative</option>
+          <option value="instantaneous">Instantaneous</option>
+          <option value="off">Off</option>
+        </select>
+      </div>
+
       <div id="cyc-lab-status">Looking for the parsing server's newest run…</div>
       <div id="cyc-ens-status">GEFS centres not loaded.</div>
-      <div id="cyc-terms">Experimental research forecasts from Google DeepMind's Weather Lab, not official warnings. Data newer than 48 hours is under DeepMind's <a href="https://storage.googleapis.com/weathernext-public/terms-of-use.pdf" target="_blank" rel="noopener">terms of use</a>, older data CC BY 4.0.</div>
       <div id="cyc-focus-info" style="display:none"></div>
-      <p id="cyc-credits">
-        Model guidance is the National Hurricane Center's public ATCF a-deck;
-        its ingest, and the ensemble centre detection, are adapted with
-        permission from <b>Triple-A Tropics</b> by Andrew Austin-Adler.
-        NHC's public deck withholds ECMWF-derived aids, so no ECMWF line can
-        be shown in real time. AI cyclone tracks and genesis fields are
-        Google DeepMind Weather Lab data, used under their terms: experimental
-        research output, shown here for interest and not a substitute for the
-        National Hurricane Center or your local forecast office.
-      </p>
     </div>
 
     <!-- Alerts Panel -->
@@ -24495,7 +24479,7 @@ async function _spagCycSync() {
     // of four switches where every other one names its layer. "Hide tracks"
     // beside "GEFS centres" and "Mean track" read as a different KIND of
     // thing; the filled state is what says whether it is on.
-    btn.textContent = 'AI tracks';
+    btn.textContent = 'Tracks';
     btn.classList.toggle('active', _cycOn);
   }
   _cycSyncPlaybar();
@@ -25246,7 +25230,10 @@ function _cycExtrasSync() {
   const wb = document.getElementById('cyc-wind-btn');
   if (wb) wb.classList.toggle('on', _cycWindOn);
   const ws = document.getElementById('cyc-wind-kt');
-  if (ws) { ws.value = String(_cycWindKt); ws.style.display = _cycWindOn ? '' : 'none'; }
+  if (ws) {
+    ws.style.display = _cycWindOn ? '' : 'none';
+    ws.querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.kt === _cycWindKt));
+  }
   const leg = document.getElementById('cyc-wind-legend');
   if (leg) {
     leg.style.display = _cycWindOn && _cycOn ? '' : 'none';
@@ -71790,6 +71777,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-p', date: 'Sep 24, 2026',
+    text: 'The DeepMind Models panel is redesigned: model first, then one grid of switches for what goes on the map (Tracks, Mean track, Lows, Wind chance, Ensemble stats), the wind speed as three buttons, and genesis on its own row. The model panels are back to the subtle frost, each playback bar now has just the one speed box where you type any speed (the extra cycling button is gone), and the credit paragraphs at the bottom of the panels are gone too, since everyone is already credited in Credits in the account panel.' },
   { id: '2026-09-24-o', date: 'Sep 24, 2026',
     text: 'AI Cyclones is now DeepMind Models, and it got better. It picks up WNV3, Google DeepMind\'s newest cyclone model (64 members), as the default beside FNV3 and GenCast. New Lows (L) button: an L with the central pressure at every member\'s storm centre at the playbar hour, coloured by strength. New Wind chance: the chance of 34, 50 or 64 knot winds at each place by that hour, like the Hurricane Center\'s wind probabilities, built from each member\'s wind radii. DeepMind\'s data terms are on the panel. And every models panel (DeepMind, Run, Spaghetti, Ensemble and the HD models panel) now wears heavy frost.' },
   { id: '2026-09-24-n', date: 'Sep 24, 2026',
@@ -79749,6 +79738,17 @@ function _ovOrderReset(){
 
       <div class="credit-sep-label">Radar, Models &amp; Observations</div>
       <div class="credit-row">
+        <img class="credit-logo" src="https://www.google.com/s2/favicons?domain=deepmind.google&amp;sz=64" alt="Google DeepMind logo" loading="lazy">
+        <div class="credit-info">
+          <div class="credit-name">Google DeepMind Weather Lab</div>
+          <div class="credit-full">WNV3, FNV3 and GenCast cyclone forecasts</div>
+          <div class="credit-desc">The AI cyclone tracks, intensities, wind radii and genesis fields in DeepMind Models. Experimental research forecasts, not official warnings. Data newer than 48 hours is used under DeepMind's terms of use; older data is CC BY 4.0.</div>
+          <div class="credit-uses"><span class="credit-use">DeepMind Models</span></div>
+          <a class="credit-link" href="https://deepmind.google.com/science/weatherlab" target="_blank" rel="noopener">deepmind.google.com/science/weatherlab</a>
+          <a class="credit-link" href="https://storage.googleapis.com/weathernext-public/terms-of-use.pdf" target="_blank" rel="noopener" style="margin-left:10px">terms of use</a>
+        </div>
+      </div>
+      <div class="credit-row">
         <img class="credit-logo" src="https://www.google.com/s2/favicons?domain=mesonet.agron.iastate.edu&amp;sz=64" alt="Iowa Environmental Mesonet logo" loading="lazy">
         <div class="credit-info">
           <div class="credit-name">Iowa Environmental Mesonet</div>
@@ -81026,17 +81026,6 @@ body {
 :root[data-glass] #alerts-panel {
   background-image: linear-gradient(180deg,
     rgba(20,24,30,0.36) 0%, rgba(5,7,10,0.44) 100%);
-  backdrop-filter: blur(24px) saturate(1.5) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
-}
-:root[data-glass] .models-style-panel, :root[data-glass] #hd-panel,
-:root[data-glass] #mtg-panel, :root[data-glass] #ensx-panel, :root[data-glass] #ensl-panel {
-  /* Every models panel, heavy as well, by request: DeepMind Models, Run
-     Models, Spaghetti Models, the HD models panel and the ensemble panels.
-     The headers keep their solid gradient so the name reads at a glance. */
-  background-color: transparent !important;
-  background-image: linear-gradient(180deg,
-    rgba(20,24,30,0.36) 0%, rgba(5,7,10,0.44) 100%) !important;
   backdrop-filter: blur(24px) saturate(1.5) !important;
   -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
 }
