@@ -32,7 +32,8 @@ const ok = (name, cond, extra) => {
 
 console.log('\n1. the pieces are in the page');
 {
-  ok('a map menu row', /_cmModel3DHere\(\)">\$\{ic\('terrain3d'\)\} 3D model volume here/.test(PAGE));
+  ok('one map menu row, the one that draws a zone', /_cmModel3DDraw\(\)">\$\{ic\('terrain3d'\)\} Draw a 3D model zone/.test(PAGE)
+     && !/3D model volume here/.test(PAGE.slice(PAGE.indexOf('function _cmOpen'), PAGE.indexOf('function _cmOpen') + 20000)));
   ok('the fields', ['tadv', 'vadv', 'omega', 'pv', 'temp', 'rh'].every(id => PAGE.includes(`{ id: '${id}', label:`)));
   const EM = String.fromCharCode(0x2014);
   const a = PAGE.indexOf('// -- MODEL 3D'), b = PAGE.indexOf('function _cmModel3DHere');
@@ -108,11 +109,24 @@ await p.waitForTimeout(3500);
 ok('the page boots clean', errs.length === 0, errs[0]);
 await p.evaluate(() => { const m = document.getElementById('mode-modal'); if (m) m.style.display = 'none'; _hdBase = 'http://pi.test'; });
 
+const dragBox = (s, w, n, e) => p.evaluate(([s, w, n, e]) => {
+  const c = map.getContainer().getBoundingClientRect();
+  const at = (la, lo) => { const q = map.latLngToContainerPoint([la, lo]);
+    return { clientX: c.left + q.x, clientY: c.top + q.y, button: 0, pointerId: 1, preventDefault() {}, stopPropagation() {} }; };
+  _r3dDrawDown(at(s, w)); _r3dDrawMove(at(n, e)); _r3dDrawUp(at(n, e));
+}, [s, w, n, e]);
+
 console.log('\n2. opened from the map menu');
 {
   await p.evaluate(([la, lo]) => { map.fire('contextmenu', { latlng: L.latLng(la, lo), originalEvent: { clientX: 400, clientY: 300, preventDefault() {} } }); }, [LAT0, LON0]);
   await p.waitForTimeout(300);
-  await p.evaluate(() => [...document.querySelectorAll('#map-ctx-menu .cm-item')].find(x => /3D model volume/.test(x.textContent)).click());
+  const rows = await p.evaluate(() => [...document.querySelectorAll('#map-ctx-menu .cm-item')].map(x => x.textContent.trim()).filter(t => /3D model/.test(t)));
+  ok('the menu has only the draw row for Model 3D', rows.length === 1 && /^Draw a 3D model zone/.test(rows[0]), rows.join(' | '));
+  await p.evaluate(() => [...document.querySelectorAll('#map-ctx-menu .cm-item')].find(x => /3D model zone/.test(x.textContent)).click());
+  const drawing = await p.evaluate(() => _r3dDrawOn && _r3dDrawFor === 'm3d');
+  ok('it starts drawing a box', drawing);
+  // Drag a box from 37.4N 95.75W to 38.6N 94.25W, as a pointer would.
+  await dragBox(37.4, -95.75, 38.6, -94.25);
   await p.waitForTimeout(2500);
   const u = new URL(asked[0] || 'http://x');
   ok('asks the parsing server for one box of the real GFS run, never Open-Meteo',
@@ -123,7 +137,7 @@ console.log('\n2. opened from the map menu');
   const st = await p.evaluate(() => ({ open: document.getElementById('m3d-panel').classList.contains('open'),
     cls: document.getElementById('m3d-panel').className, status: document.querySelector('#m3d-panel [data-r="status"]').textContent,
     where: document.querySelector('#m3d-panel [data-r="where"]').textContent }));
-  ok('the panel opens, in the 3D panel look', st.open && /l3d-panel/.test(st.cls) && st.where === '38.00, -95.00', JSON.stringify(st));
+  ok('the panel opens, in the 3D panel look', st.open && /l3d-panel/.test(st.cls) && Math.abs(parseFloat(st.where) - 38) < 0.05 && Math.abs(parseFloat(st.where.split(',')[1]) + 95) < 0.05, JSON.stringify(st));
   ok('and says which run and hour it shows', st.status === 'GFS 09/24 12z F+000, valid 2026-09-25 00Z', st.status);
 }
 
@@ -251,9 +265,10 @@ console.log('\n6. one panel with the model chart');
   await p.evaluate(() => { map.fire('contextmenu', { latlng: L.latLng(38, -95), originalEvent: { clientX: 400, clientY: 300, preventDefault() {} } }); });
   await p.waitForTimeout(300);
   const row = await p.evaluate(() => [...document.querySelectorAll('#map-ctx-menu .cm-item')].map(x => x.textContent.trim()).find(t => /3D model/.test(t)));
-  ok('the menu row names the chart it will show', /3D model volume here: GFS · F\+012/.test(row), row);
+  ok('the menu row names the chart it will show', /Draw a 3D model zone: GFS · F\+012/.test(row), row);
   asked.length = 0;
   await p.evaluate(() => [...document.querySelectorAll('#map-ctx-menu .cm-item')].find(x => /3D model/.test(x.textContent)).click());
+  await dragBox(33, -101, 43, -89);
   await p.waitForTimeout(1500);
   const q = new URL(asked[0] || 'http://x').searchParams;
   ok('it opens on the chart\'s own model, run and hour', q.get('model') === 'gfs' && q.get('fhr') === '12' && q.get('run') === '20260924/18', q.toString());

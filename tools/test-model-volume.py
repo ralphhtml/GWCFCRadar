@@ -212,10 +212,11 @@ out = mv.volume("ecmwf", 20, 30, -80, -70, fhr=24)
 ok("a second box from the same hour downloads nothing", not calls and out["fields"]["t"][0] is not None)
 ok("the hour is kept on disk", any(f_.startswith("ecmwf_2026092412_f024") for f_ in os.listdir(mv.CACHE_DIR)))
 try:
-    mv.volume("gfs", 0, 60, -100, -90)
-    ok("a box too big is refused", False)
+    mv.volume("gfs", 60, 0, -100, -90)
+    ok("a box upside down is refused", False)
 except ValueError:
-    ok("a box too big is refused", True)
+    ok("a box upside down is refused", True)
+ok("and no size limit is left in the code", "MAX_SPAN" not in open(os.path.join(ROOT, "pi/model_volume.py")).read())
 
 print("\n5. the doors")
 src = open(os.path.join(ROOT, "pi/serve.py")).read()

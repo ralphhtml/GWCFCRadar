@@ -40,7 +40,6 @@ SHORT = {"t": "t", "tmp": "t", "r": "rh", "rh": "rh", "gh": "gh", "hgt": "gh", "
          "u": "u", "ugrd": "u", "v": "v", "vgrd": "v", "w": "omega", "vvel": "omega"}
 FIELDS = ("t", "rh", "gh", "u", "v", "omega")
 GRID_N = 13                 # points along each side of the box sent to the page
-MAX_SPAN_DEG = 40.0         # the biggest box answered, in latitude or longitude
 PAD_DEG = 0.6               # asked for a little past the box so the edges interpolate
 
 CACHE_DIR = os.path.join(os.environ.get("GWCFC_DATA", os.path.expanduser("~/wxdata")),
@@ -348,8 +347,9 @@ def _ecmwf_file(gp, key, date_str, cyc, fhr):
 
 # -- A box ------------------------------------------------------------------------
 def volume(model_key, s, n, w, e, fhr=0, run=None, nx=GRID_N):
-    if not (n > s) or n - s > MAX_SPAN_DEG or not (0 < (e - w) <= MAX_SPAN_DEG):
-        raise ValueError(f"the box must be at most {MAX_SPAN_DEG:g} degrees each way")
+    # Any size: the box is sampled onto nx points a side whatever its span.
+    if not (n > s) or not (0 < (e - w) <= 360.0):
+        raise ValueError("the box must have its north above its south and its east past its west")
     gp = _pipeline()
     if model_key not in gp.MODELS:
         raise RuntimeError(f"there is no model called {model_key} on this parsing server")

@@ -46127,8 +46127,7 @@ function _cmOpen(e) {
     <div class="cm-item" onclick="_cmCrossSectionHere()">${ic('ruler')} Cross section here</div>
     <div class="cm-item" onclick="_cmRadar3DDraw()">${ic('radar3d')} Draw a 3D radar zone</div>
     <div class="cm-item" onclick="_cmSat3DDraw()">${ic('satellite')} Draw a 3D satellite zone</div>
-    <div class="cm-item" onclick="_cmModel3DHere()">${ic('terrain3d')} 3D model volume here${pm ? `: ${esc(pm.label)} &middot; F+${String(pm.fhr).padStart(3, '0')}` : ''}</div>
-    <div class="cm-item" onclick="_cmModel3DDraw()">${ic('terrain3d')} Draw a 3D model zone</div>
+    <div class="cm-item" onclick="_cmModel3DDraw()">${ic('terrain3d')} Draw a 3D model zone${pm ? `: ${esc(pm.label)} &middot; F+${String(pm.fhr).padStart(3, '0')}` : ''}</div>
     ${typeof _l3dMenuItems === 'function' ? _l3dMenuItems(ic, e.originalEvent && e.originalEvent.clientX, e.originalEvent && e.originalEvent.clientY) : ''}
     <div class="cm-item" onclick="_cmRadiusHere()">${ic('target')} 50 mi radius here</div>
     <div class="cm-item" onclick="_cmSetRecenter()">${ic('compass')} Set as recenter</div>
@@ -47287,7 +47286,7 @@ function _cmModel3DDraw() {
 }
 // Model 3D on a box given as map bounds: the dragged box, or the box round
 // a drawn polygon or radius (whose shape the zone then keeps).
-const M3D_MIN_KM = 60, M3D_MAX_KM = 6000;
+const M3D_MIN_KM = 60;                   // no upper limit: draw as big as you like
 function _m3dOpenBounds(south, west, north, east) {
   const lat = (south + north) / 2, lng = (west + east) / 2;
   const kmLng = 111.32 * Math.max(0.1, Math.cos(lat * Math.PI / 180));
@@ -47295,11 +47294,6 @@ function _m3dOpenBounds(south, west, north, east) {
   if (wKm < M3D_MIN_KM && hKm < M3D_MIN_KM) {
     _zonePendingShape = null;
     if (typeof showToast === 'function') showToast('Drag out a box at least ' + M3D_MIN_KM + ' km across for Model 3D.', 2600);
-    return false;
-  }
-  if (wKm > M3D_MAX_KM || hKm > M3D_MAX_KM) {
-    _zonePendingShape = null;
-    if (typeof showToast === 'function') showToast('That box is too big for Model 3D. Draw one under ' + M3D_MAX_KM.toLocaleString() + ' km each way.', 3000);
     return false;
   }
   const w2 = Math.max(M3D_MIN_KM, wKm), h2 = Math.max(M3D_MIN_KM, hKm);
@@ -72184,6 +72178,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-y', date: 'Sep 24, 2026',
+    text: "The map menu has one Model 3D row now: Draw a 3D model zone, where you drag out the box yourself. The old 3D model volume here row (a fixed-size box around where you pressed) is gone, and the model chart it would show is named on the new row instead. And no 3D zone has a size limit any more: Radar 3D, Satellite 3D, Model 3D and every layer's 3D can be drawn as big as you like (only a tiny accidental drag is still ignored). A very big box is simply drawn a little coarser." },
   { id: '2026-09-24-x', date: 'Sep 24, 2026',
     text: "The satellite Time Machine works before 2017 again. Travelling to an old date (Hurricane Andrew in 1992, say) was showing TODAY's satellite with the old date on it: the parsing server took over a minute to fetch the old picture, the page gave up, and fell back to the live satellite, which has nothing that old and answered with now. Three fixes: the parsing server now fetches the old GridSat pictures from NOAA's copy on AWS (about a second instead of a minute), it reads them correctly (a mix-up in how the numbers are stored was blanking nearly every pixel), and if an old date still cannot be fetched the map says why and shows nothing, never the wrong year. Any satellite product works for those dates; before July 2017 it is the infrared GridSat record, every 3 hours." },
   { id: '2026-09-24-w', date: 'Sep 24, 2026',
@@ -77072,7 +77068,9 @@ function _r3dOpenBounds(south, west, north, east) {
   wKm = Math.max(R3D_ZONE_MIN_KM, wKm); hKm = Math.max(R3D_ZONE_MIN_KM, hKm);
   const near = _r3dNearestStation(lat, lng);
   if (!near) return false;
-  if (near.km > 420) {
+  // A radar sees about 460 km. The box only needs one within reach of some
+  // part of it, not of its middle, so a very big box is fine.
+  if (near.km - Math.hypot(wKm, hKm) / 2 > 420) {
     if (typeof showToast === 'function') showToast('No radar close enough to that box for a 3D view.', 2800);
     return false;
   }
@@ -87086,7 +87084,6 @@ async function _expDownloadVideo() {
 const S3D_FRAMES = 6;             // scans on the animation bar
 const S3D_TOP_KM = 18;            // the box's ceiling: above any cloud top on record
 const S3D_MIN_KM = 8;             // a smaller box is a slip of the finger
-const S3D_MAX_LAT = 25, S3D_MAX_LON = 35;   // the parsing server's own limit (sat_cth.MAX_SPAN_*)
 const S3D_PITCH_MIN = 0.05, S3D_PITCH_MAX = 1.45;
 
 let _s3dOn = false;
@@ -87179,11 +87176,6 @@ function _s3dOpenBounds(south, west, north, east) {
   const wKm = Math.abs(east - west) * kmLng, hKm = Math.abs(north - south) * 111.32;
   if (wKm < S3D_MIN_KM || hKm < S3D_MIN_KM) {
     if (typeof showToast === 'function') showToast('Drag out a box at least ' + S3D_MIN_KM + ' km each way.', 2600);
-    return false;
-  }
-  if (north - south > S3D_MAX_LAT || east - west > S3D_MAX_LON) {
-    if (typeof showToast === 'function') showToast('That box is too big for Satellite 3D. Draw one under '
-      + S3D_MAX_LAT + ' degrees tall and ' + S3D_MAX_LON + ' wide.', 3200);
     return false;
   }
   const r3 = v => Math.round(v * 1000) / 1000;
@@ -88712,7 +88704,6 @@ function _p3dWatchFrames() {
 const L3D_TERRAIN_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/';
 const L3D_CELLS = 200;            // cells along the box's longer side, on every device
 const L3D_MIN_KM = 5;
-const L3D_MAX_DEG = 40;
 const L3D_TILE_MAX = 36;          // elevation tiles per box, at most
 const L3D_PITCH_MIN = 0.05, L3D_PITCH_MAX = 1.45;
 const L3D_RESAMPLE_MS = 800;
@@ -89199,10 +89190,6 @@ class Layer3DPanel {
     const wKm = Math.abs(east - west) * kmLng, hKm = Math.abs(north - south) * 111.32;
     if (wKm < L3D_MIN_KM || hKm < L3D_MIN_KM) {
       if (typeof showToast === 'function') showToast('Drag out a box at least ' + L3D_MIN_KM + ' km each way.', 2600);
-      return false;
-    }
-    if (north - south > L3D_MAX_DEG || east - west > L3D_MAX_DEG) {
-      if (typeof showToast === 'function') showToast('Draw a box under ' + L3D_MAX_DEG + ' degrees each way.', 3000);
       return false;
     }
     const r3 = v => Math.round(v * 1000) / 1000;

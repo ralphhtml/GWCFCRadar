@@ -168,13 +168,15 @@ ok("a sensible zone parses", sc.parse_bbox(q({"south": "33", "west": "-86", "nor
 for name, d in (("a missing edge", {"south": "33", "west": "-86", "north": "35"}),
                 ("south above north", {"south": "35", "west": "-86", "north": "33", "east": "-83"}),
                 ("off the earth", {"south": "33", "west": "-190", "north": "35", "east": "-83"}),
-                ("too big a zone", {"south": "0", "west": "-120", "north": "40", "east": "-60"}),
                 ("not a number", {"south": "nan", "west": "-86", "north": "35", "east": "-83"})):
     try:
         sc.parse_bbox(q(d))
         ok(name + " is refused", False)
     except ValueError:
         ok(name + " is refused", True)
+
+ok("a huge zone is allowed (no size limit; the grid stays capped)",
+   sc.parse_bbox(q({"south": "0", "west": "-120", "north": "40", "east": "-60"})) == (0.0, -120.0, 40.0, -60.0))
 
 print("\n9. the serve.py doors refuse bad asks before touching NOAA")
 import serve  # noqa: E402

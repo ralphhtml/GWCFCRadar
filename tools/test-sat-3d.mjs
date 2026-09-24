@@ -450,15 +450,19 @@ console.log('\n7. closing hands everything back; opening Radar 3D closes this');
     _r3dOpenBounds(35.5, -97, 36.5, -95.5);
     const swapped = { s3d: _s3dOn, r3d: _r3dOn };
     _r3dClose();
-    const tooBig = _s3dOpenBounds(10, -130, 40, -60);
     const tiny = _s3dOpenBounds(35, -96, 35.01, -95.99);
-    return { closed, opened, swapped, tooBig, tiny, on: _s3dOn };
+    const tinyOn = _s3dOn;
+    // No upper limit: a box across half the country opens.
+    const huge = _s3dOpenBounds(10, -130, 40, -60);
+    const hugeOn = _s3dOn;
+    _s3dClose();
+    return { closed, opened, swapped, huge, hugeOn, tiny, tinyOn, on: _s3dOn };
   });
   ok('closing takes the panel, the outline and the bar away', !r.closed.on && !r.closed.rect && !r.closed.open
      && r.closed.src !== 's3d', JSON.stringify(r.closed));
   ok('and stops any radar still being built for it', r.closed.alive === false);
   ok('opening Radar 3D closes Satellite 3D (one owns the bar at a time)', r.opened && !r.swapped.s3d && r.swapped.r3d);
-  ok('a box bigger than the parsing server will build, or a sliver, is refused', r.tooBig === false && r.tiny === false && !r.on);
+  ok('a sliver is refused, but there is no size limit: a huge box opens', r.tiny === false && !r.tinyOn && r.huge === true && r.hugeOn, JSON.stringify(r));
 }
 
 console.log('\n7b. a busy parsing server is asked again, not given up on');

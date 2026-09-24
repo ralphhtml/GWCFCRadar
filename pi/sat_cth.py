@@ -62,7 +62,8 @@ CACHE_MAX_FILES = int(os.environ.get("GWCFC_SAT_CTH_MAX", "800"))
 CELL_KM = 2.0
 GRID_MIN, GRID_MAX = 16, 220
 # The biggest zone the door accepts, in degrees.
-MAX_SPAN_LAT, MAX_SPAN_LON = 25.0, 35.0
+# No limit on a zone's size: the grid is capped at GRID_MAX cells a side,
+# so a huge zone costs no more than a big one, only coarser.
 # The standard atmosphere's lapse rate, K per metre.
 LAPSE = 0.0065
 # A pixel this much colder than the warmest ground in the zone is cloud.
@@ -374,8 +375,6 @@ def parse_bbox(one):
         raise ValueError("coordinates must be numbers")
     if not (-90.0 <= s < n <= 90.0 and -180.0 <= w < e <= 180.0):
         raise ValueError("south/north and west/east must be in order and on the earth")
-    if n - s > MAX_SPAN_LAT or e - w > MAX_SPAN_LON:
-        raise ValueError("that zone is too big for a 3D view")
     return (round(s, 3), round(w, 3), round(n, 3), round(e, 3))
 
 
