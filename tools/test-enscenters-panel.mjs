@@ -297,23 +297,24 @@ console.log('\n8. no run at all, which is the parsing server not having got to i
 console.log('\n9. credit, and what the data may be used for');
 {
   const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  // The credit moved off the panel into Credits in the account panel, by
+  // request: the people and the data are credited there once, not under
+  // every panel.
   const credit = await page.evaluate(() =>
-    (document.getElementById('cyc-credits') || {}).textContent || '');
-  ok('the credit is on the panel itself, not buried in a comment',
-     credit.length > 0);
-  ok('it names Triple-A Tropics', /Triple-A Tropics/.test(credit), credit);
+    (document.getElementById('credits-modal-body') || {}).textContent || '');
+  ok('the credit is in the account panel\'s Credits, not on the panel',
+     credit.length > 0 && !/Triple-A Tropics/.test(await page.evaluate(() => (document.getElementById('ai-cyclones-panel') || {}).textContent || '')));
+  ok('it names Triple-A Tropics', /Triple-A Tropics/.test(credit));
   ok('and names Andrew Austin-Adler', /Andrew Austin-Adler/.test(credit));
-  // \s+ not a space: the credit is markup, and markup wraps mid-phrase.
   ok('and says the method was used with permission',
      /with\s+permission/i.test(credit));
-  ok('the DeepMind data is attributed', /Google DeepMind/.test(credit));
+  ok('the DeepMind data is attributed', /Google DeepMind Weather Lab/.test(credit));
   // Weather Lab data comes with terms: it is experimental research output and
   // must not be presented as an operational forecast. Saying so is part of
   // being allowed to show it.
-  ok('and marked experimental rather than operational',
-     /experimental/i.test(credit), credit);
-  ok('with the National Hurricane Center named as the real source',
-     /National Hurricane Center/.test(credit));
+  ok('and marked experimental rather than operational, with its terms',
+     /Experimental research forecasts, not official warnings/.test(credit) && /terms of use/.test(credit));
+  ok('with the National Hurricane Center credited too', /NOAA NHC/.test(credit));
   ok('the pipeline credits it at source too',
      /Triple-A Tropics/.test(
        readFileSync(join(ROOT, 'pi', 'enscenters_pipeline.py'), 'utf8')));

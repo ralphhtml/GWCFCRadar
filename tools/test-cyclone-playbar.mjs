@@ -139,7 +139,7 @@ ok('no uncaught errors while starting', errors.length === 0, errors[0]);
       noIntro: !p.querySelector('#cyc-ens-intro'),
       noSubHead: !p.querySelector('#cyc-ens-head'),
       // And it wears the models panel's own clothes.
-      dropdowns: q('.sev-dropdowns'),
+      dropdowns: q('.cyc-section #cyc-variant-sel'),
       runRow: q('.sev-run-row'),
       playbar: q('.sev-playbar-row'),
       fcastHeader: q('.sev-fcast-header'),
@@ -149,7 +149,7 @@ ok('no uncaught errors while starting', errors.length === 0, errors[0]);
   ok('the panel is there', r.exists);
   ok('the collapsible card is gone', r.noCard);
   ok('and the paragraph that split it in two', r.noIntro && r.noSubHead);
-  ok('it uses the models panel dropdown row', r.dropdowns);
+  ok('it has the model picker in its own section', r.dropdowns);
   ok('it has a run row', r.runRow);
   ok('it has the models panel playbar', r.playbar);
   ok('and the forecast-hour header', r.fcastHeader);
@@ -179,7 +179,7 @@ console.log('\n2. the four switches are one row, not a scatter');
      r.ids.join(','));
   ok('laid out as a grid rather than floated pills',
      r.display === 'grid', r.display);
-  ok('two columns wide, so no name has to be shortened', r.cols === 2, r.cols);
+  ok('three columns, one grid of switches', r.cols === 3, r.cols);
 }
 
 console.log('\n3. the playbar hides itself when there is nothing to scrub');
@@ -320,7 +320,7 @@ console.log('\n9b. any speed can be typed, and it keeps playing');
     _cycSetSpeed('3');
     const typed = _cycSpeed;
     const shown = document.getElementById('cyc-speed-in').value;
-    const label = document.getElementById('cyc-speed-btn').textContent;
+    const label = document.getElementById('cyc-speed-btn') ? 'duplicate' : '';
     _cycSetSpeed('-2');
     const afterBad = _cycSpeed;
     _cycTogglePlay();
@@ -332,19 +332,19 @@ console.log('\n9b. any speed can be typed, and it keeps playing');
     return { typed, shown, label, afterBad, stillPlaying };
   });
   ok('typing 3 sets the speed to 3', r.typed === 3, String(r.typed));
-  ok('the box and the button both show it', r.shown === '3' && r.label === '3×', JSON.stringify([r.shown, r.label]));
+  ok('the one speed box shows it, and there is no second speed control', r.shown === '3' && r.label === '', JSON.stringify([r.shown, r.label]));
   ok('a negative number is ignored', r.afterBad === 3, String(r.afterBad));
   ok('typing mid-play keeps it playing', r.stillPlaying);
 }
 
-console.log('\n10. the speed button cycles and keeps playing');
+console.log('\n10. the speed still cycles from the keyboard and keeps playing');
 {
   const r = await page.evaluate(() => {
     _cycStopPlay();
     _cycSpeed = 1;
     const seen = [];
     for (let i = 0; i < 5; i++) { _cycCycleSpeed(); seen.push(_cycSpeed); }
-    const label = document.getElementById('cyc-speed-btn').textContent;
+    const label = document.getElementById('cyc-speed-in').value;
     _cycSpeed = 1;
     _cycTogglePlay();
     _cycCycleSpeed();
@@ -354,7 +354,7 @@ console.log('\n10. the speed button cycles and keeps playing');
   });
   ok('the speeds cycle round', JSON.stringify(r.seen) === JSON.stringify([2,4,0.5,1,2]),
      JSON.stringify(r.seen));
-  ok('the button says which one', /×/.test(r.label), r.label);
+  ok('the speed box follows along', r.label === '2', r.label);
   ok('changing speed mid-play does not stop it', r.stillPlaying);
 }
 
