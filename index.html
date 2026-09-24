@@ -2602,6 +2602,9 @@ body.shot-mode #lvl-dock, body.ss-live #lvl-dock { display: none !important; }
 .leaflet-satPhotoPane-pane {
   filter: var(--sat-filter, none);
 }
+/* A grey satellite band's colour ramp (see _goesRampLayer): on each tile,
+   so the Satellite Colors filter above still applies over the result. */
+.sat-ramped img { filter: var(--sat-ramp, none); }
 
 /* Radar overlays are DATA, not photographs, so they are not smoothed.
    A radar picture is drawn in bands with meaning at the edges: 35 dBZ is
@@ -31962,6 +31965,11 @@ async function _goesPiFramesFor(product, regionId) {
     url: `${dir}/${f.file}`,
     bounds: f.bounds || p.bounds,
   })).filter(f => f.bounds && isFinite(f.time.getTime()));
+  // The global mosaic is grey; its ramp rides along with each picture.
+  if (product.gsat === 'global') {
+    const ramp = { ir: 'ir', wv: 'wv', vis: 'vis', swir: 'sw' }[recipe] || null;
+    if (ramp) list.forEach(f => _goesUrlRamp.set(f.url, ramp));
+  }
   // The satellite time machine: the loop ends at the travelled moment, the
   // same way the WMS path anchors its own list (_buildGoesFrames). This
   // path used to ignore the clock and hand back the newest frames whatever
@@ -32186,6 +32194,150 @@ const _goesMercCache = new Map();      // url|bounds -> Promise<blob URL or null
 function _goesMercBounds(b) {
   return [[Math.max(b[0][0], -GOES_MERC_LAT), b[0][1]], [Math.min(b[1][0], GOES_MERC_LAT), b[1][1]]];
 }
+// -- Colour for every satellite product ------------------------------------
+// The live Clean IR (and the other IR and water vapour bands) comes from
+// Iowa Mesonet already coloured: warm ground grey, cold cloud tops running
+// white, purple, blue, green, yellow, red. Everything else arrived grey: the
+// Time Machine's archive frames (NOAA's GOES scans since 2017, GridSat-B1
+// before that, both drawn in plain grey by the parsing server, so an old
+// storm like Andrew came up with no colour at all), the global mosaic, and
+// the live visible, shortwave, fire and CO2 bands. Now every product gets a
+// colour ramp: one grey level in, one colour out, from a 256-entry table.
+//   ir   the live Clean IR look. The parsing server's grey is 180..320 K
+//        (cold 255, see colorize in pi/sat_archive.py), so grey is turned
+//        back into kelvin and coloured the way the live band colours it
+//   wv   the live water vapour look, grey 190..270 K the same way
+//   vis  visible: dark navy sea and teal ground up to white cloud
+//   sw   shortwave: warm browns and ambers up to white cloud
+//   cool CO2 and the fire band: violet through teal to white
+const GOES_ARC_IR_STOPS = [   // kelvin -> colour, warmest first
+  [320, [18, 18, 18]], [242, [215, 215, 215]], [236, [255, 255, 255]],
+  [232, [205, 0, 255]], [227, [110, 0, 255]], [222, [0, 20, 255]],
+  [217, [0, 190, 255]], [212, [0, 230, 60]], [207, [170, 255, 0]],
+  [202, [255, 255, 0]], [197, [255, 140, 0]], [192, [240, 0, 0]],
+  [186, [150, 0, 0]], [180, [90, 0, 0]],
+];
+const GOES_ARC_WV_STOPS = [
+  [270, [170, 40, 0]], [262, [255, 110, 0]], [255, [255, 230, 0]],
+  [249, [150, 145, 60]], [244, [30, 30, 140]], [236, [60, 60, 205]],
+  [228, [170, 170, 235]], [220, [255, 255, 255]], [210, [150, 205, 150]],
+  [190, [40, 120, 40]],
+];
+// The rest are straight grey -> colour, dark (0) to bright (1).
+const GOES_RAMP_GREY = {
+  vis:  [[0, [4, 10, 38]], [0.28, [22, 66, 84]], [0.5, [92, 138, 120]], [0.72, [196, 214, 222]], [1, [255, 255, 255]]],
+  sw:   [[0, [10, 4, 2]], [0.3, [80, 30, 12]], [0.5, [176, 84, 24]], [0.68, [236, 176, 70]], [0.84, [214, 232, 250]], [1, [255, 255, 255]]],
+  cool: [[0, [16, 0, 36]], [0.35, [70, 30, 140]], [0.6, [40, 120, 190]], [0.8, [120, 210, 210]], [0.92, [225, 245, 240]], [1, [255, 255, 255]]],
+};
+const _goesArcLuts = {};
+function _goesArcLut(kind) {
+  if (_goesArcLuts[kind]) return _goesArcLuts[kind];
+  const lerp = (c0, c1, f) => [0, 1, 2].map(n => c0[n] + (c1[n] - c0[n]) * f);
+  const lut = new Uint8ClampedArray(256 * 3);
+  for (let g = 0; g < 256; g++) {
+    let c;
+    if (kind === 'ir' || kind === 'wv') {
+      // The parsing server's grey: IR is 180..320 K, water vapour
+      // 190..270 K, cold at 255 either way.
+      const [lo, span, stops] = kind === 'wv' ? [190, 80, GOES_ARC_WV_STOPS] : [180, 140, GOES_ARC_IR_STOPS];
+      const k = lo + (1 - g / 255) * span;
+      c = k >= stops[0][0] ? stops[0][1] : stops[stops.length - 1][1];
+      for (let s = 0; s < stops.length - 1; s++) {
+        const [k0, c0] = stops[s], [k1, c1] = stops[s + 1];
+        if (k <= k0 && k >= k1) { c = lerp(c0, c1, (k0 - k) / (k0 - k1)); break; }
+      }
+    } else {
+      const stops = GOES_RAMP_GREY[kind] || GOES_RAMP_GREY.vis, v = g / 255;
+      c = stops[stops.length - 1][1];
+      for (let s = 0; s < stops.length - 1; s++) {
+        const [v0, c0] = stops[s], [v1, c1] = stops[s + 1];
+        if (v >= v0 && v <= v1) { c = lerp(c0, c1, (v - v0) / (v1 - v0)); break; }
+      }
+    }
+    lut[g * 3] = c[0]; lut[g * 3 + 1] = c[1]; lut[g * 3 + 2] = c[2];
+  }
+  return (_goesArcLuts[kind] = lut);
+}
+// Which ramp one ABI band takes.
+function _goesBandRamp(b) {
+  b = +b;
+  if (b >= 1 && b <= 6) return 'vis';
+  if (b === 7) return 'sw';
+  if (b >= 8 && b <= 10) return 'wv';
+  if (b === 12 || b === 16) return 'cool';
+  if (b === 11 || (b >= 13 && b <= 15)) return 'ir';
+  return null;
+}
+// The ramp a live WMS band needs on top of what Iowa already sends: none
+// for the bands it colours itself.
+function _goesLiveRamp(product) {
+  const b = parseInt(String((product && product.ch) || '').replace(/\D/g, ''), 10);
+  const k = _goesBandRamp(b);
+  return k === 'ir' || k === 'wv' ? null : k;
+}
+// Pictures the parsing server makes that are not archive scans (the global
+// mosaic) are tagged with their ramp as their frames are listed.
+const _goesUrlRamp = new Map();
+// Which colouring a parsing server picture's address asks for: GridSat is
+// always infrared whatever band was picked; a GOES archive scan goes by
+// its band. The composites are colour already and take none.
+function _goesArcKind(url) {
+  const u = String(url || '');
+  if (_goesUrlRamp.has(u)) return _goesUrlRamp.get(u);
+  if (!/\/sat\/archive\/frame\?/.test(u)) return null;
+  if (/[?&]bucket=gridsat-b1(&|$)/.test(u)) return 'ir';
+  return _goesBandRamp(parseInt((u.match(/[?&]band=(\d+)/) || [])[1], 10));
+}
+function _goesArcEnhance(ctx, W, H, url) {
+  const kind = _goesArcKind(url);
+  if (!kind) return;
+  const lut = _goesArcLut(kind);
+  const im = ctx.getImageData(0, 0, W, H), d = im.data;
+  for (let p = 0; p < d.length; p += 4) {
+    if (!d[p + 3]) continue;
+    const g = d[p] * 3;
+    d[p] = lut[g]; d[p + 1] = lut[g + 1]; d[p + 2] = lut[g + 2];
+  }
+  ctx.putImageData(im, 0, 0);
+}
+// The live WMS tiles come from another site whose pixels a page may not
+// read, so they are coloured by an SVG filter instead: feComponentTransfer
+// maps each channel through a table, and a grey pixel (red = green = blue)
+// through three tables is exactly one grey -> colour lookup. Built once per
+// ramp from the same table the archive uses, so live and past match.
+function _goesRampFilter(kind) {
+  const id = 'sat-ramp-' + kind;
+  if (document.getElementById(id)) return id;
+  const lut = _goesArcLut(kind);
+  // 52 evenly spaced samples, 0 to 255 in steps of 5, both ends included.
+  const ch = n => { const a = []; for (let g = 0; g <= 255; g += 5) a.push((lut[g * 3 + n] / 255).toFixed(3)); return a.join(' '); };
+  let host = document.getElementById('sat-ramp-defs');
+  if (!host) {
+    host = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    host.id = 'sat-ramp-defs';
+    host.setAttribute('width', '0'); host.setAttribute('height', '0');
+    host.setAttribute('aria-hidden', 'true');
+    host.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
+    document.body.appendChild(host);
+  }
+  host.insertAdjacentHTML('beforeend',
+    `<filter id="${id}" color-interpolation-filters="sRGB"><feComponentTransfer>`
+    + `<feFuncR type="table" tableValues="${ch(0)}"/><feFuncG type="table" tableValues="${ch(1)}"/>`
+    + `<feFuncB type="table" tableValues="${ch(2)}"/></feComponentTransfer></filter>`);
+  return id;
+}
+function _goesRampLayer(layer, product) {
+  const kind = _goesLiveRamp(product || _goesProduct());
+  if (!kind || !layer) return;
+  const id = _goesRampFilter(kind);
+  const put = () => {
+    const c = layer.getContainer && layer.getContainer();
+    if (c) c.style.setProperty('--sat-ramp', `url(#${id})`);
+    if (c) c.classList.add('sat-ramped');
+  };
+  layer.on('add', put);
+  put();
+}
 function _goesMercUrl(url, bounds) {
   const key = url + '|' + JSON.stringify(bounds);
   if (_goesMercCache.has(key)) {
@@ -32211,6 +32363,7 @@ function _goesMercUrl(url, bounds) {
           const src = Math.max(0, Math.min(H - 1, Math.round((gN - lat) / (gN - gS) * H - 0.5)));
           ctx.drawImage(img, 0, src, W, 1, 0, j, W, 1);
         }
+        _goesArcEnhance(ctx, W, H, url);
         cv.toBlob(b => {
           try { cv.width = cv.height = 0; } catch (e) {}
           resolve(b ? URL.createObjectURL(b) : null);
@@ -32456,6 +32609,7 @@ function _makeGoesLayer(timeStr, opacity) {
     const c = layer.getContainer && layer.getContainer();
     if (c) c.classList.add('wx-photo');
   });
+  _goesRampLayer(layer);
   _poolIdleWhenHidden(layer);
   return layer.addTo(map);
 }
@@ -54845,6 +54999,7 @@ function _scRenderSlot(slot) {
       && (((typeof navigator !== 'undefined' && navigator.deviceMemory) || 8) > 4),
     attribution: '© Iowa Mesonet · GOES',
   }).addTo(map);
+  _goesRampLayer(slot.layer, product);
   _scSyncSlotTime(slot, _scMainTimeMs(), true);
   _scRefreshLabels();
 }
@@ -72185,6 +72340,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-za', date: 'Sep 24, 2026',
+    text: "Every satellite product has colour now. The Time Machine's old pictures (like Hurricane Andrew in 1992 on Clean IR) were coming up plain grey, because the parsing server draws its archive in grey while the live Clean IR arrives already coloured. The page now colours them as they load, with the same look as live: grey ground, then white, purple, blue, green, yellow and red as cloud tops get colder. Water vapour gets its own colours too, and the bands that were grey even live (visible, shortwave, fire temperature, CO2) and the global mosaic now have colour ramps of their own. Nothing to update on the parsing server." },
   { id: '2026-09-24-z', date: 'Sep 24, 2026',
     text: "Every 3D panel has its own playbar now, right under its controls: play, a speed box, a scrubber and the frame's time. A 3D view plays only on that bar; the animation bar at the bottom of the map goes back to moving just the map, so you can watch the map loop and hold a 3D view still (or the other way round). Radar 3D and Satellite 3D step through their own volumes and scans, each layer's 3D steps through that layer's frames and reads each one in, and Model 3D's Hour row has a play button and speed box that walk the forecast hours." },
   { id: '2026-09-24-y', date: 'Sep 24, 2026',
