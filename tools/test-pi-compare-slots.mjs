@@ -35,8 +35,8 @@ console.log('\n1. the source agrees with itself');
   ok('slots have a parsing server render branch',
      /function _sevRenderPiSlot/.test(PAGE)
      && /startsWith\('pi:'\)\) \{ _sevRenderPiSlot/.test(PAGE));
-  ok('the slot dropdown gets a parsing server optgroup',
-     /GWCFC parsing server Models/.test(PAGE));
+  ok('the slot dropdown lists the parsing server models in its Models group',
+     /<optgroup label="Models">[\s\S]{0,200}\$\{piOpts \|\| ''\}/.test(PAGE));
   ok('a saved group carries the region',
      /section: s\.section, var: s\.var, run: s\.run, region: s\.piRegion/.test(PAGE));
   ok('and the loader hands it back',
@@ -132,8 +132,8 @@ if (!chromium) {
     // The dropdown itself offers the parsing server's models.
     const sel = document.querySelector('#sev-slots-container select');
     out.piOptions = sel
-      ? [...sel.querySelectorAll('optgroup[label="GWCFC parsing server Models"] option')]
-          .map(o => o.value) : [];
+      ? [...sel.querySelectorAll('optgroup[label="Models"] option')]
+          .map(o => o.value).filter(v => v.startsWith('pi:')) : [];
 
     // Pick the parsing server's GFS: defaults come from the index, then the manifest
     // arrives and the overlay goes up.
