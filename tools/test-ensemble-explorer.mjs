@@ -96,9 +96,9 @@ const click = (mode) => p.evaluate(m => document.querySelector(`#ensx-panel .ens
 console.log('\n1. opened from Models > Ensemble Models');
 {
   await p.evaluate(() => { toggleEnsembleModelsSub(); });
-  const rows = await p.evaluate(() => [...document.querySelectorAll('#sub-bubbles .sub-bubble .sb-label')].map(x => x.textContent));
+  const rows = await p.evaluate(() => [...document.querySelectorAll('#ens-models-panel .ens-panel-grid button')].map(x => x.textContent));
   ok('Members & Stats, Chance Maps and Postage Stamps are in the menu', ['Members & Stats', 'Chance Maps', 'Postage Stamps'].every(r => rows.includes(r)), rows.join('|'));
-  await p.evaluate(() => document.getElementById('sub-ens-explorer').click());
+  await p.evaluate(() => document.getElementById('ens-explorer').click());
   await p.waitForTimeout(1500);
   const s = await state();
   ok('opens on the mean of the newest run, drawn on the map', s.mode === 'mean' && s.layer && Math.abs(s.v - 70) < 0.06 && s.hour === 6, JSON.stringify(s));
@@ -106,7 +106,7 @@ console.log('\n1. opened from Models > Ensemble Models');
     members: document.querySelectorAll('#ensx-panel [data-e="member"] option').length, run: document.querySelector('#ensx-panel [data-e="run"]').textContent,
     note: document.querySelector('#ensx-panel [data-e="note"]').textContent }));
   ok('names the ensemble, run and members', ui.models.join() === 'GEFS' && ui.members === 5 && ui.run === '09/24 12z run' && /5 members, 2 forecast hours/.test(ui.note), JSON.stringify(ui));
-  ok('the row lights', await p.evaluate(() => document.getElementById('sub-ens-explorer').classList.contains('active')));
+  ok('the row lights', await p.evaluate(() => document.getElementById('ens-explorer').classList.contains('on')));
 }
 
 console.log('\n2. mean, median, spread');
