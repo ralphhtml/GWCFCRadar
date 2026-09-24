@@ -729,6 +729,34 @@ Persistent=false
 WantedBy=timers.target
 EOF
 
+# The MRRL radar network: where each of its radars is, read from each
+# radar's own newest volume, once a day (radars do not move). The volumes
+# themselves are fetched only when someone opens that radar, through
+# serve.py's /mrrl doors. The feed's operator gave permission for this.
+cat > "$UNITS/gwcfc-mrrl.service" <<EOF
+[Unit]
+Description=Place the MRRL network's radars (sites.json)
+
+[Service]
+Type=oneshot
+ExecStart=$VENV/bin/python $REPO/pi/mrrl.py
+TimeoutStartSec=3600
+Nice=10
+EOF
+
+cat > "$UNITS/gwcfc-mrrl.timer" <<'EOF'
+[Unit]
+Description=MRRL radar positions, daily
+
+[Timer]
+# A minute after install so the pills appear the same day, then daily.
+OnActiveSec=1min
+OnUnitActiveSec=1d
+
+[Install]
+WantedBy=timers.target
+EOF
+
 # Keeping itself current. Without this the Pi runs whatever was cloned until
 # somebody remembers to pull, which is how it ends up an hour of debugging away
 # from a bug that was fixed days ago.
@@ -926,6 +954,7 @@ systemctl --user enable --now gwcfc-ecmwf-tc.timer >/dev/null 2>&1
 systemctl --user enable --now gwcfc-lows.timer     >/dev/null 2>&1
 systemctl --user enable --now gwcfc-ensfields.timer >/dev/null 2>&1
 systemctl --user enable --now gwcfc-spag.timer     >/dev/null 2>&1
+systemctl --user enable --now gwcfc-mrrl.timer     >/dev/null 2>&1
 systemctl --user enable --now gwcfc-feeds.timer    >/dev/null 2>&1
 systemctl --user enable --now gwcfc-update.timer   >/dev/null 2>&1
 # The publishing account, BEFORE the publisher is started.

@@ -6577,6 +6577,8 @@ body.lite-mode #export-modal { display: none !important; }
   border-color: #46e08a;
   box-shadow: 0 0 10px rgba(70,224,138,0.9);
 }
+/* The MRRL network's radars: violet, so they read as a different network. */
+.nexrad-label.mrrl { background: #c9a0ff; color: #1a0030; }
 .nexrad-label.active-station {
   background: var(--accent);
   border-color: rgba(0,0,0,0.55);
@@ -27443,7 +27445,7 @@ function _arcWarmVisible() {
     const b = map.getBounds();
     const mid = b.getCenter();
     NEXRAD_STATIONS
-      .filter(s => b.contains([s.lat, s.lon]))
+      .filter(s => !s.mrrl && b.contains([s.lat, s.lon]))
       // Nearest the middle of the view first, because that is where the
       // person is looking and the cap below may not reach the rest.
       .sort((p, q) => (Math.hypot(p.lat - mid.lat, p.lon - mid.lng)
@@ -46006,6 +46008,7 @@ function _cmMiles(aLat, aLng, bLat, bLng) {
 function _cmNearestStation(lat, lng) {
   let best = null, bestMi = Infinity;
   (typeof NEXRAD_STATIONS !== 'undefined' ? NEXRAD_STATIONS : []).forEach(s => {
+    if (s.mrrl) return;
     const mi = _cmMiles(lat, lng, s.lat, s.lon);
     if (mi < bestMi) { bestMi = mi; best = s; }
   });
@@ -49720,7 +49723,100 @@ async function _s3FindNewest(station) {
 // tilt, not just the bottom of the stack. `opts` is the two-stage fetch
 // (see _assembleVolume): the first sweep alone comes back from here, and
 // the rest is handed to opts.onRest as it lands.
+// -- THE MRRL RADAR NETWORK ---------------------------------------------------
+// Radars around the world (Europe, Japan, Mexico and more) from the MRRL
+// network's feed, used with its operator's permission. Their files are
+// ordinary NEXRAD Level 2 volumes, so once they are in hand the same decoder,
+// playback, tilts, cross sections and Radar 3D serve them exactly as they
+// serve the American radars. The feed cannot be read from a page directly
+// (it sends no CORS header), so the parsing server fetches and caches each
+// volume (pi/mrrl.py) and the radars appear only when it is reachable.
+// Each one joins NEXRAD_STATIONS as 'mr-<code>', flagged with its feed code.
+let _mrrlLoaded = null;
+function _mrrlCode(stationId) {
+  const s = NEXRAD_STATIONS.find(x => x.id === String(stationId || '').toLowerCase());
+  return s && s.mrrl ? s.mrrl : null;
+}
+async function _mrrlBase() {
+  const base = (typeof _hdBase !== 'undefined' && _hdBase)
+    || (typeof _hdResolveBase === 'function' ? await _hdResolveBase() : null);
+  if (!base) throw new Error('the MRRL radars come through the parsing server, and it is not reachable');
+  return base;
+}
+function _mrrlLoad() {
+  if (_mrrlLoaded) return _mrrlLoaded;
+  _mrrlLoaded = (async () => {
+    const base = await _mrrlBase();
+    const r = await fetch(`${base}/mrrl/sites.json`, { signal: _abortSignal(15000) });
+    if (!r.ok) throw new Error('no MRRL site list yet');
+    const j = await r.json();
+    let added = 0;
+    (j.sites || []).forEach(x => {
+      if (!/^[A-Za-z0-9_]{4}$/.test(x.id) || !isFinite(x.lat) || !isFinite(x.lon)) return;
+      const id = 'mr-' + x.id.toLowerCase();
+      if (NEXRAD_STATIONS.some(s => s.id === id)) return;
+      const st = { id, lat: +x.lat, lon: +x.lon, mrrl: x.id };
+      NEXRAD_STATIONS.push(st);
+      if (_nexradSiteLayer) _addNexradSiteMarker(st);
+      added++;
+    });
+    if (added && typeof _refreshNexradSiteStyles === 'function') _refreshNexradSiteStyles();
+    return added;
+  })();
+  // A failure is allowed to try again later (the parsing server may come up).
+  _mrrlLoaded.catch(() => { setTimeout(() => { _mrrlLoaded = null; }, 60000); });
+  return _mrrlLoaded;
+}
+const _mrrlListCache = new Map();
+async function _mrrlList(code, signal) {
+  const hit = _mrrlListCache.get(code);
+  if (hit && Date.now() - hit.at < 30000) return hit.list;
+  const base = await _mrrlBase();
+  const r = await fetch(`${base}/mrrl/list?site=${encodeURIComponent(code)}`, { signal: signal || _abortSignal(20000) });
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    throw new Error(e.error || ('the MRRL list answered ' + r.status));
+  }
+  const list = ((await r.json()).volumes || []).filter(v => v && v.name);
+  _mrrlListCache.set(code, { at: Date.now(), list });
+  return list;
+}
+async function _mrrlFetchVol(code, name, signal) {
+  const base = await _mrrlBase();
+  const r = await fetch(`${base}/mrrl/vol?site=${encodeURIComponent(code)}&name=${encodeURIComponent(name)}`,
+                        { signal: signal || _abortSignal(60000) });
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    throw new Error(e.error || ('the MRRL volume answered ' + r.status));
+  }
+  return r.arrayBuffer();
+}
+// Up to n volumes, newest first, skipping `back` of the newest.
+async function _mrrlVolumes(code, n, back, signal) {
+  const list = await _mrrlList(code, signal);
+  if (!list.length) throw new Error('MRRL ' + code + ' has no volumes right now');
+  const picks = list.slice(0, Math.max(0, list.length - (back || 0))).slice(-n).reverse();
+  const out = new Array(picks.length).fill(null);
+  let i = 0;
+  const lane = async () => {
+    while (i < picks.length) {
+      const k = i++;
+      try { out[k] = await _mrrlFetchVol(code, picks[k].name, signal); } catch (e) { if (k === 0 && n === 1) throw e; }
+    }
+  };
+  await Promise.all([lane(), lane(), lane()]);
+  return out.filter(Boolean);
+}
+
 async function _fetchVolumeDirect(stationId, cap, requireComplete, opts) {
+  const mr = _mrrlCode(stationId);
+  if (mr) {
+    const back = _l2SkipNewest === String(stationId).toUpperCase() ? 1 : 0;
+    _l2SkipNewest = null;
+    const got = await _mrrlVolumes(mr, 1, back, opts && opts.signal);
+    if (!got.length) throw new Error('no volume for MRRL ' + mr);
+    return got[0];
+  }
   const station = stationId.toUpperCase();
   const newest = await _s3NewestVol(station);
 
@@ -49815,6 +49911,8 @@ async function _assembleVolume(station, vol, cap, requireComplete, opts) {
 // `cap` (bytes per volume) and `startBack` (how many newest volumes to skip)
 // are for Radar 3D, which wants whole volumes and already holds the newest.
 async function _fetchRecentVolumes(station, n, cap, startBack, requireComplete, signal) {
+  const mr = _mrrlCode(station);
+  if (mr) return _mrrlVolumes(mr, n, startBack || 0, signal);
   station = station.toUpperCase();
   // The same answer the live load just found, not a second search beside
   // the download it would be slowing.
@@ -50055,7 +50153,7 @@ function _l3Attach(img, result, product, station) {
 
   const d = img.timeIso ? new Date(img.timeIso) : new Date();
   const at = document.getElementById('anim-time');
-  if (at) at.textContent = _fmtHHMM(d) + ' · ' + String(station).toUpperCase()
+  if (at) at.textContent = _fmtHHMM(d) + ' · ' + (typeof _mrrlCode === 'function' && _mrrlCode(station) ? 'MRRL ' + _mrrlCode(station).replace(/_+$/, '').toUpperCase() : String(station).toUpperCase())
                          + ' ' + (_MESH_LABELS[product] || product);
   _refreshNexradSiteStyles();
   return img;
@@ -50105,7 +50203,7 @@ let _radarWorkerPending = null;  // { resolve, reject } for current request
 // is a new URL, and a page from before the build keeps the URL its decoder
 // answers to. A mismatched pair is how "Parse failed" appears on one device
 // while the same click works everywhere else.
-var RADAR_WORKER_V = 'f60c87a2';
+var RADAR_WORKER_V = '6bbbd26a';
 
 function _getRadarWebWorker() {
   if (_radarWebWorker) return _radarWebWorker;
@@ -50316,7 +50414,7 @@ const NEXRAD_STATIONS = [
 function _nearestStation(lat, lon) {
   let best = NEXRAD_STATIONS[0], bestDist = Infinity;
   for (const s of NEXRAD_STATIONS) {
-    if (s.tdwr) continue;
+    if (s.tdwr || s.mrrl) continue;
     const dlat = s.lat - lat, dlon = s.lon - lon;
     const d = dlat*dlat + dlon*dlon;
     if (d < bestDist) { bestDist = d; best = s; }
@@ -51395,6 +51493,8 @@ async function _loadL3DataInner(product, stationOverride, retried, gen, signal, 
       buffer = await _fetchVolumeDirect(station, undefined, false, two);
       if (two.split) rest = restP;
     } catch (direct) {
+      // The worker only knows the American radars.
+      if (_mrrlCode(station)) throw direct;
       console.log('[L2] direct fetch failed (' + direct.message + '), trying worker');
       var res = await fetch(RADAR_WORKER_URL + '?station=' + station.toUpperCase(),
                             { signal: _rsSignal(signal, 30000) });
@@ -53141,11 +53241,18 @@ function _buildNexradSiteMarkers() {
 
   _nexradSiteLayer = L.layerGroup();
 
-  NEXRAD_STATIONS.forEach(s => {
+  NEXRAD_STATIONS.forEach(s => _addNexradSiteMarker(s));
+  // The MRRL network's radars join once the parsing server says where they are.
+  try { _mrrlLoad().catch(() => {}); } catch (e) {}
+}
+
+function _addNexradSiteMarker(s) {
     // Single pill marker , the label IS the radar site indicator.
     const labelIcon = L.divIcon({
       className: 'nexrad-label-marker',
-      html: `<div class="nexrad-label" id="nxlbl-${s.id}">${s.id.toUpperCase()}</div>`,
+      html: s.mrrl
+        ? `<div class="nexrad-label mrrl" id="nxlbl-${s.id}" title="MRRL radar ${s.mrrl}">${s.mrrl.replace(/_+$/, '').toUpperCase()}</div>`
+        : `<div class="nexrad-label" id="nxlbl-${s.id}">${s.id.toUpperCase()}</div>`,
       iconSize: [0, 0],
       iconAnchor: [0, 0]   // 0×0 box at the station point; the pill self-centers via CSS transform
     });
@@ -53157,6 +53264,8 @@ function _buildNexradSiteMarkers() {
     // for a station the pointer paused over, and nothing at all on a touch
     // screen, where there is no hover to fire it.
     const warmBoth = () => {
+      // The warm-ups below all ask NOAA; an MRRL radar is not there.
+      if (s.mrrl) return;
       try { _rsWarm(s.id); } catch (e) {}
       try { _rsWarmSite(s.id); } catch (e) {}
       // And the archive listing, which is the slow half of a bucket click:
@@ -53191,7 +53300,6 @@ function _buildNexradSiteMarkers() {
 
     label.addTo(_nexradSiteLayer);
     _nexradSiteMarkers[s.id] = { label };
-  });
 }
 
 function _refreshNexradSiteStyles() {
@@ -53227,6 +53335,16 @@ function _refreshNexradSiteStyles() {
 // the source currently selected. Kept whole, and now reached through the
 // popup's View button (or straight from code).
 async function _siteView(s) {
+  // An MRRL radar only ever has its Level 2 volume, so tapping one switches
+  // to Level 2 (keeping the product when it is one Level 2 draws).
+  if (s && s.mrrl && _radarSource !== 'l2') {
+    try { _disableSatellite(); } catch (e) {}
+    try { _disableRadar(); } catch (e) {}
+    try { _clearSingleSiteRef(); } catch (e) {}
+    activeLayers.nexrad = false;
+    if (!['ref', 'vel', 'cc', 'zdr', 'kdp', 'sw', 'phi'].includes(currentProduct)) currentProduct = 'ref';
+    _radarSource = 'l2';
+  }
   // Level 2 and Level 3 first, because both call a product "ref" and the
   // branch below that name belongs to the tile layers. Checked in the
   // wrong order, clicking a pill while Level 2 was showing reflectivity
@@ -53443,6 +53561,11 @@ const RC_L3_KEY = { ref: 'reflectivity', vel: 'velocity', cc: 'corrcoeff',
 function _rcPlan(site, slot) {
   const sid = String(site).toUpperCase();
   const lc = String(site).toLowerCase();
+  // An MRRL radar only has its Level 2 volume, whatever the other panes use.
+  if (typeof _mrrlCode === 'function' && _mrrlCode(lc)) {
+    const pr = (slot && slot.prodSel) || currentProduct;
+    return { kind: 'mesh-l2', product: ['ref', 'vel', 'cc', 'zdr', 'kdp', 'sw', 'phi'].includes(pr) ? pr : 'ref' };
+  }
   const srcSel = (slot && slot.srcSel) || null;
   const prodSel = (slot && slot.prodSel) || null;
   if (srcSel || prodSel) {
@@ -53815,6 +53938,7 @@ async function _rcMeshSlot(slot, plan, alive) {
       try {
         buf = await _fetchVolumeDirect(lc);
       } catch (direct) {
+        if (_mrrlCode(lc)) throw direct;
         const res = await fetch(RADAR_WORKER_URL + '?station=' + sid, { signal: _abortSignal(30000) });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         buf = await res.arrayBuffer();
@@ -65547,6 +65671,7 @@ async function _aiGeocode(place) {
 function _aiNearestStation(lat, lon) {
   let best = null, bestD = Infinity;
   for (const s of NEXRAD_STATIONS) {
+    if (s.mrrl) continue;
     const d = (s.lat - lat) ** 2 + (s.lon - lon) ** 2;
     if (d < bestD) { bestD = d; best = s; }
   }
@@ -71942,6 +72067,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-u', date: 'Sep 24, 2026',
+    text: "Radars around the world. The MRRL network's radars in Europe, Japan, Mexico and more now show up as violet radar pills next to the American ones (their operator said yes). Tap one and it opens in Level 2, just like an American site: every product the radar sends, the tilts, playback, cross sections, Radar 3D, radar compare, your custom radar colours and the value filter all work on them. They come through the parsing server, so they appear once it is on and has placed them (a few minutes after its next update). Thanks to MRRL, credited in Credits." },
   { id: '2026-09-24-t', date: 'Sep 24, 2026',
     text: "Ensemble Models is redesigned as one panel that works like the other model panels: a playbar with a typed speed on top, then the ensembles as chips labelled the way Spaghetti Models labels its lines (AEMN is the GEFS mean, CEMN the Canadian, EEMN the European, AVNO the GFS), then what to show (Mean, Median, Member, Spread, Chance, Stamps), then Low Tracks, TC Chance and Layer Stack for the map. GEFS members are named like spaghetti lines too (AC00 is the control, AP01 the first member). Nothing in it repeats something that lives elsewhere: the ensemble charts are back in Run Models, under their own Ensembles heading, the meteogram is on the map's right-click menu, and the GEFS member cyclone tracks are Spaghetti Models' GEFS members." },
   { id: '2026-09-24-s', date: 'Sep 24, 2026',
@@ -79910,6 +80037,16 @@ function _ovOrderReset(){
       </div>
 
       <div class="credit-sep-label">Radar, Models &amp; Observations</div>
+      <div class="credit-row">
+        <img class="credit-logo" src="https://www.google.com/s2/favicons?domain=mrrl.net&amp;sz=64" alt="MRRL logo" loading="lazy">
+        <div class="credit-info">
+          <div class="credit-name">MRRL radar feed</div>
+          <div class="credit-full">Level 2 radar volumes from radars around the world</div>
+          <div class="credit-desc">The violet radar pills outside the United States: radars in Europe, Japan, Mexico and more, shared as Level 2 volumes by the MRRL feed and used here with its operator's permission. The feed may go offline for maintenance now and then.</div>
+          <div class="credit-uses"><span class="credit-use">Radar (Level 2)</span><span class="credit-use">Radar 3D</span></div>
+          <a class="credit-link" href="https://feeds.mrrl.net/polling/" target="_blank" rel="noopener">feeds.mrrl.net</a>
+        </div>
+      </div>
       <div class="credit-row">
         <img class="credit-logo" src="https://www.google.com/s2/favicons?domain=deepmind.google&amp;sz=64" alt="Google DeepMind logo" loading="lazy">
         <div class="credit-info">

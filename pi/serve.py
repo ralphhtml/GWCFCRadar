@@ -247,6 +247,8 @@ class CORSHandler(SimpleHTTPRequestHandler):
             # nothing in freshness and saves the Pi a rebuild every time
             # somebody closes the panel and opens it again.
             self.send_header("Cache-Control", "public, max-age=300")
+        elif path == "/mrrl/list":
+            self.send_header("Cache-Control", "no-cache")
         elif path.endswith((".png", "manifest.json")):
             self.send_header("Cache-Control", "public, max-age=21600")
         super().end_headers()
@@ -293,6 +295,12 @@ class CORSHandler(SimpleHTTPRequestHandler):
             return
         if head == "/model3d":
             self._model3d()
+            return
+        if head == "/mrrl/list":
+            self._mrrl_list()
+            return
+        if head == "/mrrl/vol":
+            self._mrrl_vol()
             return
         super().do_GET()
 
@@ -759,6 +767,64 @@ class CORSHandler(SimpleHTTPRequestHandler):
             self._reply_json(502, {"error": f"could not read the members: {e.__class__.__name__}"})
             return
         self._reply_json(200, out)
+
+    # -- The MRRL radar network (mrrl.py beside this file) -------------------
+    # The feed sends no CORS header, so the page reads it through here. Both
+    # doors check the site code and the file name against fixed shapes, and
+    # a file must be one the site's own dir.list names, so nothing but that
+    # feed's real volumes can ever be asked for. sites.json is a plain file.
+    def _mrrl(self):
+        import mrrl
+        mrrl.DATA = os.path.join(getattr(self, "directory", None)
+                                 or os.path.expanduser("~/wxdata"), "mrrl")
+        return mrrl
+
+    def _mrrl_list(self):
+        """GET /mrrl/list?site=BOO_ -> that radar's volumes, oldest first."""
+        from urllib.parse import parse_qs, urlparse
+        site = (parse_qs(urlparse(self.path).query).get("site", [""])[0] or "").strip()
+        try:
+            mrrl = self._mrrl()
+        except Exception as e:
+            self._reply_json(501, {"error": f"mrrl.py is not beside serve.py ({e})"})
+            return
+        if not mrrl.SITE_RE.fullmatch(site):
+            self._reply_json(400, {"error": "site must be an MRRL site code"})
+            return
+        try:
+            entries = mrrl.listing(site)
+        except Exception as e:
+            self._reply_json(502, {"error": f"the MRRL feed did not answer for {site} ({e.__class__.__name__})"})
+            return
+        self._reply_json(200, {"site": site, "volumes": entries})
+
+    def _mrrl_vol(self):
+        """GET /mrrl/vol?site=BOO_&name=<file> -> one Archive II volume."""
+        from urllib.parse import parse_qs, urlparse
+        q = parse_qs(urlparse(self.path).query)
+        site = (q.get("site", [""])[0] or "").strip()
+        name = (q.get("name", [""])[0] or "").strip()
+        try:
+            mrrl = self._mrrl()
+        except Exception as e:
+            self._reply_json(501, {"error": f"mrrl.py is not beside serve.py ({e})"})
+            return
+        if not mrrl.SITE_RE.fullmatch(site) or not mrrl.FILE_RE.fullmatch(name) or not name.startswith(site):
+            self._reply_json(400, {"error": "site and name must be an MRRL site and one of its files"})
+            return
+        try:
+            known = {e["name"] for e in mrrl.listing(site)}
+        except Exception:
+            known = set()
+        if name not in known and not os.path.exists(mrrl._cache_path(site, name)):
+            self._reply_json(404, {"error": f"{site} has no volume called {name}"})
+            return
+        try:
+            body = mrrl.volume(site, name)
+        except Exception as e:
+            self._reply_json(502, {"error": f"could not get that volume ({e.__class__.__name__})"})
+            return
+        self._reply_bytes(200, body, "application/octet-stream")
 
     def _model3d_sources(self):
         """GET /model3d/sources -> which models a 3D box can be cut from."""

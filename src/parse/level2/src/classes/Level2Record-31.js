@@ -27,7 +27,11 @@ export default (raf, message, offset, options) => {
 
 	// basic data integrity check
 	try {
-		if (!record.id.match(/[A-Z]{4}/)) throw new Error(`Invalid record id: ${record.id}`);
+		// GWCFC: letters, digits and underscores, either case. The American
+		// radars are four capitals (KTLX), but the MRRL network's radars are
+		// named like BOO_, SP41, 1852 and dbor, and the old four-capitals
+		// test threw every one of their radials away as corrupt.
+		if (!/^[A-Za-z0-9_]{4}$/.test(record.id)) throw new Error(`Invalid record id: ${record.id}`);
 		if (record.mseconds > 86401000) throw new Error(`Invalid timestamp (ms): ${record.mseconds}`); // account for leap second
 	} catch (e) {
 		// return the un-altered message
