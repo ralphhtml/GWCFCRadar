@@ -4304,6 +4304,9 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   color: #ffd9d5; font-weight: 700;
 }
 .snd-pane[hidden] { display: none; }
+/* Moved into Models > Ensemble Models. The rows stay in the page (hidden)
+   because their lights and panels are still driven through them. */
+#op-ecmwf-tc, #op-low-tracks, #cyc-ens-centres-btn { display: none !important; }
 
 /* Meteogram: the sounding panel's shell (the rules above name both), plus a
    chart, a hover cursor and the readout under it. */
@@ -20127,6 +20130,7 @@ function _hdFillModelPicker() {
   if (sel && chosen && Array.from(sel.options).some(o => o.value === chosen)) {
     sel.value = chosen;
   }
+  if (typeof _runModelsApplyMode === 'function') _runModelsApplyMode();
 }
 
 // Re-read the index when it has gone stale, and throw away the manifest that
@@ -32852,7 +32856,13 @@ const LAYER_DESCRIPTIONS = {
   // The Models row's two doors.
   'run-models':      'Forecast model charts - GFS, ECMWF, HRRR, NAM and more - browsable by product and forecast hour, with an Ensemble Spread view that shows where the models disagree.',
   'spaghetti-models': 'Tropical guidance from the NHC a-deck: official tracks and cones, plus storm-track spaghetti from every published model, each line wearing its model\'s name tag on a stem. Includes the track animation.',
-  'ai-cyclones': 'AI hurricane forecasts in their own panel: Google DeepMind\'s FNV3 and GenCast ensembles, plus the tropical cyclones the parsing server finds itself in the raw GEFS ensemble. Experimental research output, shown beside the official guidance rather than instead of it.',
+  'ai-cyclones': 'AI hurricane forecasts in their own panel: Google DeepMind\'s FNV3 and GenCast ensembles. Experimental research output, shown beside the official guidance rather than instead of it.',
+  'ensemble-models': 'Everything built from an ensemble: many runs of the same model started a little differently, so where they agree the forecast is sure and where they spread it is not. Ensemble charts (GEFS, ECMWF ENS, HREF and more), low pressure tracks, ECMWF tropical cyclone probabilities, GEFS cyclone centres and the ensemble meteogram.',
+  'ens-charts': 'The ensemble model charts in the Run Models panel: GEFS mean and spread, the GEFS control and a member, ECMWF ENS mean, HREF mean and spread, the Canadian ensemble and whatever else the parsing server builds. The ordinary single runs stay under Run Models.',
+  'ens-lows': 'Low Tracks: every low pressure centre in the GEFS and ECMWF ensembles, member by member, and in the GFS and ECMWF runs, as tracks or L markers with pressures.',
+  'ens-tcprob': 'ECMWF TC Probability: the chance a tropical depression, storm or hurricane passes within 120 km, from all 51 ECMWF ensemble members, including storms that have not formed yet.',
+  'ens-centres': 'GEFS Cyclone Centres: the tropical cyclones the parsing server finds itself in the raw GEFS ensemble, one track per member, coloured by peak intensity.',
+  'ens-meteogram': 'The ensemble meteogram for where you are (or the middle of the map): every member\'s temperature, highs and lows, rain, wind and CAPE over two weeks. Right-click anywhere for one at that spot.',
   // Level 3 products that only exist pre-computed (no Level 2 equivalent).
   'pi-onehour':    'Radar-estimated rainfall over just the last hour, in inches. Where the colors pile up is where flash flooding starts.',
   'pi-stormtotal': 'Storm total precipitation: all the rain the radar has estimated since the current event began. The running score of a long storm.',
@@ -38526,6 +38536,7 @@ function _aiCyclonesPanelIsOpen() {
 
 const MODELS_SUB_BUBBLES = [
   { id: 'run-models',       icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-chart-up></use></svg>', label: 'Run Models' },
+  { id: 'ensemble-models',  icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-signal></use></svg>', label: 'Ensemble Models' },
   { id: 'spaghetti-models', icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-noodles></use></svg>', label: 'Spaghetti Models' },
   { id: 'ai-cyclones',      icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-cyclone></use></svg>', label: 'AI Cyclones' },
 ];
@@ -38534,9 +38545,11 @@ const MODELS_SUB_BUBBLES = [
 // itself, so adding a panel is a row here instead of a fourth copy of the
 // ternary below.
 const _MODELS_PANELS = {
-  'run-models':       { isOpen: () => _runModelsPanelIsOpen(),
-                        open: () => openRunModelsPanel(),
+  'run-models':       { isOpen: () => _runModelsPanelIsOpen() && !_runModelsEns,
+                        open: () => { _runModelsEns = false; openRunModelsPanel(); _runModelsApplyMode(); },
                         close: () => closeRunModelsPanel() },
+  // Not a panel: a menu of every ensemble feature, opened in place.
+  'ensemble-models':  { isOpen: () => _ensModelsAnyOn(), menu: () => toggleEnsembleModelsSub() },
   'spaghetti-models': { isOpen: () => _spaghettiModelsPanelIsOpen(),
                         open: () => openSpaghettiModelsPanel(),
                         close: () => closeSpaghettiModelsPanel() },
@@ -39114,6 +39127,97 @@ function _nwsRefreshMenu() {
   };
 });
 
+// -- ENSEMBLE MODELS -----------------------------------------------------------
+// Everything built from an ensemble, in one place under Models: the ensemble
+// charts (GEFS, ECMWF ENS, HREF and the rest, shown in the Run Models panel
+// switched to its ensemble list), the low tracks, ECMWF's tropical cyclone
+// probabilities, the GEFS cyclone centres and the ensemble meteogram. They
+// used to be spread across the overlay list, the AI Cyclones panel and the
+// Run Models list beside the ordinary runs.
+let _runModelsEns = false;
+// A model is an ensemble product if its key or its name says so: a mean, a
+// spread, a control or a member of GEFS, ECMWF ENS, GEPS/CMCE, HREF or SREF.
+function _isEnsModel(key, label) {
+  const k = String(key || '').replace(/^pi:/, '').toLowerCase();
+  return /^(gefs|cmce|geps|ecmwfens|href|sref|naefs)/.test(k)
+    || /\b(ens|ensemble|mean|spread|member|control)\b/i.test(String(label || ''));
+}
+// Shows only the ensemble models in the Run Models picker, or only the
+// ordinary runs, and moves off a model the other list owns.
+function _runModelsApplyMode() {
+  const sel = document.getElementById('sev-model-sel');
+  const title = document.querySelector('#run-models-panel .models-panel-title');
+  if (title) title.innerHTML = _runModelsEns
+    ? '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-signal></use></svg> Ensemble Models'
+    : '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-chart-up></use></svg> Run Models';
+  if (!sel) return;
+  const keep = new Set(['ndfd', 'pi:rtma']);      // hidden already, shown only when driven from elsewhere
+  Array.from(sel.options).forEach(o => {
+    if (keep.has(o.value)) return;
+    const ens = _isEnsModel(o.value, o.textContent);
+    o.hidden = _runModelsEns ? !ens : ens;
+  });
+  sel.querySelectorAll('optgroup').forEach(g => { g.hidden = !Array.from(g.children).some(o => !o.hidden); });
+  const cur = sel.options[sel.selectedIndex];
+  if (cur && cur.hidden && !keep.has(cur.value)) {
+    const first = Array.from(sel.options).find(o => !o.hidden);
+    if (first) { sel.value = first.value; try { _sevSetSection(first.value); } catch (e) {} }
+  }
+}
+function openEnsembleChartsPanel() {
+  _runModelsEns = true;
+  openRunModelsPanel();
+  _runModelsApplyMode();
+}
+const ENS_MODEL_ROWS = [
+  { id: 'ens-charts', label: 'Ensemble Charts', icon: 'chart-up',
+    on: () => _runModelsPanelIsOpen() && _runModelsEns,
+    click: () => { if (_runModelsPanelIsOpen() && _runModelsEns) closeRunModelsPanel(); else openEnsembleChartsPanel(); } },
+  { id: 'ens-lows', label: 'Low Tracks', icon: 'noodles',
+    on: () => typeof _lowsOn !== 'undefined' && _lowsOn, click: () => _lowsToggle() },
+  { id: 'ens-tcprob', label: 'ECMWF TC Probability', icon: 'cyclone',
+    on: () => typeof _ectcOn !== 'undefined' && _ectcOn, click: () => _ectcToggle() },
+  { id: 'ens-centres', label: 'GEFS Cyclone Centres', icon: 'target',
+    on: () => typeof _ensOn !== 'undefined' && _ensOn, click: () => _ensToggle() },
+  { id: 'ens-meteogram', label: 'Ensemble Meteogram', icon: 'chart-bar',
+    on: () => typeof _mtgPanelIsOpen === 'function' && _mtgPanelIsOpen(),
+    click: () => {
+      if (_mtgPanelIsOpen()) { document.getElementById('mtg-panel').classList.remove('open'); return; }
+      const gps = typeof _userGPS === 'function' ? _userGPS() : null;
+      const c = gps ? { lat: gps.lat, lng: gps.lon } : map.getCenter();
+      openMeteogram(c.lat, c.lng);
+    } },
+];
+function _ensModelsAnyOn() {
+  return ENS_MODEL_ROWS.some(r => { try { return !!r.on(); } catch (e) { return false; } });
+}
+function toggleEnsembleModelsSub() {
+  const wrap = document.getElementById('sub-bubbles');
+  wrap.innerHTML = '';
+  wrap.dataset.mode = 'ensemble-models';
+  const back = document.createElement('div');
+  back.className = 'sub-bubble sb-back';
+  back.innerHTML = `<span class="sb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em;transform:rotate(180deg)><use href=#ic-arrow></use></svg></span><span class="sb-label">Ensemble Models</span>`;
+  back.onclick = () => { _syncParentBubble('models'); toggleModelsSub(); };
+  wrap.appendChild(back);
+  ENS_MODEL_ROWS.forEach(r => {
+    const el = document.createElement('div');
+    el.className = 'sub-bubble' + (r.on() ? ' active' : '');
+    el.id = 'sub-' + r.id;
+    el.innerHTML = `<span class="sb-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-${r.icon}></use></svg></span><span class="sb-label">${r.label}</span>`;
+    el.onclick = async () => {
+      try { await r.click(); } catch (e) { console.warn('ensemble row', r.id, e); }
+      // Several of these finish a moment later (a fetch, a panel), so the
+      // light is checked again rather than guessed.
+      const sync = () => { el.classList.toggle('active', !!r.on()); _syncParentBubble('models'); };
+      sync(); setTimeout(sync, 400); setTimeout(sync, 1500);
+    };
+    if (LAYER_DESCRIPTIONS[r.id]) el.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS[r.id]));
+    wrap.appendChild(el);
+  });
+  wrap.style.display = 'flex';
+}
+
 function toggleModelsSub() {
   const wrap = document.getElementById('sub-bubbles');
   wrap.innerHTML = '';
@@ -39131,6 +39235,7 @@ function toggleModelsSub() {
     el.id = 'sub-' + b.id;
     el.innerHTML = `<span class="sb-icon">${_eicon(b.icon)}</span><span class="sb-label">${b.label}</span>`;
     el.onclick = async () => {
+      if (p && p.menu) { p.menu(); return; }
       if (p) p.isOpen() ? p.close() : p.open();
       el.classList.toggle('active', !!(p && p.isOpen()));
       _syncParentBubble('models');
@@ -70503,6 +70608,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-h', date: 'Sep 24, 2026',
+    text: 'New Ensemble Models sub-bubble under Models, with every ensemble feature in one place: Ensemble Charts (GEFS, ECMWF ENS, HREF, the Canadian ensemble and more, now listed apart from the ordinary runs in Run Models), Low Tracks and ECMWF TC Probability (moved out of the overlay list), GEFS Cyclone Centres (moved out of the AI Cyclones panel) and the Ensemble Meteogram.' },
   { id: '2026-09-24-g', date: 'Sep 24, 2026',
     text: 'Model 3D now uses the real model runs instead of Open-Meteo: the parsing server cuts the box straight out of the GFS, NAM, RAP, HRRR, ECMWF and other model files the models panel already draws, and vertical motion is the model\'s own omega. It is also the 3D model chart now: with a model chart on the map, 3D model volume here opens on that chart\'s model, run and hour, drapes the chart over the ground under the volume, and follows along as you step the chart through its hours. The separate Draw a 3D model chart zone row is gone.' },
   { id: '2026-09-24-f', date: 'Sep 24, 2026',
