@@ -285,6 +285,9 @@ class CORSHandler(SimpleHTTPRequestHandler):
         if head == "/sounding":
             self._sounding()
             return
+        if head == "/ens/point":
+            self._ens_point()
+            return
         if head == "/model3d/sources":
             self._model3d_sources()
             return
@@ -722,6 +725,39 @@ class CORSHandler(SimpleHTTPRequestHandler):
             return
         finally:
             _sounding_gate.release()
+        self._reply_json(200, out)
+
+    def _ens_point(self):
+        """GET /ens/point?model=&lat=&lon= -> every ensemble member's value of
+        every field at one point, hour by hour (the meteogram's data), read
+        from the member grids ens_fields_pipeline.py keeps on disk."""
+        from urllib.parse import parse_qs, urlparse
+        q = parse_qs(urlparse(self.path).query)
+        model = (q.get("model", [""])[0] or "").strip()
+        try:
+            lat = float(q.get("lat", [""])[0])
+            lon = float(q.get("lon", [""])[0])
+        except ValueError:
+            self._reply_json(400, {"error": "lat and lon are required, as numbers"})
+            return
+        if not re.fullmatch(r"[a-z0-9]{1,24}", model):
+            self._reply_json(400, {"error": "model must be a catalogue key"})
+            return
+        if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+            self._reply_json(400, {"error": f"{lat}, {lon} is not a place on Earth"})
+            return
+        try:
+            import ens_fields_pipeline as ef
+            out = ef.point_series(model, lat, lon)
+        except (LookupError, ValueError) as e:
+            self._reply_json(404, {"error": str(e)})
+            return
+        except OSError:
+            self._reply_json(404, {"error": "no ensemble members built on this parsing server yet"})
+            return
+        except Exception as e:
+            self._reply_json(502, {"error": f"could not read the members: {e.__class__.__name__}"})
+            return
         self._reply_json(200, out)
 
     def _model3d_sources(self):

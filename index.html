@@ -4342,19 +4342,26 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
    because their lights and panels are still driven through them. */
 #op-ecmwf-tc, #op-low-tracks, #cyc-ens-centres-btn { display: none !important; }
 
-/* Meteogram: the sounding panel's shell (the rules above name both), plus a
-   chart, a hover cursor and the readout under it. */
-#mtg-chart { height: 240px; cursor: crosshair; touch-action: pan-y; }
-#mtg-panel.big #mtg-chart, #ensx-panel.big #mtg-chart, #ensl-panel.big #mtg-chart { height: min(62vh, 560px); }
-#mtg-panel .snd-tabs, #ensx-panel .snd-tabs, #ensl-panel .snd-tabs { grid-template-columns: repeat(5, 1fr); }
-#mtg-panel.big .snd-tabs, #ensx-panel.big .snd-tabs, #ensl-panel.big .snd-tabs { grid-template-columns: repeat(5, 1fr); max-width: 520px; }
-.mtg-card { position: relative; }
-.mtg-cursor { position: absolute; width: 1px; background: rgba(255,255,255,0.7); pointer-events: none; display: none; }
-.mtg-read { padding: 0 12px; font-family: var(--mono); font-size: 10px; line-height: 1.55; min-height: 16px; }
-.mtg-read b { color: var(--r-red-txt); }
-.mtg-legend { padding: 4px 12px 8px; font-size: 10px; opacity: 0.65; line-height: 1.45; }
-#mtg-panel.big .mtg-read, #ensx-panel.big .mtg-read, #ensl-panel.big .mtg-read { font-size: 12px; padding: 0 16px; }
-#mtg-panel.big .mtg-legend, #ensx-panel.big .mtg-legend, #ensl-panel.big .mtg-legend { font-size: 11.5px; padding: 6px 16px 10px; }
+/* Meteogram, NBM 1D Viewer style: the sounding panel's shell, then one
+   stacked chart per variable sharing a time axis, and the percentile table. */
+#mtg-panel { width: min(520px, calc(100vw - 24px)); }
+#mtg-panel .mtg-charts { padding: 6px 10px 0; display: flex; flex-direction: column; gap: 6px; }
+#mtg-panel .mtg-chart-card { position: relative; background: rgba(253,0,0,0.03); border: 1px solid rgba(253,0,0,0.16); border-radius: 10px; padding: 4px 6px 2px; }
+#mtg-panel .mtg-chart-title { font-size: 10px; font-weight: 700; color: var(--r-red-txt); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+#mtg-panel .mtg-key { font-weight: 400; color: var(--text); opacity: 0.8; display: inline-flex; flex-wrap: wrap; gap: 3px 6px; align-items: center; }
+#mtg-panel .mtg-key i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 2px; vertical-align: -1px; }
+#mtg-panel .mtg-chart-card canvas { display: block; width: 100%; height: 118px; cursor: crosshair; touch-action: pan-y; }
+#mtg-panel.big .mtg-chart-card canvas { height: min(22vh, 200px); }
+#mtg-panel .mtg-cursor { position: absolute; width: 1px; background: rgba(255,255,255,0.75); pointer-events: none; display: none; }
+#mtg-panel .mtg-read { padding: 6px 12px 0; font-family: var(--mono); font-size: 10px; line-height: 1.55; min-height: 16px; }
+#mtg-panel .mtg-when { color: var(--r-red-txt); font-weight: 700; }
+#mtg-panel .mtg-tbl { border-collapse: collapse; width: 100%; margin: 2px 0 4px; }
+#mtg-panel .mtg-tbl th, #mtg-panel .mtg-tbl td { padding: 1px 5px; text-align: right; font-weight: 400; }
+#mtg-panel .mtg-tbl th:first-child { text-align: left; opacity: 0.8; }
+#mtg-panel .mtg-tbl td.p50 { color: #fff; font-weight: 700; }
+#mtg-panel .mtg-tbl td.u { opacity: 0.6; text-align: left; }
+#mtg-panel .mtg-legend { padding: 4px 12px 8px; font-size: 10px; opacity: 0.65; line-height: 1.45; }
+#mtg-panel.big .mtg-read { font-size: 12px; padding: 6px 16px 0; }
 /* Always on, and no longer behind a tab. Where a number came from is not a
    footnote to go looking for: two panels that look identical can disagree by
    four hundred joules, and this line is the only thing that says which one is
@@ -45691,42 +45698,54 @@ function _cmOpen(e) {
 }
 
 // -- METEOGRAMS ---------------------------------------------------------------
-// A forecast for one point drawn over time, every ensemble member at once:
-// the WeatherBell style page a forecaster reads before looking at any map.
-// Opened the way a sounding is, from the map's right-click menu at the point
-// that was clicked, and it lives in the same kind of panel so the two sit
-// side by side. The sounding answers "what is the air doing above here",
-// this answers "what happens here over the next two weeks, and how sure is
-// anyone".
+// A forecast for one point over time, every ensemble member at once, laid out
+// the way the National Blend's 1D Viewer lays it out: one tall page of charts
+// sharing a time axis, read top to bottom.
 //
-// The members come from Open-Meteo's ensemble API, straight from the browser:
-// no parsing server needed, so it works for everyone.
-const MTG_MODELS = [
+//   Temperature, dew point, wind and gusts: a box and whisker for each forecast
+//   hour (whiskers the 10th and 90th percentile, the box the 25th to 75th, the
+//   white tick the median) over faint lines for every member (the plume).
+//   Precipitation type: stacked bars, the chance of liquid, frozen (snow and
+//   sleet) and freezing rain at each hour.
+//   Precipitation totals: the chance the running total has reached 0.01, 0.1,
+//   0.25, 0.5, 1 and 2 inches, nested bars from light to dark.
+//   CAPE, when the ensemble has it.
+// One crosshair runs through every chart, and the table under them gives the
+// exact percentiles for the hour under it.
+//
+// The members come from the parsing server's own copies of the real
+// ensembles (the /ens/point door, from pi/ens_fields_pipeline.py). Open-Meteo's
+// ensemble API is kept as the fallback for when there is no parsing server
+// or the point is outside the grid it keeps.
+const MTG_OM_MODELS = [
   { id: 'gfs025', label: 'GEFS', n: 31 },
   { id: 'ecmwf_ifs025', label: 'ECMWF ENS', n: 51 },
   { id: 'icon_seamless', label: 'ICON EPS', n: 40 },
   { id: 'gem_global', label: 'GEM ENS', n: 21 },
 ];
-const MTG_TABS = [
-  { id: 'temp', label: 'Temp' }, { id: 'hilo', label: 'Hi / Lo' },
-  { id: 'precip', label: 'Precip' }, { id: 'wind', label: 'Wind' }, { id: 'cape', label: 'CAPE' },
-];
 const MTG_VARS = ['temperature_2m', 'dew_point_2m', 'precipitation', 'snowfall',
   'wind_speed_10m', 'wind_gusts_10m', 'cape'];
 const MTG_DAYS = 15;
+const MTG_EXCEED = [0.01, 0.1, 0.25, 0.5, 1, 2];
+const MTG_CHARTS = [
+  { id: 't2m', label: 'Temperature', unit: '°F', kind: 'box', color: 'red' },
+  { id: 'td2m', label: 'Dew point', unit: '°F', kind: 'box', color: 'green' },
+  { id: 'wind10', label: 'Wind speed', unit: 'mph', kind: 'box', color: 'cyan', floor0: true },
+  { id: 'gust', label: 'Wind gusts', unit: 'mph', kind: 'box', color: 'orange', floor0: true },
+  { id: 'ptype', label: 'Precipitation type chance', unit: '%', kind: 'ptype' },
+  { id: 'qpf', label: 'Chance of precipitation total at least', unit: '%', kind: 'exceed' },
+  { id: 'cape', label: 'CAPE', unit: 'J/kg', kind: 'box', color: 'mag', floor0: true },
+];
 const _mtgCache = new Map();
-let _mtgModel = 'gfs025';
-try { const m = localStorage.getItem('gwcfc_mtg_model'); if (MTG_MODELS.some(x => x.id === m)) _mtgModel = m; } catch (e) {}
+let _mtgSource = null;
+try { _mtgSource = localStorage.getItem('gwcfc_mtg_source'); } catch (e) {}
 
 function _mtgUrl(lat, lon, model, vars) {
   return 'https://ensemble-api.open-meteo.com/v1/ensemble?latitude=' + lat.toFixed(3)
     + '&longitude=' + lon.toFixed(3) + '&hourly=' + vars.join(',') + '&models=' + model
     + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch'
-    + '&timezone=auto&forecast_days=' + MTG_DAYS;
+    + '&timezone=GMT&forecast_days=' + MTG_DAYS;
 }
-
-// Every member of one variable, as arrays. Open-Meteo names the control run
-// plainly and the rest name_member01, name_member02 and so on.
 function _mtgMembers(hourly, v) {
   const out = [];
   Object.keys(hourly).forEach(k => {
@@ -45737,9 +45756,6 @@ function _mtgMembers(hourly, v) {
   });
   return out;
 }
-
-// The 10th to 90th percentiles, median and mean at one hour. Linear between
-// ranks, the usual way, so 31 members do not snap to whole members.
 function _mtgStats(values) {
   const s = values.filter(x => x != null && isFinite(x)).sort((a, b) => a - b);
   if (!s.length) return null;
@@ -45748,48 +45764,98 @@ function _mtgStats(values) {
     p75: q(0.75), p90: q(0.9), mean: s.reduce((a, b) => a + b, 0) / s.length };
 }
 
-// Turns one API answer into what the charts draw: per-hour statistics for
-// each variable, running precipitation totals per member, and each local
-// day's high and low per member.
-function _mtgDigest(j) {
-  const h = j.hourly || {};
-  let times = (h.time || []).slice();
+// Everything the charts need, from either source, in one shape:
+// times (ms), and for each field an array of hours, each an array of members.
+function _mtgDigest(S) {
+  S.stats = {};
+  ['t2m', 'td2m', 'wind10', 'gust', 'cape', 'qpf'].forEach(f => {
+    if (S.vars[f]) S.stats[f] = S.vars[f].map(h => h ? _mtgStats(h) : null);
+  });
+  // Precipitation type: share of ALL members with each kind at that hour.
+  if (S.vars.ptype) {
+    S.ptype = S.vars.ptype.map(h => {
+      if (!h) return null;
+      const n = h.filter(v => v != null).length || 1;
+      const c = k => h.filter(v => v != null && Math.round(v) === k).length / n * 100;
+      return { liquid: c(1), frozen: c(2) + c(4), freezing: c(3) };
+    });
+  }
+  if (S.vars.qpf) {
+    S.exceed = S.vars.qpf.map(h => {
+      if (!h) return null;
+      const ok = h.filter(v => v != null);
+      return MTG_EXCEED.map(t => ok.length ? ok.filter(v => v >= t - 1e-9).length / ok.length * 100 : 0);
+    });
+  }
+  return S;
+}
+function _mtgFromServer(j) {
+  const base = Date.parse(j.base), F = j.fields || {};
+  const S = { source: 'server', label: j.label, run: j.run, members: j.members,
+    times: j.hours.map(h => base + h * 3600e3), vars: {}, lat: j.lat, lon: j.lon };
+  ['t2m', 'td2m', 'wind10', 'gust', 'cape', 'qpf', 'ptype'].forEach(f => {
+    if (F[f] && F[f].some(h => h && h.some(v => v != null))) S.vars[f] = F[f];
+  });
+  return _mtgDigest(S);
+}
+function _mtgFromOpenMeteo(j, label) {
+  const h = j.hourly || {}, times = (h.time || []).map(t => Date.parse(t + 'Z'));
   const mem = {};
   MTG_VARS.forEach(v => { mem[v] = _mtgMembers(h, v); });
-  // Trim the tail where no member has anything (models stop at different days).
-  let last = times.length - 1;
-  while (last > 0 && !mem.temperature_2m.some(a => a[last] != null)) last--;
-  times = times.slice(0, last + 1);
-  MTG_VARS.forEach(v => { mem[v] = mem[v].map(a => a.slice(0, last + 1)); });
-  const stats = {};
-  MTG_VARS.forEach(v => { stats[v] = times.map((_, i) => _mtgStats(mem[v].map(a => a[i]))); });
-  const accum = v => mem[v].map(a => { let t = 0; return a.map(x => (t += (x || 0))); });
-  const qpf = accum('precipitation'), snow = accum('snowfall');
-  const qpfStats = times.map((_, i) => _mtgStats(qpf.map(a => a[i])));
-  const snowStats = times.map((_, i) => _mtgStats(snow.map(a => a[i])));
-  // Local days: timezone=auto means the time strings are the place's own clock.
-  const dayKeys = [...new Set(times.map(t => t.slice(0, 10)))];
-  const days = dayKeys.map(d => {
-    const idx = times.map((t, i) => t.startsWith(d) ? i : -1).filter(i => i >= 0);
-    if (idx.length < 18) return null;               // a partial day would lie about its high
-    const hi = mem.temperature_2m.map(a => Math.max(...idx.map(i => a[i]).filter(x => x != null)));
-    const lo = mem.temperature_2m.map(a => Math.min(...idx.map(i => a[i]).filter(x => x != null)));
-    return { day: d, hi: _mtgStats(hi.filter(isFinite)), lo: _mtgStats(lo.filter(isFinite)) };
-  }).filter(Boolean);
-  return { times, mem, stats, qpf, qpfStats, snowStats, days, members: mem.temperature_2m.length,
-    tz: j.timezone_abbreviation || '' };
+  // Every third hour: a box a hour for two weeks is a solid wall.
+  const keep = times.map((_, i) => i).filter(i => i % 3 === 0 && mem.temperature_2m.some(a => a[i] != null));
+  const pick = arrs => arrs.length ? keep.map(i => arrs.map(a => a[i])) : null;
+  const totals = mem.precipitation.map(a => { let t = 0; return a.map(x => (t += (x || 0))); });
+  const S = { source: 'openmeteo', label, members: mem.temperature_2m.length, times: keep.map(i => times[i]), vars: {
+    t2m: pick(mem.temperature_2m), td2m: pick(mem.dew_point_2m), wind10: pick(mem.wind_speed_10m),
+    gust: pick(mem.wind_gusts_10m), cape: pick(mem.cape), qpf: pick(totals),
+    ptype: mem.precipitation.length ? keep.map(i => mem.precipitation.map((a, m) => {
+      // In the three hours to this one: some precipitation, and snow if any of it was.
+      let p = 0, sn = 0;
+      for (let k = Math.max(0, i - 2); k <= i; k++) { p += a[k] || 0; sn += (mem.snowfall[m] && mem.snowfall[m][k]) || 0; }
+      return p < 0.005 ? 0 : sn > 0 ? 2 : 1;
+    })) : null } };
+  Object.keys(S.vars).forEach(k => { if (!S.vars[k] || !S.vars[k].some(hh => hh.some(v => v != null))) delete S.vars[k]; });
+  return _mtgDigest(S);
 }
 
-async function _mtgFetch(lat, lon, model) {
-  const key = model + '|' + lat.toFixed(2) + '|' + lon.toFixed(2);
+// Which sources there are: the parsing server's ensembles first, Open-Meteo after.
+async function _mtgSources() {
+  const out = [];
+  try {
+    const base = (typeof _hdBase !== 'undefined' && _hdBase) || (typeof _hdResolveBase === 'function' ? await _hdResolveBase() : null);
+    if (base) {
+      if (typeof _hdBase !== 'undefined') _hdBase = base;
+      const r = await fetch(`${base}/ens/index.json?t=${Date.now()}`, { cache: 'no-store' });
+      if (r.ok) {
+        const idx = await r.json();
+        Object.keys(idx.models || {}).forEach(k => {
+          const e = idx.models[k];
+          if ((e.hours || []).length && !e.single) out.push({ id: 'pi:' + k, label: `${e.label} (${e.members} members)`, base });
+        });
+      }
+    }
+  } catch (e) {}
+  MTG_OM_MODELS.forEach(m => out.push({ id: 'om:' + m.id, label: `${m.label} (Open-Meteo)` }));
+  return out;
+}
+async function _mtgFetch(lat, lon, src) {
+  const key = src.id + '|' + lat.toFixed(2) + '|' + lon.toFixed(2);
   const hit = _mtgCache.get(key);
-  if (hit && Date.now() - hit.at < 30 * 60 * 1000) return hit.val;
-  let r = await fetch(_mtgUrl(lat, lon, model, MTG_VARS));
-  // A model that does not carry one of the variables can refuse the whole
-  // request; ask again without CAPE, the one most often missing.
-  if (!r.ok) r = await fetch(_mtgUrl(lat, lon, model, MTG_VARS.filter(v => v !== 'cape')));
-  if (!r.ok) throw new Error('Open-Meteo answered ' + r.status);
-  const val = _mtgDigest(await r.json());
+  if (hit && Date.now() - hit.at < 20 * 60 * 1000) return hit.val;
+  let val;
+  if (src.id.startsWith('pi:')) {
+    const r = await fetch(`${src.base}/ens/point?model=${encodeURIComponent(src.id.slice(3))}&lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`);
+    let j = null; try { j = await r.json(); } catch (e) {}
+    if (!r.ok || !j || !j.fields) throw new Error((j && j.error) || 'the parsing server answered ' + r.status);
+    val = _mtgFromServer(j);
+  } else {
+    const model = src.id.slice(3);
+    let r = await fetch(_mtgUrl(lat, lon, model, MTG_VARS));
+    if (!r.ok) r = await fetch(_mtgUrl(lat, lon, model, MTG_VARS.filter(v => v !== 'cape')));
+    if (!r.ok) throw new Error('Open-Meteo answered ' + r.status);
+    val = _mtgFromOpenMeteo(await r.json(), (MTG_OM_MODELS.find(m => m.id === model) || {}).label || model);
+  }
   if (!val.times.length || !val.members) throw new Error('no ensemble members for this point');
   _mtgCache.set(key, { at: Date.now(), val });
   return val;
@@ -45797,247 +45863,194 @@ async function _mtgFetch(lat, lon, model) {
 
 // -- Drawing ------------------------------------------------------------------
 function _mtgNice(span) {
-  const raw = span / 5, mag = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+  const raw = span / 4, mag = Math.pow(10, Math.floor(Math.log10(raw || 1)));
   return [1, 2, 2.5, 5, 10].find(m => m * mag >= raw) * mag;
 }
-function _mtgDayName(d) {
-  const dt = new Date(d + 'T12:00:00Z');
-  return DAYS[dt.getUTCDay()] + ' ' + dt.getUTCDate();
-}
+function _mtgDayName(t) { const d = new Date(t); return DAYS[d.getDay()] + ' ' + d.getDate(); }
 function _mtgHourLabel(t) {
-  const h = +t.slice(11, 13);
-  return _mtgDayName(t.slice(0, 10)) + ' ' + (h % 12 || 12) + (h < 12 ? ' AM' : ' PM');
+  const d = new Date(t), h = d.getHours();
+  return _mtgDayName(t) + ' ' + (h % 12 || 12) + (h < 12 ? ' AM' : ' PM');
 }
-// Axes, grid and day lines for a chart over the forecast hours. Returns the
-// scales so each chart only draws its own data.
-function _mtgFrame(cv, y0, y1, n, times, unit, css) {
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const w = cv.clientWidth || 360, h = cv.clientHeight || 220;
-  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
-  const g = cv.getContext('2d');
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  g.clearRect(0, 0, w, h);
-  const L = 36, R = 8, T = 8, B = 20, pw = w - L - R, ph = h - T - B;
-  const X = i => L + (n > 1 ? i / (n - 1) : 0) * pw;
-  const Y = v => T + (1 - (v - y0) / ((y1 - y0) || 1)) * ph;
-  g.font = '9px ' + (css.mono || 'monospace');
-  g.textBaseline = 'middle';
-  const step = _mtgNice(y1 - y0);
-  for (let v = Math.ceil(y0 / step) * step; v <= y1 + 1e-9; v += step) {
-    g.strokeStyle = 'rgba(255,255,255,0.07)'; g.lineWidth = 1;
-    g.beginPath(); g.moveTo(L, Math.round(Y(v)) + 0.5); g.lineTo(L + pw, Math.round(Y(v)) + 0.5); g.stroke();
-    g.fillStyle = 'rgba(255,255,255,0.55)'; g.textAlign = 'right';
-    g.fillText(String(+v.toFixed(2)), L - 4, Y(v));
-  }
-  if (times) {
-    g.textAlign = 'center';
-    times.forEach((t, i) => {
-      if (t.slice(11, 13) !== '00') return;
-      g.strokeStyle = 'rgba(255,255,255,0.12)';
-      g.beginPath(); g.moveTo(Math.round(X(i)) + 0.5, T); g.lineTo(Math.round(X(i)) + 0.5, T + ph); g.stroke();
-      const mid = X(Math.min(n - 1, i + 12));
-      if (mid < L + pw - 10) { g.fillStyle = 'rgba(255,255,255,0.6)'; g.fillText(_mtgDayName(t.slice(0, 10)), mid, T + ph + 11); }
-    });
-  }
-  g.save(); g.translate(9, T + ph / 2); g.rotate(-Math.PI / 2); g.textAlign = 'center';
-  g.fillStyle = 'rgba(255,255,255,0.45)'; g.fillText(unit, 0, 0); g.restore();
-  return { g, X, Y, L, T, pw, ph, w, h };
-}
-function _mtgBand(f, stats, lo, hi, color, alpha) {
-  const { g, X, Y } = f;
-  g.fillStyle = color; g.globalAlpha = alpha;
-  g.beginPath();
-  let started = false;
-  stats.forEach((s, i) => { if (!s) return; if (!started) { g.moveTo(X(i), Y(s[hi])); started = true; } else g.lineTo(X(i), Y(s[hi])); });
-  for (let i = stats.length - 1; i >= 0; i--) if (stats[i]) g.lineTo(X(i), Y(stats[i][lo]));
-  g.closePath(); g.fill(); g.globalAlpha = 1;
-}
-function _mtgLine(f, vals, color, width, dash) {
-  const { g, X, Y } = f;
-  g.strokeStyle = color; g.lineWidth = width; g.setLineDash(dash || []);
-  g.beginPath();
-  let pen = false;
-  vals.forEach((v, i) => { if (v == null || !isFinite(v)) { pen = false; return; } if (!pen) { g.moveTo(X(i), Y(v)); pen = true; } else g.lineTo(X(i), Y(v)); });
-  g.stroke(); g.setLineDash([]);
-}
-function _mtgRange(arrs, pad, floor0) {
-  let lo = Infinity, hi = -Infinity;
-  arrs.forEach(a => a.forEach(v => { if (v != null && isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } }));
-  if (!isFinite(lo)) { lo = 0; hi = 1; }
-  if (floor0) lo = 0;
-  const p = Math.max(pad, (hi - lo) * 0.06);
-  return [floor0 ? 0 : Math.floor(lo - p), Math.ceil(hi + p)];
-}
-
-// Each view draws its chart and says what the cursor readout should show
-// for a given hour (or day, for Hi / Lo).
-const MTG_DRAW = {
-  temp(cv, d, css) {
-    const [y0, y1] = _mtgRange([...d.mem.temperature_2m, ...d.mem.dew_point_2m.map(a => a.map(x => x))], 2);
-    const n = d.times.length, f = _mtgFrame(cv, y0, y1, n, d.times, '°F', css);
-    // The heatmap: how many members sit in each degree at each hour, so the
-    // likely temperature is the bright stripe and the outliers are faint.
-    const { g, X, Y } = f, cw = Math.max(1, f.pw / Math.max(1, n - 1)), rh = Math.max(1, f.ph / (y1 - y0));
-    g.fillStyle = css.red;
-    for (let i = 0; i < n; i++) {
-      const bins = {};
-      d.mem.temperature_2m.forEach(a => { const v = a[i]; if (v != null) { const b = Math.round(v); bins[b] = (bins[b] || 0) + 1; } });
-      for (const b in bins) { g.globalAlpha = Math.min(0.85, bins[b] / d.members * 2.2); g.fillRect(X(i) - cw / 2, Y(+b + 0.5), cw, rh); }
-    }
-    g.globalAlpha = 1;
-    d.mem.dew_point_2m.forEach(a => _mtgLine(f, a, 'rgba(2,253,2,0.12)', 1));
-    _mtgLine(f, d.stats.dew_point_2m.map(s => s && s.p50), css.green, 1.6, [4, 3]);
-    _mtgLine(f, d.stats.temperature_2m.map(s => s && s.p10), 'rgba(255,255,255,0.5)', 1, [2, 3]);
-    _mtgLine(f, d.stats.temperature_2m.map(s => s && s.p90), 'rgba(255,255,255,0.5)', 1, [2, 3]);
-    _mtgLine(f, d.stats.temperature_2m.map(s => s && s.p50), '#fff', 2);
-    return { f, read: i => _mtgReadHour(d, i, [['Temp', 'temperature_2m', '°F', 0], ['Dew', 'dew_point_2m', '°F', 0]]) };
-  },
-  hilo(cv, d, css) {
-    const all = d.days.flatMap(x => [x.hi && x.hi.max, x.hi && x.hi.min, x.lo && x.lo.max, x.lo && x.lo.min]);
-    const [y0, y1] = _mtgRange([all], 3);
-    const n = d.days.length, f = _mtgFrame(cv, y0, y1, n + 1, null, '°F', css);
-    const { g, Y, L, pw, T, ph } = f, cw = pw / (n + 0.2), X = i => L + (i + 0.6) * cw;
-    // Box and whisker per day: the whiskers are the warmest and coldest
-    // member, the box the middle half, the tick the median.
-    const box = (s, x, color) => {
-      if (!s) return;
-      const bw = cw * 0.28;
-      g.strokeStyle = color; g.lineWidth = 1.2;
-      g.beginPath(); g.moveTo(x, Y(s.max)); g.lineTo(x, Y(s.p75)); g.moveTo(x, Y(s.p25)); g.lineTo(x, Y(s.min)); g.stroke();
-      g.globalAlpha = 0.35; g.fillStyle = color; g.fillRect(x - bw / 2, Y(s.p75), bw, Y(s.p25) - Y(s.p75)); g.globalAlpha = 1;
-      g.strokeRect(x - bw / 2, Y(s.p75), bw, Y(s.p25) - Y(s.p75));
-      g.lineWidth = 2.4; g.strokeStyle = '#fff';
-      g.beginPath(); g.moveTo(x - bw / 2, Y(s.p50)); g.lineTo(x + bw / 2, Y(s.p50)); g.stroke();
-    };
-    g.textAlign = 'center';
-    d.days.forEach((x, i) => {
-      box(x.hi, X(i) + cw * 0.17, css.red); box(x.lo, X(i) - cw * 0.17, css.blue);
-      g.fillStyle = 'rgba(255,255,255,0.6)'; g.fillText(_mtgDayName(x.day), X(i), T + ph + 11);
-      if (x.hi) { g.fillStyle = css.redTxt; g.fillText(Math.round(x.hi.p50), X(i) + cw * 0.17, Y(x.hi.max) - 7); }
-      if (x.lo) { g.fillStyle = '#8fd0ff'; g.fillText(Math.round(x.lo.p50), X(i) - cw * 0.17, Y(x.lo.min) + 8); }
-    });
-    return { f, days: true, xAt: px => Math.max(0, Math.min(n - 1, Math.floor((px - L - 0.1 * cw) / cw))), xOf: X,
-      read: i => { const x = d.days[i]; if (!x) return ''; const p = (s, u) => s ? `10% ${Math.round(s.p10)} · 25% ${Math.round(s.p25)} · <b>50% ${Math.round(s.p50)}</b> · 75% ${Math.round(s.p75)} · 90% ${Math.round(s.p90)}${u}` : 'n/a';
-        return `<b>${_mtgDayName(x.day)}</b><br>High ${p(x.hi, '°F')}<br>Low ${p(x.lo, '°F')}`; } };
-  },
-  precip(cv, d, css) {
-    const [y0, y1] = _mtgRange([...d.qpf, d.snowStats.map(s => s && s.p90)], 0.1, true);
-    const n = d.times.length, f = _mtgFrame(cv, y0, y1, n, d.times, 'in', css);
-    // The plume: every member's running total. Where they fan out is where
-    // the forecast stops knowing.
-    d.qpf.forEach(a => _mtgLine(f, a, 'rgba(1,159,244,0.28)', 1));
-    _mtgBand(f, d.qpfStats, 'p10', 'p90', css.cyan, 0.12);
-    _mtgLine(f, d.qpfStats.map(s => s && s.mean), css.cyan, 2.2);
-    _mtgLine(f, d.qpfStats.map(s => s && s.p50), '#fff', 1.4, [4, 3]);
-    if (d.snowStats.some(s => s && s.max > 0)) _mtgLine(f, d.snowStats.map(s => s && s.mean), '#e8edf5', 1.6, [1, 3]);
-    return { f, read: i => {
-      const q = d.qpfStats[i], s = d.snowStats[i];
-      if (!q) return '';
-      const p = x => x.toFixed(2);
-      return `<b>${_mtgHourLabel(d.times[i])}</b><br>Rain total 10% ${p(q.p10)} · 25% ${p(q.p25)} · <b>50% ${p(q.p50)}</b> · 75% ${p(q.p75)} · 90% ${p(q.p90)} in (mean ${p(q.mean)})`
-        + (s && s.max > 0 ? `<br>Snow total 10% ${p(s.p10)} · <b>50% ${p(s.p50)}</b> · 90% ${p(s.p90)} in` : '');
-    } };
-  },
-  wind(cv, d, css) {
-    const [y0, y1] = _mtgRange([d.stats.wind_gusts_10m.map(s => s && s.p90), d.stats.wind_speed_10m.map(s => s && s.p10)], 2, true);
-    const n = d.times.length, f = _mtgFrame(cv, y0, y1, n, d.times, 'mph', css);
-    _mtgBand(f, d.stats.wind_gusts_10m, 'p10', 'p90', css.orange, 0.16);
-    _mtgBand(f, d.stats.wind_speed_10m, 'p10', 'p90', css.cyan, 0.2);
-    _mtgBand(f, d.stats.wind_speed_10m, 'p25', 'p75', css.cyan, 0.25);
-    _mtgLine(f, d.stats.wind_gusts_10m.map(s => s && s.p50), css.orange, 1.6, [4, 3]);
-    _mtgLine(f, d.stats.wind_speed_10m.map(s => s && s.p50), '#fff', 2);
-    return { f, read: i => _mtgReadHour(d, i, [['Wind', 'wind_speed_10m', ' mph', 0], ['Gust', 'wind_gusts_10m', ' mph', 0]]) };
-  },
-  cape(cv, d, css) {
-    const has = d.stats.cape.some(s => s);
-    const [y0, y1] = _mtgRange([d.stats.cape.map(s => s && s.p90)], 100, true);
-    const n = d.times.length, f = _mtgFrame(cv, y0, has ? Math.max(y1, 1000) : 1000, n, d.times, 'J/kg', css);
-    // Shaded where storms have real fuel (1000) and a lot of it (2500).
-    const { g, Y, L, pw } = f;
-    [[1000, 2500, 'rgba(253,149,0,0.07)'], [2500, 1e9, 'rgba(253,0,0,0.08)']].forEach(([a, b, c]) => {
-      const top = Y(Math.min(b, has ? Math.max(y1, 1000) : 1000)), bot = Y(a);
-      if (bot > top) { g.fillStyle = c; g.fillRect(L, top, pw, bot - top); }
-    });
-    if (has) {
-      _mtgBand(f, d.stats.cape, 'p10', 'p90', css.mag, 0.16);
-      _mtgBand(f, d.stats.cape, 'p25', 'p75', css.mag, 0.22);
-      _mtgLine(f, d.stats.cape.map(s => s && s.p50), '#fff', 2);
-      _mtgLine(f, d.stats.cape.map(s => s && s.max), css.mag, 1, [2, 3]);
-    } else {
-      g.fillStyle = 'rgba(255,255,255,0.6)'; g.textAlign = 'center';
-      g.fillText('This ensemble does not publish CAPE', L + pw / 2, Y(500));
-    }
-    return { f, read: i => has ? _mtgReadHour(d, i, [['CAPE', 'cape', ' J/kg', 0]]) : '' };
-  },
-};
-function _mtgReadHour(d, i, rows) {
-  const t = d.times[i];
-  if (!t) return '';
-  return `<b>${_mtgHourLabel(t)}</b>` + rows.map(([lbl, v, u, dp]) => {
-    const s = d.stats[v][i];
-    if (!s) return '';
-    const r = x => x.toFixed(dp);
-    return `<br>${lbl} 10% ${r(s.p10)} · 25% ${r(s.p25)} · <b>50% ${r(s.p50)}</b> · 75% ${r(s.p75)} · 90% ${r(s.p90)}${u}`;
-  }).join('');
-}
-const MTG_LEGEND = {
-  temp: 'Shading: how many members forecast each temperature. White: median. Dotted: 10th and 90th percentile. Green dashed: median dew point.',
-  hilo: 'Each day\'s high (red) and low (blue) across the members. Box: middle half. Whiskers: warmest and coldest member. White tick: median.',
-  precip: 'Running rain total for every member (thin blue). Solid: mean. Dashed: median. Shading: 10th to 90th percentile. Dotted white: mean snow total.',
-  wind: 'White: median sustained wind, with the middle half and 10th to 90th percentile shaded. Orange: gusts.',
-  cape: 'Storm fuel. White: median. Shading: middle half and 10th to 90th percentile. Dotted: the most unstable member.',
-};
-
 function _mtgCss(el) {
   const cs = getComputedStyle(el), v = (k, d) => (cs.getPropertyValue(k) || '').trim() || d;
   return { red: v('--r-red', '#fd0000'), redTxt: v('--r-red-txt', '#ff6f63'), green: v('--r-green', '#02fd02'),
     blue: v('--r-blue', '#019ff4'), cyan: v('--r-cyan', '#04e9e7'), orange: v('--r-orange', '#fd9500'),
-    mag: v('--r-mag', '#f800fd'), mono: v('--mono', 'monospace') };
+    mag: v('--r-mag', '#f800fd'), yellow: v('--r-yellow', '#fdf802'), mono: v('--mono', 'monospace') };
 }
-function _mtgPaint(el) {
-  const d = el._mtg, tab = el._tab || 'temp';
-  const cv = el.querySelector('#mtg-chart');
-  el.querySelector('.mtg-legend').textContent = MTG_LEGEND[tab] || '';
-  if (!d || !cv) return;
-  el._chart = MTG_DRAW[tab](cv, d, _mtgCss(el));
-  el._chart.tab = tab;
-  const read = el.querySelector('.mtg-read');
-  read.innerHTML = '';
-  el.querySelector('.mtg-cursor').style.display = 'none';
+// The shared time axis, identical on every chart so the crosshair lines up.
+function _mtgAxis(S, w) {
+  const L = 40, R = 10, t0 = S.times[0], t1 = S.times[S.times.length - 1];
+  const pw = w - L - R, X = t => L + (t1 > t0 ? (t - t0) / (t1 - t0) : 0.5) * pw;
+  let gap = Infinity;
+  for (let i = 1; i < S.times.length; i++) gap = Math.min(gap, X(S.times[i]) - X(S.times[i - 1]));
+  return { L, R, pw, X, bw: Math.max(2, Math.min(18, (isFinite(gap) ? gap : 20) * 0.62)) };
 }
-function _mtgHover(el, ev) {
-  const c = el._chart, cv = el.querySelector('#mtg-chart');
-  if (!c || !cv) return;
-  const r = cv.getBoundingClientRect(), px = ev.clientX - r.left;
-  const f = c.f;
-  if (px < f.L - 4 || px > f.L + f.pw + 4) return;
-  let i, x;
-  if (c.days) { i = c.xAt(px); x = c.xOf(i); }
-  else {
-    const n = el._mtg.times.length;
-    i = Math.max(0, Math.min(n - 1, Math.round((px - f.L) / f.pw * (n - 1))));
-    x = f.X(i);
+function _mtgFrameOn(cv, ax, S, y0, y1, unit, css) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = cv.clientWidth || 360, h = cv.clientHeight || 140;
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const T = 6, B = 16, ph = h - T - B;
+  const Y = v => T + (1 - (v - y0) / ((y1 - y0) || 1)) * ph;
+  g.font = '9px ' + css.mono; g.textBaseline = 'middle';
+  const step = _mtgNice(y1 - y0);
+  for (let v = Math.ceil(y0 / step) * step; v <= y1 + 1e-9; v += step) {
+    g.strokeStyle = 'rgba(255,255,255,0.07)'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(ax.L, Math.round(Y(v)) + 0.5); g.lineTo(ax.L + ax.pw, Math.round(Y(v)) + 0.5); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,0.55)'; g.textAlign = 'right';
+    g.fillText(String(+v.toFixed(2)), ax.L - 4, Y(v));
   }
-  const cur = el.querySelector('.mtg-cursor');
-  cur.style.display = 'block';
-  cur.style.left = (cv.offsetLeft + x) + 'px';
-  cur.style.top = (cv.offsetTop + f.T) + 'px';
-  cur.style.height = f.ph + 'px';
-  el.querySelector('.mtg-read').innerHTML = c.read(i);
-  el._hoverI = i;
+  // Local midnights, with the day's name.
+  g.textAlign = 'center';
+  const d = new Date(S.times[0]); d.setHours(24, 0, 0, 0);
+  for (let t = d.getTime(); t <= S.times[S.times.length - 1]; t += 86400e3) {
+    const x = Math.round(ax.X(t)) + 0.5;
+    g.strokeStyle = 'rgba(255,255,255,0.14)';
+    g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke();
+    const mid = ax.X(t + 43200e3);
+    if (mid < ax.L + ax.pw - 12) { g.fillStyle = 'rgba(255,255,255,0.6)'; g.fillText(_mtgDayName(t + 43200e3), mid, T + ph + 9); }
+  }
+  g.save(); g.translate(9, T + ph / 2); g.rotate(-Math.PI / 2);
+  g.fillStyle = 'rgba(255,255,255,0.45)'; g.fillText(unit, 0, 0); g.restore();
+  return { g, Y, T, ph, w, h };
 }
-function _mtgTab(el, which) {
-  el._tab = which;
-  el.querySelectorAll('.snd-tab').forEach(t => {
-    const on = t.dataset.tab === which;
-    t.classList.toggle('on', on);
-    t.setAttribute('aria-selected', on ? 'true' : 'false');
-  });
-  _mtgPaint(el);
+function _mtgRange(S, f, floor0) {
+  let lo = Infinity, hi = -Infinity;
+  (S.vars[f] || []).forEach(hh => hh && hh.forEach(v => { if (v != null && isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } }));
+  if (!isFinite(lo)) { lo = 0; hi = 1; }
+  if (floor0) lo = Math.min(0, lo);
+  const p = Math.max(1, (hi - lo) * 0.06);
+  return [floor0 ? lo : Math.floor(lo - p), Math.ceil(hi + p)];
 }
+const MTG_DRAW = {
+  box(cv, S, ax, spec, css) {
+    const [y0, y1] = _mtgRange(S, spec.id, spec.floor0);
+    const F = _mtgFrameOn(cv, ax, S, y0, y1, spec.unit, css), { g, Y } = F, col = css[spec.color] || css.red;
+    // The plume: every member, faint.
+    const V = S.vars[spec.id];
+    g.strokeStyle = col; g.globalAlpha = Math.max(0.06, Math.min(0.25, 6 / S.members)); g.lineWidth = 1;
+    for (let m = 0; m < S.members; m++) {
+      g.beginPath(); let pen = false;
+      S.times.forEach((t, i) => { const v = V[i] && V[i][m]; if (v == null) { pen = false; return; } pen ? g.lineTo(ax.X(t), Y(v)) : g.moveTo(ax.X(t), Y(v)); pen = true; });
+      g.stroke();
+    }
+    g.globalAlpha = 1;
+    // The boxes.
+    S.stats[spec.id].forEach((s, i) => {
+      if (!s) return;
+      const x = ax.X(S.times[i]), bw = ax.bw;
+      g.strokeStyle = col; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(x, Y(s.p90)); g.lineTo(x, Y(s.p75)); g.moveTo(x, Y(s.p25)); g.lineTo(x, Y(s.p10));
+      g.moveTo(x - bw / 4, Y(s.p90)); g.lineTo(x + bw / 4, Y(s.p90)); g.moveTo(x - bw / 4, Y(s.p10)); g.lineTo(x + bw / 4, Y(s.p10)); g.stroke();
+      g.globalAlpha = 0.55; g.fillStyle = col; g.fillRect(x - bw / 2, Y(s.p75), bw, Math.max(1, Y(s.p25) - Y(s.p75))); g.globalAlpha = 1;
+      g.strokeRect(x - bw / 2, Y(s.p75), bw, Math.max(1, Y(s.p25) - Y(s.p75)));
+      g.strokeStyle = '#fff'; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(x - bw / 2, Y(s.p50)); g.lineTo(x + bw / 2, Y(s.p50)); g.stroke();
+    });
+    return F;
+  },
+  ptype(cv, S, ax, spec, css) {
+    const F = _mtgFrameOn(cv, ax, S, 0, 100, '%', css), { g, Y } = F;
+    const cols = { liquid: css.green, frozen: '#8fc4ff', freezing: '#ff5aa8' };
+    S.ptype.forEach((p, i) => {
+      if (!p) return;
+      const x = ax.X(S.times[i]) - ax.bw / 2;
+      let acc = 0;
+      ['liquid', 'frozen', 'freezing'].forEach(k => {
+        if (p[k] <= 0) return;
+        g.fillStyle = cols[k]; g.fillRect(x, Y(acc + p[k]), ax.bw, Y(acc) - Y(acc + p[k]));
+        acc += p[k];
+      });
+    });
+    return F;
+  },
+  exceed(cv, S, ax, spec, css) {
+    const F = _mtgFrameOn(cv, ax, S, 0, 100, '%', css), { g, Y } = F;
+    // Nested: the chance of a little is always at least the chance of a lot,
+    // so the light bars (small totals) sit behind the dark ones (big totals).
+    const shades = ['#cdeccd', '#8fd88f', '#4cb3ff', '#1f6fe0', '#8a3ce0', '#e0229a'];
+    S.exceed.forEach((e, i) => {
+      if (!e) return;
+      const x = ax.X(S.times[i]) - ax.bw / 2;
+      e.forEach((pc, k) => { if (pc > 0) { g.fillStyle = shades[k]; g.fillRect(x, Y(pc), ax.bw, Y(0) - Y(pc)); } });
+    });
+    return F;
+  },
+};
+const MTG_KEYS = {
+  ptype: '<i style="background:var(--r-green)"></i>liquid <i style="background:#8fc4ff"></i>frozen (snow, sleet) <i style="background:#ff5aa8"></i>freezing rain',
+  qpf: MTG_EXCEED.map((t, k) => `<i style="background:${['#cdeccd', '#8fd88f', '#4cb3ff', '#1f6fe0', '#8a3ce0', '#e0229a'][k]}"></i>${t} in`).join(' '),
+};
+
 function _mtgPanelIsOpen() {
   const el = document.getElementById('mtg-panel');
   return !!el && el.classList.contains('open');
+}
+function _mtgBuildCharts(el) {
+  const S = el._mtg, box = el.querySelector('.mtg-charts');
+  box.innerHTML = '';
+  el._charts = [];
+  MTG_CHARTS.forEach(spec => {
+    const has = spec.kind === 'ptype' ? !!S.ptype : spec.kind === 'exceed' ? !!S.exceed : !!S.stats[spec.id];
+    if (!has) return;
+    const card = document.createElement('div');
+    card.className = 'mtg-chart-card';
+    card.dataset.chart = spec.id;
+    card.innerHTML = `<div class="mtg-chart-title">${spec.label}${spec.kind === 'box' ? ` (${spec.unit})` : ''}`
+      + `${MTG_KEYS[spec.id] ? `<span class="mtg-key">${MTG_KEYS[spec.id]}</span>` : ''}</div><canvas></canvas><div class="mtg-cursor"></div>`;
+    box.appendChild(card);
+    el._charts.push({ spec, card, cv: card.querySelector('canvas'), cur: card.querySelector('.mtg-cursor') });
+  });
+}
+function _mtgPaint(el) {
+  const S = el._mtg;
+  if (!S || !el._charts) return;
+  const css = _mtgCss(el);
+  const w = (el._charts[0] && el._charts[0].cv.clientWidth) || 360;
+  el._ax = _mtgAxis(S, w);
+  el._charts.forEach(c => { c.frame = MTG_DRAW[c.spec.kind](c.cv, S, el._ax, c.spec, css); });
+  if (el._hoverI != null) _mtgShowHour(el, el._hoverI);
+}
+// The crosshair through every chart and the numbers for that hour.
+function _mtgShowHour(el, i) {
+  const S = el._mtg, ax = el._ax;
+  if (!S || !ax || i == null || !S.times[i]) return;
+  el._hoverI = i;
+  const x = ax.X(S.times[i]);
+  el._charts.forEach(c => {
+    c.cur.style.display = 'block';
+    c.cur.style.left = (c.cv.offsetLeft + x) + 'px';
+    c.cur.style.top = c.cv.offsetTop + 'px';
+    c.cur.style.height = c.cv.offsetHeight + 'px';
+  });
+  const r = (v, d) => v == null ? '' : (+v).toFixed(d);
+  let rows = '';
+  MTG_CHARTS.filter(s => s.kind === 'box').forEach(spec => {
+    const s = S.stats[spec.id] && S.stats[spec.id][i];
+    if (!s) return;
+    const d = spec.id === 'cape' ? 0 : 0;
+    rows += `<tr><th>${spec.label}</th><td>${r(s.p10, d)}</td><td>${r(s.p25, d)}</td><td class="p50">${r(s.p50, d)}</td><td>${r(s.p75, d)}</td><td>${r(s.p90, d)}</td><td class="u">${spec.unit}</td></tr>`;
+  });
+  const q = S.stats.qpf && S.stats.qpf[i];
+  if (q) rows += `<tr><th>Precip total</th><td>${r(q.p10, 2)}</td><td>${r(q.p25, 2)}</td><td class="p50">${r(q.p50, 2)}</td><td>${r(q.p75, 2)}</td><td>${r(q.p90, 2)}</td><td class="u">in</td></tr>`;
+  let extra = '';
+  const p = S.ptype && S.ptype[i];
+  if (p) extra += `<div>Type: liquid ${Math.round(p.liquid)}% · frozen ${Math.round(p.frozen)}% · freezing ${Math.round(p.freezing)}%</div>`;
+  const e = S.exceed && S.exceed[i];
+  if (e) extra += `<div>Total at least: ${MTG_EXCEED.map((t, k) => `${t} in ${Math.round(e[k])}%`).join(' · ')}</div>`;
+  el.querySelector('.mtg-read').innerHTML = `<div class="mtg-when">${_mtgHourLabel(S.times[i])}</div>`
+    + (rows ? `<table class="mtg-tbl"><tr><th></th><th>10%</th><th>25%</th><th>50%</th><th>75%</th><th>90%</th><th></th></tr>${rows}</table>` : '') + extra;
+}
+function _mtgHover(el, ev, cv) {
+  const S = el._mtg, ax = el._ax;
+  if (!S || !ax) return;
+  const r = cv.getBoundingClientRect(), px = ev.clientX - r.left;
+  if (px < ax.L - 6 || px > ax.L + ax.pw + 6) return;
+  let best = 0, bd = Infinity;
+  S.times.forEach((t, i) => { const d = Math.abs(ax.X(t) - px); if (d < bd) { bd = d; best = i; } });
+  _mtgShowHour(el, best);
 }
 
 async function openMeteogram(lat, lon, opts) {
@@ -46050,79 +46063,86 @@ async function openMeteogram(lat, lon, opts) {
         <span class="snd-title">Meteogram</span>
         <span class="snd-where"></span>
         <div class="snd-head-spacer"></div>
-        <select class="snd-src" title="Which ensemble">
-          ${MTG_MODELS.map(m => `<option value="${m.id}">${m.label} (${m.n} members)</option>`).join('')}
-        </select>
+        <select class="snd-src" title="Which ensemble"></select>
         <button class="snd-big" title="Expand">&#11036;</button>
         <button class="snd-x" title="Close">&#10005;</button>
       </div>
       <div class="snd-alert" role="status" aria-live="polite"></div>
-      <nav class="snd-tabs" role="tablist" aria-label="Meteogram views">
-        ${MTG_TABS.map((t, i) => `<button type="button" role="tab" aria-selected="${i === 0}"
-           class="snd-tab${i === 0 ? ' on' : ''}" data-tab="${t.id}">${t.label}</button>`).join('')}
-      </nav>
-      <div class="snd-grid">
-        <div class="snd-card mtg-card">
-          <canvas id="mtg-chart"></canvas>
-          <div class="mtg-cursor"></div>
-        </div>
-      </div>
+      <div class="mtg-charts"></div>
       <div class="mtg-read"></div>
-      <div class="mtg-legend"></div>
+      <div class="mtg-legend">Boxes: the middle half of the members (25th to 75th percentile), whiskers the 10th and 90th, white tick the median. Faint lines: every member. Hover or drag across any chart for the exact numbers.</div>
       <div class="snd-note"></div>`;
     document.body.appendChild(el);
-    el._tab = 'temp';
     el.querySelector('.snd-x').onclick = () => el.classList.remove('open');
-    el.querySelectorAll('.snd-tab').forEach(t => { t.onclick = () => _mtgTab(el, t.dataset.tab); });
     el.querySelector('.snd-big').onclick = () => {
       el.classList.toggle('big');
       el.querySelector('.snd-big').title = el.classList.contains('big') ? 'Shrink' : 'Expand';
       _mtgPaint(el);
     };
     el.querySelector('.snd-src').onchange = e => {
-      _mtgModel = e.target.value;
-      try { localStorage.setItem('gwcfc_mtg_model', _mtgModel); } catch (err) {}
+      _mtgSource = e.target.value;
+      try { localStorage.setItem('gwcfc_mtg_source', _mtgSource); } catch (err) {}
       _mtgLoad(el);
     };
-    const cv = el.querySelector('#mtg-chart');
-    cv.addEventListener('mousemove', e => _mtgHover(el, e));
-    cv.addEventListener('touchstart', e => { if (e.touches[0]) _mtgHover(el, e.touches[0]); }, { passive: true });
-    cv.addEventListener('touchmove', e => { if (e.touches[0]) _mtgHover(el, e.touches[0]); }, { passive: true });
+    const box = el.querySelector('.mtg-charts');
+    const onMove = ev => { const cv = ev.target.closest && ev.target.closest('.mtg-chart-card canvas'); if (cv) _mtgHover(el, ev, cv); };
+    box.addEventListener('mousemove', onMove);
+    box.addEventListener('touchstart', e => { if (e.touches[0]) onMove(Object.assign({}, e.touches[0], { target: e.target })); }, { passive: true });
+    box.addEventListener('touchmove', e => { if (e.touches[0]) onMove({ clientX: e.touches[0].clientX, target: document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY) || e.target }); }, { passive: true });
     if (typeof _makeDraggable === 'function') {
       try { _makeDraggable(el, el.querySelector('.snd-head')); } catch (e) {}
     }
     window.addEventListener('resize', () => { if (_mtgPanelIsOpen()) _mtgPaint(el); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && _mtgPanelIsOpen()) el.classList.remove('open'); });
   }
-  if (opts && opts.model && MTG_MODELS.some(m => m.id === opts.model)) _mtgModel = opts.model;
-  el.querySelector('.snd-src').value = _mtgModel;
   el.dataset.lat = lat; el.dataset.lon = lon;
   el.querySelector('.snd-where').textContent = `${(+lat).toFixed(2)}, ${(+lon).toFixed(2)}`;
   el.classList.add('open');
+  el.querySelector('.snd-alert').textContent = 'Finding the ensembles...';
+  el._sources = await _mtgSources();
+  const sel = el.querySelector('.snd-src');
+  sel.innerHTML = el._sources.map(s => `<option value="${s.id}">${_ccEsc(s.label)}</option>`).join('');
+  // Asked for, then remembered, then the first on the list, which is the
+  // parsing server's own ensemble whenever it has one.
+  const want = (opts && opts.source) || _mtgSource;
+  sel.value = el._sources.some(s => s.id === want) ? want : el._sources[0].id;
   return _mtgLoad(el);
 }
 async function _mtgLoad(el) {
-  const lat = +el.dataset.lat, lon = +el.dataset.lon, model = _mtgModel;
+  const lat = +el.dataset.lat, lon = +el.dataset.lon;
+  const sel = el.querySelector('.snd-src'), src = el._sources.find(s => s.id === sel.value) || el._sources[0];
   const alert = el.querySelector('.snd-alert'), note = el.querySelector('.snd-note');
-  alert.textContent = 'Loading the ensemble...';
+  alert.textContent = 'Loading every member...';
   const token = el._token = (el._token || 0) + 1;
   try {
-    const d = await _mtgFetch(lat, lon, model);
+    let S;
+    try { S = await _mtgFetch(lat, lon, src); }
+    catch (e) {
+      // Outside the parsing server's grid, or it is down: Open-Meteo's GEFS.
+      if (!src.id.startsWith('pi:')) throw e;
+      const fb = el._sources.find(s => s.id === 'om:gfs025');
+      S = await _mtgFetch(lat, lon, fb);
+      S.fallback = e.message || String(e);
+      sel.value = fb.id;
+    }
     if (token !== el._token) return;
-    el._mtg = d;
-    alert.textContent = '';
-    const m = MTG_MODELS.find(x => x.id === model);
-    note.textContent = `${m ? m.label : model}, ${d.members} members, ${Math.round(d.times.length / 24)} days, `
-      + `times in ${d.tz || 'local time'}. From the Open-Meteo ensemble API.`;
+    el._mtg = S; el._hoverI = null;
+    alert.textContent = S.fallback ? `The parsing server could not answer here (${S.fallback}), so this is Open-Meteo's GEFS.` : '';
+    const days = Math.round((S.times[S.times.length - 1] - S.times[0]) / 86400e3);
+    const r = S.run ? ` ${S.run.slice(4, 6)}/${S.run.slice(6, 8)} ${S.run.slice(9, 11)}z run,` : '';
+    note.textContent = `${S.label},${r} ${S.members} members, ${days} days, times in your local time. `
+      + (S.source === 'server' ? `Real model members from the parsing server, at the grid point ${S.lat}, ${S.lon}.` : 'From the Open-Meteo ensemble API.');
+    _mtgBuildCharts(el);
     _mtgPaint(el);
+    el.querySelector('.mtg-read').innerHTML = '';
   } catch (e) {
     if (token !== el._token) return;
-    el._mtg = null; el._chart = null;
+    el._mtg = null;
+    el.querySelector('.mtg-charts').innerHTML = '';
     alert.textContent = 'Could not load this ensemble: ' + (e && e.message || e);
-    const cv = el.querySelector('#mtg-chart');
-    if (cv) cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
   }
 }
+
 function _cmMeteogramHere() {
   if (!_cmLatLng) { _cmClose(); return; }
   const lat = _cmLatLng.lat, lng = _cmLatLng.lng;
@@ -65023,8 +65043,9 @@ Available actions:
 - openSounding {"place":"Norman, OK"} or {"lat":35.2,"lon":-97.4} -- open the
   full skew-T sounding panel for a point. Omit both to use the user's GPS.
 - openMeteogram {"place":"Norman, OK"} or {"lat":35.2,"lon":-97.4} -- open the
-  ensemble meteogram panel (every GEFS member's temperature, daily highs and
-  lows, rain totals, wind and CAPE over the next two weeks) for a point.
+  ensemble meteogram panel (NBM viewer style: percentile boxes and member
+  plumes for temperature, dew point, wind and gusts, precipitation type and
+  rain total chances, CAPE) for a point.
 - openPanel {"panel":"alerts"} -- open one of the app's panels. Names: alerts,
   eas, models, spaghetti, cyclones, settings, export, stormstream.
 
@@ -71479,6 +71500,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-l', date: 'Sep 24, 2026',
+    text: 'The meteogram is rebuilt in the style of the National Blend\'s 1D Viewer, and now reads the real ensemble members from the parsing server (Open-Meteo is only the fallback). One tall page of charts on a shared time axis: box and whisker percentiles (10th, 25th, median, 75th, 90th) with every member drawn faintly behind for temperature, dew point, wind and gusts; stacked bars for the chance of liquid, frozen and freezing precipitation; the chance the rain total reaches 0.01 to 2 inches; and CAPE. Hover anywhere for one crosshair through every chart and a table of the exact percentiles for that hour.' },
   { id: '2026-09-24-k', date: 'Sep 24, 2026',
     text: 'Model Layer Stack, in Models > Ensemble Models: up to four model layers on the map at once, and the model is picked per layer, so GFS 500 mb heights can sit as dashed red contours over the ECMWF\'s as solid black ones with the GEFS mean filled underneath. Each layer has its own field, member or statistic, filled colours or contour lines (solid, dashed or dotted), contour spacing, line colour, colour scale and opacity. Every layer shows the same valid time, so runs started at different hours line up. The parsing server now also keeps the ordinary GFS and ECMWF runs for this.' },
   { id: '2026-09-24-j', date: 'Sep 24, 2026',

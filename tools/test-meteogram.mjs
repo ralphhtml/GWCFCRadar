@@ -1,19 +1,24 @@
 #!/usr/bin/env node
 /*
- * Meteograms: right-click the map, "Meteogram here", and a panel like the
- * sounding panel opens with every ensemble member for that point over the
- * next two weeks: a temperature heatmap, daily high and low boxes, a rain
- * plume, wind and CAPE, with a hover readout of the percentiles.
+ * Meteograms, NBM 1D Viewer style: right-click the map, "Meteogram here",
+ * and a panel like the sounding panel opens with one stacked chart per
+ * variable on a shared time axis: box and whisker percentiles with member
+ * plumes for temperature, dew point, wind and gusts, stacked precipitation
+ * type chances, nested precipitation total chances and CAPE, with one
+ * crosshair and a table of exact percentiles for the hour under it.
  *
  *     node tools/test-meteogram.mjs
  *
- * Open-Meteo's ensemble API is faked with members whose spread is known, so
- * the percentiles can be checked exactly.
+ * The members come from the parsing server's own ensembles (/ens/point),
+ * built here by the real pipeline from members whose answers are known;
+ * Open-Meteo is the fallback, faked, for a point off the parsing server's grid.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PAGE = readFileSync(join(ROOT, 'index.html'), 'utf8');
@@ -33,49 +38,63 @@ console.log('\n1. the pieces are in the page');
      && !readFileSync(join(ROOT, 'tools/test-meteogram.mjs'), 'utf8').includes(EM));
 }
 
-let chromium;
-try { ({ chromium } = await import('playwright')); } catch { /* below */ }
-if (!chromium) {
-  console.log('\nplaywright is not installed, skipping the browser half');
-  console.log(fail ? `\n${fail} FAILED, ${pass} passed` : `\nall ${pass} passed`);
-  process.exit(fail ? 1 : 0);
-}
+// The parsing server's data, from the real pipeline, plus its point door.
+const DATA = mkdtempSync(join(tmpdir(), 'gwcfc-mtg-'));
+const PY = `
+import sys, json, numpy as np
+sys.path.insert(0, ${JSON.stringify(join(ROOT, 'pi'))})
+import ens_fields_pipeline as ef
+`;
+execFileSync('python3', ['-c', PY + `
+tl, tn = ef.target()
+shape = (len(tl), len(tn))
+F = lambda f: (f - 32) * 5 / 9 + 273.15
+def fake(mem, fhr):
+    if fhr > 18: return None
+    k = int(mem[-2:])
+    return ({"t2m": np.full(shape, F(50 + 10 * k)), "td2m": np.full(shape, F(40 + 5 * k)),
+             "u10": np.full(shape, 4.4704 * (1 + k)), "v10": np.zeros(shape), "gust": np.full(shape, 4.4704 * (5 + 2 * k)),
+             "tp": np.full(shape, 25.4 * 0.5 * k if fhr == 6 else 0.0),
+             "crain": np.full(shape, 1.0 if k in (1, 2) else 0.0), "csnow": np.full(shape, 1.0 if k == 3 else 0.0),
+             "cfrzr": np.full(shape, 1.0 if k == 4 else 0.0)},
+            {"tp_start": fhr - 6, "tp_units_m": False})
+ef.ENSEMBLES["gefs"] = dict(ef.ENSEMBLES["gefs"], members=["gec00", "gep01", "gep02", "gep03", "gep04"], steps=[6, 12, 18, 24])
+ef.build("gefs", "20260924", "12", fetch=fake, workers=2)
+`], { env: { ...process.env, GWCFC_DATA: DATA }, stdio: 'pipe' });
+const point = (lat, lon) => {
+  try {
+    return { ok: true, body: execFileSync('python3', ['-c', PY + `print(json.dumps(ef.point_series("gefs", ${lat}, ${lon})))`],
+      { env: { ...process.env, GWCFC_DATA: DATA } }).toString() };
+  } catch (e) { return { ok: false, body: JSON.stringify({ error: 'outside the ensemble grid' }) }; }
+};
 
-// 31 members; member m is m-15 degrees off a daily cycle, so the median is
-// the cycle itself and the 10th/90th percentiles are exactly -12/+12.
+// Open-Meteo, faked: 31 members, member m is m-15 degrees off a daily cycle.
 const HOURS = 24 * 10, M = 31;
-const times = Array.from({ length: HOURS }, (_, i) => {
-  const d = new Date(Date.UTC(2026, 8, 25) + i * 3600e3);
-  return d.toISOString().slice(0, 16);
-});
-const cycle = i => 60 + 10 * Math.sin((i % 24 - 9) / 24 * 2 * Math.PI);
-const fake = (withCape) => {
+const times = Array.from({ length: HOURS }, (_, i) => new Date(Date.UTC(2026, 8, 25) + i * 3600e3).toISOString().slice(0, 16));
+const omFake = () => {
   const hourly = { time: times };
   for (let m = 0; m < M; m++) {
     const suf = m ? '_member' + String(m).padStart(2, '0') : '';
-    hourly['temperature_2m' + suf] = times.map((_, i) => +(cycle(i) + (m - 15)).toFixed(2));
-    hourly['dew_point_2m' + suf] = times.map((_, i) => 50 + (m - 15) * 0.5);
-    hourly['precipitation' + suf] = times.map((_, i) => (i % 24 === 12 ? m / 100 : 0));
+    hourly['temperature_2m' + suf] = times.map((_, i) => 60 + 10 * Math.sin(i / 24 * 2 * Math.PI) + (m - 15));
+    hourly['dew_point_2m' + suf] = times.map(() => 50);
+    hourly['precipitation' + suf] = times.map((_, i) => (i % 24 === 12 ? 0.1 : 0));
     hourly['snowfall' + suf] = times.map(() => 0);
-    hourly['wind_speed_10m' + suf] = times.map(() => 10 + (m - 15) * 0.2);
-    hourly['wind_gusts_10m' + suf] = times.map(() => 20 + (m - 15) * 0.4);
-    if (withCape) hourly['cape' + suf] = times.map((_, i) => m * 100);
+    hourly['wind_speed_10m' + suf] = times.map(() => 10);
+    hourly['wind_gusts_10m' + suf] = times.map(() => 20);
   }
-  return { timezone_abbreviation: 'CDT', hourly };
+  return { hourly };
 };
 
+const { chromium } = await import('playwright');
 const LEAFLET = process.env.LEAFLET_DIST || '/tmp/node_modules/leaflet/dist';
 const b = await chromium.launch({
   executablePath: process.env.CHROME_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
   args: ['--allow-file-access-from-files'] });
-const ctx = await b.newContext({ viewport: { width: 1280, height: 860 } });
-const p = await ctx.newPage();
+const p = await (await b.newContext({ viewport: { width: 1280, height: 1000 } })).newPage();
 const errs = [];
 p.on('pageerror', e => errs.push(String(e).slice(0, 200)));
-// Returning visitor who has seen the newest What Changed entry, so neither
-// the tutorial nor that modal covers the chart being hovered.
 const CL_ID = (PAGE.match(/const APP_CHANGELOG = \[\s*\{ id: '([^']+)'/) || [])[1];
-await p.addInitScript(id => { try { localStorage.setItem('gwcfc_tutorial_seen', '1'); localStorage.setItem('gwcfc_changelog_seen', id); } catch (e) {} }, CL_ID);
+await p.addInitScript(id => { try { localStorage.setItem('gwcfc_tutorial_seen', '1'); localStorage.setItem('gwcfc_changelog_seen', id); localStorage.removeItem('gwcfc_mtg_source'); } catch (e) {} }, CL_ID);
 const asked = [];
 await p.route('**://**', route => {
   const url = route.request().url();
@@ -84,108 +103,96 @@ await p.route('**://**', route => {
     return route.fulfill({ contentType: 'application/javascript', body: readFileSync(join(LEAFLET, 'leaflet.js'), 'utf8') });
   if (url.includes('leaflet') && url.endsWith('.css'))
     return route.fulfill({ contentType: 'text/css', body: readFileSync(join(LEAFLET, 'leaflet.css'), 'utf8') });
-  if (url.includes('ensemble-api.open-meteo.com')) {
+  if (url.startsWith('http://pi.test/ens/point')) {
     asked.push(url);
-    // ICON refuses CAPE outright, to prove the retry without it.
-    if (url.includes('icon_seamless') && url.includes('cape'))
-      return route.fulfill({ status: 400, contentType: 'application/json', body: '{"error":true}' });
-    return route.fulfill({ contentType: 'application/json', body: JSON.stringify(fake(!url.includes('icon_seamless'))) });
+    const u = new URL(url), r = point(+u.searchParams.get('lat'), +u.searchParams.get('lon'));
+    return route.fulfill({ status: r.ok ? 200 : 404, contentType: 'application/json', body: r.body });
   }
+  if (url.startsWith('http://pi.test/ens/')) {
+    try { return route.fulfill({ contentType: 'application/json', body: readFileSync(join(DATA, new URL(url).pathname.slice(1))) }); }
+    catch (e) { return route.fulfill({ status: 404, body: '' }); }
+  }
+  if (url.includes('ensemble-api.open-meteo.com')) { asked.push(url); return route.fulfill({ contentType: 'application/json', body: JSON.stringify(omFake()) }); }
   return route.abort();
 });
 await p.goto('file://' + join(ROOT, 'index.html'), { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(3500);
 ok('the page boots clean', errs.length === 0, errs[0]);
-// The mode picker and the What Changed modal cover the page on a first visit.
-await p.evaluate(() => ['mode-modal', 'changelog-modal'].forEach(id => { const m = document.getElementById(id); if (m) m.style.display = 'none'; }));
+await p.evaluate(() => { const m = document.getElementById('mode-modal'); if (m) m.style.display = 'none'; _hdBase = 'http://pi.test'; });
 
-console.log('\n2. opened from the map menu');
+console.log('\n2. opened from the map menu, on the real ensemble');
 {
-  await p.evaluate(() => { localStorage.removeItem('gwcfc_mtg_model'); _mtgModel = 'gfs025';
-    map.fire('contextmenu', { latlng: L.latLng(35.2, -97.4), originalEvent: { clientX: 400, clientY: 300, preventDefault() {} } }); });
+  await p.evaluate(() => { map.fire('contextmenu', { latlng: L.latLng(35.2, -97.4), originalEvent: { clientX: 400, clientY: 300, preventDefault() {} } }); });
   await p.waitForTimeout(300);
-  const row = await p.evaluate(() => [...document.querySelectorAll('#map-ctx-menu .cm-item')].map(x => x.textContent.trim()).find(t => /Meteogram/.test(t)));
-  ok('the menu offers it', row === 'Meteogram here', row);
   await p.evaluate(() => [...document.querySelectorAll('#map-ctx-menu .cm-item')].find(x => /Meteogram/.test(x.textContent)).click());
-  await p.waitForTimeout(1200);
-  const u = new URL(asked[asked.length - 1] || 'http://x');
-  ok('asks the ensemble API for the clicked point',
-     u.searchParams.get('latitude') === '35.200' && u.searchParams.get('longitude') === '-97.400'
-     && u.searchParams.get('models') === 'gfs025' && /temperature_2m/.test(u.searchParams.get('hourly'))
-     && u.searchParams.get('temperature_unit') === 'fahrenheit', u.search);
+  await p.waitForTimeout(2500);
+  const u = new URL(asked.find(a => a.includes('/ens/point')) || 'http://x');
+  ok('asks the parsing server for every member at the clicked point', u.searchParams.get('model') === 'gefs'
+     && u.searchParams.get('lat') === '35.200' && u.searchParams.get('lon') === '-97.400' && !asked.some(a => a.includes('open-meteo')), asked.join(' | '));
   const st = await p.evaluate(() => {
     const el = document.getElementById('mtg-panel');
     return { open: el.classList.contains('open'), where: el.querySelector('.snd-where').textContent,
-      note: el.querySelector('.snd-note').textContent, tabs: [...el.querySelectorAll('.snd-tab')].map(t => t.textContent),
-      bg: getComputedStyle(el).backgroundImage.slice(0, 30), pos: getComputedStyle(el).position };
+      sources: [...el.querySelectorAll('.snd-src option')].map(o => o.value), note: el.querySelector('.snd-note').textContent,
+      charts: [...el.querySelectorAll('.mtg-chart-card')].map(c => c.dataset.chart), pos: getComputedStyle(el).position };
   });
-  ok('the panel opens where it was asked', st.open && st.where === '35.20, -97.40', JSON.stringify(st));
-  ok('in the sounding panel shell', st.pos === 'fixed' && /gradient/.test(st.bg), st.bg);
-  ok('five views', st.tabs.join(',') === 'Temp,Hi / Lo,Precip,Wind,CAPE', st.tabs.join(','));
-  ok('says what it is showing', /GEFS, 31 members, 10 days, times in CDT/.test(st.note), st.note);
+  ok('the panel opens where it was asked, in the sounding panel shell', st.open && st.where === '35.20, -97.40' && st.pos === 'fixed', JSON.stringify(st));
+  ok('the parsing server ensembles first, Open-Meteo after', st.sources.join() === 'pi:gefs,om:gfs025,om:ecmwf_ifs025,om:icon_seamless,om:gem_global', st.sources.join());
+  ok('one chart per variable the ensemble has', st.charts.join() === 't2m,td2m,wind10,gust,ptype,qpf', st.charts.join());
+  ok('says it is real model members, and where', /GEFS, 09\/24 12z run, 5 members/.test(st.note) && /from the parsing server, at the grid point 35, -97.5/.test(st.note), st.note);
 }
 
 console.log('\n3. the numbers');
 {
   const r = await p.evaluate(() => {
-    const d = document.getElementById('mtg-panel')._mtg, s = d.stats.temperature_2m[9];
-    return { p10: s.p10, p50: s.p50, p90: s.p90, days: d.days.length, hi: d.days[0].hi.p50, hiMax: d.days[0].hi.max,
-      qpf: d.qpfStats[d.times.length - 1].p50, members: d.members };
+    const S = document.getElementById('mtg-panel')._mtg;
+    return { t: S.stats.t2m[1], w: S.stats.wind10[1], ex: S.exceed[1], pt: S.ptype[1], times: S.times.length };
   });
-  ok('percentiles are right', Math.abs(r.p50 - 60) < 1e-6 && Math.abs(r.p10 - 48) < 1e-6 && Math.abs(r.p90 - 72) < 1e-6, JSON.stringify(r));
-  ok('a high per day per member', r.days === 10 && Math.abs(r.hi - 70) < 0.1 && Math.abs(r.hiMax - 85) < 0.1, JSON.stringify(r));
-  ok('the rain plume totals up', Math.abs(r.qpf - 1.5) < 1e-6, r.qpf);
+  const near = (a, b) => Math.abs(a - b) < 0.1;
+  ok('temperature percentiles across the five members', near(r.t.p10, 54) && near(r.t.p25, 60) && near(r.t.p50, 70) && near(r.t.p75, 80) && near(r.t.p90, 86), JSON.stringify(r.t));
+  ok('wind in mph', near(r.w.p50, 30), JSON.stringify(r.w));
+  ok('precipitation total chances: 80, 80, 80, 80, 60, 20%', r.ex.map(Math.round).join() === '80,80,80,80,60,20', r.ex.join());
+  ok('precipitation type chances: liquid 40, frozen 20, freezing 20', Math.round(r.pt.liquid) === 40 && Math.round(r.pt.frozen) === 20 && Math.round(r.pt.freezing) === 20, JSON.stringify(r.pt));
 }
 
-console.log('\n4. drawing and the hover readout');
+console.log('\n4. drawing and the crosshair');
 {
-  const lit = async () => p.evaluate(() => {
-    const cv = document.getElementById('mtg-chart'), g = cv.getContext('2d');
-    const px = g.getImageData(0, 0, cv.width, cv.height).data;
-    let n = 0; for (let i = 3; i < px.length; i += 4) if (px[i] > 20) n++;
+  const lit = await p.evaluate(() => [...document.querySelectorAll('#mtg-panel .mtg-chart-card canvas')].map(cv => {
+    const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+    let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 20) n++;
     return n;
-  });
-  for (const tab of ['temp', 'hilo', 'precip', 'wind', 'cape']) {
-    await p.evaluate(t => document.querySelector(`#mtg-panel .snd-tab[data-tab="${t}"]`).click(), tab);
-    await p.waitForTimeout(150);
-    ok(`${tab} draws`, (await lit()) > 3000);
-  }
-  await p.evaluate(() => document.querySelector('#mtg-panel .snd-tab[data-tab="temp"]').click());
-  const hov = async (fx) => {
-    const box = await p.evaluate(() => { const r = document.getElementById('mtg-chart').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
-    await p.mouse.move(box.x + box.w * fx, box.y + box.h / 2);
-    await p.waitForTimeout(100);
-    return p.evaluate(([x, y]) => ({ at: (e => e.id + '.' + e.className)(document.elementFromPoint(x, y)), read: document.querySelector('#mtg-panel .mtg-read').textContent,
-      cur: getComputedStyle(document.querySelector('#mtg-panel .mtg-cursor')).display }), [box.x + box.w * fx, box.y + box.h / 2]);
-  };
-  let h = await hov(0.5);
-  ok('hovering shows the percentile breakdown for that hour',
-     /Temp 10% \d+ · 25% \d+ · 50% \d+ · 75% \d+ · 90% \d+°F/.test(h.read) && /Dew/.test(h.read) && h.cur === 'block', JSON.stringify(h));
-  await p.evaluate(() => document.querySelector('#mtg-panel .snd-tab[data-tab="hilo"]').click());
-  h = await hov(0.2);
-  ok('and per day on Hi / Lo', /High 10% \d+ · 25% \d+ · 50% 70 · 75% \d+ · 90% \d+°F/.test(h.read) && /Low/.test(h.read), JSON.stringify(h));
-  await p.evaluate(() => document.querySelector('#mtg-panel .snd-tab[data-tab="precip"]').click());
-  h = await hov(0.99);
-  ok('and the rain totals', /Rain total 10% [\d.]+ · 25% [\d.]+ · 50% 1\.50/.test(h.read), h.read);
+  }));
+  ok('every chart draws', lit.every(n => n > 1500), lit.join());
+  const box = await p.evaluate(() => { const r = document.querySelector('#mtg-panel [data-chart="t2m"] canvas').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+  await p.mouse.move(box.x + 40 + (box.w - 50) / 3, box.y + box.h / 2);
+  await p.waitForTimeout(150);
+  const h = await p.evaluate(() => ({ read: document.querySelector('#mtg-panel .mtg-read').textContent,
+    cursors: [...document.querySelectorAll('#mtg-panel .mtg-cursor')].filter(c => getComputedStyle(c).display === 'block').length,
+    lefts: [...new Set([...document.querySelectorAll('#mtg-panel .mtg-cursor')].map(c => c.style.left))] }));
+  ok('one crosshair through every chart', h.cursors === 6 && h.lefts.length === 1, JSON.stringify(h));
+  ok('and the exact percentiles for that hour', /Temperature5460708086°F/.test(h.read.replace(/\s/g, '')) && /Type: liquid 40% · frozen 20% · freezing 20%/.test(h.read)
+     && /Total at least: 0.01 in 80%/.test(h.read), h.read);
   await p.evaluate(() => document.querySelector('#mtg-panel .snd-big').click());
   await p.waitForTimeout(300);
   await p.screenshot({ path: process.env.SHOT || '/tmp/meteogram.png' });
-  const big = await p.evaluate(() => document.getElementById('mtg-chart').getBoundingClientRect().height);
-  ok('expanding makes the chart big', big > 400, big);
+  const big = await p.evaluate(() => document.querySelector('#mtg-panel [data-chart="t2m"] canvas').getBoundingClientRect().height);
+  ok('expanding makes the charts bigger', big > 150, big);
   await p.evaluate(() => document.querySelector('#mtg-panel .snd-big').click());
 }
 
-console.log('\n5. another ensemble');
+console.log('\n5. Open-Meteo, and the fallback');
 {
   asked.length = 0;
-  await p.evaluate(() => { const s = document.querySelector('#mtg-panel .snd-src'); s.value = 'icon_seamless'; s.dispatchEvent(new Event('change')); });
+  await p.evaluate(() => { const s = document.querySelector('#mtg-panel .snd-src'); s.value = 'om:ecmwf_ifs025'; s.dispatchEvent(new Event('change')); });
   await p.waitForTimeout(1200);
-  ok('a model that refuses CAPE is asked again without it', asked.length === 2 && !/cape/.test(asked[1]), asked.join(' | '));
-  await p.evaluate(() => document.querySelector('#mtg-panel .snd-tab[data-tab="cape"]').click());
-  const r = await p.evaluate(() => ({ note: document.querySelector('#mtg-panel .snd-note').textContent,
-    saved: localStorage.getItem('gwcfc_mtg_model'), alert: document.querySelector('#mtg-panel .snd-alert').textContent }));
-  ok('and still draws, saying which ensemble', /ICON EPS/.test(r.note) && r.alert === '', JSON.stringify(r));
-  ok('the choice is remembered', r.saved === 'icon_seamless');
+  const r = await p.evaluate(() => { const S = document.getElementById('mtg-panel')._mtg; return { members: S.members, n: S.times.length, gap: (S.times[1] - S.times[0]) / 3600e3,
+    saved: localStorage.getItem('gwcfc_mtg_source'), note: document.querySelector('#mtg-panel .snd-note').textContent }; });
+  ok('Open-Meteo still works, every third hour', r.members === 31 && r.gap === 3 && /Open-Meteo ensemble API/.test(r.note), JSON.stringify(r));
+  ok('the choice is remembered', r.saved === 'om:ecmwf_ifs025');
+  await p.evaluate(() => localStorage.removeItem('gwcfc_mtg_source'));
+  await p.evaluate(() => { _mtgSource = null; openMeteogram(10.5, -95); });
+  await p.waitForTimeout(2500);
+  const f = await p.evaluate(() => ({ alert: document.querySelector('#mtg-panel .snd-alert').textContent, src: document.querySelector('#mtg-panel .snd-src').value }));
+  ok('a point off the parsing server\'s grid falls back to Open-Meteo, and says so', /could not answer here/.test(f.alert) && f.src === 'om:gfs025', JSON.stringify(f));
   await p.keyboard.press('Escape');
   ok('Escape closes it', !(await p.evaluate(() => document.getElementById('mtg-panel').classList.contains('open'))));
   ok('no page errors along the way', errs.length === 0, errs[0]);

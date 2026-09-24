@@ -185,6 +185,20 @@ ok("older runs are pruned", sorted(os.listdir(os.path.join(tmp, "ens", "test")))
    os.listdir(os.path.join(tmp, "ens", "test")))
 ok("gzip is plain gzip the browser can open", gzip.decompress(blob)[:2] is not None)
 
+print("\n6. one point, every member (the meteogram)")
+pt = ef.point_series("test", 38.1, -95.2)
+ok("snaps to the nearest grid point", pt["lat"] == 38.0 and pt["lon"] == -95.0, (pt["lat"], pt["lon"]))
+ok("every member at every hour", pt["hours"] == [6, 12] and len(pt["fields"]["t2m"]) == 2 and len(pt["fields"]["t2m"][1]) == 3, pt["fields"]["t2m"])
+ok("in the site's units", [round(v, 1) for v in pt["fields"]["t2m"][1]] == [32.0, 33.8, 35.6] and pt["fields"]["qpf"][1] == [1.0, 4.0, 3.0], pt["fields"])
+ok("the second ask is answered from memory", ef.point_series("test", 38.1, -95.2) is pt)
+try:
+    ef.point_series("test", 10, -95)
+    ok("a point off the grid is refused", False)
+except ValueError:
+    ok("a point off the grid is refused", True)
+srv = open(os.path.join(ROOT, "pi/serve.py")).read()
+ok("the /ens/point door", 'head == "/ens/point"' in srv and "ef.point_series(model, lat, lon)" in srv)
+
 print("\n6. the ensembles and the timer")
 ok("GEFS 31, GEPS 21, SREF 26 and ECMWF ENS 51 members",
    [len(ef.ENSEMBLES[k]["members"]) for k in ("gefs", "geps", "sref", "ecmwfens")] == [31, 21, 26, 51])
