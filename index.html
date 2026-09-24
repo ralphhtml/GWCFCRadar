@@ -46840,7 +46840,10 @@ function _m3dPanelHtml() {
     </label>
   </div>
   </div>
-  <div class="xs-plot"><canvas data-r="canvas"></canvas></div>
+  <div class="xs-plot"><canvas data-r="canvas"></canvas>
+    <div class="r3d-cam-zoom" title="Zoom"><input type="range" data-r="zoom" min="0" max="1000" value="500" step="1"></div>
+    <div class="r3d-cam-move" title="Move around"><input type="range" data-r="yaw" min="-180" max="180" value="0" step="1"></div>
+  </div>
   <div class="m3d-about" data-r="about"></div>`;
 }
 
@@ -46886,6 +46889,10 @@ async function openModel3D(lat, lng, opts) {
     const up = () => { drag = null; cv.classList.remove('r3d-dragging'); };
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
     cv.addEventListener('wheel', e => { e.preventDefault(); _m3d.dist = Math.max(1.4, Math.min(8, _m3d.dist * Math.exp(e.deltaY * 0.001))); _m3dDraw(); }, { passive: false });
+    // The same two bars as every other 3D panel: zoom up the right side,
+    // turn along the bottom. Pushed up is closer; the turn is in degrees.
+    q('zoom').oninput = e => { _m3d.dist = 8 - (+e.target.value / 1000) * (8 - 1.4); _m3dDraw(); };
+    q('yaw').oninput = e => { _m3d.yaw = +e.target.value * Math.PI / 180; _m3d.spin = false; q('spin').classList.remove('on'); _m3dDraw(); };
     if (typeof _makeDraggable === 'function') { try { _makeDraggable(el, el.querySelector('.xs-head')); } catch (e) {} }
     window.addEventListener('resize', () => { if (el.classList.contains('open')) _m3dDraw(); });
   }
@@ -47103,8 +47110,18 @@ function _m3dCam(w, h) {
     return [w / 2 + x1 * F / d, h * 0.54 - up * F / d, depth];
   };
 }
+function _m3dSyncBars() {
+  const z = _m3d.q('zoom'), y = _m3d.q('yaw');
+  if (z && document.activeElement !== z) z.value = String(Math.round((8 - _m3d.dist) / (8 - 1.4) * 1000));
+  if (y && document.activeElement !== y) {
+    let d = (_m3d.yaw * 180 / Math.PI) % 360;
+    if (d > 180) d -= 360; else if (d < -180) d += 360;
+    y.value = String(Math.round(d));
+  }
+}
 function _m3dDraw() {
   if (!_m3d) return;
+  try { _m3dSyncBars(); } catch (e) {}
   const cv = _m3d.q('canvas'), dpr = Math.min(2, window.devicePixelRatio || 1);
   const w = cv.clientWidth || 520, h = cv.clientHeight || 300;
   if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
@@ -72067,6 +72084,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-v', date: 'Sep 24, 2026',
+    text: "Model 3D now has the same zoom bar (up the side) and turn bar (along the bottom) as Radar 3D, Satellite 3D and every layer's 3D panel, so all the 3D views steer the same way. The bars follow along when you drag or scroll, too." },
   { id: '2026-09-24-u', date: 'Sep 24, 2026',
     text: "Radars around the world. The MRRL network's radars in Europe, Japan, Mexico and more now show up as violet radar pills next to the American ones (their operator said yes). Tap one and it opens in Level 2, just like an American site: every product the radar sends, the tilts, playback, cross sections, Radar 3D, radar compare, your custom radar colours and the value filter all work on them. They come through the parsing server, so they appear once it is on and has placed them (a few minutes after its next update). Thanks to MRRL, credited in Credits." },
   { id: '2026-09-24-t', date: 'Sep 24, 2026',
