@@ -25,7 +25,10 @@ import { dirname, join } from 'node:path';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'services/bot/map-menu.json');
 const MAX_DEPTH = 7;
-const SETTLE_MS = 900;          // how long a tap gets to open a new row
+const SETTLE_MS = 700;          // how long a tap gets to open a new row
+// A row this long is a list of things (stations, runs, members), not a menu
+// of layers: its entries are listed but not each walked into.
+const LIST_ROW = 40;
 
 const { chromium } = await import('playwright');
 const b = await chromium.launch({
@@ -67,6 +70,11 @@ async function walk(p, path, depth, seen) {
   const here = await row(p);
   if (!here.labels.length) return;
   const mySig = sig(here);
+  console.log(`  ${path.join(' > ')}  (${here.labels.length})`);
+  if (here.labels.length > LIST_ROW) {
+    for (const label of here.labels) leaves.push([...path, label]);
+    return;
+  }
   for (const label of here.labels) {
     const next = [...path, label];
     const r = await p.evaluate(path => _menuPlay(path), next);
@@ -83,7 +91,6 @@ async function walk(p, path, depth, seen) {
       await walk(p, next, depth + 1, new Set([...seen, mySig]));
     } else if (!opened) {
       leaves.push(next);
-      process.stdout.write('.');
     }
     // Back to this row for the next label.
     await p.evaluate(path => _menuPlay(path), path);
@@ -95,16 +102,21 @@ const home = await freshPage();
 const tops = (await row(home)).labels;
 await home.context().close();
 for (const top of tops) {
-  process.stdout.write(`\n${top} `);
+  console.log(`\n${top}`);
   const p = await freshPage();
   try { await walk(p, [top], 1, new Set()); }
   catch (e) { console.warn(`\n  ${top}: ${String(e).slice(0, 160)}`); }
   await p.context().close();
+  save();
 }
 await b.close();
 
-// One path per leaf, in menu order, no repeats.
-const seenPath = new Set();
-const paths = leaves.map(l => l.join(' > ')).filter(x => !seenPath.has(x) && seenPath.add(x));
-writeFileSync(OUT, JSON.stringify({ generated: 'tools/crawl-map-menu.mjs', count: paths.length, layers: paths }, null, 1) + '\n');
-console.log(`\n\n${paths.length} layer paths -> ${OUT}`);
+save();
+// One path per leaf, in menu order, no repeats. Saved after each main
+// bubble too, so a long walk keeps what it has found so far.
+function save() {
+  const seenPath = new Set();
+  const paths = leaves.map(l => l.join(' > ')).filter(x => !seenPath.has(x) && seenPath.add(x));
+  writeFileSync(OUT, JSON.stringify({ generated: 'tools/crawl-map-menu.mjs', count: paths.length, layers: paths }, null, 1) + '\n');
+  console.log(`${paths.length} layer paths -> ${OUT}`);
+}
