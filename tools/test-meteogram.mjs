@@ -26,7 +26,7 @@ const ok = (name, cond, extra) => {
 console.log('\n1. the pieces are in the page');
 {
   ok('a Meteogram row in the map menu', /_cmMeteogramHere\(\)">\$\{ic\('chart-bar'\)\} Meteogram here/.test(PAGE));
-  ok('the panel shares the sounding panel shell', /#snd-panel, #mtg-panel \{/.test(PAGE));
+  ok('the panel shares the sounding panel shell', /#snd-panel, #mtg-panel[, ]/.test(PAGE));
   const EM = String.fromCharCode(0x2014);
   const a = PAGE.indexOf('// -- METEOGRAMS'), b = PAGE.indexOf('function _cmMeteogramHere');
   ok('no em dashes in the new code or this test', a > 0 && !PAGE.slice(a, b).includes(EM)
