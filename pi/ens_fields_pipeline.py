@@ -718,6 +718,62 @@ def already_built(model, run, out_dir=None):
         return False
 
 
+# -- One point, every member, every hour (the meteogram) ---------------------------
+_point_cache = {}
+_point_lock = threading.Lock()
+
+
+def point_series(model, lat, lon, out_dir=None):
+    """Every member's value of every field at the grid point nearest (lat, lon),
+    hour by hour, from the newest run on disk. What the NBM-style meteogram
+    draws its boxes, plumes and probabilities from."""
+    out_dir = out_dir or OUT_DIR
+    with open(os.path.join(out_dir, "index.json")) as fh:
+        entry = json.load(fh).get("models", {}).get(model)
+    if not entry or not entry.get("hours"):
+        raise LookupError(f"no {model} run on this parsing server yet")
+    run_dir = os.path.join(out_dir, model, entry["run"])
+    with open(os.path.join(run_dir, "manifest.json")) as fh:
+        man = json.load(fh)
+    g = man["grid"]
+    j = int(round((lat - g["s"]) / g["d"]))
+    i = int(round((lon - g["w"]) / g["d"]))
+    if not (0 <= j < g["ny"] and 0 <= i < g["nx"]):
+        raise ValueError(f"{lat:.2f}, {lon:.2f} is outside the ensemble grid "
+                         f"({g['s']:g} to {g['n']:g} N, {g['w']:g} to {g['e']:g})")
+    key = (model, man["run"], tuple(man["hours"]), j, i)
+    with _point_lock:
+        if key in _point_cache:
+            return _point_cache[key]
+    M, P = len(man["members"]), g["nx"] * g["ny"]
+    k = j * g["nx"] + i
+    fields = {}
+    for name, spec in man["fields"].items():
+        series = []
+        for fhr in man["hours"]:
+            path = os.path.join(run_dir, f"{name}_f{fhr:03d}.bin.gz")
+            try:
+                with open(path, "rb") as fh:
+                    codes = np.frombuffer(gzip.decompress(fh.read()), dtype="<u2")
+            except OSError:
+                series.append(None)
+                continue
+            vals = []
+            for m in range(M):
+                c = int(codes[m * P + k])
+                vals.append(None if c == MISSING else round(c * spec["scale"] + spec["offset"], 3))
+            series.append(vals)
+        fields[name] = series
+    out = {"model": model, "label": man["label"], "run": man["run"], "base": man["base"],
+           "hours": man["hours"], "members": M, "single": man.get("single", False),
+           "lat": round(g["s"] + j * g["d"], 3), "lon": round(g["w"] + i * g["d"], 3), "fields": fields}
+    with _point_lock:
+        _point_cache[key] = out
+        while len(_point_cache) > 64:
+            _point_cache.pop(next(iter(_point_cache)))
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", choices=list(ENSEMBLES))
