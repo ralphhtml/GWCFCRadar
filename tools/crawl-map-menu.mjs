@@ -128,8 +128,11 @@ async function walk(p, path, depth, seen, parentSig) {
     }
     // A row that still lists what was tapped is this same menu redrawn (a
     // pick lit up, an entry added), not a new one.
+    // And a row holding the main bubbles is the menu falling back to its
+    // top (a row that could not load), never a sub-menu.
     const opened = after.sub && after.labels.length && sig(after) !== mySig
-      && !after.labels.includes(label) && !seen.has(sig(after));
+      && !after.labels.includes(label) && !seen.has(sig(after))
+      && after.labels.filter(l => TOPS.has(l)).length < 2;
     if (opened && depth < MAX_DEPTH) {
       await walk(p, next, depth + 1, new Set([...seen, mySig]), mySig);
     } else if (!opened) {
@@ -140,6 +143,7 @@ async function walk(p, path, depth, seen, parentSig) {
 
 const home = await freshPage();
 const tops = (await row(home)).labels;
+const TOPS = new Set(tops);
 await home.context().close();
 // CRAWL_ONLY=Wind,Waves walks just those, for checking one menu.
 const only = (process.env.CRAWL_ONLY || '').split(',').map(x => x.trim()).filter(Boolean);
