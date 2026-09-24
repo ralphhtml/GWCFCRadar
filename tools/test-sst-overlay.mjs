@@ -258,47 +258,42 @@ console.log('\n6. the Inspector reads that grid, wrap and all');
      /RECORD/i.test(r.rec.value), JSON.stringify(r.rec));
 }
 
-console.log('\n7. the layer-order control, and the band it has to stay inside');
+console.log('\n7. the layer-order control');
 {
   const r = await page.evaluate(() => {
-    localStorage.removeItem('gwcfc_map_stack_order');
+    ['gwcfc_map_stack_order', 'gwcfc_layer_order_all'].forEach(k => localStorage.removeItem(k));
     _stackApply();
-    const before = {
-      borders: MAP_STACK_TOP_Z, order: _stackOrder().slice(),
-    };
-    // Put the ocean on top and everything else under it.
+    const before = { order: _stackOrder().slice() };
+    // Put the ocean on top of the map layers.
     _stackSave(['ocean', 'radar', 'satellite', 'borders']);
     const z = {
       ocean: +map.getPane('sstPane').style.zIndex,
       radar: +map.getPane('radarPane').style.zIndex,
       sat: +map.getPane('satPhotoPane').style.zIndex,
     };
-    localStorage.removeItem('gwcfc_map_stack_order');
+    ['gwcfc_map_stack_order', 'gwcfc_layer_order_all'].forEach(k => localStorage.removeItem(k));
     _stackApply();
-    const back = +map.getPane('sstPane').style.zIndex;
-    return { before, z, back };
+    const back = { ocean: +map.getPane('sstPane').style.zIndex, radar: +map.getPane('radarPane').style.zIndex };
+    return { before, z, back, top: MAP_STACK_TOP_Z };
   });
-  ok('the default order puts borders on top', r.before.order[0] === 'borders',
+  ok('the default order puts borders on top of the map layers', r.before.order[0] === 'borders',
      r.before.order.join(','));
   ok('moving the ocean to the top actually raises its pane',
      r.z.ocean > r.z.radar && r.z.ocean > r.z.sat, JSON.stringify(r.z));
-  // 402 is where the overlay list starts. A map layer that climbs into that
-  // band would land in the middle of the overlays and cover half of them.
-  ok('no map layer reaches the overlay band at 402',
-     Math.max(r.z.ocean, r.z.radar, r.z.sat) < 402, JSON.stringify(r.z));
-  // The rows are ten apart now, not one, so that the model comparison slots
-  // have somewhere to sit above the models and still below the borders.
-  // Five rows from 401 puts the ocean at the bottom of the band, at 361.
-  ok('clearing the saved order puts the ocean back at the bottom',
-     r.back === 361, String(r.back));
+  // Leaflet's own marker pane is 600: nothing in the list may reach it.
+  ok('nothing in the list reaches the marker pane at 600',
+     Math.max(r.z.ocean, r.z.radar, r.z.sat) < 600 && r.top < 600, JSON.stringify(r));
+  ok('clearing the saved order puts the ocean back under the radar',
+     r.back.ocean < r.back.radar, JSON.stringify(r.back));
 }
 
 console.log('\n8. a saved order survives, and a stale one is repaired');
 {
   const r = await page.evaluate(() => {
     const out = {};
+    localStorage.removeItem('gwcfc_layer_order_all');
     // A list written by an older version: names a layer that is gone, and is
-    // missing one added since.
+    // missing the ones added since.
     localStorage.setItem('gwcfc_map_stack_order',
       JSON.stringify(['radar', 'a-layer-that-no-longer-exists']));
     out.repaired = _stackOrder();
@@ -306,94 +301,69 @@ console.log('\n8. a saved order survives, and a stale one is repaired');
     out.garbage = _stackOrder();
     localStorage.removeItem('gwcfc_map_stack_order');
     out.clean = _stackOrder();
+    out.def = _stackDefault();
     return out;
   });
   ok('a name that no longer exists is dropped',
      !r.repaired.includes('a-layer-that-no-longer-exists'), r.repaired.join(','));
-  // Rows added since the order was saved are INSERTED at their default place,
-  // not appended. Appending was fine while the only missing row was
-  // hypothetical; the models row is real, and appending it would have put
-  // model charts below the sea temperature for everyone who had ever touched
-  // this control.
-  ok('a layer it never heard of is added back, so nothing goes missing',
-     r.repaired.length === 5 && r.repaired.includes('radar'),
-     r.repaired.join(','));
-  ok('and it lands in its default place rather than at the bottom',
-     r.repaired.join(',') === 'borders,models,radar,satellite,ocean',
-     r.repaired.join(','));
+  ok('every layer it never heard of is added back, so nothing goes missing',
+     r.repaired.length === r.def.length && r.repaired.includes('radar'), r.repaired.join(','));
+  // Inserted at their default place, not appended: appending would put model
+  // charts below the sea temperature for everyone who ever saved an order.
+  ok('and they land in their default places rather than at the bottom',
+     r.repaired.join(',') === r.def.join(','), r.repaired.join(','));
   ok('unreadable storage falls back to the default rather than throwing',
-     r.garbage.length === 5, r.garbage.join(','));
+     r.garbage.join(',') === r.def.join(','), r.garbage.join(','));
   ok('and with nothing saved the default is what you get',
-     r.clean.join(',') === 'borders,models,radar,satellite,ocean',
-     r.clean.join(','));
+     r.clean.join(',') === r.def.join(','), r.clean.join(','));
 }
 
-console.log('\n9. both order lists render, and the arrows move rows');
+console.log('\n9. one list for everything, and the arrows move rows');
 {
   const r = await page.evaluate(() => {
-    localStorage.removeItem('gwcfc_map_stack_order');
+    ['gwcfc_map_stack_order', 'gwcfc_layer_order_all'].forEach(k => localStorage.removeItem(k));
     _stackRender();
-    _ovOrderRender();
-    const names = () => [...document.querySelectorAll('#lqm-stack-list .lqm-order-row')]
-      .map(e => e.dataset.stackid);
-    const first = names();
-    // Click the second row's down arrow.
-    const row = document.querySelectorAll('#lqm-stack-list .lqm-order-row')[1];
-    row.querySelector('[data-move="down"]').click();
-    const after = names();
-    const ov = [...document.querySelectorAll('#lqm-ovorder-list .lqm-order-row')];
-    const ends = {
-      topUpOff: document.querySelector('#lqm-stack-list .lqm-order-row [data-move="up"]')
-        .classList.contains('off'),
-    };
-    localStorage.removeItem('gwcfc_map_stack_order');
+    const tokens = () => [...document.querySelectorAll('#lqm-stack-list .lqm-order-row:not(.sub)')].map(e => e.dataset.token);
+    const first = tokens();
+    document.querySelectorAll('#lqm-stack-list .lqm-order-row:not(.sub)')[1].querySelector('[data-move="down"]').click();
+    const after = tokens();
+    const topUpOff = document.querySelector('#lqm-stack-list .lqm-order-row [data-move="up"]').classList.contains('off');
+    ['gwcfc_map_stack_order', 'gwcfc_layer_order_all'].forEach(k => localStorage.removeItem(k));
     _stackApply();
-    return { first, after, ovCount: ov.length,
-             ovNames: ov.slice(0, 2).map(e => e.dataset.ovid),
-             ovLabel: ov[0] ? ov[0].querySelector('.lqm-order-name').textContent : '',
-             ends };
+    return { first, after, topUpOff,
+             layers: first.filter(t => t.startsWith('L:')).length,
+             ovs: first.filter(t => t.startsWith('O:')).length,
+             pills: document.querySelectorAll('#overlay-pills-row .ov-pill').length,
+             nLayers: MAP_STACK_LAYERS.length };
   });
-  ok('the map-layer list renders all five rows', r.first.length === 5,
-     r.first.join(','));
+  ok('the one list holds every map layer and every overlay',
+     r.layers === r.nLayers && r.ovs === r.pills, JSON.stringify({ l: r.layers, o: r.ovs, p: r.pills }));
   ok('the down arrow swaps a row with the one below it',
      r.after[1] === r.first[2] && r.after[2] === r.first[1],
-     r.first.join(',') + ' -> ' + r.after.join(','));
-  ok('the top row cannot be moved up', r.ends.topUpOff, String(r.ends.topUpOff));
-  ok('the overlay list mirrors the real fly-out rows', r.ovCount > 15,
-     String(r.ovCount));
-  ok('and it mirrors them in order, with their names',
-     r.ovNames[0] === 'alerts' && /Alert Polygons/.test(r.ovLabel),
-     r.ovNames.join(',') + ' / ' + r.ovLabel);
+     r.first.slice(0, 4).join(',') + ' -> ' + r.after.slice(0, 4).join(','));
+  ok('the top row cannot be moved up', r.topUpOff);
 }
 
-console.log('\n10. reordering in Settings moves the real overlay rows');
+console.log('\n10. an overlay and a map layer restack against each other');
 {
   const r = await page.evaluate(() => {
-    _ovOrderRender();
-    const realOrder = () => [...document.querySelectorAll('#overlay-pills-row .ov-pill')]
-      .map(e => e.dataset.ovid);
-    const before = realOrder();
-    const rows = document.querySelectorAll('#lqm-ovorder-list .lqm-order-row');
-    rows[0].querySelector('[data-move="down"]').click();
-    const after = realOrder();
-    const paneA = map.getPane('ovp-' + after[0]);
-    const paneB = map.getPane('ovp-' + after[1]);
-    const out = { before: before.slice(0, 3), after: after.slice(0, 3),
-                  za: paneA ? +paneA.style.zIndex : null,
-                  zb: paneB ? +paneB.style.zIndex : null };
-    // Put it back so later suites and the user's own saved order are not
-    // left holding this test's shuffle.
-    rows[0].querySelector('[data-move="up"]');
-    const back = document.querySelectorAll('#lqm-ovorder-list .lqm-order-row');
-    back[0].querySelector('[data-move="down"]').click();
-    localStorage.removeItem('gwcfc_overlay_order');
-    return out;
+    ['gwcfc_map_stack_order', 'gwcfc_layer_order_all'].forEach(k => localStorage.removeItem(k));
+    _ovPane('spc-outlook');
+    const order = _allOrder();
+    const before = +map.getPane('ovp-spc-outlook').style.zIndex > +map.getPane('radarPane').style.zIndex;
+    // Radar straight to the top, over every overlay.
+    _allSave(['L:radar', ...order.filter(t => t !== 'L:radar')]);
+    const radarZ = +map.getPane('radarPane').style.zIndex, spcZ = +map.getPane('ovp-spc-outlook').style.zIndex;
+    // The fly-out's own order follows the overlays' order in the one list.
+    const pills = [...document.querySelectorAll('#overlay-pills-row .ov-pill')].map(e => 'O:' + e.dataset.ovid);
+    const ovInList = _allOrder().filter(t => t[0] === 'O');
+    ['gwcfc_map_stack_order', 'gwcfc_layer_order_all'].forEach(k => localStorage.removeItem(k));
+    _stackApply();
+    return { before, radarZ, spcZ, same: pills.join() === ovInList.join() };
   });
-  ok('the fly-out list really moved, not just the copy in Settings',
-     r.after[0] === r.before[1] && r.after[1] === r.before[0],
-     r.before.join(',') + ' -> ' + r.after.join(','));
-  ok('and the map panes follow, top of the list drawing on top',
-     r.za === null || r.zb === null || r.za > r.zb, `${r.za} vs ${r.zb}`);
+  ok('by default the overlays draw over the map layers, as they always did', r.before);
+  ok('radar moved to the top draws over the SPC outlook', r.radarZ > r.spcZ, JSON.stringify(r));
+  ok('the overlay fly-out keeps the same order as the list', r.same);
 }
 
 console.log('\n11. the Inspector rows for the layers it used to walk past');
