@@ -38,7 +38,9 @@ const PAGE = readFileSync(join(ROOT, 'index.html'), 'utf8');
 const CL_ID = (PAGE.match(/const APP_CHANGELOG = \[\s*\{ id: '([^']+)'/) || [])[1];
 
 async function freshPage() {
-  const p = await (await b.newContext({ viewport: { width: 1280, height: 860 } })).newPage();
+  // ignoreHTTPSErrors: behind a proxy that re-signs connections, the rows the
+// page fills from the network would otherwise come up empty.
+  const p = await (await b.newContext({ viewport: { width: 1280, height: 860 }, ignoreHTTPSErrors: true })).newPage();
   await p.addInitScript(id => { try { localStorage.setItem('gwcfc_tutorial_seen', '1'); localStorage.setItem('gwcfc_changelog_seen', id); } catch (e) {} }, CL_ID);
   if (process.env.LEAFLET_DIST) {
     await p.route('**/leaflet*', route => {
@@ -57,17 +59,29 @@ async function freshPage() {
 }
 
 // The labels of the row on screen now, and whether it is a sub-row.
+// Entries that are a notice rather than something to tap
+// ("No parsing server radar yet") are left out.
 const row = p => p.evaluate(() => ({
-  labels: _menuRowItems().map(x => x.label),
+  labels: _menuRowItems().map(x => x.label).filter(l => !/^No\b.*\byet$/i.test(l)),
   sub: !!document.querySelector('#sub-bubbles .sb-back'),
 }));
 const sig = r => r.labels.join('\u0001');
 
 const leaves = [];
-async function walk(p, path, depth, seen) {
+// Tap to a row and wait for it to be the one on screen: some rows are built
+// only after something loads, and reading too soon reads the parent's row.
+async function reach(p, path, notSig) {
   await p.evaluate(path => _menuPlay(path), path);
-  await p.waitForTimeout(150);
-  const here = await row(p);
+  let here = await row(p);
+  const t0 = Date.now();
+  while ((sig(here) === notSig || !here.labels.length) && Date.now() - t0 < 4000) {
+    await p.waitForTimeout(100);
+    here = await row(p);
+  }
+  return here;
+}
+async function walk(p, path, depth, seen, parentSig) {
+  const here = await reach(p, path, parentSig);
   if (!here.labels.length) return;
   const mySig = sig(here);
   console.log(`  ${path.join(' > ')}  (${here.labels.length})`);
@@ -88,13 +102,12 @@ async function walk(p, path, depth, seen) {
     }
     const opened = after.sub && after.labels.length && sig(after) !== mySig && !seen.has(sig(after));
     if (opened && depth < MAX_DEPTH) {
-      await walk(p, next, depth + 1, new Set([...seen, mySig]));
+      await walk(p, next, depth + 1, new Set([...seen, mySig]), mySig);
     } else if (!opened) {
       leaves.push(next);
     }
     // Back to this row for the next label.
-    await p.evaluate(path => _menuPlay(path), path);
-    await p.waitForTimeout(80);
+    await reach(p, path, parentSig);
   }
 }
 
@@ -104,7 +117,7 @@ await home.context().close();
 for (const top of tops) {
   console.log(`\n${top}`);
   const p = await freshPage();
-  try { await walk(p, [top], 1, new Set()); }
+  try { await walk(p, [top], 1, new Set(), sig(await row(p))); }
   catch (e) { console.warn(`\n  ${top}: ${String(e).slice(0, 160)}`); }
   await p.context().close();
   save();
