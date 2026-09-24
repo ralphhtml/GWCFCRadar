@@ -45824,22 +45824,33 @@ function _mtgFromOpenMeteo(j, label) {
 }
 
 // Which sources there are: the parsing server's ensembles first, Open-Meteo after.
+// The list also says why the parsing server has nothing to offer, when it
+// has not, so falling back to Open-Meteo is never silent: .server is
+// 'ok', 'empty' (reachable, nothing built yet), 'down' or 'unset'.
 async function _mtgSources() {
-  const out = [];
+  const out = [], singles = [];
+  out.server = 'unset';
   try {
     const base = (typeof _hdBase !== 'undefined' && _hdBase) || (typeof _hdResolveBase === 'function' ? await _hdResolveBase() : null);
     if (base) {
       if (typeof _hdBase !== 'undefined') _hdBase = base;
+      out.server = 'down';
       const r = await fetch(`${base}/ens/index.json?t=${Date.now()}`, { cache: 'no-store' });
+      out.server = r.ok ? 'empty' : r.status === 404 ? 'empty' : 'down';
       if (r.ok) {
         const idx = await r.json();
         Object.keys(idx.models || {}).forEach(k => {
           const e = idx.models[k];
-          if ((e.hours || []).length && !e.single) out.push({ id: 'pi:' + k, label: `${e.label} (${e.members} members)`, base });
+          if (!(e.hours || []).length) return;
+          // Ensembles first; the ordinary single runs after, drawn as a line.
+          if (e.single) singles.push({ id: 'pi:' + k, label: `${e.label} run (parsing server)`, base, single: true });
+          else out.push({ id: 'pi:' + k, label: `${e.label}, ${e.members} members (parsing server)`, base });
         });
       }
     }
   } catch (e) {}
+  out.push(...singles);
+  if (out.length) out.server = 'ok';
   MTG_OM_MODELS.forEach(m => out.push({ id: 'om:' + m.id, label: `${m.label} (Open-Meteo)` }));
   return out;
 }
@@ -45941,6 +45952,15 @@ const MTG_DRAW = {
       g.stroke();
     }
     g.globalAlpha = 1;
+    // A single run has no spread to box: it is the line itself.
+    if (S.members === 1) {
+      g.strokeStyle = col; g.lineWidth = 2.2; g.beginPath(); let pen = false;
+      S.times.forEach((t, i) => { const v = V[i] && V[i][0]; if (v == null) { pen = false; return; } pen ? g.lineTo(ax.X(t), Y(v)) : g.moveTo(ax.X(t), Y(v)); pen = true; });
+      g.stroke();
+      g.fillStyle = '#fff';
+      S.times.forEach((t, i) => { const v = V[i] && V[i][0]; if (v != null) { g.beginPath(); g.arc(ax.X(t), Y(v), 1.8, 0, 7); g.fill(); } });
+      return F;
+    }
     // The boxes.
     S.stats[spec.id].forEach((s, i) => {
       if (!s) return;
@@ -46131,10 +46151,13 @@ async function _mtgLoad(el) {
     }
     if (token !== el._token) return;
     el._mtg = S; el._hoverI = null;
-    alert.textContent = S.fallback ? `The parsing server could not answer here (${S.fallback}), so this is Open-Meteo's GEFS.` : '';
+    const why = { unset: 'no parsing server address is set', down: 'the parsing server is not answering',
+      empty: 'the parsing server has not built its ensembles yet (the gwcfc-ensfields timer does that)' }[el._sources.server];
+    alert.textContent = S.fallback ? `The parsing server could not answer here (${S.fallback}), so this is Open-Meteo's GEFS.`
+      : (S.source !== 'server' && why) ? `Showing Open-Meteo because ${why}. Real model members appear here once it has.` : '';
     const days = Math.round((S.times[S.times.length - 1] - S.times[0]) / 86400e3);
     const r = S.run ? ` ${S.run.slice(4, 6)}/${S.run.slice(6, 8)} ${S.run.slice(9, 11)}z run,` : '';
-    note.textContent = `${S.label},${r} ${S.members} members, ${days} days, times in your local time. `
+    note.textContent = `${S.label},${r} ${S.members === 1 ? 'a single run (drawn as a line)' : S.members + ' members'}, ${days} days, times in your local time. `
       + (S.source === 'server' ? `Real model members from the parsing server, at the grid point ${S.lat}, ${S.lon}.` : 'From the Open-Meteo ensemble API.');
     _mtgBuildCharts(el);
     _mtgPaint(el);
@@ -71507,6 +71530,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-n', date: 'Sep 24, 2026',
+    text: 'Meteograms read the real models first: every ensemble the parsing server has built, and now the ordinary GFS and ECMWF runs too (drawn as a line), all marked (parsing server) in the picker. Open-Meteo is only the fallback, and when it has to be used the panel now says why (no parsing server, not answering, or nothing built yet).' },
   { id: '2026-09-24-m', date: 'Sep 24, 2026',
     text: 'The national radar mosaic and the forecast dots now only switch themselves on in Lite-ning mode. Wx-pert starts on a clean map; both are still a tap away (Radar for the mosaic, Forecasts for the dots).' },
   { id: '2026-09-24-l', date: 'Sep 24, 2026',

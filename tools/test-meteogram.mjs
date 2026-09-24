@@ -60,10 +60,12 @@ def fake(mem, fhr):
             {"tp_start": fhr - 6, "tp_units_m": False})
 ef.ENSEMBLES["gefs"] = dict(ef.ENSEMBLES["gefs"], members=["gec00", "gep01", "gep02", "gep03", "gep04"], steps=[6, 12, 18, 24])
 ef.build("gefs", "20260924", "12", fetch=fake, workers=2)
+ef.ENSEMBLES["gfs"] = dict(ef.ENSEMBLES["gfs"], steps=[6, 12, 18, 24])
+ef.build("gfs", "20260924", "12", fetch=lambda mem, fhr: fake("gfs02", fhr), workers=1)
 `], { env: { ...process.env, GWCFC_DATA: DATA }, stdio: 'pipe' });
-const point = (lat, lon) => {
+const point = (lat, lon, model = 'gefs') => {
   try {
-    return { ok: true, body: execFileSync('python3', ['-c', PY + `print(json.dumps(ef.point_series("gefs", ${lat}, ${lon})))`],
+    return { ok: true, body: execFileSync('python3', ['-c', PY + `print(json.dumps(ef.point_series("${model}", ${lat}, ${lon})))`],
       { env: { ...process.env, GWCFC_DATA: DATA } }).toString() };
   } catch (e) { return { ok: false, body: JSON.stringify({ error: 'outside the ensemble grid' }) }; }
 };
@@ -105,7 +107,7 @@ await p.route('**://**', route => {
     return route.fulfill({ contentType: 'text/css', body: readFileSync(join(LEAFLET, 'leaflet.css'), 'utf8') });
   if (url.startsWith('http://pi.test/ens/point')) {
     asked.push(url);
-    const u = new URL(url), r = point(+u.searchParams.get('lat'), +u.searchParams.get('lon'));
+    const u = new URL(url), r = point(+u.searchParams.get('lat'), +u.searchParams.get('lon'), u.searchParams.get('model'));
     return route.fulfill({ status: r.ok ? 200 : 404, contentType: 'application/json', body: r.body });
   }
   if (url.startsWith('http://pi.test/ens/')) {
@@ -136,7 +138,7 @@ console.log('\n2. opened from the map menu, on the real ensemble');
       charts: [...el.querySelectorAll('.mtg-chart-card')].map(c => c.dataset.chart), pos: getComputedStyle(el).position };
   });
   ok('the panel opens where it was asked, in the sounding panel shell', st.open && st.where === '35.20, -97.40' && st.pos === 'fixed', JSON.stringify(st));
-  ok('the parsing server ensembles first, Open-Meteo after', st.sources.join() === 'pi:gefs,om:gfs025,om:ecmwf_ifs025,om:icon_seamless,om:gem_global', st.sources.join());
+  ok('the parsing server ensembles first, Open-Meteo after', st.sources.join() === 'pi:gefs,pi:gfs,om:gfs025,om:ecmwf_ifs025,om:icon_seamless,om:gem_global', st.sources.join());
   ok('one chart per variable the ensemble has', st.charts.join() === 't2m,td2m,wind10,gust,ptype,qpf', st.charts.join());
   ok('says it is real model members, and where', /GEFS, 09\/24 12z run, 5 members/.test(st.note) && /from the parsing server, at the grid point 35, -97.5/.test(st.note), st.note);
 }
@@ -179,6 +181,17 @@ console.log('\n4. drawing and the crosshair');
   await p.evaluate(() => document.querySelector('#mtg-panel .snd-big').click());
 }
 
+console.log('\n4b. the ordinary GFS run from the parsing server, as a line');
+{
+  await p.evaluate(() => { const s = document.querySelector('#mtg-panel .snd-src'); s.value = 'pi:gfs'; s.dispatchEvent(new Event('change')); });
+  await p.waitForTimeout(2000);
+  const r = await p.evaluate(() => { const el = document.getElementById('mtg-panel'), S = el._mtg;
+    return { members: S.members, source: S.source, t: S.vars.t2m[1][0], note: el.querySelector('.snd-note').textContent,
+      label: el.querySelector('.snd-src').selectedOptions[0].textContent, charts: el.querySelectorAll('.mtg-chart-card').length }; });
+  ok('the single GFS run from the parsing server, drawn as a line', r.members === 1 && r.source === 'server' && Math.abs(r.t - 70) < 0.1
+     && /a single run \(drawn as a line\)/.test(r.note) && r.label === 'GFS run (parsing server)' && r.charts >= 4, JSON.stringify(r));
+}
+
 console.log('\n5. Open-Meteo, and the fallback');
 {
   asked.length = 0;
@@ -193,6 +206,15 @@ console.log('\n5. Open-Meteo, and the fallback');
   await p.waitForTimeout(2500);
   const f = await p.evaluate(() => ({ alert: document.querySelector('#mtg-panel .snd-alert').textContent, src: document.querySelector('#mtg-panel .snd-src').value }));
   ok('a point off the parsing server\'s grid falls back to Open-Meteo, and says so', /could not answer here/.test(f.alert) && f.src === 'om:gfs025', JSON.stringify(f));
+  // A parsing server with nothing built yet: Open-Meteo, and it says why.
+  await p.route('http://pi.test/ens/index.json**', route => route.fulfill({ status: 404, body: '' }));
+  await p.evaluate(() => { _mtgSource = null; openMeteogram(35.2, -97.4); });
+  await p.waitForTimeout(2500);
+  const e = await p.evaluate(() => ({ alert: document.querySelector('#mtg-panel .snd-alert').textContent,
+    src: document.querySelector('#mtg-panel .snd-src').value }));
+  ok('with no ensembles built yet it says why it is on Open-Meteo', e.src === 'om:gfs025'
+     && /has not built its ensembles yet/.test(e.alert), JSON.stringify(e));
+  await p.unroute('http://pi.test/ens/index.json**');
   await p.keyboard.press('Escape');
   ok('Escape closes it', !(await p.evaluate(() => document.getElementById('mtg-panel').classList.contains('open'))));
   ok('no page errors along the way', errs.length === 0, errs[0]);
