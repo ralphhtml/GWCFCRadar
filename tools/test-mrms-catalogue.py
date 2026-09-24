@@ -161,8 +161,9 @@ ok("and the hail heights under severe",
    f"{group_of('h50abovem20')}, {group_of('h60above0')}")
 ok("live shear is severe, with the rotation tracks",
    group_of("azshear02") == "severe", group_of("azshear02"))
-ok("reflectivity at an isotherm is reflectivity",
-   group_of("refl0c") == "refl", group_of("refl0c"))
+ok("reflectivity at an isotherm has its own group, with VII",
+   group_of("refl0c") == "isotherm" and group_of("vii") == "isotherm",
+   f"{group_of('refl0c')}, {group_of('vii')}")
 ok("gauge corrected rain is precip",
    group_of("qpemulti01") == "precip", group_of("qpemulti01"))
 # POH and POSH are the same question asked at two severities, so a pattern

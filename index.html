@@ -29459,10 +29459,32 @@ const LVL_STEPS = {
   // Metres below the sea surface, from the parsing server's HYCOM depths.
   // The only column that goes DOWN, so it is drawn surface at the top.
   ocean: [0, 50, 100, 200, 300, 500, 1000],
+  // MRMS reflectivity at an isotherm, in C. Colder is higher in a storm, so
+  // the usual reversed drawing puts -20 at the top.
+  isotherm: [0, -5, -10, -15, -20],
 };
+const LVL_ISO_KEY = { 0: 'refl0c', '-5': 'reflm5c', '-10': 'reflm10c', '-15': 'reflm15c', '-20': 'reflm20c' };
+function _lvlIsoOn() {
+  if (typeof _mrmsOn === 'undefined') return null;
+  const v = LVL_STEPS.isotherm.find(t => _mrmsOn[LVL_ISO_KEY[t]]);
+  return v === undefined ? null : v;
+}
+// Swap one isotherm slice for another: off with the old, on with the new,
+// so the slider moves the one picture rather than stacking five.
+function _lvlIsoLoad(v) {
+  const want = LVL_ISO_KEY[v];
+  if (_mrmsManifest && _mrmsManifest.products && !_mrmsManifest.products[want]) {
+    if (typeof showToast === 'function') showToast(`The parsing server is not building ${v} C yet`, 2200);
+    return;
+  }
+  LVL_STEPS.isotherm.forEach(t => { const k = LVL_ISO_KEY[t]; if (k !== want && _mrmsOn[k]) _mrmsOn[k] = false; });
+  if (!_mrmsOn[want]) _mrmsToggle(want); else _mrmsLoad();
+  document.querySelectorAll('#sub-bubbles [data-mrms-id]').forEach(el =>
+    el.classList.toggle('active', !!_mrmsOn[el.dataset.mrmsId]));
+}
 const LVL_HEIGHT = { sfc: 'ground', '80m': '260 ft', 1000: '~360 ft', 925: '~2,500 ft', 850: '~5,000 ft',
   700: '~10,000 ft', 500: '~18,000 ft', 300: '~30,000 ft', 250: '~34,000 ft' };
-let _omLevel = { temperature: 'sfc', wind: 'sfc', pressure: 'sfc', ocean: 0 };
+let _omLevel = { temperature: 'sfc', wind: 'sfc', pressure: 'sfc', ocean: 0, isotherm: 0 };
 (function _lvlRestore() {
   try {
     const v = JSON.parse(localStorage.getItem('gwcfc_om_level') || 'null') || {};
@@ -29471,15 +29493,18 @@ let _omLevel = { temperature: 'sfc', wind: 'sfc', pressure: 'sfc', ocean: 0 };
 })();
 function _lvlName(l, layer) {
   if (layer === 'ocean') return l === 0 ? 'the sea surface' : `${l} m deep`;
+  if (layer === 'isotherm') return `the ${l} C level`;
   return l === 'sfc' ? 'Surface' : l === '80m' ? '80 m' : l + ' mb';
 }
 // The small line under a column, and each notch's own label.
 function _lvlHeight(l, layer) {
   if (layer === 'ocean') return l === 0 ? 'sea surface' : `${Math.round(l * 3.281).toLocaleString('en-US')} ft down`;
+  if (layer === 'isotherm') return l === 0 ? 'melting top' : `${l} C`;
   return LVL_HEIGHT[l];
 }
 function _lvlNotch(l, layer) {
   if (layer === 'ocean') return l === 0 ? 'Sfc' : `${l} m`;
+  if (layer === 'isotherm') return `${l}°`;
   return l === 'sfc' ? 'Sfc' : l === '80m' ? '80 m' : String(l);
 }
 function _lvlIsPl(l) { return typeof l === 'number'; }
@@ -29490,6 +29515,7 @@ function _lvlFor(layer) {
     const m = typeof _sstSource !== 'undefined' && _sstSource === 'hycom' && /^t(\d+)$/.exec(_sstVariant || '');
     return m ? Number(m[1]) : (_omLevel.ocean || 0);
   }
+  if (layer === 'isotherm') { const v = _lvlIsoOn(); return v === null ? (_omLevel.isotherm || 0) : v; }
   if (layer === 'temperature' && _temperatureProduct === 'feels-like') return 'sfc';
   if (layer === 'wind' && _windProduct === 'wind-jet') return 250;
   if (layer === 'pressure' && _pressureProduct === 'surface') return 'sfc';
@@ -29512,6 +29538,7 @@ const LVL_LAYERS = [
   { id: 'pressure', title: 'Heights', on: () => pressureActive, load: () => window._loadPressureLayer() },
   { id: 'ocean', title: 'Ocean', on: () => typeof _sstOn !== 'undefined' && _sstOn && _sstSource === 'hycom',
     load: () => _sstEnable('hycom', 't' + _omLevel.ocean) },
+  { id: 'isotherm', title: 'Isotherm', on: () => _lvlIsoOn() !== null, load: () => _lvlIsoLoad(_omLevel.isotherm) },
 ];
 let _lvlSig = '';
 function _lvlSignature() {
@@ -29546,7 +29573,7 @@ function _lvlRender(force) {
   }).join('');
   dock.querySelectorAll('.lvl-notch').forEach(b => b.onclick = () => {
     const v = b.dataset.lvl;
-    _lvlSet(b.dataset.layer, /^\d+$/.test(v) ? Number(v) : v);
+    _lvlSet(b.dataset.layer, /^-?\d+$/.test(v) ? Number(v) : v);
   });
   // Sit just left of the right-hand menu, wherever that is on this screen.
   const rm = document.getElementById('right-menu');
@@ -32703,7 +32730,14 @@ const LAYER_DESCRIPTIONS = {
   'mrms-group-precip':  'How hard it is raining, what kind of precipitation it is, and how much has fallen. Blended from every radar plus gauges and models.',
   'mrms-group-ltg':     'Lightning: where it has struck recently and the density of strikes, which marks the electrically active part of a line.',
   'mrms-group-flood':   'What the ground does with the rain, rather than how much fell. An inch on dry sand does nothing and an inch on saturated clay above a small catchment is a wall of water, so this is the half of flooding that rainfall alone cannot answer. Three models run on the MRMS rainfall: CREST and SAC route water through soil and channels and can say how saturated the ground already is, and Hydrophobic assumes none of it soaks in at all, which is the worst case and the one to believe on burn scars and pavement. Unit streamflow is the one to compare between places: raw streamflow is always largest on the biggest river whether or not anything unusual is happening.',
-  'mrms-group-winter':  'The winter set: where the melting layer sits, surface and wet bulb temperature, and the height of the freezing level. Together these are what decides rain, sleet or snow at the ground.',
+  'mrms-group-isotherm': 'Reflectivity measured at the height where the air is a set temperature (0, -5, -10, -15 and -20 C) instead of at a set height, plus Vertically Integrated Ice. Hail and lightning both need ice, and ice grows in the colder part of a storm, so strong echo at -10 to -20 C is a much stronger signal than the same echo near the ground. Turn one on and an Isotherm column appears on the height slider to step between them.',
+  'mrms-refl0c':   'Reflectivity at the 0 C level: the top of the melting layer. Anything strong here is already big wet ice or heavy rain being carried up, and it is the clean layer to read a bright band against.',
+  'mrms-reflm5c':  'Reflectivity at the -5 C level, just above the freezing level, where supercooled water starts freezing onto ice.',
+  'mrms-reflm10c': 'Reflectivity at the -10 C level. 40 dBZ or more here is the classic sign that a storm is electrified and about to start producing lightning.',
+  'mrms-reflm15c': 'Reflectivity at the -15 C level, the zone where ice crystals grow fastest.',
+  'mrms-reflm20c': 'Reflectivity at the -20 C level. 50 dBZ or more this cold means a strong updraft is holding big hail high in the storm.',
+  'mrms-vii':      'Vertically Integrated Ice: how much ice sits in the column between the -10 C and -40 C levels, in kg per square metre. Ice colliding in that layer is what charges a storm, so VII rising is an early lightning and hail warning.',
+  'mrms-group-winter':'The winter set: where the melting layer sits, surface and wet bulb temperature, and the height of the freezing level. Together these are what decides rain, sleet or snow at the ground.',
   radar:      'Turns on NEXRAD radar. Tap again to pick which radar product to show, like Reflectivity or Velocity.',
   satellite:  'Turns on GOES satellite imagery. Tap again to pick a channel, like Visible, Infrared, or Water Vapor.',
   models:     'Opens the Models panel, covering severe weather guidance (SPC Outlooks, HRRR, NAM) and tropical guidance (hurricane tracks, spaghetti models).',
@@ -35685,6 +35719,11 @@ const RADAR_SOURCE_BUBBLES = [
 // caught by winter before h50 and h60 are caught by severe. They are three
 // different heights and only one of them is a hail signal.
 const MRMS_GROUPS = [
+  // Reflectivity read at a temperature instead of a height, plus the ice
+  // integrated through the column. First so vii and the refl*c slices land
+  // here rather than in Severe and Reflectivity below.
+  { id: 'isotherm', label: 'Isothermal & Ice',
+    match: k => /^(refl0c|reflm\d+c|vii)$/.test(k) },
   { id: 'winter',  label: 'Winter',
     match: k => /^(brightband|sfctemp|wetbulb|h0c)/.test(k) },
   { id: 'severe',  label: 'Severe',
@@ -69374,6 +69413,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-d', date: 'Sep 24, 2026',
+    text: 'New Isothermal & Ice group in the MRMS radar menu: reflectivity at the 0, -5, -10, -15 and -20 C levels plus Vertically Integrated Ice, each with a description. Turn on one of the temperature slices and an Isotherm column appears on the height slider so you can step up and down through the storm.' },
   { id: '2026-09-24-c', date: 'Sep 24, 2026',
     text: 'The Time Machines reach much further back. Single radar sites now go back to June 1991, the start of the Level 2 archive: the older tape format and its old compression are read now (reflectivity and velocity; dual-pol starts around 2012). The national radar mosaic goes back to 1995, and the satellite to 1980 through the parsing server (infrared every 3 hours before 2017). The quick jumps gained 5, 10 and 20 years. Also: radar site popups have a new View Past Radar button and a glossy look, the logo, account button and search bar can be arranged left, centre or right in Settings, whose colour section is now called Themes, and the Compare button left the satellite product list.' },
   { id: '2026-09-24-b', date: 'Sep 24, 2026',
