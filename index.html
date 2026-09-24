@@ -32549,8 +32549,11 @@ async function _goesRefreshPiFrames() {
 // band routes here first and falls back to the WMS only when the parsing server is not
 // there to ask. See pi/sat_archive.py.
 function _goesArcOk() {
-  return typeof _tmSatAt === 'number' && !!_tmSatAt
-    && !!_goesProduct().ch && typeof _hdResolveBase === 'function';
+  if (!(typeof _tmSatAt === 'number' && !!_tmSatAt) || typeof _hdResolveBase !== 'function') return false;
+  // Before GOES-R there is only the GridSat infrared record, whatever
+  // product is picked: a composite or a parsing server picture cannot go
+  // back that far, and the live service would answer with today's.
+  return !!_goesProduct().ch || _tmSatAt < SAT_GOESR_START;
 }
 function _goesArcTarget() {
   const r = String(_goesRegionId || 'auto');
@@ -32572,9 +32575,17 @@ async function _goesArcFrames() {
   const t = _goesArcTarget();
   const qs = `post=${t.post}&band=${t.band}&sector=${t.sector}`
            + `&at=${Math.round(_tmSatAt)}&n=${_satFrameCount()}`;
-  const r = await fetch(`${base}/sat/archive/index?${qs}`, { signal: _abortSignal(60000) });
+  // Before GOES-R the parsing server fetches and draws a GridSat file before
+  // it answers, which can take a while on a slow link, so it gets longer.
+  const old = _tmSatAt < SAT_GOESR_START;
+  if (old && typeof showToast === 'function') showToast('Fetching ' + new Date(_tmSatAt).getUTCFullYear()
+    + ' satellite from NOAA\'s GridSat archive through the parsing server...', 4000);
+  const r = await fetch(`${base}/sat/archive/index?${qs}`, { signal: _abortSignal(old ? 240000 : 90000) });
   if (r.status === 404) return [];             // nothing archived there: honest
-  if (!r.ok) throw new Error('index HTTP ' + r.status);
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    throw new Error(e.error || ('index HTTP ' + r.status));
+  }
   const idx = await r.json();
   if (!idx || !Array.isArray(idx.frames) || !idx.bounds) throw new Error('bad index');
   // Before GOES-R the answer is GridSat-B1: infrared only, every three hours.
@@ -32590,11 +32601,23 @@ async function _goesArcFrames() {
 }
 async function _goesLoadArcFrames() {
   const gen = ++_goesArcGen;
-  let frames = null;
+  let frames = null, why = '';
   try { frames = await _goesArcFrames(); }
-  catch (e) { console.warn('[sat archive]', e); frames = null; }
+  catch (e) { console.warn('[sat archive]', e); frames = null; why = (e && e.message) || String(e); }
   if (gen !== _goesArcGen || !activeLayers.satellite || !_goesArcOk()) return;
   if (frames && frames.length) { _goesApplyFrames(frames); return; }
+  // Before GOES-R the live satellite service has nothing at all, and asked
+  // for 1992 it hands back TODAY's picture, which then wore a 1992 label.
+  // Nothing on the map is honest; a wrong year is not.
+  if (_tmSatAt < SAT_GOESR_START) {
+    _goesApplyFrames([]);
+    if (typeof showToast === 'function') {
+      showToast('Could not get the ' + new Date(_tmSatAt).getUTCFullYear() + ' satellite: '
+        + (why || 'the parsing server has nothing for that moment')
+        + '. Satellite before July 2017 comes only from the parsing server (GridSat-B1).', 8000);
+    }
+    return;
+  }
   // The parsing server could not answer, or NOAA has nothing: the WMS path, with its own
   // watcher for a moment that archive does not hold either.
   _goesApplyFrames(_buildGoesFrames());
@@ -72161,6 +72184,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-x', date: 'Sep 24, 2026',
+    text: "The satellite Time Machine works before 2017 again. Travelling to an old date (Hurricane Andrew in 1992, say) was showing TODAY's satellite with the old date on it: the parsing server took over a minute to fetch the old picture, the page gave up, and fell back to the live satellite, which has nothing that old and answered with now. Three fixes: the parsing server now fetches the old GridSat pictures from NOAA's copy on AWS (about a second instead of a minute), it reads them correctly (a mix-up in how the numbers are stored was blanking nearly every pixel), and if an old date still cannot be fetched the map says why and shows nothing, never the wrong year. Any satellite product works for those dates; before July 2017 it is the infrared GridSat record, every 3 hours." },
   { id: '2026-09-24-w', date: 'Sep 24, 2026',
     text: "3D zones take the shape you draw. The 3D button on the Polygon tool and the Radius tool now asks which 3D view to open (Radar 3D, Satellite 3D, Model 3D, or any layer that is on) and opens it cut to your exact shape: the radar volume, cloud tops, ground, layer and model all stop at the polygon or the circle, the frame in 3D follows it, and the outline on the map is your shape instead of a square. Model 3D can also be drawn as a box now: long-press the map and pick Draw a 3D model zone, and a wide or tall box keeps its real proportions instead of being squashed into a square." },
   { id: '2026-09-24-v', date: 'Sep 24, 2026',

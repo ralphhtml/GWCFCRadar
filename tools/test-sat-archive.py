@@ -245,5 +245,82 @@ ok("missing data is transparent", (a[..., 3] == 0).any())
 ok("and cached like a GOES frame", sa.render(sa.GRIDSAT_BUCKET, "GRIDSAT-B1.2005.08.29.12.v02r01.nc", 13, "conus",
                                               cache_dir=cache, post="east")[0] == png)
 
+# The real files: packed int16 (0.01 K steps above 200 K) with a valid_range
+# written in KELVIN. netCDF4's own masking compares that range with the
+# packed numbers and threw every real pixel away, so a 1992 picture came
+# back empty. The packed numbers are read and unpacked here instead.
+class _PackedVar:
+    def __init__(self, raw):
+        self.raw, self.ndim = raw, 3
+        self.scale_factor, self.add_offset, self._FillValue = np.float32(0.01), np.float32(200.0), np.int16(-31999)
+        self.valid_range = np.array([140.0, 375.0], dtype=np.float32)
+        self.auto = True
+
+    def set_auto_maskandscale(self, on):
+        self.auto = on
+
+    def __getitem__(self, k):
+        if self.auto:   # what netCDF4 does: valid_range against the packed values
+            v = self.raw[k]
+            return np.ma.masked_where((v < 140) | (v > 375) | (v == -31999), v * 0.01 + 200)
+        return self.raw[k]
+
+
+class _PackedDS(_GDS):
+    def __init__(self):
+        super().__init__()
+        lat, lon = self.variables["lat"].data, self.variables["lon"].data
+        raw = np.full((1, len(lat), len(lon)), 9000, dtype=np.int16)        # 290 K
+        la, lo = np.meshgrid(lat, lon, indexing="ij")
+        raw[0][(np.abs(la - 25.5) < 1) & (np.abs(lo + 79.5) < 1)] = -500    # 195 K: Andrew's cloud tops
+        raw[0][(np.abs(la - 40) < 0.3)] = -31999
+        self.variables["irwin_cdr"] = _PackedVar(raw)
+
+
+vals, _la, _lo = sa.read_gridsat(_PackedDS(), (15.0, 58.0, -135.0, -55.0))
+ok("packed GridSat values are unpacked, not thrown away as out of range",
+   np.isfinite(vals).mean() > 0.9 and abs(np.nanmax(vals) - 290.0) < 0.01 and abs(np.nanmin(vals) - 195.0) < 0.01,
+   f"finite {np.isfinite(vals).mean():.3f} min {np.nanmin(vals)} max {np.nanmax(vals)}")
+ok("and the fill value is still missing", np.isnan(vals).any())
+
+tried = []
+
+
+class _Resp:
+    def __init__(self, b):
+        self.b = b
+
+    def read(self):
+        return self.b
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def _fake_urlopen(req, timeout=None):
+    tried.append(req.full_url)
+    raise OSError("offline test")
+
+
+import urllib.request as _ur  # noqa: E402
+_real = _ur.urlopen
+_ur.urlopen = _fake_urlopen
+_dap = sa.GRIDSAT_DAP
+sa.GRIDSAT_DAP = "/nonexistent/{y}/{key}"      # offline: no OPeNDAP either
+try:
+    try:
+        sa._gridsat_open("GRIDSAT-B1.1992.08.24.03.v02r01.nc")
+    except Exception:
+        pass
+finally:
+    _ur.urlopen = _real
+    sa.GRIDSAT_DAP = _dap
+ok("NOAA's AWS copy of GridSat is asked first (a second, not a minute)",
+   tried and tried[0].startswith("https://noaa-cdr-gridsat-b1-pds.s3.amazonaws.com/data/1992/GRIDSAT-B1.1992.08.24.03"),
+   str(tried))
+
 print(f"\n{failed} FAILED, {passed} passed" if failed else f"\nall {passed} passed")
 sys.exit(1 if failed else 0)

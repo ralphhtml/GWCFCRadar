@@ -72,6 +72,7 @@ GRIDSAT_START = datetime(1980, 1, 1, tzinfo=timezone.utc)
 GRIDSAT_RE = re.compile(r"^GRIDSAT-B1\.(\d{4})\.(\d{2})\.(\d{2})\.(\d{2})\.v02r01\.nc$")
 # THREDDS (OPeNDAP) first, so only the wanted box crosses the network; the
 # plain file (about 30 MB) as the fallback.
+GRIDSAT_AWS = "https://noaa-cdr-gridsat-b1-pds.s3.amazonaws.com/data/{y}/{key}"
 GRIDSAT_DAP = "https://www.ncei.noaa.gov/thredds/dodsC/cdr/gridsat/{y}/{key}"
 GRIDSAT_HTTP = ("https://www.ncei.noaa.gov/data/geostationary-ir-channel-brightness-temperature-"
                 "gridsat-b1/access/{y}/{key}")
@@ -109,18 +110,25 @@ def frames_gridsat(at_ms, n):
 
 
 def _gridsat_open(key):
-    """An open netCDF4 dataset for one GridSat file: OPeNDAP, else the file."""
+    """An open netCDF4 dataset for one GridSat file.
+
+    NOAA's own copy on AWS first: the same files, a 40 MB one in about a
+    second, where NCEI's server took a minute or more (long enough for the
+    page to give up and show the live satellite instead of the past one).
+    NCEI's download next, and its OPeNDAP service last, since it has been
+    seen to hang rather than answer."""
     import netCDF4
     m = GRIDSAT_RE.match(key)
     y = m.group(1)
-    try:
-        return netCDF4.Dataset(GRIDSAT_DAP.format(y=y, key=key))
-    except Exception as e:
-        log(f"  gridsat dap {key}: {e}; downloading the file")
-    req = urllib.request.Request(GRIDSAT_HTTP.format(y=y, key=key), headers={"User-Agent": "gwcfc-sat-archive"})
-    with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as r:
-        raw = r.read()
-    return netCDF4.Dataset("inmem", mode="r", memory=raw)
+    for url in (GRIDSAT_AWS.format(y=y, key=key), GRIDSAT_HTTP.format(y=y, key=key)):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "gwcfc-sat-archive"})
+            with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as r:
+                raw = r.read()
+            return netCDF4.Dataset("inmem", mode="r", memory=raw)
+        except Exception as e:
+            log(f"  gridsat {url}: {e}")
+    return netCDF4.Dataset(GRIDSAT_DAP.format(y=y, key=key))
 
 
 def read_gridsat(ds, box):
@@ -138,8 +146,25 @@ def read_gridsat(ds, box):
         raise RuntimeError("that box is outside the GridSat grid")
     var = ds.variables[vk]
     sl = (slice(int(iy[0]), int(iy[-1]) + 1), slice(int(ix[0]), int(ix[-1]) + 1))
-    arr = var[(0,) + sl] if var.ndim == 3 else var[sl]
-    vals = np.ma.filled(np.ma.asarray(arr, dtype=np.float32), np.nan)
+    # Read the packed integers and unpack them here. The file gives its
+    # valid_range in kelvin (140 to 375) but netCDF4 checks it against the
+    # PACKED numbers (8954 is 289.5 K), so with automatic masking on every
+    # real pixel was thrown away as out of range and the picture came back
+    # empty.
+    try:
+        var.set_auto_maskandscale(False)
+    except Exception:
+        pass
+    raw = np.asarray(var[(0,) + sl] if var.ndim == 3 else var[sl])
+    if np.issubdtype(raw.dtype, np.integer):
+        fill = getattr(var, "_FillValue", getattr(var, "missing_value", None))
+        scale = float(getattr(var, "scale_factor", 1.0))
+        offset = float(getattr(var, "add_offset", 0.0))
+        vals = raw.astype(np.float32) * scale + offset
+        if fill is not None:
+            vals[raw == np.asarray(fill).astype(raw.dtype)] = np.nan
+    else:
+        vals = np.asarray(raw, dtype=np.float32)
     vals = np.where((vals > 150) & (vals < 340), vals, np.nan)
     return vals, lat[sl[0]], lon[sl[1]]
 KEY_RE = re.compile(
