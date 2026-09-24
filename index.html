@@ -6578,6 +6578,12 @@ body.lite-mode #export-modal { display: none !important; }
   box-shadow: 0 0 10px rgba(70,224,138,0.9);
 }
 /* The MRRL network's radars: violet, so they read as a different network. */
+/* Each 3D panel's own playbar, under its controls. */
+.p3d-playbar { display: flex; align-items: center; gap: 6px; padding: 6px 10px 2px; }
+.p3d-playbar .p3d-scrub { flex: 1; accent-color: var(--accent2); cursor: pointer; }
+.p3d-playbar .p3d-scrub:disabled { opacity: 0.35; cursor: default; }
+.p3d-playbar .p3d-time { font-family: 'Comfortaa', sans-serif; font-size: 10px; font-weight: 700; color: var(--accent); white-space: nowrap; min-width: 64px; text-align: right; }
+.p3d-playbar .sev-play-btn:disabled { opacity: 0.35; cursor: default; }
 /* The Polygon and Radius tools' 3D button: which 3D view to open. */
 .zone3d-pick { position: fixed; z-index: 3000; display: flex; flex-direction: column; gap: 3px; min-width: 150px;
   padding: 8px; border-radius: 10px; background: rgba(8,4,4,0.94); border: 1px solid rgba(255,209,102,0.45);
@@ -46853,6 +46859,8 @@ function _m3dPanelHtml() {
     </label>
     <label class="r3d-slider-row">
       <span>Hour</span>
+      <button type="button" class="sev-play-btn" data-r="play" title="Play the forecast hours in this 3D view"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg></button>
+      <input type="number" class="sev-speed-in" data-r="speed" value="1" min="0.05" step="any" title="Type any playback speed">
       <input type="range" data-r="hour" min="0" max="120" value="0" step="3" title="Forecast hour">
       <span data-r="hour-label">F+000</span>
     </label>
@@ -46922,6 +46930,10 @@ async function openModel3D(lat, lng, opts) {
     cv.addEventListener('wheel', e => { e.preventDefault(); _m3d.dist = Math.max(1.4, Math.min(8, _m3d.dist * Math.exp(e.deltaY * 0.001))); _m3dDraw(); }, { passive: false });
     // The same two bars as every other 3D panel: zoom up the right side,
     // turn along the bottom. Pushed up is closer; the turn is in degrees.
+    // Model 3D's own playback: each forecast hour is cut out of the model
+    // run in turn, the next asked for only once this one has drawn.
+    q('play').onclick = ev => { ev.preventDefault(); _m3dPlayToggle(); };
+    q('speed').oninput = e => { const v = parseFloat(e.target.value); if (v > 0) _m3d.speed = v; };
     q('zoom').oninput = e => { _m3d.dist = 8 - (+e.target.value / 1000) * (8 - 1.4); _m3dDraw(); };
     q('yaw').oninput = e => { _m3d.yaw = +e.target.value * Math.PI / 180; _m3d.spin = false; q('spin').classList.remove('on'); _m3dDraw(); };
     if (typeof _makeDraggable === 'function') { try { _makeDraggable(el, el.querySelector('.xs-head')); } catch (e) {} }
@@ -46990,7 +47002,29 @@ function _m3dRectSync() {
   } catch (e) { _m3dRect = null; }
 }
 function _m3dRectRemove() { if (_m3dRect) { try { map.removeLayer(_m3dRect); } catch (e) {} _m3dRect = null; } }
+function _m3dPlayToggle(on) {
+  if (!_m3d) return;
+  const want = on == null ? !_m3d.playing : !!on;
+  _m3d.playing = want;
+  const b = _m3d.q('play');
+  if (b) b.innerHTML = `<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-${want ? 'pause' : 'play'}></use></svg>`;
+  if (!want) { clearTimeout(_m3d.playT); return; }
+  // Playing its own hours: the map chart no longer steers the hour.
+  if (_m3d.follow) _m3dFollow(false);
+  const step = async () => {
+    if (!_m3d.playing || !_m3d.el.classList.contains('open')) { _m3dPlayToggle(false); return; }
+    const h = _m3d.q('hour'), t0 = performance.now();
+    const next = +h.value + (+h.step || 3);
+    h.value = String(next > +h.max ? 0 : next);
+    _m3dLabels();
+    try { await _m3dLoad(); } catch (e) {}
+    if (!_m3d.playing) return;
+    _m3d.playT = setTimeout(step, Math.max(20, 800 / (_m3d.speed || 1) - (performance.now() - t0)));
+  };
+  step();
+}
 function _m3dClose() {
+  if (_m3d && _m3d.playing) _m3dPlayToggle(false);
   _m3dRectRemove();
   if (!_m3d) return;
   _m3d.el.classList.remove('open', 'fullscreen');
@@ -49136,8 +49170,6 @@ function _stopRAF() {
 // In composite mode we check radar frames; in single-site/vel/sat modes those have their own
 // ready state and we just allow play (their loaders handle the wait).
 function _animationReady() {
-  if (typeof _r3dOn !== 'undefined' && _r3dOn) return _r3dFrames.length > 1;
-  if (typeof _s3dOn !== 'undefined' && _s3dOn) return _s3dFrames.length > 1;
   if (_l2LoopActive()) return true;
   if (_prLoopActive()) return true;
   if (typeof _mrmsLoopActive === 'function' && _mrmsLoopActive()) return true;
@@ -49173,13 +49205,8 @@ function _animSource() {
     first: first || 0,
   });
   try {
-    // An open Radar 3D panel owns the bar outright: it is the thing being
-    // watched, and its own bottom timebar is gone - the bar IS its playback.
-    if (typeof _r3dOn !== 'undefined' && _r3dOn)
-      return mk('r3d', _r3dFrames.map(f => new Date(f.time)), Math.max(0, _r3dFrameIdx));
-    // Satellite 3D the same way: its scans are the bar's frames.
-    if (typeof _s3dOn !== 'undefined' && _s3dOn)
-      return mk('s3d', _s3dFrames.map(f => new Date(f.t)), Math.max(0, _s3dIdx));
+    // The 3D panels play on their own playbars (_p3dPlaybar), not this one:
+    // this bar is the map's.
     if (typeof _l2LoopActive === 'function' && _l2LoopActive())
       return mk('l2', _l2Loop.frames.map(f => new Date(f.time)), _l2Loop.idx);
     if (typeof _prLoopActive === 'function' && _prLoopActive())
@@ -49545,25 +49572,7 @@ function setAnimSpeed(val) {
 function cycleSpeed() {} // kept for compat
 
 function stepFrame(dir, quiet) {
-  if (typeof _r3dOn !== 'undefined' && _r3dOn) {
-    if (_r3dFrames.length > 1) {
-      // While PLAYING (quiet steps), warm the frame cache first, the way
-      // the panel's own loop used to: a step onto an unmarched frame
-      // would otherwise stall the loop a few hundred ms per step. A
-      // manual step button takes the single march without complaint.
-      if (quiet && typeof _r3dWarmNeeded === 'function' && _r3dWarmNeeded()) {
-        if (!_r3dRendering && !_r3dWarmBusy) {
-          _r3dWarmBusy = true;
-          _r3dWarmOne().then(() => { _r3dWarmBusy = false; });
-        }
-      } else {
-        const n = _r3dFrames.length;
-        _r3dSetFrame((_r3dFrameIdx + dir + n) % n);
-      }
-    }
-  } else if (typeof _s3dOn !== 'undefined' && _s3dOn) {
-    const n = _s3dFrames.length;
-    if (n) _s3dSetFrame((_s3dIdx + dir + n) % n);
+  if (false) {
   } else if (_l2LoopActive()) {
     const n = _l2Loop.frames.length;
     _l2LoopShow((_l2Loop.idx + dir + n) % n);
@@ -49605,9 +49614,7 @@ function stepFrame(dir, quiet) {
   if (!quiet) { try { _syncAnimbarTrack(); } catch (e) {} }
 }
 function seekFrame(idx) {
-  if (typeof _r3dOn !== 'undefined' && _r3dOn) { if (_r3dFrames.length) _r3dSetFrame(idx); }
-  else if (typeof _s3dOn !== 'undefined' && _s3dOn) { if (_s3dFrames.length) _s3dSetFrame(idx); }
-  else if (_l2LoopActive()) _l2LoopShow(idx);
+  if (_l2LoopActive()) _l2LoopShow(idx);
   else if (_prLoopActive()) _prLoopShow(idx);
   else if (typeof _mrmsLoopActive === 'function' && _mrmsLoopActive()) _mrmsLoopShow(idx);
   else if (activeLayers.satellite) { if (goesFrames.length) showGoesFrame(idx); }
@@ -72178,6 +72185,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-z', date: 'Sep 24, 2026',
+    text: "Every 3D panel has its own playbar now, right under its controls: play, a speed box, a scrubber and the frame's time. A 3D view plays only on that bar; the animation bar at the bottom of the map goes back to moving just the map, so you can watch the map loop and hold a 3D view still (or the other way round). Radar 3D and Satellite 3D step through their own volumes and scans, each layer's 3D steps through that layer's frames and reads each one in, and Model 3D's Hour row has a play button and speed box that walk the forecast hours." },
   { id: '2026-09-24-y', date: 'Sep 24, 2026',
     text: "The map menu has one Model 3D row now: Draw a 3D model zone, where you drag out the box yourself. The old 3D model volume here row (a fixed-size box around where you pressed) is gone, and the model chart it would show is named on the new row instead. And no 3D zone has a size limit any more: Radar 3D, Satellite 3D, Model 3D and every layer's 3D can be drawn as big as you like (only a tiny accidental drag is still ignored). A very big box is simply drawn a little coarser." },
   { id: '2026-09-24-x', date: 'Sep 24, 2026',
@@ -78496,22 +78505,34 @@ function _r3dTmSync() {
 // every other source: _animSource / stepFrame / seekFrame know about the
 // 3D frames, so play, the step buttons, the scrub track and the labels
 // all drive the volume. This just tells the bar the frame list changed.
+// Radar 3D plays on its own playbar, inside the panel (_p3dPlaybar); the
+// map's animation bar no longer drives it.
+let _r3dPlaybar = null;
+function _r3dPlaybarEl() {
+  if (_r3dPlaybar) return _r3dPlaybar;
+  const panel = document.getElementById('r3d-panel');
+  if (!panel) return null;
+  _r3dPlaybar = _p3dPlaybar({
+    n: () => _r3dFrames.length, i: () => Math.max(0, _r3dFrameIdx),
+    go: i => _r3dSetFrame(i), alive: () => _r3dOn,
+    label: i => { const f = _r3dFrames[i]; return f && f.time ? _fmtHHMM(new Date(f.time)) + ` · ${i + 1}/${_r3dFrames.length}` : ''; },
+    empty: () => _r3dBuilding ? 'loading frames…' : '',
+    // A step onto an unmarched frame would stall the loop a few hundred ms,
+    // so while playing the frame cache is warmed first, one frame a step.
+    before: () => (typeof _r3dWarmNeeded === 'function' && _r3dWarmNeeded() && !_r3dRendering) ? _r3dWarmOne() : null,
+  });
+  const top = panel.querySelector('.p3d-top');
+  if (top) top.after(_r3dPlaybar); else panel.prepend(_r3dPlaybar);
+  return _r3dPlaybar;
+}
 function _r3dUpdateSlider() {
-  if (typeof _refreshPlayButtonsEnabled === 'function') _refreshPlayButtonsEnabled();
-  try { _syncAnimbarTrack(); } catch (e) {}
+  const pb = _r3dPlaybarEl();
+  if (pb) { if (!_r3dOn) pb._stop(); pb._sync(); }
 }
 function _r3dSetFrame(idx) {
   if (!_r3dFrames.length) return;
   _r3dFrameIdx = Math.max(0, Math.min(_r3dFrames.length - 1, idx));
-  const tl = document.getElementById('timeline');
-  if (tl) tl.value = String(_r3dFrameIdx);
-  const at = document.getElementById('anim-time');
-  if (at) {
-    try {
-      const f = _r3dFrames[_r3dFrameIdx];
-      if (f && f.time) { at.textContent = _fmtHHMM(new Date(f.time)); at.style.visibility = 'visible'; }
-    } catch (e) {}
-  }
+  if (_r3dPlaybar) _r3dPlaybar._sync();
   _r3dDirty = true;
 }
 let _r3dWarmBusy = false;
@@ -87235,22 +87256,29 @@ function _s3dRectRemove() {
 }
 
 // -- The animation bar ----------------------------------------------------
+// Satellite 3D plays on its own playbar too.
+let _s3dPlaybar = null;
+function _s3dPlaybarEl() {
+  if (_s3dPlaybar) return _s3dPlaybar;
+  const panel = document.getElementById('s3d-panel');
+  if (!panel) return null;
+  _s3dPlaybar = _p3dPlaybar({
+    n: () => _s3dFrames.length, i: () => Math.max(0, _s3dIdx),
+    go: i => _s3dSetFrame(i), alive: () => _s3dOn,
+    label: i => { const f = _s3dFrames[i]; return f && f.t ? _fmtHHMM(new Date(f.t)) + ` · ${i + 1}/${_s3dFrames.length}` : ''; },
+  });
+  const top = panel.querySelector('.p3d-top');
+  if (top) top.after(_s3dPlaybar); else panel.prepend(_s3dPlaybar);
+  return _s3dPlaybar;
+}
 function _s3dUpdateBar() {
-  if (typeof _refreshPlayButtonsEnabled === 'function') { try { _refreshPlayButtonsEnabled(); } catch (e) {} }
-  try { _syncAnimbarTrack(); } catch (e) {}
+  const pb = _s3dPlaybarEl();
+  if (pb) { if (!_s3dOn) pb._stop(); pb._sync(); }
 }
 function _s3dSetFrame(idx) {
   if (!_s3dFrames.length) return;
   _s3dIdx = Math.max(0, Math.min(_s3dFrames.length - 1, idx));
-  const tl = document.getElementById('timeline');
-  if (tl) tl.value = String(_s3dIdx);
-  const at = document.getElementById('anim-time');
-  if (at) {
-    try {
-      const f = _s3dFrames[_s3dIdx];
-      if (f && f.t) { at.textContent = _fmtHHMM(new Date(f.t)); at.style.visibility = 'visible'; }
-    } catch (e) {}
-  }
+  if (_s3dPlaybar) _s3dPlaybar._sync();
   _s3dSayFrame();
   _s3dDirty = true;
 }
@@ -88670,6 +88698,56 @@ function _p3dSnapshot(canvas, name) {
 // it changes. Watching that one line is how the layer panels follow
 // playback frame by frame, whatever layer is playing, without each layer
 // needing its own hook.
+// -- Each 3D panel's own playbar ------------------------------------------
+// Play, a typed speed, a scrubber and the time, inside the panel. A 3D view
+// plays only on this bar: the map's animation bar at the bottom drives the
+// map and nothing in 3D. `api` says how many frames there are, which one is
+// showing, how to show one (may return a promise: the next step waits for
+// it), what to call it, and whether the panel is still open. `before` may
+// return a promise to wait on instead of stepping (Radar 3D warms its frame
+// cache that way, so playback does not stutter).
+function _p3dPlaybar(api) {
+  const el = document.createElement('div');
+  el.className = 'p3d-playbar';
+  el.innerHTML = '<button type="button" class="sev-play-btn p3d-play" title="Play this 3D view"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg></button>'
+    + '<input type="number" class="sev-speed-in p3d-speed" value="1" min="0.05" step="any" title="Type any playback speed">'
+    + '<input type="range" class="p3d-scrub" min="0" max="0" value="0" step="1" title="Frames">'
+    + '<span class="p3d-time"></span>';
+  const play = el.querySelector('.p3d-play'), speedIn = el.querySelector('.p3d-speed'),
+        scrub = el.querySelector('.p3d-scrub'), time = el.querySelector('.p3d-time');
+  let playing = false, timer = null, speed = 1;
+  const icon = on => { play.innerHTML = `<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-${on ? 'pause' : 'play'}></use></svg>`; };
+  const sync = () => {
+    const n = Math.max(0, api.n() | 0), i = Math.max(0, Math.min(n - 1, api.i() | 0));
+    scrub.max = String(Math.max(0, n - 1));
+    if (document.activeElement !== scrub) scrub.value = String(i);
+    scrub.disabled = n < 2; play.disabled = n < 2;
+    time.textContent = n ? (api.label(i) || '') : (api.empty ? api.empty() : '');
+    if (n < 2 && playing) stop();
+  };
+  const stop = () => { playing = false; clearTimeout(timer); timer = null; icon(false); };
+  const tick = async () => {
+    if (!playing) return;
+    if (!api.alive() || api.n() < 2) { stop(); return; }
+    const t0 = performance.now();
+    try {
+      const w = api.before ? api.before() : null;
+      if (w) { await w; }
+      else { await api.go((api.i() + 1) % api.n()); }
+    } catch (e) {}
+    sync();
+    if (!playing) return;
+    const gap = Math.max(20, 600 / speed - (performance.now() - t0));
+    timer = setTimeout(tick, gap);
+  };
+  play.onclick = () => { if (playing) { stop(); return; } if (api.n() < 2) return; playing = true; icon(true); tick(); };
+  speedIn.oninput = () => { const v = parseFloat(speedIn.value); if (v > 0) speed = v; };
+  scrub.oninput = async () => { stop(); try { await api.go(+scrub.value); } catch (e) {} sync(); };
+  ['pointerdown', 'wheel', 'keydown'].forEach(ev => el.addEventListener(ev, e => e.stopPropagation()));
+  el._sync = sync; el._stop = stop; el._playing = () => playing;
+  sync();
+  return el;
+}
 let _p3dFrameObs = null, _p3dFrameT = 0;
 function _p3dWatchFrames() {
   if (_p3dFrameObs || typeof MutationObserver !== 'function') return;
@@ -88679,7 +88757,7 @@ function _p3dWatchFrames() {
     const now = Date.now();
     if (now - _p3dFrameT < 120) return;
     _p3dFrameT = now;
-    Object.values(_l3dPanels).forEach(p => { if (p.on) p.resample(false); });
+    Object.values(_l3dPanels).forEach(p => { if (p.on) { p.resample(false); if (p.playbar) p.playbar._sync(); } });
   });
   _p3dFrameObs.observe(el, { childList: true, characterData: true, subtree: true });
 }
@@ -89181,7 +89259,33 @@ class Layer3DPanel {
     p.innerHTML = _l3dPanelHtml(this.spec);
     document.body.appendChild(p);
     this.panel = p;
+    // Its own playbar: the frames of the layer being played on the map.
+    // A layer's 3D is a picture of that layer, so stepping here shows that
+    // frame of the layer and reads it into 3D; moving the map's own bar
+    // leaves this view where it is (see holding()).
+    this.playbar = _p3dPlaybar({
+      n: () => { const s = _animSource(); return s.times.length; },
+      i: () => (this.hold != null ? this.hold : _animSource().idx),
+      go: i => this.showFrame(i), alive: () => this.on,
+      label: i => { const t = _animSource().times[i]; return t ? _fmtHHMM(t) + ` · ${i + 1}/${_animSource().times.length}` : ''; },
+      empty: () => 'this layer has no frames to play',
+    });
+    const top = p.querySelector('.p3d-top');
+    if (top) top.after(this.playbar); else p.prepend(this.playbar);
     this.wire();
+  }
+  // Shows frame i of the layer, then reads it into 3D once it has painted.
+  showFrame(i) {
+    this.hold = i;
+    try { seekFrame(i); } catch (e) {}
+    return new Promise(res => setTimeout(() => { this.resample(true); res(); }, 350));
+  }
+  // True while the map's bar has been moved off this panel's own frame:
+  // the view then holds its picture instead of following the map.
+  holding() {
+    if (this.hold == null) return false;
+    const s = _animSource();
+    return s.times.length > 1 && s.idx !== this.hold;
   }
 
   openBounds(south, west, north, east) {
@@ -89215,6 +89319,9 @@ class Layer3DPanel {
     this.ground = null; this._fk = null; this.drape = null; this.drapeKey = '';
     this.dirty = true;
     if (!this.ticking) { this.ticking = true; requestAnimationFrame(this.tick); }
+    // It opens on whatever frame the map shows, and keeps that one.
+    try { const s0 = _animSource(); this.hold = s0.times.length > 1 ? s0.idx : null; } catch (e) { this.hold = null; }
+    if (this.playbar) this.playbar._sync();
     this.load();
     _p3dWatchFrames();
     clearInterval(this.resampleTimer);
@@ -89224,6 +89331,8 @@ class Layer3DPanel {
   close() {
     this.on = false;
     this.gen++;
+    if (this.playbar) this.playbar._stop();
+    this.hold = null;
     clearInterval(this.resampleTimer); this.resampleTimer = null;
     this.panel.classList.remove('open', 'big', 'fullscreen');
     this.rectRemove();
@@ -89266,6 +89375,7 @@ class Layer3DPanel {
   // so a still layer costs one read and nothing more.
   resample(force) {
     if (!this.on || !this.zone) return;
+    if (!force && this.holding()) return;
     const ak = String(this.airLevel()) + (this.spec.id === 'ocean' && typeof _lvlFor === 'function' ? '|' + _lvlFor('ocean') : '');
     if (this.ground && ak !== this._airKey) {
       this._airKey = ak; this.colours = null; this.fitExag(); this.sayWhere(); this.dirty = true; force = true;

@@ -42,10 +42,9 @@ console.log('\n1. the panel: a zone picker and volumetric controls, no toolbar b
      PAGE.includes('id="r3d-site"'));
   ok('it keeps the two sliders: Show above and Up to',
      PAGE.includes('id="r3d-filter"') && PAGE.includes('id="r3d-height"'));
-  ok('the panel has NO timebar of its own: the map\'s one animation bar drives 3D playback',
-     !PAGE.includes('id="r3d-play"') && !PAGE.includes('id="r3d-slider"')
-     && !PAGE.includes('id="r3d-time-label"')
-     && /return mk\('r3d', _r3dFrames\.map\(f => new Date\(f\.time\)\), Math\.max\(0, _r3dFrameIdx\)\);/.test(PAGE));
+  ok('the panel plays on its own playbar; the map\'s animation bar no longer drives 3D',
+     /function _p3dPlaybar\(api\)/.test(PAGE) && /_r3dPlaybar = _p3dPlaybar\(/.test(PAGE)
+     && !/return mk\('r3d'/.test(PAGE) && !/return mk\('s3d'/.test(PAGE));
   ok('the double-click/long-press map menu has a row that starts drawing a zone',
      /_cmRadar3DDraw\(\)/.test(PAGE) && /Draw a 3D radar zone/.test(PAGE));
   ok('the renderer marches the radar\'s own polar volume, in workers',
@@ -1497,7 +1496,7 @@ console.log('\n11c. a black gradient panel with gold gradient text, inside the b
      r.labels > 0 && r.allGradient, JSON.stringify({ labels: r.labels, allGradient: r.allGradient }));
 }
 
-console.log('\n13. playback: the map\'s animation bar drives it, over a frame cache that copies rather than marches');
+console.log('\n13. playback: the panel\'s own playbar drives it (never the map\'s bar), over a frame cache that copies rather than marches');
 {
   const r = await p.evaluate(async () => {
     _r3dOpen('kfws');
@@ -1514,12 +1513,12 @@ console.log('\n13. playback: the map\'s animation bar drives it, over a frame ca
     _r3dFrameIdx = 0;
     _r3dQuality = 'fine';
     _r3dUpdateSlider();
-    // With the panel open, the ONE animation bar belongs to the volume.
+    // The map's bar stays the map's; the panel's own playbar has the volume.
     out.srcId = _animSource().id;
-    out.srcN = _animSource().times.length;
-    out.ready = _animationReady();
-    out.playEnabled = !document.getElementById('play-btn').disabled;
-    out.tlMax = document.getElementById('timeline').max;
+    const pb = document.querySelector('#r3d-panel .p3d-playbar');
+    out.pbAfterTop = !!pb && pb.previousElementSibling && pb.previousElementSibling.classList.contains('p3d-top');
+    out.playEnabled = !!pb && !pb.querySelector('.p3d-play').disabled;
+    out.tlMax = pb ? pb.querySelector('.p3d-scrub').max : '';
     let paints = 0;
     const orig = _r3dPaint;
     _r3dPaint = function () { paints++; return orig.apply(this, arguments); };
@@ -1542,31 +1541,38 @@ console.log('\n13. playback: the map\'s animation bar drives it, over a frame ca
     await R();
     out.paintsAfterMove = paints;
     _r3dPaint = orig;
-    // The bar's own step button moves the volume one frame.
+    // The map's step button and scrubber leave the volume alone now.
     _r3dSetFrame(0);
-    document.getElementById('step-fwd-btn').click();
+    try { document.getElementById('step-fwd-btn').click(); } catch (e) {}
+    try { seekFrame(1); } catch (e) {}
+    out.mapBarMoved = _r3dFrameIdx;
+    // The panel's scrubber seeks it.
+    const scrub = pb.querySelector('.p3d-scrub');
+    scrub.value = '1'; scrub.dispatchEvent(new Event('input'));
+    await new Promise(res => setTimeout(res, 50));
     out.stepped = _r3dFrameIdx;
     // And its play button runs the loop (warming the moved view first).
-    const play = document.getElementById('play-btn');
+    const play = pb.querySelector('.p3d-play');
     play.click();
-    out.playing = playing;
+    out.playing = pb._playing();
     const seen = new Set();
     const t0 = Date.now();
-    while (Date.now() - t0 < 3000) { seen.add(_r3dFrameIdx); await new Promise(res => setTimeout(res, 50)); }
+    while (Date.now() - t0 < 4000) { seen.add(_r3dFrameIdx); await new Promise(res => setTimeout(res, 50)); }
     out.seenBoth = seen.has(0) && seen.has(1);
     play.click();
-    out.stopped = !playing;
-    // Scrubbing the bar seeks the volume.
-    seekFrame(0);
+    out.stopped = !pb._playing();
+    out.label = pb.querySelector('.p3d-time').textContent;
+    scrub.value = '0'; scrub.dispatchEvent(new Event('input'));
+    await new Promise(res => setTimeout(res, 50));
     out.sought = _r3dFrameIdx;
     _r3dClose();
     out.srcAfterClose = _animSource().id;
     return out;
   });
-  ok('with the panel open, the animation bar\'s source IS the volume, both frames on it',
-     r.srcId === 'r3d' && r.srcN === 2 && r.ready === true, JSON.stringify(r));
-  ok('the bar\'s play button is enabled and the track spans the frames',
-     r.playEnabled === true && r.tlMax === '1', JSON.stringify([r.playEnabled, r.tlMax]));
+  ok('with the panel open, the map\'s animation bar is still the map\'s', r.srcId !== 'r3d', JSON.stringify(r));
+  ok('the panel\'s own playbar sits under its controls, play enabled, spanning both frames',
+     r.pbAfterTop && r.playEnabled === true && r.tlMax === '1', JSON.stringify([r.pbAfterTop, r.playEnabled, r.tlMax]));
+  ok('the map\'s step button and scrubber do not move the volume', r.mapBarMoved === 0, String(r.mapBarMoved));
   ok('the first render marches', r.firstPaints === 1, String(r.firstPaints));
   ok('the same view again is a copy from the cache, not a march', r.secondPaints === 1, String(r.secondPaints));
   ok('the box top is the tallest frame, so it stands still through playback',
@@ -1575,12 +1581,12 @@ console.log('\n13. playback: the map\'s animation bar drives it, over a frame ca
      JSON.stringify([r.warm1, r.warm2, r.paintsAfterWarm]));
   ok('so stepping to it is a copy too', r.paintsAfterBlit === 2, String(r.paintsAfterBlit));
   ok('moving the camera misses the cache and marches again', r.paintsAfterMove === 3, String(r.paintsAfterMove));
-  ok('the bar\'s step button moves the volume one frame', r.stepped === 1, String(r.stepped));
-  ok('the bar\'s play button starts the loop, it genuinely cycles the frames, and stops',
+  ok('the playbar\'s scrubber moves the volume', r.stepped === 1, String(r.stepped));
+  ok('its play button starts the loop, it genuinely cycles the frames, and stops',
      r.playing === true && r.seenBoth === true && r.stopped === true,
      JSON.stringify([r.playing, r.seenBoth, r.stopped]));
-  ok('scrubbing the bar seeks the volume', r.sought === 0, String(r.sought));
-  ok('closing the panel hands the bar back', r.srcAfterClose !== 'r3d', String(r.srcAfterClose));
+  ok('it names the frame it is on', /\d\/2$/.test(r.label), r.label);
+  ok('scrubbing back seeks the volume', r.sought === 0, String(r.sought));
 }
 
 console.log('\n14. the Time Machine: a travelled radar loads its 3D volume from the tape archive');

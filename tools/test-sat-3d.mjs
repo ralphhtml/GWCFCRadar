@@ -211,28 +211,42 @@ console.log('\n2. the menu row draws a zone, and the zone opens Satellite 3D');
   ok('the drawing tool goes back to meaning Radar 3D afterwards', r.after === 'r3d');
 }
 
-console.log('\n3. the scans land on the animation bar, newest first then the rest');
+console.log('\n3. the scans land on the panel\'s own playbar, newest first then the rest');
 {
   await p.waitForFunction(() => _s3dFrames.length === 6, null, { timeout: 20000 }).catch(() => {});
   const r = await p.evaluate(() => ({
     n: _s3dFrames.length, idx: _s3dIdx, t: _s3dFrames.map(f => f.t),
-    src: _animSource(), ready: _animationReady(),
+    src: _animSource(), pbMax: (document.querySelector('#s3d-panel .p3d-playbar .p3d-scrub') || {}).max,
+    pbLabel: (document.querySelector('#s3d-panel .p3d-playbar .p3d-time') || {}).textContent,
     status: document.getElementById('s3d-status').textContent,
     where: document.getElementById('s3d-where').textContent,
     top: _s3dFrames[_s3dIdx] && _s3dFrames[_s3dIdx].data.maxKm,
   }));
   ok('all six scans loaded, oldest first', r.n === 6 && r.t.every((t, i) => !i || t > r.t[i - 1]), JSON.stringify(r.t));
   ok('the newest is on screen', r.idx === 5);
-  ok('the bar knows them as Satellite 3D\'s frames', r.src.id === 's3d' && r.src.times.length === 6 && r.ready);
+  ok('the panel\'s playbar has them, the map\'s bar does not', r.src.id !== 's3d' && r.pbMax === '5' && /6\/6$/.test(r.pbLabel || ''), JSON.stringify([r.src.id, r.pbMax, r.pbLabel]));
   ok('the index and every frame asked for the drawn box', asked.index.length >= 1
      && /south=[\d.]+&west=-[\d.]+&north=[\d.]+&east=-[\d.]+/.test(asked.index[0])
      && asked.frame.length >= 6 && asked.frame.every(u => /bucket=noaa-goes19/.test(u) && /sector=conus/.test(u)));
   ok('the status says where the heights came from and how tall', /NOAA cloud-top heights \+ IR/.test(r.status)
      && /tops to 43 kft/.test(r.status), r.status);
   ok('the header names the satellite and the box', /GOES-East/.test(r.where) && /CONUS/.test(r.where) && /km/.test(r.where), r.where);
-  const s = await p.evaluate(() => { stepFrame(-1); const a = _s3dIdx; seekFrame(1); const b2 = _s3dIdx;
-    stepFrame(1); return { a, b: b2, c: _s3dIdx }; });
-  ok('stepping and seeking the bar moves the scans', s.a === 4 && s.b === 1 && s.c === 2, JSON.stringify(s));
+  const s = await p.evaluate(async () => {
+    try { stepFrame(-1); seekFrame(1); } catch (e) {}
+    const mapBar = _s3dIdx;
+    const sc = document.querySelector('#s3d-panel .p3d-playbar .p3d-scrub');
+    sc.value = '1'; sc.dispatchEvent(new Event('input'));
+    await new Promise(res => setTimeout(res, 30));
+    const b2 = _s3dIdx;
+    const play = document.querySelector('#s3d-panel .p3d-playbar .p3d-play');
+    play.click();
+    await new Promise(res => setTimeout(res, 1500));
+    const moved = _s3dIdx;
+    play.click();
+    return { mapBar, b: b2, moved };
+  });
+  ok('the map\'s bar leaves the scans alone; the panel\'s scrubber and play move them',
+     s.mapBar === 5 && s.b === 1 && s.moved > 1, JSON.stringify(s));
 }
 
 console.log('\n4. the rasterizer draws the surface, cloud above ground, nearest wins');
@@ -494,7 +508,7 @@ console.log('\n7c. no parsing server at all: the browser builds the heights from
   });
   piDown = false; ch13Split = false;
   ok('six frames were built with no parsing server, straight from the map service', r.n === 6
-     && r.src === 'map-ir' && r.bar === 's3d', JSON.stringify(r));
+     && r.src === 'map-ir' && r.bar !== 's3d', JSON.stringify(r));
   ok('cold cloud stands tall (about 17 km) and warm ground stays flat', r.left > 14 && r.left <= 18 && r.right === 0,
      r.left + ' / ' + r.right);
   ok('the frames are ten minutes apart, oldest first', r.times.every((t, i) => !i || t - r.times[i - 1] === 600000),
