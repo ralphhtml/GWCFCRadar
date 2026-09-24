@@ -186,6 +186,29 @@ console.log('\n4. drawing');
   await p.evaluate(() => document.querySelector('#m3d-panel [data-r="big"]').click());
 }
 
+console.log('\n4b. the zoom bar and the turn bar, like every other 3D panel');
+{
+  const r = await p.evaluate(() => {
+    const z = document.querySelector('#m3d-panel .r3d-cam-zoom input'), y = document.querySelector('#m3d-panel .r3d-cam-move input');
+    if (!z || !y) return { have: false };
+    const d0 = _m3d.dist;
+    z.value = '1000'; z.dispatchEvent(new Event('input'));
+    const near = _m3d.dist;
+    y.value = '90'; y.dispatchEvent(new Event('input'));
+    const yaw = _m3d.yaw;
+    _m3d.dist = 8; _m3d.yaw = -Math.PI / 2; _m3dDraw();
+    return { have: true, d0, near, yaw, zAfter: z.value, yAfter: y.value,
+      all: ['#r3d-panel', '#s3d-panel', '.l3d-panel', '#m3d-panel'].every(sel => {
+        const el = document.querySelector(sel); return !el || (el.querySelector('.r3d-cam-zoom input') && el.querySelector('.r3d-cam-move input')); }),
+      r3d: !!document.querySelector('#r3d-panel .r3d-cam-zoom input') && !!document.querySelector('#s3d-panel .r3d-cam-move input') };
+  });
+  ok('Model 3D has both bars', r.have, JSON.stringify(r));
+  ok('the zoom bar pushed up brings the camera closest', Math.abs(r.near - 1.4) < 1e-9 && r.near < r.d0, JSON.stringify(r));
+  ok('the turn bar turns it', Math.abs(r.yaw - Math.PI / 2) < 1e-9, JSON.stringify(r));
+  ok('and both follow a drag or a wheel', r.zAfter === '0' && r.yAfter === '-90', JSON.stringify(r));
+  ok('Radar, Satellite, Layer and Model 3D all carry both', r.all && r.r3d, JSON.stringify(r));
+}
+
 console.log('\n5. hours, size, closing');
 {
   asked.length = 0;
