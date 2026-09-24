@@ -3949,7 +3949,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
    default is a compact draggable card in the corner, with the skew-T at a
    readable size and the numbers that matter under it, and a button to expand
    it when a proper look is wanted. */
-#snd-panel, #mtg-panel, #ensx-panel {
+#snd-panel, #mtg-panel, #ensx-panel, #ensl-panel {
   /* -- The panel's palette IS the radar's palette --------------------------
      Every colour below is lifted straight out of the NWS reflectivity table
      this app already paints radar with (NWS_DBZ_META, further down the file),
@@ -3996,24 +3996,24 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   max-height: calc(100vh - 160px);
   overflow: hidden auto;
 }
-#snd-panel.open, #mtg-panel.open, #ensx-panel.open { display: block; animation: sndIn 0.22s cubic-bezier(.2,.9,.3,1); }
+#snd-panel.open, #mtg-panel.open, #ensx-panel.open, #ensl-panel.open { display: block; animation: sndIn 0.22s cubic-bezier(.2,.9,.3,1); }
 @keyframes sndIn {
   from { opacity: 0; transform: translateY(10px) scale(0.985); }
   to   { opacity: 1; transform: none; }
 }
 /* An expanded panel is centred, and centring is a transform, so the opening
    animation must not fight it by animating transform too. */
-#snd-panel.big.open, #mtg-panel.big.open, #ensx-panel.big.open { animation: sndFade 0.2s ease; }
+#snd-panel.big.open, #mtg-panel.big.open, #ensx-panel.big.open, #ensl-panel.big.open { animation: sndFade 0.2s ease; }
 @keyframes sndFade { from { opacity: 0; } to { opacity: 1; } }
 
 /* Expanded: still a panel, just a big one, so the map is never fully gone. */
-#snd-panel.big, #mtg-panel.big, #ensx-panel.big {
+#snd-panel.big, #mtg-panel.big, #ensx-panel.big, #ensl-panel.big {
   right: 50%; bottom: 50%; transform: translate(50%, 50%);
   width: min(1140px, calc(100vw - 32px));
   max-height: calc(100vh - 32px); overflow: auto;
 }
-#snd-panel::-webkit-scrollbar, #mtg-panel::-webkit-scrollbar, #ensx-panel::-webkit-scrollbar { width: 10px; }
-#snd-panel::-webkit-scrollbar-thumb, #mtg-panel::-webkit-scrollbar-thumb, #ensx-panel::-webkit-scrollbar-thumb {
+#snd-panel::-webkit-scrollbar, #mtg-panel::-webkit-scrollbar, #ensx-panel::-webkit-scrollbar, #ensl-panel::-webkit-scrollbar { width: 10px; }
+#snd-panel::-webkit-scrollbar-thumb, #mtg-panel::-webkit-scrollbar-thumb, #ensx-panel::-webkit-scrollbar-thumb, #ensl-panel::-webkit-scrollbar-thumb {
   background: rgba(253,0,0,0.34); border-radius: 8px;
   border: 3px solid transparent; background-clip: padding-box;
 }
@@ -4050,20 +4050,20 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
 .snd-head-spacer { order: 5; flex: 1 1 100%; height: 0; }
 .snd-src { order: 6; }
 .snd-hour-wrap { order: 7; display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
-#snd-panel.big .snd-head, #mtg-panel.big .snd-head, #ensx-panel.big .snd-head { flex-wrap: nowrap; }
-#snd-panel.big .snd-title, #mtg-panel.big .snd-title, #ensx-panel.big .snd-title,
-#snd-panel.big .snd-where, #mtg-panel.big .snd-where, #ensx-panel.big .snd-where { order: 0; margin-right: 0; }
-#snd-panel.big .snd-head-spacer, #mtg-panel.big .snd-head-spacer, #ensx-panel.big .snd-head-spacer { order: 0; flex: 1 1 auto; height: auto; }
-#snd-panel.big .snd-src, #mtg-panel.big .snd-src, #ensx-panel.big .snd-src,
-#snd-panel.big .snd-hour-wrap, #mtg-panel.big .snd-hour-wrap, #ensx-panel.big .snd-hour-wrap { order: 0; flex: 0 0 auto; }
-#snd-panel.big .snd-big, #mtg-panel.big .snd-big, #ensx-panel.big .snd-big { order: 0; }
-#snd-panel.big .snd-x, #mtg-panel.big .snd-x, #ensx-panel.big .snd-x { order: 0; }
+#snd-panel.big .snd-head, #mtg-panel.big .snd-head, #ensx-panel.big .snd-head, #ensl-panel.big .snd-head { flex-wrap: nowrap; }
+#snd-panel.big .snd-title, #mtg-panel.big .snd-title, #ensx-panel.big .snd-title, #ensl-panel.big .snd-title,
+#snd-panel.big .snd-where, #mtg-panel.big .snd-where, #ensx-panel.big .snd-where, #ensl-panel.big .snd-where { order: 0; margin-right: 0; }
+#snd-panel.big .snd-head-spacer, #mtg-panel.big .snd-head-spacer, #ensx-panel.big .snd-head-spacer, #ensl-panel.big .snd-head-spacer { order: 0; flex: 1 1 auto; height: auto; }
+#snd-panel.big .snd-src, #mtg-panel.big .snd-src, #ensx-panel.big .snd-src, #ensl-panel.big .snd-src,
+#snd-panel.big .snd-hour-wrap, #mtg-panel.big .snd-hour-wrap, #ensx-panel.big .snd-hour-wrap, #ensl-panel.big .snd-hour-wrap { order: 0; flex: 0 0 auto; }
+#snd-panel.big .snd-big, #mtg-panel.big .snd-big, #ensx-panel.big .snd-big, #ensl-panel.big .snd-big { order: 0; }
+#snd-panel.big .snd-x, #mtg-panel.big .snd-x, #ensx-panel.big .snd-x, #ensl-panel.big .snd-x { order: 0; }
 .snd-hour-lbl {
   font-family: var(--mono); font-size: 10px; opacity: 0.75; min-width: 40px;
   font-variant-numeric: tabular-nums;
 }
 .snd-hour { width: 100%; min-width: 60px; accent-color: var(--r-red); }
-#snd-panel.big .snd-hour, #mtg-panel.big .snd-hour, #ensx-panel.big .snd-hour { width: 190px; }
+#snd-panel.big .snd-hour, #mtg-panel.big .snd-hour, #ensx-panel.big .snd-hour, #ensl-panel.big .snd-hour { width: 190px; }
 .snd-src {
   background: rgba(253,0,0,0.08); border: 1px solid rgba(253,0,0,0.3);
   color: #e8edf5; border-radius: 8px; font-size: 10px; padding: 4px 5px;
@@ -4073,7 +4073,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   font-family: var(--sans); cursor: pointer;
 }
 .snd-src:hover { background: rgba(253,0,0,0.18); border-color: rgba(253,0,0,0.5); }
-#snd-panel.big .snd-src, #mtg-panel.big .snd-src, #ensx-panel.big .snd-src { max-width: none; font-size: 11px; }
+#snd-panel.big .snd-src, #mtg-panel.big .snd-src, #ensx-panel.big .snd-src, #ensl-panel.big .snd-src { max-width: none; font-size: 11px; }
 .snd-src option { background: #14090b; color: #e8edf5; }
 .snd-x, .snd-big {
   background: rgba(253,0,0,0.08); border: 1px solid rgba(253,0,0,0.3);
@@ -4165,7 +4165,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px; padding: 0 10px 10px;
 }
-#snd-panel.big .snd-hodo-read, #mtg-panel.big .snd-hodo-read, #ensx-panel.big .snd-hodo-read { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+#snd-panel.big .snd-hodo-read, #mtg-panel.big .snd-hodo-read, #ensx-panel.big .snd-hodo-read, #ensl-panel.big .snd-hodo-read { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .snd-hodo-read:empty { display: none; }
 .snd-hr {
   background: linear-gradient(180deg, rgba(253,0,0,0.09), rgba(253,0,0,0.02));
@@ -4195,7 +4195,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 7px; padding: 0 10px 10px;
 }
-#snd-panel.big .snd-quick, #mtg-panel.big .snd-quick, #ensx-panel.big .snd-quick { display: none; }
+#snd-panel.big .snd-quick, #mtg-panel.big .snd-quick, #ensx-panel.big .snd-quick, #ensl-panel.big .snd-quick { display: none; }
 .snd-q {
   background: linear-gradient(180deg, rgba(253,0,0,0.09), rgba(253,0,0,0.02));
   border: 1px solid rgba(253,0,0,0.18);
@@ -4238,7 +4238,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   display: grid; grid-template-columns: minmax(0, 1fr);
   gap: 10px; padding: 10px;
 }
-#snd-panel.big .snd-tables, #mtg-panel.big .snd-tables, #ensx-panel.big .snd-tables {
+#snd-panel.big .snd-tables, #mtg-panel.big .snd-tables, #ensx-panel.big .snd-tables, #ensl-panel.big .snd-tables {
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 12px; padding: 10px 12px 14px;
 }
@@ -4294,7 +4294,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
 }
 /* Stretched across 1140px the four segments read as four buttons that happen
    to touch, so the track stops growing once it is comfortably wide. */
-#snd-panel.big .snd-tabs, #mtg-panel.big .snd-tabs, #ensx-panel.big .snd-tabs {
+#snd-panel.big .snd-tabs, #mtg-panel.big .snd-tabs, #ensx-panel.big .snd-tabs, #ensl-panel.big .snd-tabs {
   max-width: 780px; margin: 10px 12px 0;
   grid-template-columns: repeat(8, 1fr);
 }
@@ -4306,22 +4306,27 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
 .snd-pane[hidden] { display: none; }
 
 /* Ensemble Explorer: the sounding panel's shell, plus its own rows. */
-#ensx-panel .ensx-row { display: flex; align-items: center; gap: 6px; padding: 6px 11px 0; flex-wrap: wrap; }
-#ensx-panel .ensx-row select, #ensx-panel .ensx-row input[type=number] {
+#ensx-panel .ensx-row, #ensl-panel .ensx-row { display: flex; align-items: center; gap: 6px; padding: 6px 11px 0; flex-wrap: wrap; }
+#ensx-panel .ensx-row select, #ensx-panel .ensx-row input[type=number], #ensl-panel .ensx-row select, #ensl-panel .ensx-row input[type=number] {
   background: rgba(0,0,0,0.35); color: var(--text); border: 1px solid rgba(253,0,0,0.3); border-radius: 7px;
   padding: 3px 6px; font-size: 11px; font-family: var(--sans); max-width: 100%;
 }
-#ensx-panel .ensx-row input[type=number] { width: 70px; }
-#ensx-panel .ensx-row button {
+#ensx-panel .ensx-row input[type=number], #ensl-panel .ensx-row input[type=number] { width: 70px; }
+#ensx-panel .ensx-row button, #ensl-panel .ensx-row button {
   background: rgba(253,0,0,0.12); color: var(--text); border: 1px solid rgba(253,0,0,0.3); border-radius: 7px;
   padding: 3px 8px; font-size: 11px; cursor: pointer;
 }
-#ensx-panel .ensx-row input[type=range] { flex: 1 1 120px; accent-color: var(--r-red); }
-#ensx-panel .ensx-hl, #ensx-panel .ensx-unit, #ensx-panel .ensx-read { font-family: var(--mono); font-size: 10px; opacity: 0.8; }
-#ensx-panel .ensx-read { margin-left: auto; }
+#ensx-panel .ensx-row input[type=range], #ensl-panel .ensx-row input[type=range] { flex: 1 1 120px; accent-color: var(--r-red); }
+#ensx-panel .ensx-hl, #ensx-panel .ensx-unit, #ensx-panel .ensx-read, #ensl-panel .ensx-hl, #ensl-panel .ensx-read { font-family: var(--mono); font-size: 10px; opacity: 0.8; }
+#ensx-panel .ensx-read, #ensl-panel .ensx-read { margin-left: auto; }
 #ensx-panel .snd-tabs.ensx-modes, #ensx-panel.big .snd-tabs.ensx-modes { grid-template-columns: repeat(7, 1fr); max-width: none; }
-#ensx-panel .ensx-op { font-size: 10px; display: flex; align-items: center; gap: 6px; opacity: 0.85; }
+#ensx-panel .ensx-op, #ensl-panel .ensx-op { font-size: 10px; display: flex; align-items: center; gap: 6px; opacity: 0.85; }
 #ensx-panel .ensx-legend { padding: 8px 11px 0; }
+#ensl-panel .ensl-layer { margin: 6px 8px 0; padding-bottom: 6px; border: 1px solid rgba(253,0,0,0.18); border-radius: 10px; background: rgba(253,0,0,0.03); }
+#ensl-panel .ensl-n { font-family: var(--mono); font-size: 11px; color: var(--r-red-txt); }
+#ensl-panel .ensx-row input[type=color] { width: 28px; height: 22px; padding: 0; border: 1px solid rgba(253,0,0,0.3); border-radius: 6px; background: none; }
+#ensl-panel .ensx-op input[type=range] { width: 70px; flex: 0 0 70px; }
+#ensl-panel .ensx-op input[type=number] { width: 54px; }
 #ensx-panel .ensx-lt { font-size: 10.5px; margin-bottom: 4px; opacity: 0.9; }
 #ensx-panel .ensx-bar { height: 9px; border-radius: 4px; }
 #ensx-panel .ensx-ticks { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 9px; opacity: 0.7; margin-top: 2px; }
@@ -4340,16 +4345,16 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
 /* Meteogram: the sounding panel's shell (the rules above name both), plus a
    chart, a hover cursor and the readout under it. */
 #mtg-chart { height: 240px; cursor: crosshair; touch-action: pan-y; }
-#mtg-panel.big #mtg-chart, #ensx-panel.big #mtg-chart { height: min(62vh, 560px); }
-#mtg-panel .snd-tabs, #ensx-panel .snd-tabs { grid-template-columns: repeat(5, 1fr); }
-#mtg-panel.big .snd-tabs, #ensx-panel.big .snd-tabs { grid-template-columns: repeat(5, 1fr); max-width: 520px; }
+#mtg-panel.big #mtg-chart, #ensx-panel.big #mtg-chart, #ensl-panel.big #mtg-chart { height: min(62vh, 560px); }
+#mtg-panel .snd-tabs, #ensx-panel .snd-tabs, #ensl-panel .snd-tabs { grid-template-columns: repeat(5, 1fr); }
+#mtg-panel.big .snd-tabs, #ensx-panel.big .snd-tabs, #ensl-panel.big .snd-tabs { grid-template-columns: repeat(5, 1fr); max-width: 520px; }
 .mtg-card { position: relative; }
 .mtg-cursor { position: absolute; width: 1px; background: rgba(255,255,255,0.7); pointer-events: none; display: none; }
 .mtg-read { padding: 0 12px; font-family: var(--mono); font-size: 10px; line-height: 1.55; min-height: 16px; }
 .mtg-read b { color: var(--r-red-txt); }
 .mtg-legend { padding: 4px 12px 8px; font-size: 10px; opacity: 0.65; line-height: 1.45; }
-#mtg-panel.big .mtg-read, #ensx-panel.big .mtg-read { font-size: 12px; padding: 0 16px; }
-#mtg-panel.big .mtg-legend, #ensx-panel.big .mtg-legend { font-size: 11.5px; padding: 6px 16px 10px; }
+#mtg-panel.big .mtg-read, #ensx-panel.big .mtg-read, #ensl-panel.big .mtg-read { font-size: 12px; padding: 0 16px; }
+#mtg-panel.big .mtg-legend, #ensx-panel.big .mtg-legend, #ensl-panel.big .mtg-legend { font-size: 11.5px; padding: 6px 16px 10px; }
 /* Always on, and no longer behind a tab. Where a number came from is not a
    footnote to go looking for: two panels that look identical can disagree by
    four hundred joules, and this line is the only thing that says which one is
@@ -4360,7 +4365,7 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
   border-top: 1px solid rgba(253,0,0,0.12);
 }
 .snd-note:empty { display: none; }
-#snd-panel.big .snd-note, #mtg-panel.big .snd-note, #ensx-panel.big .snd-note { padding: 8px 14px 14px; font-size: 10.5px; }
+#snd-panel.big .snd-note, #mtg-panel.big .snd-note, #ensx-panel.big .snd-note, #ensl-panel.big .snd-note { padding: 8px 14px 14px; font-size: 10.5px; }
 /* A fallback is not an error, but it is not nothing either: the numbers on
    screen came from somewhere other than what was asked for, and that has to
    be readable without expanding the panel. */
@@ -4595,12 +4600,12 @@ body.lite-mode #export-modal { display: none !important; }
 }
 .snd-fix button.snd-fix-go:hover { background: rgba(var(--accent-rgb),0.3); }
 @media (max-width: 640px) {
-  #snd-panel, #mtg-panel, #ensx-panel { right: 8px; bottom: 108px; width: calc(100vw - 16px); }
+  #snd-panel, #mtg-panel, #ensx-panel, #ensl-panel { right: 8px; bottom: 108px; width: calc(100vw - 16px); }
   #snd-skewt { height: 200px; }
   .snd-quick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) {
-  #snd-panel.open, #mtg-panel.open, #ensx-panel.open { animation: none; }
+  #snd-panel.open, #mtg-panel.open, #ensx-panel.open, #ensl-panel.open { animation: none; }
   .snd-meter i { transition: none; }
 }
 
@@ -32891,6 +32896,7 @@ const LAYER_DESCRIPTIONS = {
   'ens-explorer': 'Every member of GEFS, the Canadian GEPS, SREF and ECMWF ENS for one field at one hour: step through the members with the arrows (or [ and ]) while the place and time stay put, or show the mean, the median, the spread (where the members disagree) or the spread compared with its usual size.',
   'ens-prob': 'The chance of something happening: the share of ensemble members that meet a condition, like more than an inch of rain or a temperature below freezing, or several at once joined with AND or OR, like CAPE over 1000 AND dew point over 60. Pick a ready-made one or build your own.',
   'ens-stamps': 'Every ensemble member at once as a grid of small maps, the classic postage stamp page. Click one to put that member on the map.',
+  'ens-stack': 'Up to four model layers on the map at once, each with its own model (the ordinary GFS or ECMWF run, or any ensemble\'s mean, median, spread or single member), its own field, and its own look: filled colours or contour lines, solid, dashed or dotted, any contour spacing and line colour, a contrasting colour scale and its own opacity. Every layer shows the same valid time.',
   'ens-lows': 'Low Tracks: every low pressure centre in the GEFS and ECMWF ensembles, member by member, and in the GFS and ECMWF runs, as tracks or L markers with pressures.',
   'ens-tcprob': 'ECMWF TC Probability: the chance a tropical depression, storm or hurricane passes within 120 km, from all 51 ECMWF ensemble members, including storms that have not formed yet.',
   'ens-centres': 'GEFS Cyclone Centres: the tropical cyclones the parsing server finds itself in the raw GEFS ensemble, one track per member, coloured by peak intensity.',
@@ -39247,8 +39253,8 @@ async function _ensxJson(url) {
   return r.json();
 }
 // One field at one hour for every member: members x rows x columns of codes.
-function _ensxLoadField(model, run, field, fhr) {
-  const url = `${_ensx.base}/ens/${model}/${run}/${field}_f${String(fhr).padStart(3, '0')}.bin.gz`;
+function _ensxLoadField(model, run, field, fhr, base) {
+  const url = `${base || _ensx.base}/ens/${model}/${run}/${field}_f${String(fhr).padStart(3, '0')}.bin.gz`;
   if (_ensxCache.has(url)) return _ensxCache.get(url);
   const p = (async () => {
     const r = await fetch(url);
@@ -39677,6 +39683,310 @@ function _ensxHover(e) {
     : `${v.toFixed(Math.abs(v) < 10 ? 2 : 1)} ${f.unit || ''}`;
 }
 
+// -- MODEL LAYER STACK ---------------------------------------------------------
+// Up to four model layers on the map at once, each its own model and its own
+// look: GFS 500 mb heights as solid black contours over the ECMWF's as dashed
+// red ones, the GEFS mean filled underneath, and so on. Model choice is per
+// layer, not per map. All of them read the parsing server's member grids
+// (the same ones the Ensemble Explorer reads, plus the ordinary GFS and
+// ECMWF runs as one-member sets), and all of them show one VALID time, so
+// runs started at different hours still line up.
+const ENSL_MAX = 4;
+const ENSL_PALETTES = {
+  default: null,                       // the field's own scale
+  rainbow: [[0, [110, 0, 200]], [0.2, [0, 90, 230]], [0.4, [0, 200, 140]], [0.6, [255, 220, 0]], [0.8, [255, 110, 0]], [1, [210, 0, 0]]],
+  gray: [[0, [20, 20, 20]], [1, [245, 245, 245]]],
+  blues: [[0, [235, 245, 255]], [0.5, [80, 150, 230]], [1, [10, 40, 120]]],
+  reds: [[0, [255, 240, 230]], [0.5, [240, 110, 70]], [1, [120, 0, 0]]],
+  greens: [[0, [235, 250, 235]], [0.5, [90, 190, 90]], [1, [0, 80, 30]]],
+};
+// A sensible first contour spacing for each field.
+const ENSL_INTERVAL = { t2m: 5, td2m: 5, wind10: 10, gust: 10, mslp: 4, h500: 6, t850: 2, qpf: 0.5, cape: 500, ptype: 1 };
+let _ensl = null;
+
+function _enslNewLayer(i) {
+  const models = _ensl && _ensl.index ? Object.keys(_ensl.index.models) : [];
+  const pick = ['gfs', 'ecmwf', 'gefs', 'ecmwfens'][i] || models[0];
+  return {
+    model: models.includes(pick) ? pick : models[0], stat: 'mean', member: 0, field: i === 0 ? 't2m' : 'h500',
+    draw: i === 0 ? 'fill' : 'contour', line: ['solid', 'dashed', 'dotted', 'solid'][i % 4],
+    color: ['#111111', '#ff3030', '#1e90ff', '#ffd200'][i % 4], interval: 0, palette: 'default', opacity: i === 0 ? 0.7 : 1,
+    width: 1.6, visible: true, layer: null,
+  };
+}
+
+function _enslPanelIsOpen() { return !!(_ensl && _ensl.el.classList.contains('open')); }
+async function openLayerStack() {
+  if (!_ensl) {
+    const el = document.createElement('div');
+    el.id = 'ensl-panel';
+    el.innerHTML = `
+      <div class="snd-head">
+        <span class="snd-title">Model Layer Stack</span>
+        <span class="snd-where" data-l="when"></span>
+        <div class="snd-head-spacer"></div>
+        <button class="snd-big" data-l="big" title="Expand">&#11036;</button>
+        <button class="snd-x" data-l="x" title="Close">&#10005;</button>
+      </div>
+      <div class="snd-alert" data-l="alert" role="status" aria-live="polite"></div>
+      <div class="ensx-row">
+        <button type="button" data-l="tprev" title="Earlier">&#9664;</button>
+        <input type="range" data-l="time" min="0" max="0" value="0" step="1" title="Valid time: every layer shows this moment">
+        <button type="button" data-l="tnext" title="Later">&#9654;</button>
+        <span class="ensx-hl" data-l="tlabel"></span>
+      </div>
+      <div data-l="layers"></div>
+      <div class="ensx-row"><button type="button" data-l="add">+ layer</button><span class="ensx-read" data-l="read"></span></div>
+      <div class="snd-note">Each layer is its own model: the ordinary GFS and ECMWF runs, or any ensemble's mean, median, spread or a single member. All layers show the same valid time, and the top of the list draws on top.</div>`;
+    document.body.appendChild(el);
+    _ensl = { el, layers: [], t: 0, gen: 0 };
+    const q = r => el.querySelector(`[data-l="${r}"]`);
+    _ensl.q = q;
+    q('x').onclick = () => closeLayerStack();
+    q('big').onclick = () => el.classList.toggle('big');
+    q('add').onclick = () => { if (_ensl.layers.length < ENSL_MAX) { _ensl.layers.push(_enslNewLayer(_ensl.layers.length)); _enslUi(); _enslRender(); } };
+    q('time').oninput = e => { _ensl.t = +e.target.value; _enslTimeLabel(); clearTimeout(_ensl.tt); _ensl.tt = setTimeout(_enslRender, 120); };
+    q('tprev').onclick = () => _enslStep(-1);
+    q('tnext').onclick = () => _enslStep(1);
+    if (typeof _makeDraggable === 'function') { try { _makeDraggable(el, el.querySelector('.snd-head')); } catch (e) {} }
+    map.on('mousemove', _enslHover);
+  }
+  _ensl.el.classList.add('open');
+  const alert = _ensl.q('alert');
+  alert.textContent = 'Asking the parsing server what is built...';
+  try {
+    _ensl.base = await _ensxBase();
+    _ensl.index = await _ensxJson(`${_ensl.base}/ens/index.json`);
+  } catch (e) {
+    alert.textContent = 'No model grids yet: ' + (e && e.message || e) + '. The parsing server builds them with the gwcfc-ensfields timer.';
+    return;
+  }
+  // Only runs that have hours in them.
+  Object.keys(_ensl.index.models || {}).forEach(k => { if (!(_ensl.index.models[k].hours || []).length) delete _ensl.index.models[k]; });
+  if (!Object.keys(_ensl.index.models).length) { alert.textContent = 'The parsing server has not finished a model run yet.'; return; }
+  _ensl.mans = {};
+  await Promise.all(Object.keys(_ensl.index.models).map(async k => {
+    try { _ensl.mans[k] = await _ensxJson(`${_ensl.base}/ens/${k}/${_ensl.index.models[k].run}/manifest.json`); } catch (e) {}
+  }));
+  alert.textContent = '';
+  if (!_ensl.layers.length) { _ensl.layers.push(_enslNewLayer(0)); _ensl.layers.push(_enslNewLayer(1)); }
+  _enslTimes();
+  _enslUi();
+  return _enslRender();
+}
+function closeLayerStack() {
+  if (!_ensl) return;
+  _ensl.el.classList.remove('open');
+  _ensl.gen++;
+  _ensl.layers.forEach(L_ => { if (L_.layer) { try { map.removeLayer(L_.layer); } catch (e) {} L_.layer = null; } });
+}
+// Every valid time any model has, so the slider walks real moments.
+function _enslTimes() {
+  const set = new Set();
+  Object.values(_ensl.mans).forEach(m => m.hours.forEach(h => set.add(Date.parse(m.base) + h * 3600e3)));
+  _ensl.times = [...set].sort((a, b) => a - b);
+  const s = _ensl.q('time');
+  s.max = Math.max(0, _ensl.times.length - 1);
+  _ensl.t = Math.min(_ensl.t, _ensl.times.length - 1);
+  s.value = _ensl.t;
+  _enslTimeLabel();
+}
+function _enslTimeLabel() {
+  const t = new Date(_ensl.times[_ensl.t] || 0);
+  _ensl.q('tlabel').textContent = `${DAYS[t.getUTCDay()]} ${t.getUTCDate()} ${String(t.getUTCHours()).padStart(2, '0')}Z`;
+  _ensl.q('when').textContent = 'valid ' + t.toISOString().slice(5, 13).replace('T', ' ') + 'Z';
+}
+function _enslStep(d) {
+  _ensl.t = Math.max(0, Math.min(_ensl.times.length - 1, _ensl.t + d));
+  _ensl.q('time').value = _ensl.t; _enslTimeLabel(); _enslRender();
+}
+function _enslUi() {
+  const box = _ensl.q('layers');
+  const models = Object.keys(_ensl.mans);
+  const opt = (list, cur) => list.map(([v, l]) => `<option value="${v}"${String(v) === String(cur) ? ' selected' : ''}>${l}</option>`).join('');
+  box.innerHTML = _ensl.layers.map((y, i) => {
+    const man = _ensl.mans[y.model] || { fields: {}, members: [], single: true };
+    const fields = Object.keys(man.fields).filter(f => ENSX_FIELDS[f]);
+    const stats = man.single ? [['member', 'Run']] : [['mean', 'Mean'], ['median', 'Median'], ['spread', 'Spread'], ['member', 'Member']];
+    return `<div class="ensl-layer" data-i="${i}">
+      <div class="ensx-row">
+        <input type="checkbox" data-k="visible"${y.visible ? ' checked' : ''} title="Show this layer">
+        <b class="ensl-n">${i + 1}</b>
+        <select data-k="model" title="Model">${opt(models.map(k => [k, _ensl.mans[k].label]), y.model)}</select>
+        <select data-k="stat" title="Which part of it">${opt(stats, man.single ? 'member' : y.stat)}</select>
+        ${!man.single && y.stat === 'member' ? `<select data-k="member" title="Member">${opt(man.members.map((_, k) => [k, 'M' + String(k).padStart(2, '0')]), y.member)}</select>` : ''}
+        <select data-k="field" title="Field">${opt(fields.map(f => [f, ENSX_FIELDS[f].label]), y.field)}</select>
+        <button type="button" data-k="up" title="Draw higher"${i ? '' : ' disabled'}>&#9650;</button>
+        <button type="button" data-k="del" title="Remove">&#10005;</button>
+      </div>
+      <div class="ensx-row">
+        <select data-k="draw" title="Filled colours, contour lines, or both">${opt([['fill', 'Filled'], ['contour', 'Contours'], ['both', 'Both']], y.draw)}</select>
+        <select data-k="line" title="Line style">${opt([['solid', 'Solid'], ['dashed', 'Dashed'], ['dotted', 'Dotted']], y.line)}</select>
+        <input type="color" data-k="color" value="${y.color}" title="Line colour">
+        <label class="ensx-op">every <input type="number" data-k="interval" value="${y.interval || ENSL_INTERVAL[y.field] || 1}" step="any" min="0"></label>
+        <select data-k="palette" title="Fill colours">${opt([['default', 'Field colours'], ['rainbow', 'Rainbow'], ['gray', 'Grey'], ['blues', 'Blues'], ['reds', 'Reds'], ['greens', 'Greens']], y.palette)}</select>
+        <label class="ensx-op">opacity <input type="range" data-k="opacity" min="10" max="100" step="5" value="${Math.round(y.opacity * 100)}"></label>
+      </div>
+    </div>`;
+  }).join('');
+  _ensl.q('add').disabled = _ensl.layers.length >= ENSL_MAX;
+  box.querySelectorAll('.ensl-layer').forEach(row => {
+    const i = +row.dataset.i, y = _ensl.layers[i];
+    row.querySelectorAll('[data-k]').forEach(inp => {
+      const k = inp.dataset.k;
+      if (k === 'del') { inp.onclick = () => { if (y.layer) { try { map.removeLayer(y.layer); } catch (e) {} } _ensl.layers.splice(i, 1); _enslUi(); _enslRender(); }; return; }
+      if (k === 'up') { inp.onclick = () => { _ensl.layers.splice(i - 1, 0, _ensl.layers.splice(i, 1)[0]); _enslUi(); _enslRender(); }; return; }
+      const ev = k === 'opacity' ? 'input' : 'change';
+      inp.addEventListener(ev, () => {
+        if (k === 'visible') y.visible = inp.checked;
+        else if (k === 'opacity') { y.opacity = +inp.value / 100; if (y.layer) y.layer.setOpacity(y.opacity); return; }
+        else if (k === 'interval') y.interval = +inp.value;
+        else if (k === 'member') y.member = +inp.value;
+        else y[k] = inp.value;
+        if (k === 'field') y.interval = 0;
+        if (k === 'model') {
+          const man = _ensl.mans[y.model];
+          if (man && !man.fields[y.field]) y.field = Object.keys(man.fields)[0];
+          if (man && man.single) y.stat = 'member', y.member = 0;
+        }
+        if (['model', 'stat', 'field'].includes(k)) _enslUi();
+        _enslRender();
+      });
+    });
+  });
+}
+
+async function _enslRender() {
+  if (!_ensl || !_ensl.times || !_ensl.times.length) return;
+  const gen = ++_ensl.gen, when = _ensl.times[_ensl.t], notes = [];
+  // Bottom of the list first, so the top of the list ends up on top.
+  for (let i = _ensl.layers.length - 1; i >= 0; i--) {
+    const y = _ensl.layers[i], man = _ensl.mans[y.model];
+    if (!y.visible || !man) { if (y.layer) { try { map.removeLayer(y.layer); } catch (e) {} y.layer = null; } continue; }
+    const fhr = Math.round((when - Date.parse(man.base)) / 3600e3);
+    if (!man.hours.includes(fhr) || !man.fields[y.field]) {
+      notes.push(`Layer ${i + 1}: ${man.label} has no ${ENSX_FIELDS[y.field] ? ENSX_FIELDS[y.field].label.toLowerCase() : y.field} at this time`);
+      if (y.layer) { try { map.removeLayer(y.layer); } catch (e) {} y.layer = null; }
+      continue;
+    }
+    try {
+      const codes = await _ensxLoadField(y.model, man.run, y.field, fhr, _ensl.base);
+      if (gen !== _ensl.gen) return;
+      const M = man.members.length, P = man.grid.nx * man.grid.ny;
+      const stat = man.single ? 'member' : (y.field === 'ptype' && y.stat !== 'member' ? 'mode' : y.stat);
+      y.values = _ensxStat(codes, man.fields[y.field], M, P, stat, man.single ? 0 : y.member);
+      y.grid = man.grid;
+      const url = _enslPaint(y);
+      if (y.layer) { try { map.removeLayer(y.layer); } catch (e) {} }
+      const g = man.grid;
+      y.layer = L.imageOverlay(url, [[g.s - g.d / 2, g.w - g.d / 2], [g.n + g.d / 2, g.e + g.d / 2]],
+        { opacity: y.opacity, interactive: false, pane: map.getPane('modelPane') ? 'modelPane' : undefined }).addTo(map);
+    } catch (e) {
+      notes.push(`Layer ${i + 1}: ${e.message || e}`);
+    }
+  }
+  if (gen === _ensl.gen) _ensl.q('alert').textContent = notes.join('. ');
+}
+// One layer as a picture: filled colours, contour lines, or both, drawn in
+// Mercator rows at four times the grid's resolution.
+function _enslPaint(y) {
+  const g = y.grid, W = Math.min(1100, g.nx * 6), H = Math.min(800, g.ny * 8);
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  const s = g.s - g.d / 2, n = g.n + g.d / 2, w = g.w - g.d / 2, e = g.e + g.d / 2;
+  const my = lat => Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360));
+  const y0 = my(n), y1 = my(s);
+  const px = lon => (lon - w) / (e - w) * W, py = lat => (my(lat) - y0) / (y1 - y0) * H;
+  const v = y.values;
+  if (y.draw !== 'contour') {
+    let lo = Infinity, hi = -Infinity;
+    for (let k = 0; k < v.length; k++) if (v[k] === v[k]) { if (v[k] < lo) lo = v[k]; if (v[k] > hi) hi = v[k]; }
+    const pal = ENSL_PALETTES[y.palette];
+    const key = y.field === 'ptype' ? 'ptype' : y.stat === 'spread' ? 'spread' : y.field;
+    const smax = key === 'spread' ? _ensxSpreadMax(v) : 0;
+    const img = ctx.createImageData(W, H);
+    for (let yy = 0; yy < H; yy++) {
+      const lat = (2 * Math.atan(Math.exp(y0 + (yy + 0.5) / H * (y1 - y0))) - Math.PI / 2) * 180 / Math.PI;
+      const fj = (lat - g.s) / g.d, j0 = Math.max(0, Math.min(g.ny - 1, Math.floor(fj))), j1 = Math.min(g.ny - 1, j0 + 1), tj = Math.max(0, Math.min(1, fj - j0));
+      for (let xx = 0; xx < W; xx++) {
+        const fi = (w + (xx + 0.5) / W * (e - w) - g.w) / g.d;
+        const i0 = Math.max(0, Math.min(g.nx - 1, Math.floor(fi))), i1 = Math.min(g.nx - 1, i0 + 1), ti = Math.max(0, Math.min(1, fi - i0));
+        let val = key === 'ptype' ? v[Math.round(Math.max(0, Math.min(g.ny - 1, fj))) * g.nx + Math.round(Math.max(0, Math.min(g.nx - 1, fi)))]
+          : (v[j0 * g.nx + i0] * (1 - ti) + v[j0 * g.nx + i1] * ti) * (1 - tj) + (v[j1 * g.nx + i0] * (1 - ti) + v[j1 * g.nx + i1] * ti) * tj;
+        let rgb;
+        if (pal && key !== 'ptype') rgb = val === val ? _ensxColor(pal, hi > lo ? (val - lo) / (hi - lo) : 0.5) : null;
+        else rgb = _ensxPixel(val, key, smax);
+        if (!rgb) continue;
+        const o = (yy * W + xx) * 4;
+        img.data[o] = rgb[0]; img.data[o + 1] = rgb[1]; img.data[o + 2] = rgb[2]; img.data[o + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+  if (y.draw !== 'fill') {
+    const step = y.interval > 0 ? y.interval : (ENSL_INTERVAL[y.field] || 1);
+    const lines = _enslContours(v, g, step);
+    ctx.strokeStyle = y.color; ctx.lineWidth = y.width * 1.4;
+    ctx.setLineDash(y.line === 'dashed' ? [10, 6] : y.line === 'dotted' ? [2, 5] : []);
+    ctx.lineCap = 'round';
+    const X = i => px(g.w + i * g.d), Y = j => py(g.s + j * g.d);
+    ctx.beginPath();
+    lines.forEach(sg => { ctx.moveTo(X(sg[0]), Y(sg[1])); ctx.lineTo(X(sg[2]), Y(sg[3])); });
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // A label every so often along each level, in the line's own colour.
+    ctx.font = 'bold 12px Comfortaa, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const seen = {};
+    lines.forEach(sg => {
+      const lv = sg[4], c = seen[lv] = (seen[lv] || 0) + 1;
+      if (c % 40 !== 12) return;
+      const x = (X(sg[0]) + X(sg[2])) / 2, yy = (Y(sg[1]) + Y(sg[3])) / 2;
+      const txt = String(+lv.toFixed(2));
+      ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.strokeText(txt, x, yy);
+      ctx.fillStyle = y.color; ctx.fillText(txt, x, yy);
+    });
+  }
+  y.nContours = y.draw !== 'fill';
+  return cv.toDataURL('image/png');
+}
+// Marching squares: every contour level as line segments in grid units
+// [i0, j0, i1, j1, level].
+function _enslContours(v, g, step) {
+  let lo = Infinity, hi = -Infinity;
+  for (let k = 0; k < v.length; k++) if (v[k] === v[k]) { if (v[k] < lo) lo = v[k]; if (v[k] > hi) hi = v[k]; }
+  const out = [];
+  if (!(hi > lo) || !(step > 0)) return out;
+  const first = Math.ceil(lo / step) * step;
+  if ((hi - first) / step > 200) step = (hi - lo) / 200;
+  for (let lv = first; lv <= hi; lv += step) {
+    for (let j = 0; j < g.ny - 1; j++) for (let i = 0; i < g.nx - 1; i++) {
+      const a = v[j * g.nx + i], b = v[j * g.nx + i + 1], c = v[(j + 1) * g.nx + i + 1], d = v[(j + 1) * g.nx + i];
+      if (!(a === a && b === b && c === c && d === d)) continue;
+      const idx = (a > lv ? 1 : 0) | (b > lv ? 2 : 0) | (c > lv ? 4 : 0) | (d > lv ? 8 : 0);
+      if (idx === 0 || idx === 15) continue;
+      const t = (p, q) => (lv - p) / (q - p);
+      const E = { B: [i + t(a, b), j], R: [i + 1, j + t(b, c)], T: [i + t(d, c), j + 1], Lf: [i, j + t(a, d)] };
+      const segs = ({ 1: [['Lf', 'B']], 2: [['B', 'R']], 3: [['Lf', 'R']], 4: [['R', 'T']], 5: [['Lf', 'T'], ['B', 'R']], 6: [['B', 'T']],
+        7: [['Lf', 'T']], 8: [['T', 'Lf']], 9: [['T', 'B']], 10: [['T', 'R'], ['Lf', 'B']], 11: [['T', 'R']], 12: [['R', 'Lf']], 13: [['R', 'B']], 14: [['B', 'Lf']] })[idx];
+      segs.forEach(([p, q]) => out.push([E[p][0], E[p][1], E[q][0], E[q][1], lv]));
+    }
+  }
+  return out;
+}
+function _enslHover(e) {
+  if (!_enslPanelIsOpen()) return;
+  const parts = [];
+  _ensl.layers.forEach((y, i) => {
+    if (!y.visible || !y.values || !y.grid) return;
+    const g = y.grid, j = Math.round((e.latlng.lat - g.s) / g.d), k = Math.round((e.latlng.lng - g.w) / g.d);
+    if (j < 0 || j >= g.ny || k < 0 || k >= g.nx) return;
+    const v = y.values[j * g.nx + k];
+    if (v === v) parts.push(`${i + 1}: ${y.field === 'ptype' ? (ENSX_PTYPES[Math.round(v)] || { l: 'none' }).l : v.toFixed(Math.abs(v) < 10 ? 1 : 0)}`);
+  });
+  _ensl.q('read').textContent = parts.join('  ');
+}
+
 // -- ENSEMBLE MODELS -----------------------------------------------------------
 // Everything built from an ensemble, in one place under Models: the ensemble
 // charts (GEFS, ECMWF ENS, HREF and the rest, shown in the Run Models panel
@@ -39732,6 +40042,8 @@ const ENS_MODEL_ROWS = [
   { id: 'ens-stamps', label: 'Postage Stamps', icon: 'image',
     on: () => _ensxPanelIsOpen() && _ensx.mode === 'stamps',
     click: () => { if (_ensxPanelIsOpen() && _ensx.mode === 'stamps') closeEnsembleExplorer(); else openEnsembleExplorer({ mode: 'stamps' }); } },
+  { id: 'ens-stack', label: 'Model Layer Stack', icon: 'sliders',
+    on: () => _enslPanelIsOpen(), click: () => { if (_enslPanelIsOpen()) closeLayerStack(); else openLayerStack(); } },
   { id: 'ens-lows', label: 'Low Tracks', icon: 'noodles',
     on: () => typeof _lowsOn !== 'undefined' && _lowsOn, click: () => _lowsToggle() },
   { id: 'ens-tcprob', label: 'ECMWF TC Probability', icon: 'cyclone',
@@ -71167,6 +71479,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-k', date: 'Sep 24, 2026',
+    text: 'Model Layer Stack, in Models > Ensemble Models: up to four model layers on the map at once, and the model is picked per layer, so GFS 500 mb heights can sit as dashed red contours over the ECMWF\'s as solid black ones with the GEFS mean filled underneath. Each layer has its own field, member or statistic, filled colours or contour lines (solid, dashed or dotted), contour spacing, line colour, colour scale and opacity. Every layer shows the same valid time, so runs started at different hours line up. The parsing server now also keeps the ordinary GFS and ECMWF runs for this.' },
   { id: '2026-09-24-j', date: 'Sep 24, 2026',
     text: 'Ensemble Explorer, in Models > Ensemble Models. Members & Stats shows any single member of GEFS, the Canadian GEPS, SREF or ECMWF ENS (step through them with the arrows or the [ and ] keys while the place and hour stay put), or the mean, median, spread and normalised spread. Chance Maps shows the share of members meeting a condition, or several joined with AND or OR, with ready-made ones like heavy rain, freezing, storm fuel, wind and ice. Postage Stamps shows every member at once; click one to put it on the map.' },
   { id: '2026-09-24-i', date: 'Sep 24, 2026',
@@ -79442,7 +79756,7 @@ function closeCredits() {
 #nwr-rec-panel,
 #tropical-model-panel,
 #severe-model-panel,
-#snd-panel, #mtg-panel, #ensx-panel,
+#snd-panel, #mtg-panel, #ensx-panel, #ensl-panel,
 #hd-panel,
 #fnv3-panel,
 #stormcone-panel,
@@ -80273,7 +80587,7 @@ body {
 :root[data-glass] #nwr-rec-panel,
 :root[data-glass] #tropical-model-panel,
 :root[data-glass] #severe-model-panel,
-:root[data-glass] #snd-panel, :root[data-glass] #mtg-panel, :root[data-glass] #ensx-panel,
+:root[data-glass] #snd-panel, :root[data-glass] #mtg-panel, :root[data-glass] #ensx-panel, :root[data-glass] #ensl-panel,
 :root[data-glass] #hd-panel,
 :root[data-glass] #fnv3-panel,
 :root[data-glass] #stormcone-panel,
