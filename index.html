@@ -3325,7 +3325,7 @@ img.wx-model-smooth {
 /* On is a filled cell, the same signal the forecast-hour grid uses. The
    GEFS centres keep their green, because that is the colour of the lines
    they draw and the button should say which lines it turns on. */
-#cyc-lab-btn.active, #cyc-ens-btn.on, #cyc-mean-btn.on {
+#cyc-lab-btn.active, #cyc-ens-btn.on, #cyc-mean-btn.on, #cyc-lows-btn.on, #cyc-wind-btn.on {
   background: #ffd166; color: #1a1200; border-color: #ffd166;
 }
 #cyc-layer-row #cyc-ens-centres-btn {
@@ -3336,6 +3336,19 @@ img.wx-model-smooth {
 #cyc-layer-row #cyc-ens-centres-btn.on {
   background: #8fe3a8; color: #04200f; border-color: #8fe3a8;
 }
+#cyc-layer-row #cyc-wind-kt {
+  grid-column: 1 / -1; font-family: 'Comfortaa', sans-serif; font-size: 10px; padding: 4px 6px;
+  background: rgba(0,0,0,0.35); color: #ffd166; border: 1px solid rgba(255,209,102,0.35); border-radius: 6px;
+}
+#cyc-wind-legend { font-family: var(--mono); font-size: 9px; color: rgba(var(--text-rgb),0.8); margin: 2px 0 6px; }
+#cyc-wind-legend .cyc-wind-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 3px; }
+#cyc-wind-legend .cyc-wind-bar i { flex: 1; }
+#cyc-wind-legend .cyc-wind-ticks { display: flex; justify-content: space-between; opacity: 0.7; }
+#cyc-terms {
+  font-family: var(--mono); font-size: 8.5px; line-height: 1.5; color: rgba(var(--text-rgb),0.5);
+  margin: 6px 0 2px;
+}
+#cyc-terms a { color: rgba(var(--text-rgb),0.75); }
 #cyc-run-lbl {
   font-family: var(--mono); font-size: 10px; color: rgba(var(--text-rgb),0.8);
 }
@@ -11630,7 +11643,7 @@ body.clean-mode #clean-hint { opacity: 1; }
       <div id="spag-legend" style="display:none"></div>
     </div>
 
-    <!-- AI Cyclones Panel: its own home. DeepMind's models and the GEFS
+    <!-- DeepMind Models Panel (was AI Cyclones): its own home. DeepMind's models and the GEFS
          ensemble centres answer a different question from the a-deck
          guidance, and sharing a panel buried them at the bottom of a
          scroll. Same card inside, so the controls and their ids are
@@ -11638,7 +11651,7 @@ body.clean-mode #clean-hint { opacity: 1; }
     <div id="ai-cyclones-panel" class="models-style-panel">
       <div class="models-panel-header">
         <div id="ai-cyclones-drag" class="dtb-drag" title="Drag to move">&#x28FF;</div>
-        <div class="models-panel-title"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-cyclone></use></svg> AI Cyclones</div>
+        <div class="models-panel-title"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-cyclone></use></svg> DeepMind Models</div>
         <button class="models-close-btn" onclick="collapseAiCyclonesPanel()" title="Close panel (tracks stay on the map)">&times;</button>
       </div>
       <!-- The playbar leads here for the same reason it does in Spaghetti
@@ -11695,9 +11708,16 @@ body.clean-mode #clean-hint { opacity: 1; }
         <button id="cyc-ens-centres-btn" onclick="_ensToggle()" title="Cyclone centres the parsing server finds itself in the raw GEFS ensemble, coloured by peak intensity">GEFS centres</button>
         <button id="cyc-mean-btn" onclick="_spagCycMeanTrack()" title="Draw the ensemble-mean track, coloured by how strong the mean is">Mean track</button>
         <button id="cyc-ens-btn" onclick="_cycEnsOpen()" title="Read the ensemble as a distribution: intensity spread, genesis timing and peak strength">Ensemble stats</button>
+        <button id="cyc-lows-btn" onclick="_cycLowsToggle()" title="An L with its central pressure at every member's storm centre at the playbar hour, coloured by strength">Lows (L)</button>
+        <button id="cyc-wind-btn" onclick="_cycWindToggle()" title="The chance of 34, 50 or 64 knot winds at each place by the playbar hour, from every member's wind radii (WNV3 and FNV3)">Wind chance</button>
+        <select id="cyc-wind-kt" onchange="_cycWindPick(this.value)" style="display:none" title="Which wind speed">
+          <option value="34">34 kt (tropical storm)</option><option value="50">50 kt</option><option value="64">64 kt (hurricane)</option>
+        </select>
       </div>
+      <div id="cyc-wind-legend" style="display:none"></div>
       <div id="cyc-lab-status">Looking for the parsing server's newest run…</div>
       <div id="cyc-ens-status">GEFS centres not loaded.</div>
+      <div id="cyc-terms">Experimental research forecasts from Google DeepMind's Weather Lab, not official warnings. Data newer than 48 hours is under DeepMind's <a href="https://storage.googleapis.com/weathernext-public/terms-of-use.pdf" target="_blank" rel="noopener">terms of use</a>, older data CC BY 4.0.</div>
       <div id="cyc-focus-info" style="display:none"></div>
       <p id="cyc-credits">
         Model guidance is the National Hurricane Center's public ATCF a-deck;
@@ -24433,6 +24453,7 @@ const CYC_MEAN   = { color: '#ffd166', weight: 3, opacity: 0.95 };
 // live-verified by Triple-A Tropics. The old names stay only so a run built
 // by the previous pipeline still labels itself while it ages out.
 const CYC_VARIANTS = {
+  WNV3:                 'Google WNV3, newest (64 members)',
   FNV3:                 'Google FNV3 (50 members)',
   GENC:                 'Google GenCast',
   OPER:                 'Operational (old runs)',
@@ -24441,7 +24462,7 @@ const CYC_VARIANTS = {
   FNV3P2:               'FNV3 p2 (old runs)',
   FNV3_LARGE_ENSEMBLE:  'FNV3 large ensemble (old runs)',
 };
-let _cycVariant = 'FNV3';
+let _cycVariant = 'WNV3';
 // Which genesis wash to draw: the cumulative field, the instantaneous one, or
 // neither. Only the large ensemble publishes them; the choice simply finds
 // nothing to draw on runs without them.
@@ -24577,6 +24598,8 @@ function _cycClear() {
   // name them: the tags went dead and the focus readout went blank while the
   // lines were still there.
   _cycDropGroups(k => !String(k).startsWith('ens|'));
+  if (typeof _cycLowsLayer !== 'undefined' && _cycLowsLayer) { try { map.removeLayer(_cycLowsLayer); } catch (e) {} _cycLowsLayer = null; }
+  if (typeof _cycWindLayer !== 'undefined' && _cycWindLayer) { try { map.removeLayer(_cycWindLayer); } catch (e) {} _cycWindLayer = null; }
 }
 
 // Forget the groups matching a test, and put the focus readout back if the
@@ -24773,6 +24796,7 @@ function _cycRenderFrame(idx) {
     }
   });
   _cycSyncPlaybar();
+  if (typeof _cycExtrasSync === 'function') _cycExtrasSync();
 }
 
 // The bar, the labels, and the play icon, all from the one piece of state.
@@ -25001,11 +25025,242 @@ async function _cycEnable() {
   // and a bar built halfway through would be short by whatever arrived late.
   _cycBuildFrames();
   _spagCycSync();
+  _cycExtrasSync();
 
   if (!_cycLayers.length && typeof showToast === 'function') {
     showToast('The parsing server has a cyclone run but nothing to draw in it, which '
             + 'usually means the tropics are quiet.', 4000);
   }
+}
+
+// ==========================================================================
+// -- DEEPMIND MODELS: LOWS AND WIND CHANCES -----------------------------------
+// ==========================================================================
+// Two more ways to read the DeepMind ensemble, both built from what every
+// member's track already carries.
+//
+// Lows: an L with its central pressure at every member's storm centre at the
+// playbar hour, coloured by strength, the way the ensemble low maps are
+// drawn. Deepest first, and one that would sit on top of another is skipped,
+// so fifty members over one storm read as a cluster rather than a smear.
+//
+// Wind chance: the share of members whose storm brings 34, 50 or 64 knot
+// winds over each place at any time up to the playbar hour, the same idea as
+// the Hurricane Center's wind speed probabilities. WNV3 and FNV3 publish how
+// far each wind speed reaches in each quadrant (NE, SE, SW, NW); GenCast does
+// not, so it has no wind chance map.
+let _cycLowsOn = false;
+let _cycLowsLayer = null;
+let _cycWindOn = false;
+let _cycWindKt = 34;
+let _cycWindLayer = null;
+let _cycWindT = null;
+try {
+  _cycLowsOn = localStorage.getItem('gwcfc_cyc_lows') === '1';
+  const k = +localStorage.getItem('gwcfc_cyc_windkt');
+  if ([34, 50, 64].includes(k)) _cycWindKt = k;
+} catch (e) {}
+
+// Every DeepMind member track currently drawn (not the GEFS centres, not a mean).
+function _cycMemberTracks() {
+  return Object.entries(_cycGroups || {})
+    .filter(([k, g]) => !String(k).startsWith('ens|') && g.pts && g.pts.length)
+    .map(([k, g]) => ({ key: k, member: String(k).split('|')[2], pts: g.pts }));
+}
+function _cycUpto() {
+  return _cycFrames.length ? _cycFrames[_cycFrameIdx] : Infinity;
+}
+
+// -- Lows ----------------------------------------------------------------------
+const CycLowsCanvas = L.Layer.extend({
+  onAdd(m) {
+    this._m = m;
+    this._cv = L.DomUtil.create('canvas', 'cyc-lows-canvas');
+    Object.assign(this._cv.style, { position: 'absolute', pointerEvents: 'none' });
+    (m.getPane('radarPane') || m.getPanes().overlayPane).appendChild(this._cv);
+    m.on('moveend zoomend resize', this._draw, this);
+    m.on('zoomstart', this._hide, this);
+    this._draw();
+  },
+  onRemove(m) {
+    m.off('moveend zoomend resize', this._draw, this);
+    m.off('zoomstart', this._hide, this);
+    L.DomUtil.remove(this._cv);
+  },
+  _hide() { if (this._cv) this._cv.style.visibility = 'hidden'; },
+  _draw() {
+    const m = this._m, cv = this._cv;
+    if (!m || !cv) return;
+    const size = m.getSize(), dpr = Math.min(2, window.devicePixelRatio || 1);
+    const tl = m.containerPointToLayerPoint([0, 0]);
+    L.DomUtil.setPosition(cv, tl);
+    cv.width = Math.round(size.x * dpr); cv.height = Math.round(size.y * dpr);
+    cv.style.width = size.x + 'px'; cv.style.height = size.y + 'px';
+    cv.style.visibility = '';
+    const g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const pts = _cycLowsAt(_cycUpto());
+    this.drawn = 0;
+    const placed = [];
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    pts.forEach(p => {
+      let c = m.latLngToContainerPoint([p.lat, p.lon]);
+      // The copy of the world nearest the middle of the screen.
+      const wrap = m.latLngToContainerPoint([p.lat, p.lon + (c.x < size.x / 2 ? 360 : -360)]);
+      if (Math.abs(wrap.x - size.x / 2) < Math.abs(c.x - size.x / 2)) c = wrap;
+      if (c.x < -20 || c.y < -20 || c.x > size.x + 20 || c.y > size.y + 20) return;
+      if (placed.some(q => Math.abs(q.x - c.x) < 18 && Math.abs(q.y - c.y) < 20)) return;
+      placed.push(c);
+      const col = typeof _cycColor === 'function' ? _cycColor(p.wind || 0) : '#ff4040';
+      g.font = 'bold 15px Comfortaa, sans-serif';
+      g.lineWidth = 3.5; g.strokeStyle = 'rgba(0,0,0,0.85)';
+      g.strokeText('L', c.x, c.y - 4); g.fillStyle = col; g.fillText('L', c.x, c.y - 4);
+      if (p.mslp) {
+        g.font = 'bold 9px Comfortaa, sans-serif';
+        const t = String(Math.round(p.mslp));
+        g.lineWidth = 3; g.strokeText(t, c.x, c.y + 9); g.fillStyle = '#fff'; g.fillText(t, c.x, c.y + 9);
+      }
+      this.drawn++;
+    });
+  },
+});
+// Each member's centre at this hour, deepest first.
+function _cycLowsAt(upto) {
+  const out = [];
+  _cycMemberTracks().forEach(t => {
+    let p = null;
+    if (upto === Infinity) p = null;
+    else p = t.pts.find(q => q.lead != null && Number(q.lead) === Number(upto));
+    if (p) out.push(p);
+  });
+  return out.sort((a, b) => (a.mslp || 9999) - (b.mslp || 9999));
+}
+function _cycLowsToggle() {
+  _cycLowsOn = !_cycLowsOn;
+  try { localStorage.setItem('gwcfc_cyc_lows', _cycLowsOn ? '1' : '0'); } catch (e) {}
+  _cycExtrasSync();
+}
+
+// -- Wind chance ----------------------------------------------------------------
+// NHC's own scale for wind speed probabilities, so the map reads like theirs.
+const CYC_WIND_SCALE = [[5, [0, 100, 0]], [10, [0, 140, 0]], [20, [0, 190, 0]], [30, [110, 210, 0]], [40, [230, 230, 0]],
+  [50, [255, 190, 0]], [60, [255, 140, 0]], [70, [255, 70, 0]], [80, [220, 0, 0]], [90, [160, 0, 160]]];
+function _cycWindHas() {
+  return _cycMemberTracks().some(t => t.pts.some(p => p.r34));
+}
+// Marks every cell a member's wind field covers, point by point, then counts
+// members per cell. Quadrants are by compass bearing from the centre.
+function _cycWindGrid(kt, upto) {
+  const tracks = _cycMemberTracks();
+  const members = [...new Set(tracks.map(t => t.member))];
+  const key = 'r' + kt;
+  let s = 90, n = -90, w = 400, e = -400;
+  tracks.forEach(t => t.pts.forEach(p => {
+    if (!p[key] || (p.lead != null && Number(p.lead) > upto)) return;
+    const pad = Math.max(...p[key]) / 111 + 0.5;
+    s = Math.min(s, p.lat - pad); n = Math.max(n, p.lat + pad);
+    w = Math.min(w, p.lon - pad * 1.6); e = Math.max(e, p.lon + pad * 1.6);
+  }));
+  if (!(n > s) || !members.length) return null;
+  const d = 0.25, nx = Math.min(1600, Math.ceil((e - w) / d) + 1), ny = Math.min(800, Math.ceil((n - s) / d) + 1);
+  const count = new Uint16Array(nx * ny);
+  const seen = new Uint8Array(nx * ny);
+  const idxOf = {};
+  members.forEach((m, i) => { idxOf[m] = i; });
+  // One member at a time: a cell counts once per member however many hours
+  // that member's storm sits over it.
+  const byMember = {};
+  tracks.forEach(t => { (byMember[t.member] = byMember[t.member] || []).push(t); });
+  Object.values(byMember).forEach(list => {
+    seen.fill(0);
+    list.forEach(t => t.pts.forEach(p => {
+      const r = p[key];
+      if (!r || (p.lead != null && Number(p.lead) > upto)) return;
+      const R = Math.max(...r), cosl = Math.cos(p.lat * Math.PI / 180) || 0.01;
+      const dj = Math.ceil(R / 111 / d), di = Math.ceil(R / (111 * cosl) / d);
+      const cj = Math.round((p.lat - s) / d), ci = Math.round((p.lon - w) / d);
+      for (let j = Math.max(0, cj - dj); j <= Math.min(ny - 1, cj + dj); j++) {
+        const dy = (s + j * d - p.lat) * 111;
+        for (let i = Math.max(0, ci - di); i <= Math.min(nx - 1, ci + di); i++) {
+          const k = j * nx + i;
+          if (seen[k]) continue;
+          const dx = (w + i * d - p.lon) * 111 * cosl;
+          const dist = Math.hypot(dx, dy);
+          if (dist > R) continue;
+          const q = dx >= 0 ? (dy >= 0 ? 0 : 1) : (dy < 0 ? 2 : 3);   // NE, SE, SW, NW
+          if (dist <= r[q]) { seen[k] = 1; count[k]++; }
+        }
+      }
+    }));
+  });
+  return { s, w, d, nx, ny, count, members: members.length };
+}
+function _cycWindPaint() {
+  if (_cycWindLayer) { try { map.removeLayer(_cycWindLayer); } catch (e) {} _cycWindLayer = null; }
+  if (!_cycWindOn || !_cycOn) return;
+  const G = _cycWindGrid(_cycWindKt, _cycUpto());
+  if (!G) return;
+  const cv = document.createElement('canvas');
+  cv.width = G.nx; cv.height = G.ny;
+  const ctx = cv.getContext('2d'), img = ctx.createImageData(G.nx, G.ny);
+  for (let j = 0; j < G.ny; j++) for (let i = 0; i < G.nx; i++) {
+    const pc = G.count[j * G.nx + i] / G.members * 100;
+    if (pc < 5) continue;
+    const rgb = _colorScale(pc, CYC_WIND_SCALE), o = ((G.ny - 1 - j) * G.nx + i) * 4;
+    img.data[o] = rgb[0]; img.data[o + 1] = rgb[1]; img.data[o + 2] = rgb[2]; img.data[o + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  // Drawn again four times larger with smoothing, so the quarter-degree
+  // cells blend into a soft field instead of a staircase of squares.
+  const up = document.createElement('canvas');
+  up.width = G.nx * 4; up.height = G.ny * 4;
+  const uc = up.getContext('2d');
+  uc.imageSmoothingEnabled = true; uc.imageSmoothingQuality = 'high';
+  uc.drawImage(cv, 0, 0, up.width, up.height);
+  const n = G.s + (G.ny - 1) * G.d, e = G.w + (G.nx - 1) * G.d;
+  _cycWindLayer = L.imageOverlay(up.toDataURL('image/png'),
+    [[G.s - G.d / 2, G.w - G.d / 2], [n + G.d / 2, e + G.d / 2]],
+    { opacity: 0.62, interactive: false, pane: 'radarPane', className: 'cyc-wind-img' }).addTo(map);
+  _cycWindLayer._grid = G;
+}
+function _cycWindToggle() {
+  if (!_cycWindOn && !_cycWindHas()) {
+    if (typeof showToast === 'function')
+      showToast(_cycOn ? 'This model does not publish wind radii. WNV3 and FNV3 do; GenCast does not.'
+                       : 'Turn the DeepMind tracks on first.', 3500);
+    return;
+  }
+  _cycWindOn = !_cycWindOn;
+  _cycExtrasSync();
+}
+function _cycWindPick(v) {
+  _cycWindKt = +v;
+  try { localStorage.setItem('gwcfc_cyc_windkt', String(_cycWindKt)); } catch (e) {}
+  _cycExtrasSync();
+}
+
+// Called whenever the tracks or the playbar change.
+function _cycExtrasSync() {
+  const lb = document.getElementById('cyc-lows-btn');
+  if (lb) lb.classList.toggle('on', _cycLowsOn);
+  const wb = document.getElementById('cyc-wind-btn');
+  if (wb) wb.classList.toggle('on', _cycWindOn);
+  const ws = document.getElementById('cyc-wind-kt');
+  if (ws) { ws.value = String(_cycWindKt); ws.style.display = _cycWindOn ? '' : 'none'; }
+  const leg = document.getElementById('cyc-wind-legend');
+  if (leg) {
+    leg.style.display = _cycWindOn && _cycOn ? '' : 'none';
+    leg.innerHTML = `<span>Chance of ${_cycWindKt} kt winds by this hour</span><div class="cyc-wind-bar">`
+      + CYC_WIND_SCALE.map(([v, c]) => `<i style="background:rgb(${c.join(',')})" title="${v}%"></i>`).join('')
+      + `</div><div class="cyc-wind-ticks"><span>5%</span><span>50%</span><span>90%</span></div>`;
+  }
+  if (_cycLowsOn && _cycOn) {
+    if (!_cycLowsLayer) _cycLowsLayer = new CycLowsCanvas().addTo(map);
+    else _cycLowsLayer._draw();
+  } else if (_cycLowsLayer) { try { map.removeLayer(_cycLowsLayer); } catch (e) {} _cycLowsLayer = null; }
+  clearTimeout(_cycWindT);
+  if (_cycWindOn && _cycOn) _cycWindT = setTimeout(_cycWindPaint, _cycPlayTimer ? 200 : 0);
+  else _cycWindPaint();
 }
 
 // The mean track for whichever storm has the most members drawn, which is
@@ -25021,7 +25276,7 @@ function _spagCycMeanTrack() {
   const storms = _cycStorms();
   if (!storms.length) {
     if (typeof showToast === 'function')
-      showToast('Turn the AI cyclone tracks on first, then this has something '
+      showToast('Turn the DeepMind tracks on first, then this has something '
               + 'to average.', 3500);
     return;
   }
@@ -25685,7 +25940,7 @@ function _cycEnsPaint(storm) {
   const sum = el.querySelector('.cyc-ens-summary');
   const note = el.querySelector('.cyc-ens-note');
   if (!storm) {
-    sum.innerHTML = '<div class="cyc-ens-empty">No AI cyclone tracks are '
+    sum.innerHTML = '<div class="cyc-ens-empty">No DeepMind tracks are '
       + 'loaded. Turn them on in the Spaghetti Models panel first.</div>';
     note.textContent = '';
     return;
@@ -32901,7 +33156,7 @@ const LAYER_DESCRIPTIONS = {
   // The Models row's two doors.
   'run-models':      'Forecast model charts - GFS, ECMWF, HRRR, NAM and more - browsable by product and forecast hour, with an Ensemble Spread view that shows where the models disagree.',
   'spaghetti-models': 'Tropical guidance from the NHC a-deck: official tracks and cones, plus storm-track spaghetti from every published model, each line wearing its model\'s name tag on a stem. Includes the track animation.',
-  'ai-cyclones': 'AI hurricane forecasts in their own panel: Google DeepMind\'s FNV3 and GenCast ensembles. Experimental research output, shown beside the official guidance rather than instead of it.',
+  'ai-cyclones': 'Google DeepMind\'s AI hurricane models in their own panel: WNV3 (their newest, 64 members), FNV3 (50) and GenCast. Tracks for every member, the mean track and ensemble stats, an L with the central pressure at each member\'s storm centre, and the chance of 34, 50 or 64 knot winds from each member\'s wind radii, all walking forward with the playbar. Experimental research output, shown beside the official guidance rather than instead of it.',
   'ensemble-models': 'Everything built from an ensemble: many runs of the same model started a little differently, so where they agree the forecast is sure and where they spread it is not. Ensemble charts (GEFS, ECMWF ENS, HREF and more), low pressure tracks, ECMWF tropical cyclone probabilities, GEFS cyclone centres and the ensemble meteogram.',
   'ens-charts': 'The ensemble model charts in the Run Models panel: GEFS mean and spread, the GEFS control and a member, ECMWF ENS mean, HREF mean and spread, the Canadian ensemble and whatever else the parsing server builds. The ordinary single runs stay under Run Models.',
   'ens-explorer': 'Every member of GEFS, the Canadian GEPS, SREF and ECMWF ENS for one field at one hour: step through the members with the arrows (or [ and ]) while the place and time stay put, or show the mean, the median, the spread (where the members disagree) or the spread compared with its usual size.',
@@ -38587,7 +38842,7 @@ const MODELS_SUB_BUBBLES = [
   { id: 'run-models',       icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-chart-up></use></svg>', label: 'Run Models' },
   { id: 'ensemble-models',  icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-signal></use></svg>', label: 'Ensemble Models' },
   { id: 'spaghetti-models', icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-noodles></use></svg>', label: 'Spaghetti Models' },
-  { id: 'ai-cyclones',      icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-cyclone></use></svg>', label: 'AI Cyclones' },
+  { id: 'ai-cyclones',      icon: '<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-cyclone></use></svg>', label: 'DeepMind Models' },
 ];
 
 // One place that knows how each Models feature opens, closes, and reports
@@ -41457,7 +41712,7 @@ function _tanimStart() {
   if (!_tanim.tracks.length) {
     if (typeof showToast === 'function')
       showToast('Nothing to animate yet. Turn on the model guidance or the '
-              + 'AI cyclone tracks first.', 3500);
+              + 'DeepMind tracks first.', 3500);
     return;
   }
   _tanim.hMax = Math.max(12, Math.min(240,
@@ -67312,7 +67567,7 @@ function lqmSetTZ(tz) {
   <a class="toc-link" href="#spc">SPC</a>
   <a class="toc-link" href="#tropical">Spaghetti</a>
   <a class="toc-link" href="#models">Run Models</a>
-  <a class="toc-link" href="#cyclones">AI Cyclones</a>
+  <a class="toc-link" href="#cyclones">DeepMind Models</a>
   <a class="toc-link" href="#tools">Tools</a>
   <a class="toc-link" href="#settings">Settings</a>
   <a class="toc-link" href="#nav">Navigation</a>
@@ -67594,7 +67849,7 @@ function lqmSetTZ(tz) {
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-chart-bar></use></svg></div>
       <div class="fc-title">MODELS</div>
-      <p class="fc-body">Three sub-bubbles, each opening its own independent panel: <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-chart-up></use></svg> Run Models</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-noodles></use></svg> Spaghetti Models</strong> and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-cyclone></use></svg> AI Cyclones</strong>. They do not share a panel or any state, and all three can be open at once. See <a href="#models">Run Models</a>, <a href="#tropical">Spaghetti Models</a> and <a href="#cyclones">AI Cyclones</a> below.</p>
+      <p class="fc-body">Three sub-bubbles, each opening its own independent panel: <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-chart-up></use></svg> Run Models</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-noodles></use></svg> Spaghetti Models</strong> and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-cyclone></use></svg> DeepMind Models</strong>. They do not share a panel or any state, and all three can be open at once. See <a href="#models">Run Models</a>, <a href="#tropical">Spaghetti Models</a> and <a href="#cyclones">DeepMind Models</a> below.</p>
     </div>
   </div>
 
@@ -68031,8 +68286,8 @@ function lqmSetTZ(tz) {
   <div class="section-header">
     <div class="section-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-cyclone></use></svg></div>
     <div>
-      <div class="section-title">AI CYCLONES</div>
-      <div class="section-sub">Models <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> AI Cyclones</div>
+      <div class="section-title">DEEPMIND MODELS</div>
+      <div class="section-sub">Models <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> DeepMind Models</div>
     </div>
   </div>
 
@@ -68053,6 +68308,11 @@ function lqmSetTZ(tz) {
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-chart-up></use></svg></div>
       <div class="fc-title">MEAN TRACK &amp; STATS</div>
       <p class="fc-body">The mean track through those centres, with spread statistics beside it. A tight cluster and a wide one mean very different things about confidence, and the numbers say which you are looking at.</p>
+    </div>
+    <div class="feature-card">
+      <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-target></use></svg></div>
+      <div class="fc-title">LOWS &amp; WIND CHANCE</div>
+      <p class="fc-body"><strong>Lows (L)</strong> puts an L with the central pressure at every member's storm centre at the playbar hour, coloured by strength. <strong>Wind chance</strong> shows how many members bring 34, 50 or 64 knot winds to each place by that hour, like the Hurricane Center's wind probabilities, from the wind radii WNV3 and FNV3 publish.</p>
     </div>
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg></div>
@@ -68340,7 +68600,7 @@ function lqmSetTZ(tz) {
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-cyclone></use></svg> + <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-chart-up></use></svg></div>
       <div class="fc-title">ALL THREE MODEL PANELS AT ONCE</div>
-      <p class="fc-body">During an active storm, open <strong>Spaghetti Models</strong> for the NHC official track and cone, <strong>AI Cyclones</strong> for the ensemble spread, and <strong>Run Models</strong> for the pressure and wind fields at the storm's forecast position. They are independent panels, so all three can stay open together.</p>
+      <p class="fc-body">During an active storm, open <strong>Spaghetti Models</strong> for the NHC official track and cone, <strong>DeepMind Models</strong> for the ensemble spread, and <strong>Run Models</strong> for the pressure and wind fields at the storm's forecast position. They are independent panels, so all three can stay open together.</p>
     </div>
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-chart-up></use></svg></div>
@@ -71530,6 +71790,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-o', date: 'Sep 24, 2026',
+    text: 'AI Cyclones is now DeepMind Models, and it got better. It picks up WNV3, Google DeepMind\'s newest cyclone model (64 members), as the default beside FNV3 and GenCast. New Lows (L) button: an L with the central pressure at every member\'s storm centre at the playbar hour, coloured by strength. New Wind chance: the chance of 34, 50 or 64 knot winds at each place by that hour, like the Hurricane Center\'s wind probabilities, built from each member\'s wind radii. DeepMind\'s data terms are on the panel. And every models panel (DeepMind, Run, Spaghetti, Ensemble and the HD models panel) now wears heavy frost.' },
   { id: '2026-09-24-n', date: 'Sep 24, 2026',
     text: 'Meteograms read the real models first: every ensemble the parsing server has built, and now the ordinary GFS and ECMWF runs too (drawn as a line), all marked (parsing server) in the picker. Open-Meteo is only the fallback, and when it has to be used the panel now says why (no parsing server, not answering, or nothing built yet).' },
   { id: '2026-09-24-m', date: 'Sep 24, 2026',
@@ -79257,8 +79519,8 @@ function _ovOrderReset(){
         <img class="credit-logo" src="https://github.com/WeathermanAAA.png" alt="Andrew Austin-Adler avatar" loading="lazy">
         <div class="credit-info">
           <div class="credit-name">Triple-A Tropics &middot; Andrew Austin-Adler</div>
-          <div class="credit-desc">Used with permission, and in three separate places. The ensemble cyclone-centre detection and the ATCF ingest behind the AI Cyclones and Spaghetti panels are adapted from his code. The ocean section follows his product choices and anomaly conventions: which fields are worth showing, the 1991-2020 baseline, the record envelope, and subtracting the global mean to separate a warm patch from a warming ocean. Those fields are built on the parsing server here rather than fetched from his server, so none of this costs him bandwidth.</div>
-          <div class="credit-uses"><span class="credit-use">Sea Surf. Temp</span><span class="credit-use">Ocean Heat</span><span class="credit-use">AI Cyclones</span><span class="credit-use">Spaghetti Models</span></div>
+          <div class="credit-desc">Used with permission, and in three separate places. The ensemble cyclone-centre detection and the ATCF ingest behind the DeepMind Models and Spaghetti panels are adapted from his code. The ocean section follows his product choices and anomaly conventions: which fields are worth showing, the 1991-2020 baseline, the record envelope, and subtracting the global mean to separate a warm patch from a warming ocean. Those fields are built on the parsing server here rather than fetched from his server, so none of this costs him bandwidth.</div>
+          <div class="credit-uses"><span class="credit-use">Sea Surf. Temp</span><span class="credit-use">Ocean Heat</span><span class="credit-use">DeepMind Models</span><span class="credit-use">Spaghetti Models</span></div>
           <a class="credit-link" href="https://triple-a-tropics.com/" target="_blank" rel="noopener">triple-a-tropics.com</a>
           <a class="credit-link" href="https://github.com/WeathermanAAA/Triple-A-Tropics" target="_blank" rel="noopener" style="margin-left:10px">github.com/WeathermanAAA</a>
         </div>
@@ -80764,6 +81026,17 @@ body {
 :root[data-glass] #alerts-panel {
   background-image: linear-gradient(180deg,
     rgba(20,24,30,0.36) 0%, rgba(5,7,10,0.44) 100%);
+  backdrop-filter: blur(24px) saturate(1.5) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+}
+:root[data-glass] .models-style-panel, :root[data-glass] #hd-panel,
+:root[data-glass] #mtg-panel, :root[data-glass] #ensx-panel, :root[data-glass] #ensl-panel {
+  /* Every models panel, heavy as well, by request: DeepMind Models, Run
+     Models, Spaghetti Models, the HD models panel and the ensemble panels.
+     The headers keep their solid gradient so the name reads at a glance. */
+  background-color: transparent !important;
+  background-image: linear-gradient(180deg,
+    rgba(20,24,30,0.36) 0%, rgba(5,7,10,0.44) 100%) !important;
   backdrop-filter: blur(24px) saturate(1.5) !important;
   -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
 }

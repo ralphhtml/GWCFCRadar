@@ -170,7 +170,7 @@ console.log('\n2. the four switches are one row, not a scatter');
       cols: cs ? cs.gridTemplateColumns.split(' ').length : 0,
     };
   });
-  ok('all four are in the one row', r.count === 4, r.ids.join(','));
+  ok('all six (with Lows and Wind chance) are in the one row', r.count === 6 && r.ids.includes('cyc-lows-btn') && r.ids.includes('cyc-wind-btn'), r.ids.join(','));
   ok('the AI tracks and the GEFS centres sit together',
      r.ids.includes('cyc-lab-btn') && r.ids.includes('cyc-ens-centres-btn'),
      r.ids.join(','));
