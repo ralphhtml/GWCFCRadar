@@ -80,6 +80,9 @@ await page.waitForTimeout(3500);
 // know whether they were asked to.
 const arm = (opts = {}) => page.evaluate((o) => {
   window.__w = { flew: null, composite: 0, forecast: null, toasts: [] };
+  // The national mosaic comes on by itself only in Lite-ning, so the
+  // sections below run as Lite-ning unless they say otherwise.
+  localStorage.setItem('gwcfc_mode', o.mode || 'lite');
   _welcomeRan = false;
   _tutAutoOpened = false;
   _currentUser = o.signedIn ? { uid: 'u1', displayName: 'Test' } : null;
@@ -157,6 +160,16 @@ console.log('\n2. closing the auto-opened tutorial gives them their weather');
      state.radarBubble === true, String(state.radarBubble));
   ok('and the sub-row is left to build itself when opened',
      state.mrmsBubbleExists === false, String(state.mrmsBubbleExists));
+}
+
+console.log('\n2b. Wx-pert: their weather, but no mosaic switched on for them');
+{
+  await arm({ geo: 'grant', mode: 'expert' });
+  await closeAndGreet();
+  await page.waitForTimeout(2600);
+  const r = await result();
+  ok('the national mosaic stays off in Wx-pert', r.composite === 0, String(r.composite));
+  ok('but the map still goes to them and their forecast opens', !!r.flew && !!r.forecast, JSON.stringify(r));
 }
 
 console.log('\n3. it does NOT fire when a regular opens the tutorial themselves');
@@ -289,6 +302,18 @@ console.log('\n9. screenshot mode is left alone');
   // a forecast panel over every shot is not what the shots are for.
   ok('no welcome runs during a capture', r.composite === 0, String(r.composite));
   await page.evaluate(() => document.body.classList.remove('shot-mode'));
+}
+
+console.log('\n9b. the forecast dots start on only in Lite-ning');
+{
+  const dots = async (mode) => {
+    await page.evaluate(m => localStorage.setItem('gwcfc_mode', m), mode);
+    await page.goto('file://' + join(ROOT, 'index.html'), { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(3000);
+    return page.evaluate(() => activeLayers.forecasts);
+  };
+  ok('Wx-pert starts with the dots off', (await dots('expert')) === false);
+  ok('Lite-ning starts with them on', (await dots('lite')) === true);
 }
 
 console.log('\n10. nothing threw along the way');

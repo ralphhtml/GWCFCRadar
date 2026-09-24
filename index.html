@@ -12681,7 +12681,11 @@ let activeLayers = {
   nexrad: false, satellite: false, tornado: true, tstm: true,
   flood: true, watch: false, meso: false, spc1: false, spc2: false,
   spc3: false, spcrpts: false, nhc: false, invest: false, sst: false,
-  models: false, lightning: false, ltg30: false, forecasts: true,
+  models: false, lightning: false, ltg30: false,
+  // The forecast dots start on only in Lite-ning, where they are half of
+  // what the mode is. Wx-pert starts with a clean map and a switch for them.
+  // Read straight from storage: the mode helpers are defined further down.
+  forecasts: (() => { try { return localStorage.getItem('gwcfc_mode') === 'lite'; } catch (e) { return false; } })(),
   radio: false, cloudcam: false
 };
 let currentTab = 'radar';
@@ -68866,9 +68870,11 @@ async function _runWelcome() {
   // -- The radar, first --
   // Straight to the composite rather than through the menu, the same way the
   // assistant's openComposite action does it, so there is one path to this
-  // state rather than two that can drift.
+  // state rather than two that can drift. Lite-ning only: Wx-pert starts on
+  // a clean map and the national mosaic is one tap away in Radar.
+  const lite = typeof _isLite === 'function' && _isLite();
   try {
-    if (typeof _loadMrmsComposite === 'function') {
+    if (lite && typeof _loadMrmsComposite === 'function') {
       _radarSource = 'normal';
       if (typeof _prDisable === 'function') _prDisable();
       if (typeof _clearSingleSiteRef === 'function') _clearSingleSiteRef();
@@ -68907,7 +68913,8 @@ async function _runWelcome() {
     // Said plainly rather than silently doing half of it. The radar is on,
     // which is most of the value, and they know why the forecast is not.
     if (typeof showToast === 'function') {
-      showToast('Radar is on. Turn on location, or search a place, for a local forecast.', 7000);
+      showToast(lite ? 'Radar is on. Turn on location, or search a place, for a local forecast.'
+        : 'Turn on location, or search a place, for a local forecast.', 7000);
     }
   }
 
@@ -71500,6 +71507,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-24-m', date: 'Sep 24, 2026',
+    text: 'The national radar mosaic and the forecast dots now only switch themselves on in Lite-ning mode. Wx-pert starts on a clean map; both are still a tap away (Radar for the mosaic, Forecasts for the dots).' },
   { id: '2026-09-24-l', date: 'Sep 24, 2026',
     text: 'The meteogram is rebuilt in the style of the National Blend\'s 1D Viewer, and now reads the real ensemble members from the parsing server (Open-Meteo is only the fallback). One tall page of charts on a shared time axis: box and whisker percentiles (10th, 25th, median, 75th, 90th) with every member drawn faintly behind for temperature, dew point, wind and gusts; stacked bars for the chance of liquid, frozen and freezing precipitation; the chance the rain total reaches 0.01 to 2 inches; and CAPE. Hover anywhere for one crosshair through every chart and a table of the exact percentiles for that hour.' },
   { id: '2026-09-24-k', date: 'Sep 24, 2026',
