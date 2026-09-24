@@ -54,17 +54,29 @@ async function freshPage() {
   await p.route(/\.(png|jpe?g|webp|gif)(\?|$)/i, r => r.abort());
   await p.goto('file://' + join(ROOT, 'index.html'), { waitUntil: 'domcontentloaded' });
   await p.waitForFunction(() => typeof _menuPlay === 'function' && document.querySelector('#sub-bubbles .sub-bubble'), null, { timeout: 30000 });
+  // A few rows are only shown after the parsing server answers (a sea
+  // temperature source's fields). This walks the menu, not the data, so
+  // the loading step is stood in for and the next row appears regardless.
+  await p.evaluate(() => {
+    if (typeof _sstEnable === 'function') {
+      window._sstEnable = async (src, v) => { _sstSource = src; _sstVariant = v; _sstOn = true; };
+    }
+  });
   await p.waitForTimeout(1500);
   return p;
 }
 
 // The labels of the row on screen now, and whether it is a sub-row.
+// Not layers: a notice ("No parsing server radar yet", "Reading the parsing
+// server..."), or the Time Machine button, which opens the time panel.
+// (Kept as a string for the page, where the test runs.)
+const SKIP_SRC = String.raw`^(No\b.*\byet|Reading\b.*|Time Machine)$`;
 // Entries that are a notice rather than something to tap
 // ("No parsing server radar yet") are left out.
-const row = p => p.evaluate(() => ({
-  labels: _menuRowItems().map(x => x.label).filter(l => !/^No\b.*\byet$/i.test(l)),
+const row = p => p.evaluate(src => { const SKIP = new RegExp(src, 'i'); return ({
+  labels: _menuRowItems().map(x => x.label).filter(l => !SKIP.test(l)),
   sub: !!document.querySelector('#sub-bubbles .sb-back'),
-}));
+}); }, SKIP_SRC);
 const sig = r => r.labels.join('\u0001');
 
 const leaves = [];
@@ -72,10 +84,12 @@ const leaves = [];
 // only after something loads, and reading too soon reads the parent's row.
 async function reach(p, path, notSig) {
   await p.evaluate(path => _menuPlay(path), path);
-  let here = await row(p);
+  let here = await row(p), prev = null;
   const t0 = Date.now();
-  while ((sig(here) === notSig || !here.labels.length) && Date.now() - t0 < 4000) {
-    await p.waitForTimeout(100);
+  // Until it is not the parent's row, and has stopped changing.
+  while ((sig(here) === notSig || !here.labels.length || sig(here) !== prev) && Date.now() - t0 < 4000) {
+    prev = sig(here);
+    await p.waitForTimeout(200);
     here = await row(p);
   }
   return here;
@@ -100,7 +114,10 @@ async function walk(p, path, depth, seen, parentSig) {
       await p.waitForTimeout(100);
       after = await row(p);
     }
-    const opened = after.sub && after.labels.length && sig(after) !== mySig && !seen.has(sig(after));
+    // A row that still lists what was tapped is this same menu redrawn (a
+    // pick lit up, an entry added), not a new one.
+    const opened = after.sub && after.labels.length && sig(after) !== mySig
+      && !after.labels.includes(label) && !seen.has(sig(after));
     if (opened && depth < MAX_DEPTH) {
       await walk(p, next, depth + 1, new Set([...seen, mySig]), mySig);
     } else if (!opened) {
@@ -114,7 +131,9 @@ async function walk(p, path, depth, seen, parentSig) {
 const home = await freshPage();
 const tops = (await row(home)).labels;
 await home.context().close();
-for (const top of tops) {
+// CRAWL_ONLY=Wind,Waves walks just those, for checking one menu.
+const only = (process.env.CRAWL_ONLY || '').split(',').map(x => x.trim()).filter(Boolean);
+for (const top of tops.filter(t => !only.length || only.includes(t))) {
   console.log(`\n${top}`);
   const p = await freshPage();
   try { await walk(p, [top], 1, new Set(), sig(await row(p))); }
