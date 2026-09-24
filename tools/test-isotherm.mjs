@@ -69,8 +69,8 @@ const dock = () => p.evaluate(() => {
   const d = document.getElementById('lvl-dock');
   if (!d) return null;
   const c = d.querySelector('.lvl-col[data-layer="isotherm"]');
-  return { open: d.classList.contains('open'), iso: c ? { active: (c.querySelector('.lvl-notch.active') || {}).dataset?.lvl,
-    notches: [...c.querySelectorAll('.lvl-notch')].map(n => n.dataset.lvl), ft: c.querySelector('.lvl-ft').textContent } : null };
+  return { open: d.classList.contains('open'), iso: c ? { active: c.dataset.lvl,
+    notches: LVL_STEPS.isotherm.map(String), ft: c.querySelector('.lvl-ft').textContent } : null };
 });
 
 console.log('\n2. the group');
@@ -96,17 +96,17 @@ console.log('\n3. the Isotherm column');
   let d = await dock();
   ok('a slice brings it, warmest on the left, on -10',
      d && d.open && d.iso && d.iso.notches.join(',') === '0,-5,-10,-15,-20' && d.iso.active === '-10', JSON.stringify(d));
-  await p.evaluate(() => document.querySelector('#lvl-dock .lvl-notch[data-layer="isotherm"][data-lvl="-20"]').click());
+  await p.evaluate(() => { const r = document.querySelector('#lvl-dock .lvl-range[data-layer="isotherm"]'); r.value = String(LVL_STEPS.isotherm.indexOf(-20)); r.dispatchEvent(new Event('change')); });
   await p.waitForTimeout(900);
   let on = await p.evaluate(() => Object.keys(_mrmsOn).filter(k => _mrmsOn[k]).join(','));
   ok('stepping swaps the slice rather than stacking', on === 'reflm20c', on);
   d = await dock();
-  ok('the notch moves', d.iso.active === '-20', JSON.stringify(d.iso));
-  await p.evaluate(() => document.querySelector('#lvl-dock .lvl-notch[data-layer="isotherm"][data-lvl="0"]').click());
+  ok('the dot moves', d.iso.active === '-20', JSON.stringify(d.iso));
+  await p.evaluate(() => { const r = document.querySelector('#lvl-dock .lvl-range[data-layer="isotherm"]'); r.value = String(LVL_STEPS.isotherm.indexOf(0)); r.dispatchEvent(new Event('change')); });
   await p.waitForTimeout(900);
   on = await p.evaluate(() => Object.keys(_mrmsOn).filter(k => _mrmsOn[k]).join(','));
   ok('0 C is the melting top', on === 'refl0c' && (await dock()).iso.ft === 'melting top', on);
-  await p.evaluate(() => document.querySelector('#lvl-dock .lvl-notch[data-layer="isotherm"][data-lvl="-15"]').click());
+  await p.evaluate(() => { const r = document.querySelector('#lvl-dock .lvl-range[data-layer="isotherm"]'); r.value = String(LVL_STEPS.isotherm.indexOf(-15)); r.dispatchEvent(new Event('change')); });
   await p.waitForTimeout(900);
   on = await p.evaluate(() => Object.keys(_mrmsOn).filter(k => _mrmsOn[k]).join(','));
   ok('a slice the server does not build is refused, the old one kept', on === 'refl0c', on);

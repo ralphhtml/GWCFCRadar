@@ -103,12 +103,13 @@ const dock = () => p.evaluate(() => {
   if (!d) return null;
   return { open: d.classList.contains('open') && getComputedStyle(d).display !== 'none',
            cols: [...d.querySelectorAll('.lvl-col')].map(c => ({ id: c.dataset.layer, locked: c.classList.contains('locked'),
-             active: (c.querySelector('.lvl-notch.active') || {}).dataset?.lvl,
-             notches: [...c.querySelectorAll('.lvl-notch')].map(n => n.dataset.lvl) })) };
+             active: c.dataset.lvl, notches: LVL_STEPS[c.dataset.layer].map(String),
+             labels: c.querySelectorAll('.lvl-ft').length, dot: LVL_STEPS[c.dataset.layer][+c.querySelector('.lvl-range').value] })) };
 });
 const click = async (layer, lvl) => {
   // Clicked through the page: the first-visit mode picker covers the map here.
-  await p.evaluate(([l, v]) => document.querySelector(`#lvl-dock .lvl-notch[data-layer="${l}"][data-lvl="${v}"]`).click(), [layer, String(lvl)]);
+  await p.evaluate(([l, v]) => { const r = document.querySelector(`#lvl-dock .lvl-range[data-layer="${l}"]`);
+    r.value = String(LVL_STEPS[l].map(String).indexOf(v)); r.dispatchEvent(new Event('input')); r.dispatchEvent(new Event('change')); }, [layer, String(lvl)]);
   await p.waitForTimeout(900);
 };
 
@@ -173,7 +174,9 @@ console.log('\n3. wind');
   ok('and still reads 250 mb', /hourly=wind_speed_250hPa/.test(last()), last().slice(-100));
   await p.evaluate(() => { _windProduct = 'wind-surface'; _loadWindLayer(); });
   await p.waitForTimeout(1200);
-  ok('back to Surface Winds, the 850 mb choice is still there', /wind_speed_850hPa/.test(last()), last().slice(-100));
+  const back = await p.evaluate(() => ({ v: _windGridCache.grid.find(x => x != null), key: _windFetchedProduct }));
+  ok('back to Surface Winds, the 850 mb choice is still there, straight from the cache (no new download)',
+     back.v === 35 && back.key === 'wind-surface@850' && /wind_speed_250hPa/.test(last()), JSON.stringify(back) + ' ' + last().slice(-60));
 }
 
 console.log('\n4. pressure becomes heights aloft');
@@ -204,6 +207,11 @@ console.log('\n5. placement, reload, leaving');
              preview, still, after: _omLevel.pressure };
   });
   ok('each layer is a plain horizontal slider', slid.type === 'range' && slid.wide, JSON.stringify(slid));
+  const bare = await p.evaluate(() => { const d = document.getElementById('lvl-dock'), cs = getComputedStyle(d);
+    const texts = [...d.querySelectorAll('*')].filter(e => e.children.length === 0 && e.textContent.trim()).map(e => e.className);
+    return { bg: cs.backgroundImage + '|' + cs.backgroundColor, border: cs.borderTopWidth, shadow: cs.boxShadow, texts }; });
+  ok('no box: no fill, border or shadow', bare.bg === 'none|rgba(0, 0, 0, 0)' && bare.border === '0px' && bare.shadow === 'none', JSON.stringify(bare));
+  ok('the only words are the height label on each dot', bare.texts.every(c => c === 'lvl-ft'), JSON.stringify(bare.texts));
   ok('dragging previews the level and releasing picks it', /300 mb, ~30,000 ft/.test(slid.preview) && slid.still === 500 && slid.after === 300, JSON.stringify(slid));
   await p.waitForTimeout(600);
   await p.evaluate(() => _lvlSet('pressure', 500));
@@ -229,6 +237,55 @@ console.log('\n5. placement, reload, leaving');
   await p.waitForTimeout(800);
   ok('and gone with the last layer', !(await dock()).open);
   ok('no page errors along the way', errs.length === 0, errs[0]);
+}
+
+console.log('\n6. quick: a level already seen comes straight back, a dragged-over one starts early');
+{
+  await p.evaluate(() => { temperatureActive = true; _temperatureProduct = 'air-temp'; _lvlSet('temperature', 850); });
+  await p.waitForTimeout(1200);
+  await p.evaluate(() => _lvlSet('temperature', 700));
+  await p.waitForTimeout(1200);
+  asked.length = 0;
+  const t0 = Date.now();
+  await p.evaluate(() => _lvlSet('temperature', 850));
+  await p.waitForTimeout(150);
+  const back = await p.evaluate(() => _temperatureAllGrids && _temperatureAllGrids.level);
+  ok('going back to 850 mb needs no download and is drawn at once', back === 850 && asked.length === 0, `${back} ${asked.length} ${Date.now() - t0}ms`);
+  asked.length = 0;
+  await p.evaluate(() => { const r = document.querySelector('#lvl-dock .lvl-range[data-layer="temperature"]');
+    r.value = String(LVL_STEPS.temperature.indexOf(300)); r.dispatchEvent(new Event('input')); });
+  await p.waitForTimeout(700);
+  const early = await p.evaluate(() => ({ level: _omLevel.temperature, cached: _lvlCached('temperature|300') }));
+  ok('resting the dot on 300 mb starts fetching it before release, without switching yet',
+     early.level === 850 && early.cached && asked.some(u => /temperature_300hPa/.test(u)), JSON.stringify(early));
+}
+
+console.log('\n7. 3D: a layer read aloft floats at that height');
+{
+  const r = await p.evaluate(async () => {
+    _lvlSet('temperature', 500);
+    await new Promise(res => setTimeout(res, 1200));
+    map.setView([35, -100], 6, { animate: false });
+    await new Promise(res => setTimeout(res, 300));
+    const bb = map.getBounds();
+    _l3dOpenBounds('temperature', bb.getSouth() + 1, bb.getWest() + 1, bb.getNorth() - 1, bb.getEast() - 1);
+    const P = _l3dPanels.temperature;
+    for (let i = 0; i < 300 && !P.ground; i++) await new Promise(res => setTimeout(res, 50));
+    P.resample(true); P.dirty = true; await P.renderIdle();
+    const out = { ground: !!P.ground, level: P.airLevel(), high: P.highKm(), status: P.el('status').textContent,
+                  sheet: !!(P.colours && P.colours.sky) };
+    _lvlSet('temperature', 'sfc');
+    await new Promise(res => setTimeout(res, 2200));
+    out.after = { level: P.airLevel(), high: P.highKm(), status: P.el('status').textContent, sheet: !!(P.colours && P.colours.sky) };
+    P.close && P.close();
+    return out;
+  });
+  ok('the 3D panel knows the level', r.ground && r.level === 500, JSON.stringify(r));
+  ok('the box grows to hold 500 mb (about 5.6 km up) and the layer is a sheet there', r.high >= 5.5 && r.sheet, JSON.stringify(r));
+  ok('and says so', /at 500 mb .*floating at that height/.test(r.status), r.status);
+  ok('back on the ground, it follows the slider on its own and drapes the ground again',
+     r.after.level === null && !r.after.sheet && r.after.high < 5 && /draped/.test(r.after.status), JSON.stringify(r.after));
+  ok('still no page errors', errs.length === 0, errs[0]);
 }
 
 await b.close();

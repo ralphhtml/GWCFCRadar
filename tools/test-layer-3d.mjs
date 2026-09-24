@@ -392,7 +392,7 @@ console.log('\n6b. the Radar 3D toolkit, and the look');
   ok('the camera button saves the view as a PNG', /^layer3d-waves-\d+\.png$/.test(r.saved || ''), r.saved);
   ok('each new moment on the animation bar re-reads the layer', r.followsBar);
   ok('the controls sit in a black gradient top', r.topWraps && /rgb\(28, 28, 34\)/.test(r.topBg), r.topBg);
-  ok('and the panel below is frosted glass', /rgba\(24, 28, 34, 0\.36\)/.test(r.panelBg), r.panelBg);
+  ok('and the panel below is frosted glass', /rgba\(24, 28, 34, 0\.58\)/.test(r.panelBg), r.panelBg);
 }
 
 console.log('\n7. another source answers when one cannot be reached');
