@@ -669,6 +669,37 @@ Persistent=true
 WantedBy=timers.target
 EOF
 
+# Every ensemble member's fields over the lower 48 for the site's Ensemble
+# Models tools (members, stamps, mean, median, spread, probabilities, the
+# NBM-style meteogram). GEFS, GEPS and SREF are cut to the box by NOMADS and
+# are a few hundred MB a run; ECMWF ENS has no box to ask for and is several
+# GB a day, so it is once a day with fewer fields. Environment=GWCFC_ENS_MODELS
+# in the unit below chooses which are built (e.g. gefs,geps).
+cat > "$UNITS/gwcfc-ensfields.service" <<EOF
+[Unit]
+Description=Ensemble member fields (GEFS, GEPS, SREF, ECMWF ENS)
+
+[Service]
+Type=oneshot
+ExecStart=$VENV/bin/python $REPO/pi/ens_fields_pipeline.py
+TimeoutStartSec=14400
+Nice=15
+EOF
+
+cat > "$UNITS/gwcfc-ensfields.timer" <<'EOF'
+[Unit]
+Description=Ensemble member fields, per run
+
+[Timer]
+# Each ensemble lands at a different time after its cycle; a run already
+# built is skipped, so checking every three hours picks each up soon after.
+OnCalendar=*-*-* 00/3:20
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
 # Spaghetti model guidance from the ATCF a-decks. Text files, a few hundred
 # kilobytes per storm, so this is by far the lightest fetcher here.
 cat > "$UNITS/gwcfc-spag.service" <<EOF
@@ -893,6 +924,7 @@ systemctl --user enable --now gwcfc-cyclones.timer >/dev/null 2>&1
 systemctl --user enable --now gwcfc-ens.timer      >/dev/null 2>&1
 systemctl --user enable --now gwcfc-ecmwf-tc.timer >/dev/null 2>&1
 systemctl --user enable --now gwcfc-lows.timer     >/dev/null 2>&1
+systemctl --user enable --now gwcfc-ensfields.timer >/dev/null 2>&1
 systemctl --user enable --now gwcfc-spag.timer     >/dev/null 2>&1
 systemctl --user enable --now gwcfc-feeds.timer    >/dev/null 2>&1
 systemctl --user enable --now gwcfc-update.timer   >/dev/null 2>&1
