@@ -48049,6 +48049,7 @@ function _cmOpen(e) {
   // five seconds or so. It starts now, while the menu is being read, so by
   // the time the row is clicked the picture is usually finished.
   if (st) { try { _l2WarmSite(st.id, _cmRadarProduct(st.id)); } catch (err) {} }
+  if (st) { try { _cmReadyPrep(st.id); } catch (err) {} }
   _cmAlertList = _cmAlertsAt(e.latlng.lat, e.latlng.lng);
   // Only while a parsing server model is actually on the map. The row names the model
   // and the hour being looked at, because that is the whole question it
@@ -49393,7 +49394,100 @@ function _cmGoRadar() {
   if (!ll) return;
   const s = _cmNearestStation(ll.lat, ll.lng);
   if (!s) return;
+  // The instant answer. Opening the menu already started this station's
+  // picture loading (_cmOpen), so by the time "Radar" is clicked it is
+  // usually sitting finished in the cache. Put that picture on the map
+  // before anything else, a fraction of a millisecond after the click, and
+  // do the menu and bookkeeping work a frame later. Doing it in the old
+  // order (menus, site pills, loop, then the picture) kept it off the screen
+  // for 40 to 80 ms.
+  _cmPreviewShow(s);
   map.flyTo([s.lat, s.lon], Math.max(map.getZoom(), 8));
+  const rest = () => _cmGoRadarRest(s);
+  if (_cmPreview) requestAnimationFrame(() => setTimeout(rest, 0)); else rest();
+}
+
+// A cached picture laid straight on the map, standing in for the moment it
+// takes the normal path to catch up. The normal path draws the very same
+// picture (same address), so the swap in _l3Attach cannot be seen.
+let _cmPreview = null, _cmPreviewBlob = null;
+function _cmPreviewDrop() {
+  if (_cmPreview) { try { map.removeLayer(_cmPreview); } catch (e) {} _cmPreview = null; }
+  if (_cmPreviewBlob) { try { URL.revokeObjectURL(_cmPreviewBlob); } catch (e) {} _cmPreviewBlob = null; }
+}
+function _cmPreviewPick(id) {
+  let pr = _cmRadarProduct(id);
+  if (typeof _siteMakes === 'function' && !_siteMakes(id, pr)) pr = 'ref';
+  // A new site starts on its first cut, exactly as _siteView will ask.
+  const tilt = (typeof _l2Site !== 'undefined' && _l2Site === id) ? _l2Tilt : null;
+  return _l3PicGet(id, pr, tilt);
+}
+
+// The picture is a PNG written out as text, close to a megabyte of it, and
+// just handing that text to an image costs about 5 ms before the browser even
+// starts to unpack it. So while the menu is open, the picture is turned back
+// into a file with a short address and unpacked into one ready image, which
+// the click then only has to place (0.1 ms). One image, only for the menu
+// that is open, so it costs nothing on memory-tight phones.
+let _cmReady = null;          // { url, el, blob }
+function _cmReadyFree(r) {
+  if (!r) return;
+  if (_cmReady === r) _cmReady = null;
+  try { URL.revokeObjectURL(r.blob); } catch (e) {}
+}
+function _cmReadyPrep(id) {
+  _cmReadyFree(_cmReady);
+  const make = () => {
+    const hit = _cmPreviewPick(id);
+    if (!hit || !hit.img || !hit.img.url) return false;
+    if (_cmReady && _cmReady.url === hit.img.url) return true;
+    const url = hit.img.url, comma = url.indexOf(',');
+    if (!/^data:image\/png;base64,/.test(url)) return false;
+    const bin = atob(url.slice(comma + 1)), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const blob = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }));
+    const el = new Image();
+    el.src = blob;
+    try { if (el.decode) el.decode().catch(() => {}); } catch (e) {}
+    _cmReadyFree(_cmReady);
+    // The map layer itself is built now too, so the click only adds it.
+    const layer = L.imageOverlay(el, hit.img.leafletBounds,
+      { opacity: radarOpacity, zIndex: 11, pane: 'radarPane' });
+    const me = _cmReady = { url, el, blob, layer };
+    setTimeout(() => { if (_cmReady === me) _cmReadyFree(me); }, 60000);
+    return true;
+  };
+  if (make()) return;
+  // Still downloading: unpack it the moment the warm-up finishes.
+  const job = _l2WarmInflight.get(String(id).toLowerCase());
+  if (job && job.p) job.p.then(() => { if (_cmEl && _cmEl.classList.contains('open')) make(); });
+}
+
+function _cmPreviewShow(s) {
+  _cmPreviewDrop();
+  try {
+    const hit = _cmPreviewPick(s.id);
+    if (!hit || !hit.img || !hit.img.url) return false;
+    const r = _cmReady;
+    _cmReady = null;
+    if (r && r.url === hit.img.url && r.el.complete && !r.el.parentNode) {
+      _cmPreviewBlob = r.blob;
+      _cmPreview = r.layer.setOpacity(radarOpacity).addTo(map);
+      return true;
+    }
+    _cmReadyFree(r);
+    _cmPreview = L.imageOverlay(hit.img.url, hit.img.leafletBounds,
+      { opacity: radarOpacity, zIndex: 11, pane: 'radarPane' }).addTo(map);
+    return true;
+  } catch (e) { _cmPreviewDrop(); return false; }
+}
+
+let _cmGoing = false;
+function _cmGoRadarRest(s) {
+  _cmGoing = true;
+  try { _cmGoRadarRestInner(s); } finally { _cmGoing = false; }
+}
+function _cmGoRadarRestInner(s) {
   // The product has to be one a single radar's volume carries. This passed
   // whatever was showing straight to the Level 2 decoder, so from the
   // national mosaic ('radar' / 'mrms') or a Normal-menu product (hydro class,
@@ -49416,6 +49510,11 @@ function _cmGoRadar() {
   toggleRadarSub();
   toggleRadarL2Sub();
   _siteView(s);
+  // A cache hit is attached synchronously above, which already took the
+  // stand-in down. Anything else (a picture that expired in the frame
+  // between) leaves the old stand-in up until the real one lands.
+  const mine = _cmPreview;
+  if (mine) setTimeout(() => { if (_cmPreview === mine) _cmPreviewDrop(); }, 15000);
 }
 
 function _cmGoForecast() {
@@ -52267,6 +52366,14 @@ function _l3Attach(img, result, product, station) {
   // Remove the previous one only after the new one is added, so the two swap
   // rather than leaving a gap where the map has no radar on it at all.
   if (old) { try { map.removeLayer(old); } catch (e) {} }
+  // The right-click stand-in comes down once the real overlay has its
+  // picture unpacked, so the swap never shows a frame with no radar at all.
+  if (typeof _cmPreview !== 'undefined' && _cmPreview) {
+    const stand = _cmPreview, done = () => { if (_cmPreview === stand) _cmPreviewDrop(); };
+    const im = _l3Overlay.getElement && _l3Overlay.getElement();
+    if (im && im.decode) im.decode().then(done, done); else done();
+    setTimeout(done, 1500);
+  }
 
   const d = img.timeIso ? new Date(img.timeIso) : new Date();
   const at = document.getElementById('anim-time');
@@ -52883,6 +52990,9 @@ function _zdrColor(t) {
 }
 
 function _disableL3() {
+  // Radar switched off: the right-click stand-in goes too, unless it is the
+  // right-click itself clearing the old picture on its way to the new one.
+  if (typeof _cmPreviewDrop === 'function' && !_cmGoing) _cmPreviewDrop();
   if (_l3Overlay) { try { map.removeLayer(_l3Overlay); } catch(_){} _l3Overlay = null; }
   if (typeof _syncNexradSites === 'function') try { _syncNexradSites(); } catch (e) {}
   _l3Canvas = null; _l3Product = null; _l3Station = null;
@@ -75209,6 +75319,7 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-zzzzzzzzzzz', date: 'Sep 25, 2026', text: 'Right-click, Radar is now instant: opening the menu gets the nearest radar ready, and clicking Radar puts its picture on the map in well under a millisecond. The menus and loop catch up a frame later. A radar nobody has loaded yet still has to download first, which takes a few seconds.' },
   { id: '2026-09-25-zzzzzzzzzz', date: 'Sep 25, 2026',
     text: 'Every panel and popup that wore heavy frost now wears subtle frost, the same gentle blur and firmer fill as the rest of the app: the shared panel look, map popups, the alerts, EAS and forecast panels, alert and radio popups, the outlook controls, the 3D panels, the station popup, the search dropdown and the Did You Know card.' },
   { id: '2026-09-25-zzzzzzzzz', date: 'Sep 25, 2026',
