@@ -14177,6 +14177,10 @@ function _switchSlotToWms(i) {
 
 function _ensureNexradLayer(i) {
   if (_radarLayerPool[i]) return;
+  // With the radar switched off nothing is drawn, so nothing is fetched: the
+  // twelve frames used to be built (and their tiles downloaded) at start-up
+  // for a layer nobody had turned on. Turning it on builds them.
+  if (!activeLayers.nexrad) return;
   const frame = radarFrames[i];
 
   // The tile cache is N0Q only; an N0R-era frame always goes through the WMS.
@@ -14490,6 +14494,9 @@ function showFrame(idx) {
   if (_elTimeline) _elTimeline.value = idx;
 
   if (activeLayers.nexrad && _radarPoolBuilt) {
+    // Frames skipped while the radar was off: the window has to be worked
+    // out again, or it thinks they already exist.
+    if (!_radarLayerPool[idx]) { _lastWindowS = -1; _lastWindowE = -1; }
     _activateWindow(idx);
 
     // Cancel any prior wait loop (user seeked past unloaded frame before it loaded)
@@ -37698,6 +37705,36 @@ try { _l2Site = localStorage.getItem('gwcfc_l2_site') || null; } catch (e) {}
 // anything within one volume's scan pattern.
 let _l2Tilt = null;
 let _l2TiltList = [];
+// Every tilt a site's full volume was seen to carry, so a picture that comes
+// straight from the cache (a warm, a revisit) can still offer the whole tilt
+// menu. The first-sweep fast load only ever knows the first cut or two.
+const _l2TiltsBySite = new Map();
+function _l2NoteTilts(station, list) {
+  if (!station || !Array.isArray(list)) return;
+  const k = String(station).toLowerCase(), had = _l2TiltsBySite.get(k);
+  if (!had || list.length > had.length) _l2TiltsBySite.set(k, list);
+}
+function _l2FillTilts(station, product) {
+  const k = String(station || '').toLowerCase();
+  const show = (list) => {
+    if (!Array.isArray(list) || list.length <= (_l2TiltList || []).length) return;
+    if (String(_l3Station || '').toLowerCase() !== k) return;
+    _l2TiltList = list;
+    if (document.getElementById('sub-l2-ref')) toggleRadarL2Sub();
+  };
+  const known = _l2TiltsBySite.get(k);
+  if (known) { show(known); if (known.length > 2) return; }
+  // Not seen yet: the whole volume is usually already downloaded (the warm
+  // banks it), so its tilt list is one background decode away.
+  if (typeof _l2VolCache !== 'undefined' && _l2VolCache.station === k && _l2VolCache.buf
+      && typeof _pbDecode === 'function') {
+    const layer = ({ cc: 'CC', zdr: 'ZDR', vel: 'VEL', ref: 'REF', kdp: 'KDP', sw: 'SW', phi: 'PHI' })[product] || 'REF';
+    _pbDecode(_l2VolCache.buf.slice(0), layer).then(res => {
+      const m = res && res.metadata;
+      if (m && Array.isArray(m.availableElevations)) { _l2NoteTilts(k, m.availableElevations); show(_l2TiltsBySite.get(k)); }
+    }).catch(() => {});
+  }
+}
 // True while a volume is being fetched or decoded. The station pills read
 // this: clicking a pill clears the old picture before the new one exists,
 // and judging "is radar on" by what is on screen in that gap took the pills
@@ -45999,7 +46036,7 @@ function _inspRadarMainRow(center, cx, cy) {
       const fam = typeof _meshFamily === 'function' ? _meshFamily(prod) : prod;
       const got = _inspLoopFrameValue(prod, cx, cy);
       if (got === undefined) return { label: 'Radar', value: 'reading…', color: 'rgba(120,120,120,0.5)' };
-      if (got == null) return { label: 'Radar', value: 'No data', color: 'rgba(120,120,120,0.5)' };
+      if (got == null) return { label: 'Radar', value: 'No echo', color: 'rgba(120,120,120,0.35)' };
       const color = _meshColorFn(prod)(got.v) || 'rgba(120,120,120,0.5)';
       const band = got.hi - got.lo > got.step * 3;
       if (fam === 'vel') {
@@ -46020,7 +46057,14 @@ function _inspRadarMainRow(center, cx, cy) {
   }
   if (meshOk) {
     const value = _inspFindMeshValue(center.lng, center.lat);
-    if (value == null || value !== value) return { label: 'Radar', value: 'No data', color: 'rgba(120,120,120,0.5)' };
+    if (value == null || value !== value) {
+      // Inside the radar's own picture there IS data: it says nothing is
+      // there. "No data" read as the Inspector being broken on a clear day.
+      const bx = _lastMeshBounds;
+      const inside = bx && center.lng >= bx[0] && center.lng <= bx[2] && center.lat >= bx[1] && center.lat <= bx[3];
+      return inside ? { label: 'Radar', value: 'No echo', color: 'rgba(120,120,120,0.35)' }
+                    : { label: 'Radar', value: 'No data', color: 'rgba(120,120,120,0.5)' };
+    }
     const fam = typeof _meshFamily === 'function'
       ? _meshFamily(_lastMeshProduct) : _lastMeshProduct;
     let unit = INSP_UNITS[fam] || '';
@@ -52560,6 +52604,11 @@ function showVelFrame(idx) {
         }
       }, 50);
     }
+    // The stand-in drawn before the pool existed is not one of the pool's
+    // layers; it has to come off the map, not just out of this variable.
+    if (velocityLayer && _velLayerPool.indexOf(velocityLayer) === -1) {
+      try { map.removeLayer(velocityLayer); } catch (e) {}
+    }
     velocityLayer = _velLayerPool[idx];
   } else {
     // Fallback single-layer (before pool is built)
@@ -53466,6 +53515,14 @@ async function _loadL3DataInner(product, stationOverride, retried, gen, signal, 
     _l2LoopReset();
     _l2LoadDone(station);
     _l3Attach(hit.img, hit.result, product, station);
+    // A cached picture brings its own tilt list, which for a first-sweep
+    // load is one or two cuts; the rest of the menu comes from what the site
+    // is known to carry.
+    const hm = hit.result && hit.result.metadata;
+    if (hm && Array.isArray(hm.availableElevations) && hm.availableElevations.length > (_l2TiltList || []).length) {
+      _l2TiltList = hm.availableElevations;
+    }
+    try { _l2FillTilts(station, product); } catch (e) {}
     if (typeof _l2LoopBuild === 'function') _l2LoopBuild(product, station, hit.img);
     // Older than one volume: keep it on screen, but go and get the current one
     // behind it. Seeing the right station instantly and correcting a few
@@ -53632,7 +53689,9 @@ async function _loadL3DataInner(product, stationOverride, retried, gen, signal, 
   var img = _renderMesh(result, product, station);
   var meta = result && result.metadata;
   if (meta && Array.isArray(meta.availableElevations)) {
-    _l2TiltList = meta.availableElevations;
+    if (!rest) _l2NoteTilts(station, meta.availableElevations);
+    const known = _l2TiltsBySite.get(String(station).toLowerCase());
+    _l2TiltList = (known && known.length > meta.availableElevations.length) ? known : meta.availableElevations;
     _l2Tilt = meta.elevationNumber || _l2Tilt;
     if (document.getElementById('sub-l2-ref')) toggleRadarL2Sub();
   }
@@ -53646,6 +53705,7 @@ async function _loadL3DataInner(product, stationOverride, retried, gen, signal, 
       return _pbDecode(full.slice(0), layer, _l2Tilt ? { elevation: _l2Tilt } : undefined).then(res => {
         if (stale()) return;
         const m = res && res.metadata;
+        if (m && Array.isArray(m.availableElevations)) _l2NoteTilts(station, m.availableElevations);
         if (m && Array.isArray(m.availableElevations)
             && m.availableElevations.length > (_l2TiltList || []).length) {
           _l2TiltList = m.availableElevations;
@@ -54111,7 +54171,8 @@ function _meshToImage(result, product, forceBounds) {
 }
 
 const _MESH_LABELS = { cc: 'Corr. Coeff.', zdr: 'Diff. Refl.', vel: 'Velocity',
-  ref: 'Reflectivity', kdp: 'Spec. Diff. Phase', sw: 'Spectrum Width' };
+  ref: 'Reflectivity', kdp: 'Spec. Diff. Phase', sw: 'Spectrum Width',
+  phi: 'Diff. Phase' };
 
 function _renderMesh(result, product, station) {
   // Pin this site+product to one box for as long as it is on screen, so the
@@ -57502,20 +57563,28 @@ async function _fetchRefTimestamps(station, signal) {
 // _refSiteFrames.
 function _buildRefSitePool(stationId, useOpengeo, opts) {
   opts = opts || {};
-  // `keep` is the previous station's pool, handed in so it can stay on screen
-  // until this one has something to show. Without it the map goes blank for
-  // the whole lookup, which is most of what "slow" meant here.
-  if (!opts.keep) {
+  // `keep`: the caller takes the layers already up down itself, once this
+  // one has something to show (the previous station, or this station's own
+  // first paint), so the map is never blank mid-switch.
+  // `fill`: add the frames that are missing and leave the ones already built
+  // alone. This is how the history joins the newest frame. It used to build
+  // a whole new pool over the top and drop the list holding the newest
+  // frame's layer without taking that layer off the map, so every station
+  // visited left one picture behind for good: switch sites three times and
+  // three radars were showing at once.
+  if (!opts.keep && !opts.fill) {
     _refSitePool.forEach(l => { try { map.removeLayer(l); } catch(e){} });
   }
-  _refSitePool   = [];
-  _refSiteLoaded = [];
+  if (!opts.fill) {
+    _refSitePool   = [];
+    _refSiteLoaded = [];
+  }
   // Which frames to build NOW. The frame on screen is the newest one, and it
   // used to be created alongside fourteen others nobody was looking at, all
   // asking the same host for tiles at once. Newest first, the history a tick
   // later, so the picture being waited for is not queued behind the past.
   const _only = opts.only;
-  const _want = (i) => _only == null || i === _only;
+  const _want = (i) => (_only == null || i === _only) && !(opts.fill && _refSitePool[i]);
 
   if (useOpengeo) {
     // NOAA GeoServer Level III SR_BREF
@@ -57628,13 +57697,24 @@ async function _loadSingleSiteRef(stationId) {
   }
 
   const paint = (frames, viaOpengeo) => {
+    // This station's own earlier paint (a first draw on estimated times, when
+    // the real ones arrive): retired the same way the previous station is.
+    const mine = _refSitePool.slice();
     _refSiteFrames = frames;
     const last = frames.length - 1;
     // Newest frame alone first, so the one tile request that matters is not
     // behind fourteen that do not.
-    _buildRefSitePool(stationId, viaOpengeo, { only: last, keep: !handedOver });
+    _buildRefSitePool(stationId, viaOpengeo, { only: last, keep: true });
     const newest = _refSitePool[last];
-    if (newest) newest.once('load', dropOld);
+    let retired = false;
+    const retire = () => {
+      if (retired) return;
+      retired = true;
+      dropOld();
+      mine.forEach(l => { if (_refSitePool.indexOf(l) === -1) { try { map.removeLayer(l); } catch (e) {} } });
+    };
+    if (newest) newest.once('load', retire);
+    setTimeout(retire, RS_HANDOVER_MS);
     const tl = document.getElementById('timeline');
     if (tl) { tl.max = last; tl.value = last; }
     currentFrame = last;
@@ -57653,7 +57733,7 @@ async function _loadSingleSiteRef(stationId) {
     setTimeout(() => {
       if (!_rsLive(gen)) return;
       const shown = currentFrame;
-      _buildRefSitePool(stationId, viaOpengeo, { keep: true });
+      _buildRefSitePool(stationId, viaOpengeo, { fill: true });
       _showSingleSiteRefFrame(shown);
     }, 120);
   };
@@ -74971,6 +75051,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-zzzzzz', date: 'Sep 25, 2026',
+    text: 'Radar fixes from a full test pass. Switching between radar sites no longer leaves the old sites showing: each site you visited used to leave one picture behind, which is how three stations ended up on the map at once (only the Compare tool should ever show several). The Level 2 tilt menu now lists every tilt even when the picture loaded instantly from the cache, PHI is labelled Diff. Phase, and the Inspector says No echo on a clear patch of a radar instead of No data. With the radar switched off, the app no longer downloads radar tiles in the background at start-up.' },
   { id: '2026-09-25-zzzzz', date: 'Sep 25, 2026',
     text: 'City names on the map no longer overlap. They are placed biggest first, and a name that would run into one already there is left out, with room kept for the reading under it. That also means many more names fit: the map shows smaller towns as you zoom in, filling in the space that is free. All text now stays readable on every theme: buttons and dropdowns switch to light or dark text to suit the colour behind them, and faint help text is brightened until it reads clearly.' },
   { id: '2026-09-25-zzzz', date: 'Sep 25, 2026',
