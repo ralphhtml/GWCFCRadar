@@ -201,6 +201,19 @@ self.addEventListener('fetch', e => {
     return;
   }
 
+  // The page's own scripts and workers (the radar decoder, the volume
+  // renderers) are versioned files the browser's own cache already handles.
+  // Routed through here they queued behind the burst of data this worker is
+  // busy copying at the same moment: the radar decoder's script, measured,
+  // reached the network twelve seconds after it was asked for, which was
+  // most of a right-click "Radar: KOKX" that looked like nothing happening.
+  // They go straight to the network now, untouched.
+  if (url.origin === self.location.origin
+      && (e.request.destination === 'worker' || e.request.destination === 'script'
+          || /\.js$/.test(url.pathname))) {
+    return;
+  }
+
   if (STATIC_HOSTS.has(url.hostname)) {
     e.respondWith(cacheFirst(e.request, STATIC_TTL_MS, STATIC_CACHE));
     return;
