@@ -1482,11 +1482,11 @@ console.log('\n11c. a black gradient panel with gold gradient text, inside the b
     };
   });
   // The top (title, controls, sliders) is the black gradient; the panel
-  // itself, what shows around and below the picture, is heavy frost.
+  // itself, what shows around and below the picture, is subtle frost.
   ok('the top of the panel is a black gradient',
      /linear-gradient/.test(r.topBg) && /rgb\(28, 28, 34\)/.test(r.topBg) && /rgb\(0, 0, 0\)/.test(r.topBg), r.topBg);
-  ok('and the rest is heavy frost: thin dark glass with a 24px blur',
-     /rgba\(24, 28, 34, 0\.58\)/.test(r.panelBg) && /blur\(24px\)/.test(r.panelBlur || ''), r.panelBg + ' ' + r.panelBlur);
+  ok('and the rest is subtle frost: the app-wide glass fill and blur',
+     /rgba\(24, 28, 34, 0\.84\)/.test(r.panelBg) && /blur\(8px\)/.test(r.panelBlur || ''), r.panelBg + ' ' + r.panelBlur);
   ok('the title is gold gradient text (a gradient clipped to the glyphs)',
      /linear-gradient/.test(r.titleBg) && /232, 184, 0/.test(r.titleBg) && r.titleClip === 'text'
      && /transparent|rgba\(0, 0, 0, 0\)/.test(r.titleFill),

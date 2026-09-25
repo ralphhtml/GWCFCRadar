@@ -768,7 +768,7 @@ body {
   border: 1px solid rgba(var(--accent-rgb),0.45); color: #eee;
   font-family: 'Comfortaa', sans-serif; box-shadow: 0 6px 18px rgba(0,0,0,0.45);
 }
-:root[data-glass] #lvl-dock { backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4); }
+:root[data-glass] #lvl-dock { backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)); -webkit-backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)); }
 #lvl-dock.open { display: flex; }
 /* No box and no names, by request: just a bare slider per layer floating
    on the map, and one small label riding above the dot that says the
@@ -2469,11 +2469,11 @@ body.shot-mode #lvl-dock, body.ss-live #lvl-dock { display: none !important; }
 .load-fact-wrap {
   width: min(640px, calc(100vw - 36px));
   padding: 24px 30px 28px;
-  /* Heavy gloss: a strong blur pulls the polygon art through a thin dark
+  /* Subtle frost (once heavy gloss): the blur pulls the polygon art through a dark
      fill, and the bright inset top edge is the sheen that sells the glass. */
-  background: linear-gradient(180deg, rgba(22,26,32,0.60) 0%, rgba(6,8,12,0.70) 100%);
-  backdrop-filter: blur(24px) saturate(1.5);
-  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  background: linear-gradient(180deg, rgba(22,26,32,var(--glass-a-panel, 0.84)) 0%, rgba(6,8,12,var(--glass-a-panel, 0.84)) 100%);
+  backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12));
   border: 1px solid rgba(255,255,255,0.16);
   border-radius: 16px;
   text-align: center;
@@ -4063,8 +4063,8 @@ body.ss-live #ss-privacy-warn { display: flex !important; }
      sounding attached to the place it describes. */
   background:
     linear-gradient(180deg, rgba(26,12,14,0.94) 0%, rgba(10,8,10,0.96) 100%);
-  backdrop-filter: blur(18px) saturate(1.25);
-  -webkit-backdrop-filter: blur(18px) saturate(1.25);
+  backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12));
   border: 1px solid rgba(253,0,0,0.3);
   border-radius: 16px;
   box-shadow:
@@ -4764,8 +4764,8 @@ body.lite-mode #export-modal { display: none !important; }
   width: min(560px, calc(100vw - 24px));
   background:
     linear-gradient(180deg, rgba(14,20,32,0.94) 0%, rgba(8,11,19,0.96) 100%);
-  backdrop-filter: blur(16px) saturate(1.2);
-  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12));
   border: 1px solid rgba(var(--accent2-rgb),0.35);
   border-radius: 14px;
   box-shadow: 0 20px 50px rgba(0,0,0,0.6);
@@ -4860,8 +4860,8 @@ body.lite-mode #export-modal { display: none !important; }
   position: fixed; left: 12px; bottom: 96px; z-index: 1150; display: none;
   width: min(560px, calc(100vw - 24px));
   background: linear-gradient(180deg, rgba(30,30,36,0.98) 0%, rgba(12,12,15,0.99) 45%, #000 100%);
-  backdrop-filter: blur(16px) saturate(1.2);
-  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12));
   border: 1px solid rgba(var(--accent-rgb),0.35);
   border-radius: 14px;
   box-shadow: 0 20px 50px rgba(0,0,0,0.7);
@@ -5117,13 +5117,12 @@ body.lite-mode #export-modal { display: none !important; }
   .l3d-panel canvas { height: 220px; }
 }
 
-/* -- Every 3D panel: black gradient on top, heavy frost below --
+/* -- Every 3D panel: black gradient on top, subtle frost below --
    The title bar, the control row and the sliders sit in one .p3d-top
    block in the app's black gradient; the panel itself, which is what
-   shows around and below the picture, is heavy frost: the same thin dark
-   glass and 24px blur the outlook legends wear. */
+   shows around and below the picture, is the app's subtle frost. */
 #r3d-panel, #s3d-panel, .l3d-panel {
-  background: linear-gradient(180deg, rgba(24,28,34,0.58) 0%, rgba(6,9,13,0.68) 100%) !important;
+  background: linear-gradient(180deg, rgba(24,28,34,var(--glass-a-panel, 0.84)) 0%, rgba(6,9,13,var(--glass-a-panel, 0.84)) 100%) !important;
 }
 .p3d-top {
   background: linear-gradient(180deg, #1c1c22 0%, #0b0b0e 55%, #000 100%);
@@ -6734,11 +6733,11 @@ html.tb-logo-right     #logo-wrap       { left: auto !important; right: 18px !im
 #site-pop {
   position: fixed; z-index: 3100; display: none; flex-direction: column; gap: 4px;
   min-width: 168px; max-width: 220px;
-  /* Heavy gloss, the Did You Know card's recipe: a strong blur pulls the map
+  /* Subtle frost, the same as every panel (once heavy gloss): the blur pulls the map
      through a thin dark fill, and the bright inset top edge is the sheen. */
-  background: linear-gradient(180deg, rgba(22,26,32,0.60) 0%, rgba(6,8,12,0.70) 100%);
-  backdrop-filter: blur(24px) saturate(1.5);
-  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  background: linear-gradient(180deg, rgba(22,26,32,var(--glass-a-panel, 0.84)) 0%, rgba(6,8,12,var(--glass-a-panel, 0.84)) 100%);
+  backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12));
   border: 1px solid rgba(255,255,255,0.18); border-radius: 12px;
   padding: 7px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.24),
@@ -7664,7 +7663,7 @@ body.theme-picking, body.theme-picking * { cursor: crosshair !important; }
 /* -- ONE LOOK FOR EVERY PANEL AND POPUP ------------------------------------
    The weather station popup's look, asked for everywhere but Settings: a
    dark header with an icon, the title and a plain X; a thin line in the
-   theme's accent under it; the heavy frosted body; rounded corners with a
+   theme's accent under it; the subtle frosted body; rounded corners with a
    thin light outline. Only the shell: what is inside each panel is left
    exactly as it was. The script (_shScan) finds each panel's header and
    close button and tags them; these rules do the rest. A header that
@@ -7677,12 +7676,12 @@ body.theme-picking, body.theme-picking * { cursor: crosshair !important; }
 }
 .gw-shell:not(.gw-typed-body) {
   background-color: rgba(10,12,16,0.94) !important;
-  background-image: linear-gradient(180deg, rgba(22,26,32,0.60) 0%, rgba(6,8,12,0.70) 100%) !important;
+  background-image: linear-gradient(180deg, rgba(22,26,32,var(--glass-a-panel, 0.84)) 0%, rgba(6,8,12,var(--glass-a-panel, 0.84)) 100%) !important;
 }
 :root[data-glass] .gw-shell:not(.gw-typed-body) {
   background-color: transparent !important;
-  backdrop-filter: blur(24px) saturate(1.5) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+  backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)) !important;
 }
 .gw-shell-head {
   border-top-left-radius: 13px; border-top-right-radius: 13px;
@@ -7707,12 +7706,12 @@ body.theme-picking, body.theme-picking * { cursor: crosshair !important; }
   border: 1px solid rgba(255,255,255,0.22) !important;
   overflow: hidden;
   background-color: rgba(10,12,16,0.94) !important;
-  background-image: linear-gradient(180deg, rgba(22,26,32,0.60) 0%, rgba(6,8,12,0.70) 100%) !important;
+  background-image: linear-gradient(180deg, rgba(22,26,32,var(--glass-a-panel, 0.84)) 0%, rgba(6,8,12,var(--glass-a-panel, 0.84)) 100%) !important;
 }
 :root[data-glass] .leaflet-container .leaflet-popup.gw-pop .leaflet-popup-content-wrapper {
   background-color: transparent !important;
-  backdrop-filter: blur(24px) saturate(1.5) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+  backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)) !important;
 }
 .leaflet-container .leaflet-popup.gw-pop .leaflet-popup-tip { background: rgba(10,12,16,0.9) !important; }
 .leaflet-container .leaflet-popup.gw-pop .leaflet-popup-close-button {
@@ -75210,6 +75209,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-zzzzzzzzzz', date: 'Sep 25, 2026',
+    text: 'Every panel and popup that wore heavy frost now wears subtle frost, the same gentle blur and firmer fill as the rest of the app: the shared panel look, map popups, the alerts, EAS and forecast panels, alert and radio popups, the outlook controls, the 3D panels, the station popup, the search dropdown and the Did You Know card.' },
   { id: '2026-09-25-zzzzzzzzz', date: 'Sep 25, 2026',
     text: 'Ocean Depth no longer opens a list of seven depth buttons. Turn it on and pick the depth on the Ocean slider on the map, the same level slider Temperature, Wind and Heights use; it remembers the depth you left it on.' },
   { id: '2026-09-25-zzzzzzzz', date: 'Sep 25, 2026',
@@ -85026,9 +85027,8 @@ body {
    tokens: --grad-ink is not on _glassSync's list and the wrapper carries
    an opaque background-color besides, so the blur above had nothing to
    show through and a storm or warning popup stayed a solid slab. And
-   these wear HEAVY frost, by request: the full-glass blur and a far
-   thinner fill than the app's subtle default, so the map pours through
-   behind the details. The coloured header stays SOLID - its inline
+   these wear the same subtle frost as everything else (they were heavy
+   frost once; every panel and popup is subtle now, by request). The coloured header stays SOLID - its inline
    background layers the event tint over an opaque dark base, so the
    title bar reads at a glance while the body underneath goes glassy. */
 :root[data-glass] .ap-popup-container .leaflet-popup-content-wrapper,
@@ -85036,14 +85036,14 @@ body {
 :root[data-glass] .nwr-popup .leaflet-popup-content-wrapper {
   background-color: transparent !important;
   background-image: linear-gradient(180deg,
-    rgba(22,26,32,0.60) 0%, rgba(6,8,12,0.70) 100%) !important;
-  backdrop-filter: blur(24px) saturate(1.5) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+    rgba(22,26,32,var(--glass-a-panel, 0.84)) 0%, rgba(6,8,12,var(--glass-a-panel, 0.84)) 100%) !important;
+  backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)) !important;
 }
 /* The floating overlay controls in the top-left stack (SPC, WPC Rainfall,
    Fire Weather, CPC, ECCC Outlooks, Meso, Storm Reports, Tornado Tracks)
    paint one literal near-black fill, so they never joined the frost the
-   day every other menu did. HEAVY frost here too, by request - the five
+   day every other menu did. Subtle frost, the same as every panel - the five
    outlook legends were named and their three stack-mates match, because
    two weights of glass in one column would read as a mistake. */
 :root[data-glass] #spc-controls, :root[data-glass] #wpc-controls,
@@ -85052,16 +85052,16 @@ body {
 :root[data-glass] #storm-reports-panel, :root[data-glass] #tornado-tracks-panel {
   background-color: transparent !important;
   background-image: linear-gradient(180deg,
-    rgba(24,28,34,0.58) 0%, rgba(6,9,13,0.68) 100%);
-  backdrop-filter: blur(24px) saturate(1.5) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+    rgba(24,28,34,var(--glass-a-panel, 0.84)) 0%, rgba(6,9,13,var(--glass-a-panel, 0.84)) 100%);
+  backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)) !important;
 }
 /* The 3D panels' bottoms, heavy too (their tops are the black .p3d-top).
    Here with the rest of the glass so a device that has glass switched off
    for speed keeps the tint and skips the blur. */
 :root[data-glass] #r3d-panel, :root[data-glass] #s3d-panel, :root[data-glass] .l3d-panel {
-  backdrop-filter: blur(24px) saturate(1.5) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+  backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)) !important;
 }
 /* The weather alerts panel and the EAS panel, heavy as well, by request.
    EAS's orange lives in --grad-eas, which _glassSync does not thin, so
@@ -85070,22 +85070,22 @@ body {
    the token fill for the same thin dark the outlook legends wear. */
 :root[data-glass] #alerts-panel {
   background-image: linear-gradient(180deg,
-    rgba(20,24,30,0.58) 0%, rgba(5,7,10,0.68) 100%);
-  backdrop-filter: blur(24px) saturate(1.5) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+    rgba(20,24,30,var(--glass-a-panel, 0.84)) 0%, rgba(5,7,10,var(--glass-a-panel, 0.84)) 100%);
+  backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)) !important;
 }
 :root[data-glass] #eas-panel {
   background-image: linear-gradient(180deg,
-    rgba(138,68,0,0.62) 0%, rgba(85,37,0,0.62) 42%, rgba(42,16,0,0.70) 100%);
-  backdrop-filter: blur(24px) saturate(1.5) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+    rgba(138,68,0,var(--glass-a-panel, 0.84)) 0%, rgba(85,37,0,var(--glass-a-panel, 0.84)) 42%, rgba(42,16,0,var(--glass-a-panel, 0.84)) 100%);
+  backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)) !important;
 }
 /* The weather forecast panel joins the heavy family, same request. */
 :root[data-glass] #forecast-panel {
   background-image: linear-gradient(180deg,
-    rgba(20,24,30,0.60) 0%, rgba(5,7,10,0.70) 100%) !important;
-  backdrop-filter: blur(24px) saturate(1.5) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+    rgba(20,24,30,var(--glass-a-panel, 0.84)) 0%, rgba(5,7,10,var(--glass-a-panel, 0.84)) 100%) !important;
+  backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)) !important;
 }
 /* The layer bubbles wear their red as literal hex, not a token, so their
    translucent twin is spelled here with the level's own alpha. */
@@ -85166,7 +85166,7 @@ body {
   background-image: linear-gradient(160deg,
     rgba(60,14,8,var(--glass-a-panel)) 0%, rgba(24,5,5,var(--glass-a-panel)) 100%);
 }
-/* The search dropdown wears HEAVY frost, by request. The catch: the
+/* The search dropdown's frost (subtle, like everything else). The catch: the
    dropdown lives INSIDE the search bar, so the bar's own frosted fill
    paints behind it, and a parent that has a backdrop-filter stops a
    child's blur from ever reaching the map (the parent becomes the blur's
@@ -85178,9 +85178,9 @@ body {
 :root[data-glass] #top-search-bar:has(#lqm-search-dropdown.open) {
   background-color: transparent !important;
   background-image: linear-gradient(180deg,
-    rgba(38,38,46,0.30) 0%, rgba(19,19,24,0.26) 55%, rgba(5,5,8,0.34) 100%) !important;
-  backdrop-filter: blur(24px) saturate(1.5) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+    rgba(38,38,46,var(--glass-a-panel, 0.84)) 0%, rgba(19,19,24,var(--glass-a-panel, 0.84)) 55%, rgba(5,5,8,var(--glass-a-panel, 0.84)) 100%) !important;
+  backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur, 8px)) saturate(var(--glass-sat, 1.12)) !important;
 }
 :root[data-glass] #lqm-search-dropdown {
   background-color: transparent !important;
