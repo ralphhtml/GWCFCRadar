@@ -75051,6 +75051,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-zzzzzzz', date: 'Sep 25, 2026',
+    text: 'More of the MRRL radar network. The two Mexican radars, Los Cabos (CABO) and Sabancuy (SABA), send a different file format (Vaisala IRIS) that the app could not read; the home server now converts it, so both show up with every product: reflectivity, velocity, correlation coefficient, ZDR, PHI, spectrum width and everything built from them. Every station folder on the feed is now picked up, not only the ones in its config file, and scans still being written are no longer shown half-finished.' },
   { id: '2026-09-25-zzzzzz', date: 'Sep 25, 2026',
     text: 'Radar fixes from a full test pass. Switching between radar sites no longer leaves the old sites showing: each site you visited used to leave one picture behind, which is how three stations ended up on the map at once (only the Compare tool should ever show several). The Level 2 tilt menu now lists every tilt even when the picture loaded instantly from the cache, PHI is labelled Diff. Phase, and the Inspector says No echo on a clear patch of a radar instead of No data. With the radar switched off, the app no longer downloads radar tiles in the background at start-up.' },
   { id: '2026-09-25-zzzzz', date: 'Sep 25, 2026',

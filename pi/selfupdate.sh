@@ -121,8 +121,15 @@ CHANGED=1
 # /sounding and the /sat/ doors, so a change to one is a change to the
 # running server even though serve.py itself did not move.
 if [ "$CHANGED" = 1 ] && git diff --name-only "$BEFORE" "$AFTER" \
-   | grep -qE '^pi/(serve|sounding_service|sat_archive|sat_cth)\.py$'; then
+   | grep -qE '^pi/(serve|sounding_service|sat_archive|sat_cth|mrrl|mrrl_iris)\.py$'; then
   systemctl --user restart gwcfc-serve.service && echo "restarted serve"
+fi
+# The MRRL radars are placed once a day. A change to how they are read (a
+# new file format, the IRIS radars) places them again now, in the
+# background, rather than a day later.
+if [ "$CHANGED" = 1 ] && git diff --name-only "$BEFORE" "$AFTER" \
+   | grep -qE '^pi/(mrrl|mrrl_iris)\.py$'; then
+  systemctl --user start --no-block gwcfc-mrrl.service && echo "placing MRRL radars again"
 fi
 
 # If the unit files themselves changed, the installer is what writes them.
