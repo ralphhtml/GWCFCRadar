@@ -11244,6 +11244,31 @@ html.ios-lite .leaflet-pane .leaflet-image-layer[style*="opacity: 0;"] { display
   white-space: nowrap;
 }
 
+
+/* -- MODEL RUN TIMES ------------------------------------------------------ */
+.mrt-line { font-family: var(--mono); font-size: 9.5px; color: var(--muted); padding: 2px 10px 4px; cursor: pointer; }
+.mrt-line:empty { display: none; }
+.mrt-line b { color: var(--text); font-weight: 700; }
+#mrt-panel {
+  position: fixed; top: 70px; right: 14px; z-index: 1300; width: min(360px, calc(100vw - 24px));
+  max-height: calc(100vh - 110px); overflow-y: auto; display: none;
+  background: rgba(12,12,16,0.94); border: 1px solid var(--border2, rgba(255,255,255,0.18));
+  border-radius: 10px; color: var(--text); font-family: var(--display); box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+}
+#mrt-panel.open { display: block; }
+#mrt-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.1); font-weight: 700; font-size: 13px; }
+#mrt-head .mrt-sp { flex: 1; }
+#mrt-head button { background: none; border: none; color: var(--text); font-size: 16px; cursor: pointer; }
+.mrt-row { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.mrt-name { font-weight: 700; font-size: 12px; display: flex; justify-content: space-between; gap: 8px; }
+.mrt-state { font-family: var(--mono); font-size: 10px; }
+.mrt-state.live { color: #4ade80; }
+.mrt-bar { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.12); margin: 5px 0 4px; overflow: hidden; }
+.mrt-bar i { display: block; height: 100%; background: #4ade80; }
+.mrt-cycles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; font-family: var(--mono); font-size: 9px; color: var(--muted); margin-top: 3px; }
+.mrt-cycles span.now { color: var(--text); font-weight: 700; }
+.mrt-foot { padding: 8px 12px 10px; font-size: 10px; color: var(--muted); font-family: var(--mono); line-height: 1.5; }
+.mrt-foot a { color: var(--accent2, #7dd3fc); }
 </style>
 <script>
 // -- APP COLOURS: applied before the first paint --------------------------
@@ -11739,6 +11764,7 @@ body.clean-mode #clean-hint { opacity: 1; }
       <div id="run-models-panel-header" class="models-panel-header">
         <div id="run-models-drag" class="dtb-drag" title="Drag to move">⠿</div>
         <div class="models-panel-title"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-chart-up></use></svg> Run Models</div>
+        <button class="models-close-btn mrt-open-btn" onclick="mrtOpen()" title="Model run times: when each model's next run comes in">&#9201;</button>
         <button class="models-close-btn" onclick="collapseRunModelsPanel()" title="Close panel (model overlay stays on the map)">×</button>
       </div>
 
@@ -11799,6 +11825,7 @@ body.clean-mode #clean-hint { opacity: 1; }
         <span class="trop-run-lbl">Run:</span>
         <select id="sev-run-sel" onchange="_sevSetRun(this.value)"></select>
       </div>
+      <div id="mrt-line" class="mrt-line" onclick="mrtOpen()" title="Model run times"></div>
       <div id="sev-playbar-row" class="sev-playbar-row">
         <button id="sev-play-btn2" class="sev-play-btn" onclick="_sevTogglePlay()"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-play></use></svg></button>
         <input type="number" class="sev-speed-in" id="sev-speed-in" value="1" min="0.05" step="any" title="Type any playback speed" oninput="_sevSetSpeed(this.value)" onkeydown="if(event.key==='Enter')this.blur()">
@@ -40191,6 +40218,128 @@ function openRunModelsPanel() {
 
 // X button: close the panel UI but LEAVE the model overlay on the map, so you can
 // see the forecast full-screen. The bubble stays lit to show it's still on.
+// -- MODEL RUN TIMES ---------------------------------------------------------
+// When each model's run actually comes in: how long after the cycle hour the
+// first forecast hours appear, and how long until the last one is out. From
+// the timing table posted in the GWCFC Discord (from pettusplots.com's model
+// timing page), as minutes after the cycle. It is published data arriving on
+// a schedule, so a live status (running now, or next at) follows from the
+// clock alone, with nothing fetched.
+const MRT_MODELS = [
+  { id: 'hrrr',  name: 'HRRR',           every: 1, start: 52,  end: 85 },
+  { id: 'hrrrx', name: 'HRRR (48 hr)',   cycles: [0, 6, 12, 18], start: 52,  end: 110 },
+  { id: 'gfs',   name: 'GFS',            cycles: [0, 6, 12, 18], start: 210, end: 315 },
+  { id: 'ecmwf', name: 'ECMWF',          cycles: [0, 6, 12, 18], start: 313, end: { 0: 420, 6: 375, 12: 420, 18: 375 } },
+  { id: 'nam',   name: 'NAM',            cycles: [0, 6, 12, 18], start: 95,  end: { 0: 165, 6: 150, 12: 150, 18: 150 } },
+  { id: 'nam3',  name: 'NAM 3 km',       cycles: [0, 6, 12, 18], start: 105, end: 160 },
+];
+const MRT_MIN = 60000;
+function _mrtCycles(m) { return m.every ? Array.from({ length: 24 }, (_, h) => h) : m.cycles; }
+function _mrtEnd(m, cyc) { return typeof m.end === 'object' ? m.end[cyc] : m.end; }
+// Every run window that touches the next day and a half, oldest first.
+function _mrtWindows(m, now) {
+  const day0 = Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), new Date(now).getUTCDate());
+  const out = [];
+  for (let d = -1; d <= 1; d++) {
+    for (const c of _mrtCycles(m)) {
+      const t0 = day0 + d * 86400000 + c * 3600000;
+      out.push({ cyc: c, cycleAt: t0, start: t0 + m.start * MRT_MIN, end: t0 + _mrtEnd(m, c) * MRT_MIN });
+    }
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+// What a model is doing now: the run coming in (if any) and the next one.
+function _mrtStatus(m, now) {
+  now = now || Date.now();
+  const w = _mrtWindows(m, now);
+  const live = w.filter(x => x.start <= now && now < x.end).pop() || null;
+  const next = w.find(x => x.start > now) || null;
+  return { live, next };
+}
+function _mrtClock(t) { return new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+function _mrtIn(ms) {
+  const m = Math.max(0, Math.round(ms / MRT_MIN));
+  return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0') + ' min';
+}
+function _mrtZ(c) { return String(c).padStart(2, '0') + 'Z'; }
+function _mrtRowHtml(m, now) {
+  const st = _mrtStatus(m, now);
+  let state;
+  if (st.live) {
+    const f = (now - st.live.start) / (st.live.end - st.live.start);
+    state = `<div class="mrt-state live">${_mrtZ(st.live.cyc)} coming in now, done about ${_mrtClock(st.live.end)}</div>`
+      + `<div class="mrt-bar"><i style="width:${Math.round(f * 100)}%"></i></div>`;
+  } else if (st.next) {
+    state = `<div class="mrt-state">Next: ${_mrtZ(st.next.cyc)} starts ${_mrtClock(st.next.start)} (in ${_mrtIn(st.next.start - now)}), done about ${_mrtClock(st.next.end)}</div>`;
+  } else state = '<div class="mrt-state">-</div>';
+  const cyc = m.every
+    ? `<div class="mrt-cycles" style="grid-template-columns:1fr"><span>Every hour, :${String(m.start).padStart(2, '0')} to :${String((m.end) % 60).padStart(2, '0')} the next hour</span></div>`
+    : '<div class="mrt-cycles">' + m.cycles.map(c => {
+        const t0 = Date.UTC(2000, 0, 1, c);
+        const on = st.live && st.live.cyc === c;
+        return `<span class="${on ? 'now' : ''}" title="${_mrtZ(c)} run: ${_mrtClock(t0 + m.start * MRT_MIN)} to ${_mrtClock(t0 + _mrtEnd(m, c) * MRT_MIN)} your time">${_mrtZ(c)} ${_mrtClock(t0 + m.start * MRT_MIN)}</span>`;
+      }).join('') + '</div>';
+  return `<div class="mrt-row"><div class="mrt-name"><span>${m.name}</span></div>${state}${cyc}</div>`;
+}
+let _mrtTimer = null;
+function _mrtRender() {
+  const body = document.getElementById('mrt-body');
+  if (body) { const now = Date.now(); body.innerHTML = MRT_MODELS.map(m => _mrtRowHtml(m, now)).join(''); }
+  _mrtLine();
+}
+function mrtOpen() {
+  let el = document.getElementById('mrt-panel');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'mrt-panel';
+    el.innerHTML = '<div id="mrt-head"><span>Model Run Times</span><span class="mrt-sp"></span>'
+      + '<button type="button" onclick="mrtClose()" title="Close">&#10005;</button></div>'
+      + '<div id="mrt-body"></div>'
+      + '<div class="mrt-foot">When each run starts coming in and when its last hour is out, in your own time zone. '
+      + 'Other models: <a href="https://pettusplots.com/modeltiming" target="_blank" rel="noopener">pettusplots.com model timing</a>.</div>';
+    document.body.appendChild(el);
+  }
+  el.classList.add('open');
+  _mrtRender();
+  clearInterval(_mrtTimer);
+  _mrtTimer = setInterval(() => { if (!document.hidden) _mrtRender(); }, 30000);
+}
+function mrtClose() {
+  const el = document.getElementById('mrt-panel');
+  if (el) el.classList.remove('open');
+  clearInterval(_mrtTimer); _mrtTimer = null;
+}
+// One line under the Run picker for whichever model is chosen.
+function _mrtModelFor(val) {
+  const v = String(val || '').toLowerCase();
+  if (/nam.?3|namnest|nam_nest|nam3k/.test(v)) return MRT_MODELS.find(m => m.id === 'nam3');
+  if (/hrrr/.test(v)) return MRT_MODELS.find(m => m.id === 'hrrr');
+  if (/gfs/.test(v) && !/gefs/.test(v)) return MRT_MODELS.find(m => m.id === 'gfs');
+  if (/ecmwf|ifs/.test(v)) return MRT_MODELS.find(m => m.id === 'ecmwf');
+  if (/nam/.test(v)) return MRT_MODELS.find(m => m.id === 'nam');
+  return null;
+}
+function _mrtLine() {
+  const el = document.getElementById('mrt-line');
+  if (!el) return;
+  const sel = document.getElementById('sev-model-sel');
+  const m = _mrtModelFor(sel && sel.value);
+  if (!m) { el.innerHTML = ''; return; }
+  const now = Date.now(), st = _mrtStatus(m, now);
+  el.innerHTML = st.live
+    ? `<b>${m.name} ${_mrtZ(st.live.cyc)}</b> is coming in now, done about ${_mrtClock(st.live.end)}`
+    : st.next ? `Next <b>${m.name} ${_mrtZ(st.next.cyc)}</b> run starts ${_mrtClock(st.next.start)} (in ${_mrtIn(st.next.start - now)})` : '';
+}
+(function _mrtBoot() {
+  const go = () => {
+    const sel = document.getElementById('sev-model-sel');
+    if (sel) sel.addEventListener('change', _mrtLine);
+    _mrtLine();
+    setInterval(() => { if (!document.hidden) _mrtLine(); }, 60000);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
+})();
+
 function collapseRunModelsPanel() {
   const panel = document.getElementById('run-models-panel');
   if (panel) panel.style.display = 'none';
@@ -75051,6 +75200,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-zzzzzzzz', date: 'Sep 25, 2026',
+    text: 'Model run times. The Run Models panel has a clock button that opens a live table for HRRR, the 48 hour HRRR, GFS, ECMWF, NAM and NAM 3 km: whether a run is coming in right now (with how far along it is and when it finishes) or when the next one starts, all in your own time zone. A line under the Run picker says when the model you have chosen gets its next run.' },
   { id: '2026-09-25-zzzzzzz', date: 'Sep 25, 2026',
     text: 'More of the MRRL radar network. The two Mexican radars, Los Cabos (CABO) and Sabancuy (SABA), send a different file format (Vaisala IRIS) that the app could not read; the home server now converts it, so both show up with every product: reflectivity, velocity, correlation coefficient, ZDR, PHI, spectrum width and everything built from them. Every station folder on the feed is now picked up, not only the ones in its config file, and scans still being written are no longer shown half-finished.' },
   { id: '2026-09-25-zzzzzz', date: 'Sep 25, 2026',
