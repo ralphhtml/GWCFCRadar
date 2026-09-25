@@ -37783,6 +37783,36 @@ function switchTab(tab) {
   setTimeout(() => { try { map.invalidateSize({ pan: false }); } catch(e){} }, 50);
 }
 
+// -- LOCATION PRIVACY ----------------------------------------------------------
+// Show My Location off means OFF, for good: nothing in the app asks the
+// browser where this person is, and nothing guesses it from their internet
+// connection, until they turn it back on. It used to be a switch that only
+// lasted until the page reloaded: the start-up code asked for the position
+// again ("always ask for location") and the welcome looked the city up from
+// the connection, so a streamer who had turned it off found their home on the
+// map again after one refresh (tgranz). The choice is kept in this browser,
+// and every place that reads a position checks _locAllowed() first.
+//   ''     never chosen: the old behaviour (use it if the browser allows it)
+//   'on'   turned on (or Locate Me pressed)
+//   'off'  turned off
+const LOC_PREF_KEY = 'gwcfc_location_pref';
+function _locPref() { try { return localStorage.getItem(LOC_PREF_KEY) || ''; } catch (e) { return ''; } }
+function _locAllowed() { return _locPref() !== 'off'; }
+function _locSetPref(on) { try { localStorage.setItem(LOC_PREF_KEY, on ? 'on' : 'off'); } catch (e) {} }
+// What happens when the page opens: fly to where you are, and open your
+// forecast. On by default in Lite-ning, the mode for somebody who wants their
+// own weather in front of them the moment the app opens; off by default in
+// Wx-pert, which opens on the map as it was. Either can be switched in
+// Settings > Location, in either mode, and the switch wins over the default.
+function _bootPref(key) {
+  let v = null;
+  try { v = localStorage.getItem(key); } catch (e) {}
+  if (v === '1') return true;
+  if (v === '0') return false;
+  return typeof _isLite === 'function' && _isLite();
+}
+const BOOT_ZOOM_KEY = 'gwcfc_boot_zoom', BOOT_FORECAST_KEY = 'gwcfc_boot_forecast';
+
 // -- LOCATE USER --
 function locateUser() {
   if (!navigator.geolocation) {
@@ -37795,6 +37825,8 @@ function locateUser() {
     map.panTo(_locMarker.getLatLng(), { animate: true });
     return;
   }
+  // Pressing Locate Me is choosing to use the location, so it counts as on.
+  _locSetPref(true);
   // Show immediate feedback so user knows it's working
   updateLoadStatus('<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-pin></use></svg> Getting your location…');
   // One-shot getCurrentPosition first so we get a fast result, then watchPosition
@@ -37855,8 +37887,11 @@ function _updateGpsHud(pos) {
     extra;
 }
 
-function _startLocationTracking() {
+// `opts.fly === false` puts the dot on the map without moving the map to it:
+// the start-up path when "Zoom to my location on load" is off.
+function _startLocationTracking(opts) {
   if (_locWatchId !== null) return;
+  const fly = !(opts && opts.fly === false);
   if (!navigator.geolocation) {
     const cb = document.getElementById('lqm-set-location');
     if (cb) cb.checked = false;
@@ -37880,7 +37915,7 @@ function _startLocationTracking() {
         fillOpacity: 0.08, weight: 1, opacity: 0.25, interactive: false,
       }).addTo(map);
       ['lqm-follow-row','lqm-hud-row','lqm-breadcrumb-row'].forEach(id => { const r=document.getElementById(id); if(r) r.style.display=''; });
-      map.setView(ll, Math.max(map.getZoom(), 8));
+      if (fly) map.setView(ll, Math.max(map.getZoom(), 8));
       try { localStorage.setItem('gwcfc_location', '1'); } catch(e) {}
     } else {
       _locMarker.setLatLng(ll);
@@ -49299,6 +49334,11 @@ function _radcSyncMapView() {
 // asking twice; otherwise asks fresh, the same options and fallback shape
 // the welcome flow already uses elsewhere in this file.
 async function _radcGetLocation() {
+  // Location turned off in Settings: say so rather than asking behind it.
+  if (!_locAllowed()) {
+    if (typeof showToast === 'function') showToast('Location is off in Settings > Location. Turn it on to use this.', 5000);
+    return null;
+  }
   try {
     if (typeof _lastGpsPos !== 'undefined' && _lastGpsPos) {
       return { lat: _lastGpsPos.coords.latitude, lon: _lastGpsPos.coords.longitude };
@@ -61948,6 +61988,23 @@ function selectProduct(p) {
         <div class="lqm-toggle-knob"></div>
       </label>
     </div>
+    <div class="lqm-settings-row" title="When the page opens, move the map to where you are. On by default in Lite-ning, off by default in Wx-pert.">
+      <span class="lqm-settings-lbl">Zoom to My Location on Load</span>
+      <label class="lqm-toggle">
+        <input type="checkbox" id="lqm-set-bootzoom" onchange="lqmToggleSetting('bootzoom',this.checked)">
+        <div class="lqm-toggle-track"></div>
+        <div class="lqm-toggle-knob"></div>
+      </label>
+    </div>
+    <div class="lqm-settings-row" title="When the page opens, open the forecast for where you are. On by default in Lite-ning, off by default in Wx-pert.">
+      <span class="lqm-settings-lbl">Open My Forecast on Load</span>
+      <label class="lqm-toggle">
+        <input type="checkbox" id="lqm-set-bootforecast" onchange="lqmToggleSetting('bootforecast',this.checked)">
+        <div class="lqm-toggle-track"></div>
+        <div class="lqm-toggle-knob"></div>
+      </label>
+    </div>
+    <div class="lqm-settings-desc" style="font-size:10px;opacity:.75;padding:0 4px 6px">Turning Show My Location off keeps it off, even after a refresh: the app will not ask your browser where you are, or guess it from your connection, until you turn it back on. Zooming to you and opening your forecast when the app opens are on by default in Lite-ning mode and off by default in Wx-pert; the two switches above change that in either mode.</div>
     <div class="lqm-settings-row" id="lqm-follow-row" style="display:none;">
       <span class="lqm-settings-lbl">Follow Me</span>
       <label class="lqm-toggle">
@@ -68653,6 +68710,10 @@ function lqmOpenSettings() {
   if (tzSel) tzSel.value = _appTZ;
   const locCb = document.getElementById('lqm-set-location');
   if (locCb) locCb.checked = (_locWatchId !== null);
+  const bzCb = document.getElementById('lqm-set-bootzoom');
+  if (bzCb) bzCb.checked = _bootPref(BOOT_ZOOM_KEY);
+  const bfCb = document.getElementById('lqm-set-bootforecast');
+  if (bfCb) bfCb.checked = _bootPref(BOOT_FORECAST_KEY);
   const followRow = document.getElementById('lqm-follow-row');
   if (followRow) followRow.style.display = _locMarker ? '' : 'none';
   const followCb = document.getElementById('lqm-set-follow');
@@ -68714,7 +68775,14 @@ function lqmToggleSetting(key, val) {
       el.style.display = val ? '' : 'none';
     });
   } else if (key === 'location') {
+    _locSetPref(val);
     if (val) _startLocationTracking(); else _stopLocationTracking();
+    if (!val && typeof _lastGpsPos !== 'undefined') _lastGpsPos = null;
+    if (!val && typeof _r3dUserFix !== 'undefined') _r3dUserFix = null;
+  } else if (key === 'bootzoom') {
+    try { localStorage.setItem(BOOT_ZOOM_KEY, val ? '1' : '0'); } catch (e) {}
+  } else if (key === 'bootforecast') {
+    try { localStorage.setItem(BOOT_FORECAST_KEY, val ? '1' : '0'); } catch (e) {}
   } else if (key === 'follow') {
     _locFollow = val;
     if (val && _locMarker) map.panTo(_locMarker.getLatLng());
@@ -70406,7 +70474,11 @@ async function _runWelcome() {
   // forecast panel over every capture is not what the shots are for.
   if (document.body.classList.contains('shot-mode')) return;
 
-  const where = await _welcomeWhereAmI();
+  // Location off in Settings: no GPS, no guess from the connection, nothing.
+  // And each half of the welcome can be turned off on its own (Settings >
+  // Location): flying to where you are, and opening your forecast.
+  const bootZoom = _bootPref(BOOT_ZOOM_KEY), bootForecast = _bootPref(BOOT_FORECAST_KEY);
+  const where = (_locAllowed() && (bootZoom || bootForecast)) ? await _welcomeWhereAmI() : null;
 
   // -- The radar, first --
   // Straight to the composite rather than through the menu, the same way the
@@ -70437,7 +70509,7 @@ async function _runWelcome() {
   // recognise home and wide enough that a storm two counties away is on
   // screen rather than just off it.
   try {
-    if (where && typeof map !== 'undefined' && map) {
+    if (where && bootZoom && typeof map !== 'undefined' && map) {
       map.flyTo([where.lat, where.lon], 8, { duration: 1.6 });
     }
   } catch (e) { console.warn('[welcome] flyTo:', e); }
@@ -70445,12 +70517,12 @@ async function _runWelcome() {
   // -- The forecast, over it --
   // After the fly, so the panel arrives on a map that is already showing
   // their weather rather than on one still travelling.
-  if (where && typeof openForecastModal === 'function') {
+  if (where && bootForecast && typeof openForecastModal === 'function') {
     setTimeout(() => {
       try { openForecastModal({ name: where.name, lat: where.lat, lon: where.lon }); }
       catch (e) { console.warn('[welcome] forecast:', e); }
     }, 1900);
-  } else if (!where) {
+  } else if (!where && bootForecast && _locAllowed()) {
     // Said plainly rather than silently doing half of it. The radar is on,
     // which is most of the value, and they know why the forecast is not.
     if (typeof showToast === 'function') {
@@ -72260,6 +72332,13 @@ async function lqmToggleRainDetect(enabled) {
     return;
   }
 
+  // Location turned off in Settings stays off; this needs it on.
+  if (!_locAllowed()) {
+    _rainDetectEnabled = false;
+    if (cb)  cb.checked = false;
+    if (sub) sub.textContent = 'Turn on Show My Location in Settings first';
+    return;
+  }
   // Need GPS permission
   if (!navigator.geolocation) {
     _rainDetectEnabled = false;
@@ -73139,6 +73218,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-g', date: 'Sep 25, 2026',
+    text: 'Privacy fix: turning Show My Location off now keeps it off, even after a refresh. Before, the app asked your browser for your position again every time the page opened, and could guess your city from your connection, so your location came back on screen. Now nothing asks for it until you turn it back on. Also new in Settings > Location: Zoom to My Location on Load and Open My Forecast on Load. Both are on by default in Lite-ning and off by default in Wx-pert, and you can switch either one in either mode.' },
   { id: '2026-09-25-f', date: 'Sep 25, 2026',
     text: 'New overlay: ACE (Accumulated Cyclone Energy), in the overlay list next to ATCF Updates. It measures how much hurricane activity a season has had. Every ocean basin gets a card on the map with its total so far and how that compares with normal, and each storm that is up now gets a tag with its own ACE. The panel has a tab for every basin, both hemispheres and the whole globe, with a running total chart (this season against the 1991-2020 normal, its usual range and last season), the season\'s rank since 1980, and every storm ranked by ACE. Tap a basin card to jump to its chart. Worked out every hour from NOAA\'s own storm records, the same way Triple-A Tropics and CSU count it.' },
   { id: '2026-09-25-e', date: 'Sep 25, 2026',
@@ -74679,10 +74760,12 @@ document.addEventListener('DOMContentLoaded', () => {
         catch(e) { console.warn('scale control:', e); }
       }
     });
-    // Always ask for location - silently start if granted, do nothing if denied
-    if (navigator.geolocation) {
+    // Start the blue dot if the browser allows it, unless the person turned
+    // location off in Settings: then nothing is asked at all, on this load or
+    // any other, until they turn it back on (see _locAllowed).
+    if (navigator.geolocation && _locAllowed()) {
       navigator.geolocation.getCurrentPosition(
-        () => { _startLocationTracking(); try { localStorage.setItem('gwcfc_location','1'); } catch(e){} },
+        () => { _startLocationTracking({ fly: _bootPref(BOOT_ZOOM_KEY) }); try { localStorage.setItem('gwcfc_location','1'); } catch(e){} },
         () => { try { localStorage.removeItem('gwcfc_location'); } catch(e){} },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
@@ -76798,6 +76881,12 @@ function _ccFileVideo(f){
 }
 
 function _ccGetGPS(){
+  // Location off: never attach where the person is to a shared capture; the
+  // map centre (or a spot picked on the map) stands in, as when GPS fails.
+  if (!_locAllowed()) {
+    if (!_ccState.loc && typeof map!=='undefined'&&map){ const c=map.getCenter(); _ccState.loc={lat:c.lat,lng:c.lng}; _ccUpdateLocLabel(); _ccUpdateSubmitEnabled(); }
+    return;
+  }
   if (navigator.geolocation){
     navigator.geolocation.getCurrentPosition(
       p=>{ _ccState.loc={lat:p.coords.latitude,lng:p.coords.longitude}; _ccUpdateLocLabel(); _ccUpdateSubmitEnabled(); },
@@ -77914,7 +78003,7 @@ function _r3dZoneKmOf(lat, lng) {
 }
 
 function _r3dFetchUserFix() {
-  if (_r3dUserLatLng() || !navigator.geolocation) return;
+  if (_r3dUserLatLng() || !navigator.geolocation || !_locAllowed()) return;
   const grab = () => navigator.geolocation.getCurrentPosition(pos => {
     _r3dUserFix = { lat: pos.coords.latitude, lng: pos.coords.longitude };
     _r3dDirty = true;

@@ -162,14 +162,16 @@ console.log('\n2. closing the auto-opened tutorial gives them their weather');
      state.mrmsBubbleExists === false, String(state.mrmsBubbleExists));
 }
 
-console.log('\n2b. Wx-pert: their weather, but no mosaic switched on for them');
+console.log('\n2b. Wx-pert: no mosaic switched on for them, and no flight or forecast by default');
 {
   await arm({ geo: 'grant', mode: 'expert' });
   await closeAndGreet();
   await page.waitForTimeout(2600);
   const r = await result();
   ok('the national mosaic stays off in Wx-pert', r.composite === 0, String(r.composite));
-  ok('but the map still goes to them and their forecast opens', !!r.flew && !!r.forecast, JSON.stringify(r));
+  // Flying home and opening the forecast are Lite-ning's by default now
+  // (Settings > Location switches them on in Wx-pert too).
+  ok('and by default the map stays put and no forecast opens', !r.flew && !r.forecast, JSON.stringify(r));
 }
 
 console.log('\n3. it does NOT fire when a regular opens the tutorial themselves');
