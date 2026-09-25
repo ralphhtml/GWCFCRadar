@@ -188,7 +188,13 @@ console.log('\n4. the warning pulse sits out a gesture');
     return { during, after: n - during };
   });
   ok('no restyles while the map is moving', r.during === 0, JSON.stringify(r));
-  ok('and it picks straight back up afterwards', r.after >= 3, JSON.stringify(r));
+  // The pulse no longer restyles at all: a white copy fades on the
+  // compositor (see _alertFlashCanvas), so there is nothing to pick back up
+  // and nothing repainted per frame, moving or not.
+  ok('and none afterwards either: the pulse is a CSS fade, not a restyle', r.after === 0
+     && await p.evaluate(() => { const pn = map.getPane('alertFlashPane');
+       return !!pn && pn.querySelectorAll('canvas').length === 1
+         && getComputedStyle(pn).animationName === 'gw-alert-pulse'; }), JSON.stringify(r));
 }
 
 ok('nothing threw', errs.length === 0, errs.slice(0, 2).join(' | '));
