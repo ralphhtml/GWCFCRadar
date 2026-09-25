@@ -82,6 +82,21 @@ ok('a fire zone is fetched at the address the alert gives, with no forecast-zone
 ok('a zone that failed is left alone on the next refresh', r.firstTry > 0 && r.secondTry === 0, JSON.stringify(r));
 ok('the live alert list is read every refresh, the expired list only once in five minutes',
    r.active === 3 && r.past === 1, JSON.stringify(r));
+const ids = await p.evaluate(() => ({
+  live: [_radarDataId('tpbi'), _radarDataId('TPBI'), _arcSid('tpbi'), _l2AwsSid('tpbi', Date.now())],
+  july: [_arcSid('tpbi', Date.UTC(2026, 6, 20)), _radarDataId('tpbi', Date.UTC(2026, 6, 20))],
+  other: [_radarDataId('ktlx'), _arcSid('ktlx')],
+  back: _radarDisplayId('TDJT'),
+  label: (NEXRAD_STATIONS.find(s => s.id === 'tpbi') || {}).id,
+}));
+ok('Palm Beach data is asked for as TDJT / DJT now', JSON.stringify(ids.live) === JSON.stringify(['tdjt', 'TDJT', 'DJT', 'TDJT']), JSON.stringify(ids));
+ok('a moment before the change still asks for PBI', JSON.stringify(ids.july) === JSON.stringify(['PBI', 'tpbi']), JSON.stringify(ids));
+ok('other radars are untouched', JSON.stringify(ids.other) === JSON.stringify(['ktlx', 'TLX']), JSON.stringify(ids));
+ok('the map still calls it TPBI, and a TDJT status report lands on it', ids.label === 'tpbi' && ids.back === 'TPBI', JSON.stringify(ids));
+ok('a first visit does not reload itself when the service worker takes charge',
+   /const _swHadController = !!navigator\.serviceWorker\.controller;/.test(PAGE) && /if \(_swReloaded \|\| !_swHadController\) return;/.test(PAGE));
+ok('the right-click menu starts loading its radar', /_l2WarmSite\(st\.id, _cmRadarProduct\(st\.id\)\)/.test(PAGE));
+ok('the Forecaster Desk header has no green note', !/fd-head-note/.test(PAGE));
 ok('no page errors', errs.length === 0, errs.join(' | '));
 await b.close();
 console.log(fail ? `\n${fail} FAILED, ${pass} passed` : `\nall ${pass} passed`);

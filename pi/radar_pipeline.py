@@ -91,6 +91,19 @@ TDWR_SITES = [
     "TTUL",
 ]
 
+# Radars NOAA has re-identified. The map keeps the old name, and so do this
+# server's output folders (the page asks for them by that name); only the
+# requests to NOAA's data use the new one. Palm Beach's terminal radar TPBI
+# publishes as TDJT from August 2026.
+DATA_ID_ALIASES = {"TPBI": "TDJT"}
+
+
+def data_id(site):
+    """The identifier NOAA's data is filed under for this radar."""
+    up = str(site).upper()
+    return DATA_ID_ALIASES.get(up, up)
+
+
 # How far back to keep past volumes, which is what the animation scrubs
 # through. Age rather than a frame count: a count assumes perfect five-minute
 # cadence, and a Pi that fell behind or a site that briefly stopped answering
@@ -494,7 +507,7 @@ def fetch_l3_tdwr(site, spec, path):
     carries its own time, TPA_TZ0_2026_08_17_19_40_31, so the stamp is read
     straight off the name rather than off a header.
     """
-    sid = str(site).upper()[1:]      # TTPA -> TPA, the bucket's spelling
+    sid = data_id(site)[1:]          # TTPA -> TPA, the bucket's spelling
     for back in (0, 1):              # today, then yesterday around midnight
         day = datetime.now(timezone.utc) - timedelta(days=back)
         keys = s3_list(L3_BUCKET, f"{sid}_{spec['code']}_{day:%Y_%m_%d}_")
@@ -2017,7 +2030,7 @@ def check(sites):
                 if is_tdwr(site):
                     # The bucket has no sn.last; existence is a listing with
                     # at least one key under today's prefix.
-                    sid = site.upper()[1:]
+                    sid = data_id(site)[1:]
                     day = datetime.now(timezone.utc)
                     keys = s3_list(L3_BUCKET,
                                    f"{sid}_{spec['code']}_{day:%Y_%m_%d}_",
