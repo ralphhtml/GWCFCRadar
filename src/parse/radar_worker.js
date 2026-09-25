@@ -2,6 +2,8 @@ import { Buffer } from 'buffer';
 import { Level2Radar } from './level2/src/index.js';
 import nexradLevel3Data from './level3/src/browser.js';
 import { dealiasVelocityRadials } from './dealias.js';
+import { DERIVED_LAYERS, beamHeightKm, groundKm, slantForGround, readCut, valueAt,
+         distinctCuts, columnValue, classify, estimateStormMotion, rainRate } from './derived.js';
 
 const LEVEL3_PARSE_MODE = 'fast';
 
@@ -27,9 +29,23 @@ const getLevel2MomentForLayer = (layer) => {
         return 'phi';
     case 'ZDR':
         return 'zdr';
+    // GWCFC: products worked out from the whole volume (see derived.js).
+    case 'SRV':
+        return 'velocity';
+    case 'CREF':
+    case 'ETOP':
+    case 'DVIL':
+    case 'ACC':
+        return 'reflect';
     default:
         return null;
     }
+};
+// Every moment a layer needs. Hydrometeor class reads three at once.
+const getLevel2MomentsForLayer = (layer) => {
+    if (String(layer || '').toUpperCase() === 'HCLS') return ['reflect', 'zdr', 'rho'];
+    const m = getLevel2MomentForLayer(layer);
+    return m ? [m] : undefined;
 };
 
 const getLevel2Vcp = (radar, header = null) => {
@@ -337,6 +353,25 @@ const processRadarData = (radar, radarLocation, extent, layer, options = {}) => 
         }
     }
 
+    // GWCFC: storm relative velocity. The storm's own motion (u east, v
+    // north, m/s) is taken off every gate: the part of that motion along
+    // this radial, which is what the radar would have seen of it.
+    const motion = options && options.stormMotion;
+    if (layer === 'VEL' && motion && (motion.u || motion.v)) {
+        radarData = radarData.map((radial, i) => {
+            const h = headers?.[i];
+            if (!radial || !Array.isArray(radial.moment_data) || !h || !Number.isFinite(h.azimuth)) return radial;
+            const el = Number.isFinite(h.elevation_angle) ? h.elevation_angle : 0.5;
+            const along = (motion.u * Math.sin(h.azimuth * DEG_TO_RAD)
+                + motion.v * Math.cos(h.azimuth * DEG_TO_RAD)) * Math.cos(el * DEG_TO_RAD);
+            return Object.assign({}, radial, {
+                moment_data: radial.moment_data.map((v) => (Number.isFinite(v) ? v - along : v))
+            });
+        });
+    }
+    // A class code merges by keeping the first gate, not the biggest code.
+    const keepFirst = options && options.merge === 'first';
+
     const forwardDelta = (fromAz, toAz) => {
         if (!Number.isFinite(fromAz) || !Number.isFinite(toAz)) return 1;
         let delta = toAz - fromAz;
@@ -525,7 +560,7 @@ const processRadarData = (radar, radarLocation, extent, layer, options = {}) => 
                     continue;
                 }
                 if (value == null || value === 'rf') { value = v; continue; }
-                if (v === 'rf') continue;
+                if (v === 'rf' || keepFirst) continue;
                 if (layer === 'VEL') value = Math.abs(v) > Math.abs(value) ? v : value;
                 else value = Math.max(value, v);
             }
@@ -780,10 +815,208 @@ const level2TimeIso = (header) => {
     }
 };
 
+// -- PRODUCTS FROM THE WHOLE VOLUME (GWCFC) ------------------------------------
+// The MRRL radars publish only Level 2, so composite reflectivity, echo tops,
+// VIL, hydrometeor class, storm relative velocity and rainfall are worked
+// out here from the volume itself (the math is in derived.js). Each result
+// is drawn on the lowest tilt's own radials: new numbers are written into a
+// copy of that tilt and handed to the ordinary builder, so the picture has
+// exactly the geometry, range and cell sizes the reflectivity picture has.
+const asFloats = (arr) => Float32Array.from(arr, (x) => (typeof x === 'number' ? x : NaN));
+const compactCut = (cut) => {
+    if (!cut) return null;
+    cut.radials.forEach((r) => { r.v = asFloats(r.v); });
+    return cut;
+};
+
+// The lowest tilt that carries reflectivity, as the base every derived
+// picture is drawn on: its elevation number, mean angle, radials and headers.
+const baseSweep = (radar, cuts) => {
+    for (const c of cuts) {
+        radar.setElevation(c.el);
+        const data = radar.getHighresReflectivity();
+        if (Array.isArray(data) && data.some((d) => d && Array.isArray(d.moment_data))) {
+            const hs = radar.getHeader();
+            return { el: c.el, angle: c.a, data, headers: Array.isArray(hs) ? hs : [hs] };
+        }
+    }
+    return null;
+};
+
+// A stand-in radar holding one sweep of new numbers, so processRadarData can
+// build it exactly as it builds a real reflectivity sweep.
+const sweepOf = (radar, base, values) => ({
+    getHighresReflectivity: () => values,
+    getHeader: () => base.headers,
+    listElevations: () => [base.el],
+    setElevation: () => {},
+    elevation: base.el,
+    hasGaps: radar.hasGaps,
+    isTruncated: radar.isTruncated,
+});
+
+const planCuts = (radar) => {
+    const elevations = radar.listElevations();
+    const angles = elevations.map((e) => meanElevationAngle(radar, e));
+    return { elevations, angles, cuts: distinctCuts(elevations, angles) };
+};
+
+const processDerived = (radar, radarLocation, layer, options = {}) => {
+    const { cuts } = planCuts(radar);
+    if (!cuts.length) throw new Error('no tilts in this volume');
+    const base = baseSweep(radar, cuts);
+    if (!base) throw new Error('no reflectivity in this volume');
+    const limitKm = Number.isFinite(options.range_limit_km) && options.range_limit_km > 0
+        ? options.range_limit_km : Infinity;
+    let values;
+    if (layer === 'HCLS') {
+        radar.setElevation(base.el);
+        const zdr = compactCut(readCut(radar, base.el, () => radar.getHighresDiffReflectivity()));
+        const rho = compactCut(readCut(radar, base.el, () => radar.getHighresCorrelationCoefficient()));
+        if (!zdr && !rho) throw new Error('this radar sends no dual polarization data');
+        values = base.data.map((d, i) => {
+            const h = base.headers[i];
+            if (!d || !Array.isArray(d.moment_data) || !h || !Number.isFinite(h.azimuth)) return d;
+            const out = new Array(d.moment_data.length).fill(null);
+            for (let g = 0; g < out.length; g++) {
+                const z = d.moment_data[g];
+                if (!Number.isFinite(z)) continue;
+                const r = d.first_gate + g * d.gate_size;
+                if (r > limitKm) break;
+                out[g] = classify(z, zdr ? valueAt(zdr, h.azimuth, r) : null,
+                    rho ? valueAt(rho, h.azimuth, r) : null, beamHeightKm(r, base.angle));
+            }
+            return Object.assign({}, d, { moment_data: out });
+        });
+    } else {
+        const stack = [];
+        for (const c of cuts) {
+            const cut = compactCut(readCut(radar, c.el, () => radar.getHighresReflectivity()));
+            if (cut) stack.push(cut);
+        }
+        const samples = [];
+        values = base.data.map((d, i) => {
+            const h = base.headers[i];
+            if (!d || !Array.isArray(d.moment_data) || !h || !Number.isFinite(h.azimuth)) return d;
+            const out = new Array(d.moment_data.length).fill(null);
+            for (let g = 0; g < out.length; g++) {
+                const r = d.first_gate + g * d.gate_size;
+                if (r > limitKm) break;
+                const s = groundKm(r, base.angle);
+                samples.length = 0;
+                for (const cut of stack) {
+                    const sl = slantForGround(s, cut.angle);
+                    const z = valueAt(cut, h.azimuth, sl);
+                    if (z !== null) samples.push({ h: beamHeightKm(sl, cut.angle), z });
+                }
+                const v = columnValue(layer, samples);
+                if (v !== null && Number.isFinite(v)) out[g] = v;
+            }
+            return Object.assign({}, d, { moment_data: out });
+        });
+    }
+    const built = processRadarData(sweepOf(radar, base, values), radarLocation, null, 'REF',
+        Object.assign({}, options, layer === 'HCLS' ? { merge: 'first' } : {}));
+    return Object.assign(built, { base });
+};
+
+// The storm motion for storm relative velocity, from the lowest tilt with
+// velocity in it.
+const volumeStormMotion = (radar) => {
+    const { cuts } = planCuts(radar);
+    for (const c of cuts) {
+        const cut = readCut(radar, c.el, () => radar.getHighresVelocity());
+        if (cut) return estimateStormMotion(compactCut(cut));
+    }
+    return { u: 0, v: 0 };
+};
+
+// Rainfall over several volumes: each volume's lowest tilt turned into a
+// rain rate, and each rate held for the time until the next volume (never
+// more than fifteen minutes, so a gap in the feed is not counted as rain).
+// Drawn on the newest volume's geometry, in millimetres.
+const ACC_MAX_STEP_MS = 15 * 60 * 1000;
+const processAccumulation = (buffers, options = {}) => {
+    const vols = [];
+    let newest = null;
+    for (const buf of buffers) {
+        try {
+            const radar = new Level2Radar(Buffer.from(buf), { logger: false, includeMoments: ['reflect'] });
+            const { elevations, cuts } = planCuts(radar);
+            const head = firstUsableHeader(radar, elevations);
+            const t = Date.parse(level2TimeIso(head) || '');
+            if (!head || !Number.isFinite(t)) continue;
+            // The same scan twice (a file fetched again) is still one scan's rain.
+            if (vols.some((v) => v.t === t)) continue;
+            const base = baseSweep(radar, cuts);
+            if (!base) continue;
+            const cut = compactCut(readCut(radar, base.el, () => radar.getHighresReflectivity()));
+            if (!cut) continue;
+            vols.push({ t, cut });
+            if (!newest || t > newest.t) newest = { t, radar, base, head };
+        } catch (e) { /* one bad volume costs that volume */ }
+    }
+    if (!newest) throw new Error('no readable volume for the rainfall');
+    vols.sort((p, q) => p.t - q.t);
+    const steps = vols.map((v, i) => {
+        const gap = i + 1 < vols.length ? vols[i + 1].t - v.t : (i > 0 ? v.t - vols[i - 1].t : 5 * 60000);
+        return Math.max(0, Math.min(gap, ACC_MAX_STEP_MS)) / 3600000;       // hours
+    });
+    const limitKm = Number.isFinite(options.range_limit_km) && options.range_limit_km > 0
+        ? options.range_limit_km : Infinity;
+    const { base } = newest;
+    const values = base.data.map((d, i) => {
+        const h = base.headers[i];
+        if (!d || !Array.isArray(d.moment_data) || !h || !Number.isFinite(h.azimuth)) return d;
+        const out = new Array(d.moment_data.length).fill(null);
+        for (let g = 0; g < out.length; g++) {
+            const r = d.first_gate + g * d.gate_size;
+            if (r > limitKm) break;
+            let mm = 0;
+            for (let k = 0; k < vols.length; k++) {
+                const z = valueAt(vols[k].cut, h.azimuth, r);
+                if (z !== null) mm += rainRate(z) * steps[k];
+            }
+            if (mm >= 0.25) out[g] = mm;
+        }
+        return Object.assign({}, d, { moment_data: out });
+    });
+    const loc = [newest.head.volume.latitude, newest.head.volume.longitude];
+    const built = processRadarData(sweepOf(newest.radar, base, values), loc, null, 'REF', options);
+    return Object.assign(built, {
+        timeIso: new Date(newest.t).toISOString(),
+        elevationAngle: base.angle,
+        vcp: getLevel2Vcp(newest.radar, newest.head),
+        minutes: Math.round(steps.reduce((a, b) => a + b, 0) * 60),
+        volumes: vols.length,
+    });
+};
+
 self.onmessage = (event) => {
     const { type } = event.data || {};
     const _o = (event.data && event.data.options) || {};
     _siteFallback = (Number.isFinite(_o.siteLat) && Number.isFinite(_o.siteLon)) ? [_o.siteLat, _o.siteLon] : null;
+
+    // --- Several whole volumes into one product (rainfall) ---
+    if (type === 'process-multi') {
+        const { buffers, options: multiOptions = {} } = event.data;
+        try {
+            const parserStartMs = toEpochMs(performance.now());
+            if (!Array.isArray(buffers) || !buffers.length) throw new Error('process-multi: no buffers provided');
+            const r = processAccumulation(buffers, multiOptions);
+            const meshEndMs = toEpochMs(performance.now());
+            self.postMessage({
+                type: 'result', geojson: r.geojson, meshData: r.meshData, bounds: r.bounds,
+                metadata: { station: multiOptions.station || null, product: 'ACC', timeIso: r.timeIso,
+                            elevationAngle: r.elevationAngle, vcp: r.vcp,
+                            accumMinutes: r.minutes, accumVolumes: r.volumes },
+                timing: { parserStartMs, parserEndMs: parserStartMs, meshEndMs },
+            }, [r.meshData.buffer]);
+        } catch (err) {
+            self.postMessage({ type: 'error', message: err.message || String(err) });
+        }
+        return;
+    }
 
     // --- Chunk-combine path (Level-II streaming) ---
     if (type === 'process-chunks') {
@@ -834,7 +1067,8 @@ self.onmessage = (event) => {
     }
 
     // --- Single-file path (archive / local upload / Level-III) ---
-    const { arrayBuffer, layer, options } = event.data || {};
+    const { arrayBuffer, layer } = event.data || {};
+    let { options } = event.data || {};
     if (type !== 'process' || !arrayBuffer) {
         return;
     }
@@ -846,7 +1080,8 @@ self.onmessage = (event) => {
         const upperLayer = typeof layer === 'string' ? layer.toUpperCase() : '';
         // Include ZDR as a Level-II (super-res) product so ZDR archive files are
         // parsed with the Level2 parser instead of being misclassified as Level3.
-        const isLevel2Product = upperLayer === 'REF' || upperLayer === 'VEL' || upperLayer === 'CC' || upperLayer === 'KDP' || upperLayer === 'SW' || upperLayer === 'ZDR' || upperLayer === 'PHI';
+        const isLevel2Product = upperLayer === 'REF' || upperLayer === 'VEL' || upperLayer === 'CC' || upperLayer === 'KDP' || upperLayer === 'SW' || upperLayer === 'ZDR' || upperLayer === 'PHI'
+            || upperLayer === 'SRV' || DERIVED_LAYERS.has(upperLayer);
         const isLevel3 = !isLevel2Product;
         const buffer = Buffer.from(arrayBuffer);
 
@@ -902,11 +1137,21 @@ self.onmessage = (event) => {
                     meshEndMs
                 }
             }, [meshData.buffer]);
+        } else if (upperLayer === 'ACC') {
+            // One volume's worth of rain: the same sum as process-multi.
+            const r = processAccumulation([arrayBuffer], options || {});
+            meshEndMs = toEpochMs(performance.now());
+            self.postMessage({
+                type: 'result', geojson: r.geojson, meshData: r.meshData, bounds: r.bounds,
+                metadata: { station: options?.station || null, product: 'ACC', timeIso: r.timeIso,
+                            elevationAngle: r.elevationAngle, vcp: r.vcp,
+                            accumMinutes: r.minutes, accumVolumes: r.volumes },
+                timing: { parserStartMs, parserEndMs: parserStartMs, meshEndMs }
+            }, [r.meshData.buffer]);
         } else {
-            const requestedMoment = getLevel2MomentForLayer(layer);
             const radar = new Level2Radar(buffer, {
                 logger: false,
-                includeMoments: requestedMoment ? [requestedMoment] : undefined
+                includeMoments: getLevel2MomentsForLayer(layer)
             });
             parserEndMs = toEpochMs(performance.now());
 
@@ -929,6 +1174,26 @@ self.onmessage = (event) => {
             // are given, only this lane's share of them - so several workers
             // can each parse once and split the cuts between them without a
             // separate decode to learn the angle list first.
+            if (DERIVED_LAYERS.has(upperLayer) && upperLayer !== 'ACC') {
+                const h0 = firstUsableHeader(radar, elevations);
+                if (!h0) throw new Error('no usable sweep in this volume');
+                const built = processDerived(radar, [h0.volume.latitude, h0.volume.longitude], upperLayer, options || {});
+                meshEndMs = toEpochMs(performance.now());
+                self.postMessage({
+                    type: 'result', geojson: built.geojson, meshData: built.meshData, bounds: built.bounds,
+                    metadata: { timeIso: level2TimeIso(h0), elevationAngle: built.base.angle,
+                                station: options?.station || null, vcp: getLevel2Vcp(radar, h0),
+                                product: upperLayer },
+                    timing: { parserStartMs, parserEndMs, meshEndMs }
+                }, [built.meshData.buffer]);
+                return;
+            }
+            // Storm relative velocity is velocity with the storm's motion off.
+            const procLayer = upperLayer === 'SRV' ? 'VEL' : layer;
+            if (upperLayer === 'SRV') {
+                options = Object.assign({}, options, { stormMotion: volumeStormMotion(radar) });
+            }
+
             let wanted = options?.elevations;
             let distinctCount = null;
             if (wanted === 'distinct') {
@@ -959,7 +1224,7 @@ self.onmessage = (event) => {
                     try {
                         radar.setElevation(el);
                         const h = radar.getHeader(0);
-                        const built = processRadarData(radar, radarLocation0, h.radial_length, layer, options);
+                        const built = processRadarData(radar, radarLocation0, h.radial_length, procLayer, options);
                         const idx = elevations.indexOf(radar.elevation);
                         const angle = idx >= 0 && Number.isFinite(elevationAngles[idx])
                             ? elevationAngles[idx] : h.elevation_angle;
@@ -999,7 +1264,7 @@ self.onmessage = (event) => {
             const header = radar.getHeader(0) || usable;
             const extent = header.radial_length || usable.radial_length;
 
-            const { meshData, bounds, geojson } = processRadarData(radar, radarLocation, extent, layer, options);
+            const { meshData, bounds, geojson } = processRadarData(radar, radarLocation, extent, procLayer, options);
             meshEndMs = toEpochMs(performance.now());
             const ownIdx = elevations.indexOf(radar.elevation);
             const metadata = {

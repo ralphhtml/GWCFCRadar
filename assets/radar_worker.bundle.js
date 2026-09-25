@@ -11939,6 +11939,154 @@
     return radials;
   }
 
+  // src/parse/derived.js
+  init_inject_buffer();
+  var DEG = Math.PI / 180;
+  var RE = 8494.7;
+  var DERIVED_LAYERS = /* @__PURE__ */ new Set(["CREF", "ETOP", "DVIL", "HCLS", "ACC"]);
+  var beamHeightKm = (rKm, elDeg) => Math.sqrt(rKm * rKm + RE * RE + 2 * rKm * RE * Math.sin(elDeg * DEG)) - RE;
+  var groundKm = (rKm, elDeg) => {
+    const h = beamHeightKm(rKm, elDeg);
+    return RE * Math.asin(rKm * Math.cos(elDeg * DEG) / (RE + h));
+  };
+  var slantForGround = (sKm, elDeg) => sKm / Math.cos(elDeg * DEG);
+  var readCut = (radar, elevationNumber, getter) => {
+    radar.setElevation(elevationNumber);
+    const data = getter();
+    const hs = radar.getHeader();
+    const heads = Array.isArray(hs) ? hs : [hs];
+    const radials = [];
+    let angSum = 0, angN = 0;
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i];
+      const h = heads[i];
+      if (!d || !Array.isArray(d.moment_data) || !h || !Number.isFinite(h.azimuth)) continue;
+      radials.push({ az: h.azimuth, fg: d.first_gate, gs: d.gate_size, v: d.moment_data });
+      const a = Number(h.elevation_angle);
+      if (Number.isFinite(a)) {
+        angSum += a;
+        angN += 1;
+      }
+    }
+    if (!radials.length) return null;
+    const index = new Int32Array(720).fill(-1);
+    radials.forEach((r, i) => {
+      const b = Math.round((r.az % 360 + 360) % 360 * 2) % 720;
+      index[b] = i;
+    });
+    for (let pass = 0; pass < 4; pass++) {
+      for (let b = 0; b < 720; b++) {
+        if (index[b] >= 0) continue;
+        const l = index[(b + 719) % 720], r = index[(b + 1) % 720];
+        if (l >= 0) index[b] = l;
+        else if (r >= 0) index[b] = r;
+      }
+    }
+    return { radials, index, angle: angN ? angSum / angN : 0.5 };
+  };
+  var valueAt = (cut, azDeg, slantKm) => {
+    const b = Math.round((azDeg % 360 + 360) % 360 * 2) % 720;
+    const ri = cut.index[b];
+    if (ri < 0) return null;
+    const r = cut.radials[ri];
+    const gi = Math.floor((slantKm - r.fg) / r.gs);
+    if (gi < 0 || gi >= r.v.length) return null;
+    const v = r.v[gi];
+    return Number.isFinite(v) ? v : null;
+  };
+  var distinctCuts = (elevations, angles, topAngle = 20) => {
+    const items = elevations.map((el, i) => ({ el, a: angles[i] })).filter((x) => Number.isFinite(x.a) && x.a <= topAngle).sort((p, q) => p.a - q.a || p.el - q.el);
+    const out = [];
+    for (const it of items) {
+      const c = out[out.length - 1];
+      if (c && it.a - c.a < 0.25) {
+        if (it.el < c.el) c.el = it.el;
+      } else out.push({ el: it.el, a: it.a });
+    }
+    return out;
+  };
+  var columnValue = (layer, samples) => {
+    if (!samples.length) return null;
+    if (layer === "CREF") {
+      let m = -Infinity;
+      for (const s of samples) if (s.z > m) m = s.z;
+      return m;
+    }
+    if (layer === "ETOP") {
+      let top = null;
+      for (const s of samples) if (s.z >= 18 && (top === null || s.h > top)) top = s.h;
+      return top === null ? null : top * 3.28084;
+    }
+    if (layer === "DVIL") {
+      const s = samples.slice().sort((p, q) => p.h - q.h);
+      let vil = 0;
+      for (let i = 0; i + 1 < s.length; i++) {
+        const za = Math.pow(10, Math.min(s[i].z, 56) / 10);
+        const zb = Math.pow(10, Math.min(s[i + 1].z, 56) / 10);
+        const dh = (s[i + 1].h - s[i].h) * 1e3;
+        if (dh > 0) vil += 344e-8 * Math.pow((za + zb) / 2, 4 / 7) * dh;
+      }
+      return vil >= 0.5 ? vil : null;
+    }
+    return null;
+  };
+  var classify = (z, zdr, cc, hKm) => {
+    if (!Number.isFinite(z)) return null;
+    if (Number.isFinite(cc) && cc < 0.8) {
+      if (z < 30) return 10;
+      return 140;
+    }
+    const d = Number.isFinite(zdr) ? zdr : 0;
+    const ice = hKm > 4;
+    if (z >= 55) return d < 1 ? z >= 60 ? 110 : 100 : 100;
+    if (ice) {
+      if (z >= 40) return 90;
+      if (z < 20 && d > 1) return 30;
+      return 40;
+    }
+    if (hKm > 3 && z >= 25 && z < 45 && Number.isFinite(cc) && cc < 0.95) return 50;
+    if (d >= 2.5 && z < 45) return 80;
+    if (z >= 42) return 70;
+    if (z >= 5) return 60;
+    return null;
+  };
+  var estimateStormMotion = (cut) => {
+    let n = 0, sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0, sb = 0, sbx = 0, sby = 0;
+    const ce = Math.cos(cut.angle * DEG);
+    for (const r of cut.radials) {
+      const x = Math.sin(r.az * DEG) * ce, y = Math.cos(r.az * DEG) * ce;
+      for (let g = 0; g < r.v.length; g++) {
+        const km = r.fg + g * r.gs;
+        if (km < 10 || km > 60) continue;
+        const vr = r.v[g];
+        if (!Number.isFinite(vr)) continue;
+        n++;
+        sx += x;
+        sy += y;
+        sxx += x * x;
+        syy += y * y;
+        sxy += x * y;
+        sb += vr;
+        sbx += vr * x;
+        sby += vr * y;
+      }
+    }
+    if (n < 200) return { u: 0, v: 0 };
+    const A = [[n, sx, sy], [sx, sxx, sxy], [sy, sxy, syy]], B = [sb, sbx, sby];
+    const det3 = (m) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+    const D = det3(A);
+    if (!Number.isFinite(D) || Math.abs(D) < 1e-9) return { u: 0, v: 0 };
+    const col = (k) => A.map((row, i) => row.map((val, j) => j === k ? B[i] : val));
+    const u = det3(col(1)) / D, v = det3(col(2)) / D;
+    const c = Math.cos(30 * DEG), s = Math.sin(30 * DEG);
+    return { u: 0.75 * (u * c + v * s), v: 0.75 * (-u * s + v * c) };
+  };
+  var rainRate = (dbz) => {
+    if (!Number.isFinite(dbz) || dbz < 10) return 0;
+    const z = Math.pow(10, Math.min(dbz, 53) / 10);
+    return Math.pow(z / 300, 1 / 1.4);
+  };
+
   // src/parse/radar_worker.js
   var LEVEL3_PARSE_MODE = "fast";
   var EARTH_RADIUS = 6371e3;
@@ -11961,9 +12109,22 @@
         return "phi";
       case "ZDR":
         return "zdr";
+      // GWCFC: products worked out from the whole volume (see derived.js).
+      case "SRV":
+        return "velocity";
+      case "CREF":
+      case "ETOP":
+      case "DVIL":
+      case "ACC":
+        return "reflect";
       default:
         return null;
     }
+  };
+  var getLevel2MomentsForLayer = (layer) => {
+    if (String(layer || "").toUpperCase() === "HCLS") return ["reflect", "zdr", "rho"];
+    const m = getLevel2MomentForLayer(layer);
+    return m ? [m] : void 0;
   };
   var getLevel2Vcp = (radar, header = null) => {
     const patternNumber = Number(radar?.vcp?.record?.pattern_number);
@@ -12190,6 +12351,19 @@
         console.error("Velocity dealiasing failed for Level-II velocity data:", error);
       }
     }
+    const motion = options && options.stormMotion;
+    if (layer === "VEL" && motion && (motion.u || motion.v)) {
+      radarData = radarData.map((radial, i) => {
+        const h = headers?.[i];
+        if (!radial || !Array.isArray(radial.moment_data) || !h || !Number.isFinite(h.azimuth)) return radial;
+        const el = Number.isFinite(h.elevation_angle) ? h.elevation_angle : 0.5;
+        const along = (motion.u * Math.sin(h.azimuth * DEG_TO_RAD) + motion.v * Math.cos(h.azimuth * DEG_TO_RAD)) * Math.cos(el * DEG_TO_RAD);
+        return Object.assign({}, radial, {
+          moment_data: radial.moment_data.map((v) => Number.isFinite(v) ? v - along : v)
+        });
+      });
+    }
+    const keepFirst = options && options.merge === "first";
     const forwardDelta = (fromAz, toAz) => {
       if (!Number.isFinite(fromAz) || !Number.isFinite(toAz)) return 1;
       let delta = toAz - fromAz;
@@ -12326,7 +12500,7 @@
             value = v;
             continue;
           }
-          if (v === "rf") continue;
+          if (v === "rf" || keepFirst) continue;
           if (layer === "VEL") value = Math.abs(v) > Math.abs(value) ? v : value;
           else value = Math.max(value, v);
         }
@@ -12526,10 +12700,201 @@
       return null;
     }
   };
+  var asFloats = (arr) => Float32Array.from(arr, (x) => typeof x === "number" ? x : NaN);
+  var compactCut = (cut) => {
+    if (!cut) return null;
+    cut.radials.forEach((r) => {
+      r.v = asFloats(r.v);
+    });
+    return cut;
+  };
+  var baseSweep = (radar, cuts) => {
+    for (const c of cuts) {
+      radar.setElevation(c.el);
+      const data = radar.getHighresReflectivity();
+      if (Array.isArray(data) && data.some((d) => d && Array.isArray(d.moment_data))) {
+        const hs = radar.getHeader();
+        return { el: c.el, angle: c.a, data, headers: Array.isArray(hs) ? hs : [hs] };
+      }
+    }
+    return null;
+  };
+  var sweepOf = (radar, base, values) => ({
+    getHighresReflectivity: () => values,
+    getHeader: () => base.headers,
+    listElevations: () => [base.el],
+    setElevation: () => {
+    },
+    elevation: base.el,
+    hasGaps: radar.hasGaps,
+    isTruncated: radar.isTruncated
+  });
+  var planCuts = (radar) => {
+    const elevations = radar.listElevations();
+    const angles = elevations.map((e) => meanElevationAngle(radar, e));
+    return { elevations, angles, cuts: distinctCuts(elevations, angles) };
+  };
+  var processDerived = (radar, radarLocation, layer, options = {}) => {
+    const { cuts } = planCuts(radar);
+    if (!cuts.length) throw new Error("no tilts in this volume");
+    const base = baseSweep(radar, cuts);
+    if (!base) throw new Error("no reflectivity in this volume");
+    const limitKm = Number.isFinite(options.range_limit_km) && options.range_limit_km > 0 ? options.range_limit_km : Infinity;
+    let values;
+    if (layer === "HCLS") {
+      radar.setElevation(base.el);
+      const zdr = compactCut(readCut(radar, base.el, () => radar.getHighresDiffReflectivity()));
+      const rho = compactCut(readCut(radar, base.el, () => radar.getHighresCorrelationCoefficient()));
+      if (!zdr && !rho) throw new Error("this radar sends no dual polarization data");
+      values = base.data.map((d, i) => {
+        const h = base.headers[i];
+        if (!d || !Array.isArray(d.moment_data) || !h || !Number.isFinite(h.azimuth)) return d;
+        const out = new Array(d.moment_data.length).fill(null);
+        for (let g = 0; g < out.length; g++) {
+          const z = d.moment_data[g];
+          if (!Number.isFinite(z)) continue;
+          const r = d.first_gate + g * d.gate_size;
+          if (r > limitKm) break;
+          out[g] = classify(
+            z,
+            zdr ? valueAt(zdr, h.azimuth, r) : null,
+            rho ? valueAt(rho, h.azimuth, r) : null,
+            beamHeightKm(r, base.angle)
+          );
+        }
+        return Object.assign({}, d, { moment_data: out });
+      });
+    } else {
+      const stack = [];
+      for (const c of cuts) {
+        const cut = compactCut(readCut(radar, c.el, () => radar.getHighresReflectivity()));
+        if (cut) stack.push(cut);
+      }
+      const samples = [];
+      values = base.data.map((d, i) => {
+        const h = base.headers[i];
+        if (!d || !Array.isArray(d.moment_data) || !h || !Number.isFinite(h.azimuth)) return d;
+        const out = new Array(d.moment_data.length).fill(null);
+        for (let g = 0; g < out.length; g++) {
+          const r = d.first_gate + g * d.gate_size;
+          if (r > limitKm) break;
+          const s = groundKm(r, base.angle);
+          samples.length = 0;
+          for (const cut of stack) {
+            const sl = slantForGround(s, cut.angle);
+            const z = valueAt(cut, h.azimuth, sl);
+            if (z !== null) samples.push({ h: beamHeightKm(sl, cut.angle), z });
+          }
+          const v = columnValue(layer, samples);
+          if (v !== null && Number.isFinite(v)) out[g] = v;
+        }
+        return Object.assign({}, d, { moment_data: out });
+      });
+    }
+    const built = processRadarData(
+      sweepOf(radar, base, values),
+      radarLocation,
+      null,
+      "REF",
+      Object.assign({}, options, layer === "HCLS" ? { merge: "first" } : {})
+    );
+    return Object.assign(built, { base });
+  };
+  var volumeStormMotion = (radar) => {
+    const { cuts } = planCuts(radar);
+    for (const c of cuts) {
+      const cut = readCut(radar, c.el, () => radar.getHighresVelocity());
+      if (cut) return estimateStormMotion(compactCut(cut));
+    }
+    return { u: 0, v: 0 };
+  };
+  var ACC_MAX_STEP_MS = 15 * 60 * 1e3;
+  var processAccumulation = (buffers, options = {}) => {
+    const vols = [];
+    let newest = null;
+    for (const buf of buffers) {
+      try {
+        const radar = new Level2Radar(import_buffer5.Buffer.from(buf), { logger: false, includeMoments: ["reflect"] });
+        const { elevations, cuts } = planCuts(radar);
+        const head = firstUsableHeader(radar, elevations);
+        const t = Date.parse(level2TimeIso(head) || "");
+        if (!head || !Number.isFinite(t)) continue;
+        if (vols.some((v) => v.t === t)) continue;
+        const base2 = baseSweep(radar, cuts);
+        if (!base2) continue;
+        const cut = compactCut(readCut(radar, base2.el, () => radar.getHighresReflectivity()));
+        if (!cut) continue;
+        vols.push({ t, cut });
+        if (!newest || t > newest.t) newest = { t, radar, base: base2, head };
+      } catch (e) {
+      }
+    }
+    if (!newest) throw new Error("no readable volume for the rainfall");
+    vols.sort((p, q) => p.t - q.t);
+    const steps = vols.map((v, i) => {
+      const gap = i + 1 < vols.length ? vols[i + 1].t - v.t : i > 0 ? v.t - vols[i - 1].t : 5 * 6e4;
+      return Math.max(0, Math.min(gap, ACC_MAX_STEP_MS)) / 36e5;
+    });
+    const limitKm = Number.isFinite(options.range_limit_km) && options.range_limit_km > 0 ? options.range_limit_km : Infinity;
+    const { base } = newest;
+    const values = base.data.map((d, i) => {
+      const h = base.headers[i];
+      if (!d || !Array.isArray(d.moment_data) || !h || !Number.isFinite(h.azimuth)) return d;
+      const out = new Array(d.moment_data.length).fill(null);
+      for (let g = 0; g < out.length; g++) {
+        const r = d.first_gate + g * d.gate_size;
+        if (r > limitKm) break;
+        let mm = 0;
+        for (let k = 0; k < vols.length; k++) {
+          const z = valueAt(vols[k].cut, h.azimuth, r);
+          if (z !== null) mm += rainRate(z) * steps[k];
+        }
+        if (mm >= 0.25) out[g] = mm;
+      }
+      return Object.assign({}, d, { moment_data: out });
+    });
+    const loc = [newest.head.volume.latitude, newest.head.volume.longitude];
+    const built = processRadarData(sweepOf(newest.radar, base, values), loc, null, "REF", options);
+    return Object.assign(built, {
+      timeIso: new Date(newest.t).toISOString(),
+      elevationAngle: base.angle,
+      vcp: getLevel2Vcp(newest.radar, newest.head),
+      minutes: Math.round(steps.reduce((a, b) => a + b, 0) * 60),
+      volumes: vols.length
+    });
+  };
   self.onmessage = (event) => {
     const { type } = event.data || {};
     const _o = event.data && event.data.options || {};
     _siteFallback = Number.isFinite(_o.siteLat) && Number.isFinite(_o.siteLon) ? [_o.siteLat, _o.siteLon] : null;
+    if (type === "process-multi") {
+      const { buffers, options: multiOptions = {} } = event.data;
+      try {
+        const parserStartMs = toEpochMs(performance.now());
+        if (!Array.isArray(buffers) || !buffers.length) throw new Error("process-multi: no buffers provided");
+        const r = processAccumulation(buffers, multiOptions);
+        const meshEndMs = toEpochMs(performance.now());
+        self.postMessage({
+          type: "result",
+          geojson: r.geojson,
+          meshData: r.meshData,
+          bounds: r.bounds,
+          metadata: {
+            station: multiOptions.station || null,
+            product: "ACC",
+            timeIso: r.timeIso,
+            elevationAngle: r.elevationAngle,
+            vcp: r.vcp,
+            accumMinutes: r.minutes,
+            accumVolumes: r.volumes
+          },
+          timing: { parserStartMs, parserEndMs: parserStartMs, meshEndMs }
+        }, [r.meshData.buffer]);
+      } catch (err2) {
+        self.postMessage({ type: "error", message: err2.message || String(err2) });
+      }
+      return;
+    }
     if (type === "process-chunks") {
       const { buffers: rawBuffers, layer: chunkLayer, options: chunkOptions = {} } = event.data;
       if (!Array.isArray(rawBuffers) || rawBuffers.length === 0) {
@@ -12572,7 +12937,8 @@
       }
       return;
     }
-    const { arrayBuffer, layer, options } = event.data || {};
+    const { arrayBuffer, layer } = event.data || {};
+    let { options } = event.data || {};
     if (type !== "process" || !arrayBuffer) {
       return;
     }
@@ -12581,7 +12947,7 @@
       let parserEndMs = null;
       let meshEndMs = null;
       const upperLayer = typeof layer === "string" ? layer.toUpperCase() : "";
-      const isLevel2Product = upperLayer === "REF" || upperLayer === "VEL" || upperLayer === "CC" || upperLayer === "KDP" || upperLayer === "SW" || upperLayer === "ZDR" || upperLayer === "PHI";
+      const isLevel2Product = upperLayer === "REF" || upperLayer === "VEL" || upperLayer === "CC" || upperLayer === "KDP" || upperLayer === "SW" || upperLayer === "ZDR" || upperLayer === "PHI" || upperLayer === "SRV" || DERIVED_LAYERS.has(upperLayer);
       const isLevel3 = !isLevel2Product;
       const buffer = import_buffer5.Buffer.from(arrayBuffer);
       if (isLevel3) {
@@ -12631,15 +12997,58 @@
             meshEndMs
           }
         }, [meshData.buffer]);
+      } else if (upperLayer === "ACC") {
+        const r = processAccumulation([arrayBuffer], options || {});
+        meshEndMs = toEpochMs(performance.now());
+        self.postMessage({
+          type: "result",
+          geojson: r.geojson,
+          meshData: r.meshData,
+          bounds: r.bounds,
+          metadata: {
+            station: options?.station || null,
+            product: "ACC",
+            timeIso: r.timeIso,
+            elevationAngle: r.elevationAngle,
+            vcp: r.vcp,
+            accumMinutes: r.minutes,
+            accumVolumes: r.volumes
+          },
+          timing: { parserStartMs, parserEndMs: parserStartMs, meshEndMs }
+        }, [r.meshData.buffer]);
       } else {
-        const requestedMoment = getLevel2MomentForLayer(layer);
         const radar = new Level2Radar(buffer, {
           logger: false,
-          includeMoments: requestedMoment ? [requestedMoment] : void 0
+          includeMoments: getLevel2MomentsForLayer(layer)
         });
         parserEndMs = toEpochMs(performance.now());
         const elevations = radar.listElevations();
         const elevationAngles = elevations.map((e) => meanElevationAngle(radar, e));
+        if (DERIVED_LAYERS.has(upperLayer) && upperLayer !== "ACC") {
+          const h0 = firstUsableHeader(radar, elevations);
+          if (!h0) throw new Error("no usable sweep in this volume");
+          const built = processDerived(radar, [h0.volume.latitude, h0.volume.longitude], upperLayer, options || {});
+          meshEndMs = toEpochMs(performance.now());
+          self.postMessage({
+            type: "result",
+            geojson: built.geojson,
+            meshData: built.meshData,
+            bounds: built.bounds,
+            metadata: {
+              timeIso: level2TimeIso(h0),
+              elevationAngle: built.base.angle,
+              station: options?.station || null,
+              vcp: getLevel2Vcp(radar, h0),
+              product: upperLayer
+            },
+            timing: { parserStartMs, parserEndMs, meshEndMs }
+          }, [built.meshData.buffer]);
+          return;
+        }
+        const procLayer = upperLayer === "SRV" ? "VEL" : layer;
+        if (upperLayer === "SRV") {
+          options = Object.assign({}, options, { stormMotion: volumeStormMotion(radar) });
+        }
         let wanted = options?.elevations;
         let distinctCount = null;
         if (wanted === "distinct") {
@@ -12669,7 +13078,7 @@
             try {
               radar.setElevation(el);
               const h = radar.getHeader(0);
-              const built = processRadarData(radar, radarLocation0, h.radial_length, layer, options);
+              const built = processRadarData(radar, radarLocation0, h.radial_length, procLayer, options);
               const idx = elevations.indexOf(radar.elevation);
               const angle = idx >= 0 && Number.isFinite(elevationAngles[idx]) ? elevationAngles[idx] : h.elevation_angle;
               sweeps.push({
@@ -12708,7 +13117,7 @@
         }
         const header = radar.getHeader(0) || usable;
         const extent = header.radial_length || usable.radial_length;
-        const { meshData, bounds, geojson } = processRadarData(radar, radarLocation, extent, layer, options);
+        const { meshData, bounds, geojson } = processRadarData(radar, radarLocation, extent, procLayer, options);
         meshEndMs = toEpochMs(performance.now());
         const ownIdx = elevations.indexOf(radar.elevation);
         const metadata = {

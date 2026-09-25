@@ -8,7 +8,8 @@
  * The spin is pure CSS on one element; the JS only decides where the
  * disc sits (the same _rcMainSite answer the radar comparison reads, so
  * the beam follows the picture through every source) and how many
- * pixels the radar's real 230 km range is at the current zoom.
+ * pixels the radar's picture reaches at the current zoom (the furthest
+ * cell actually drawn, or 460 km / 300 km for velocity before one is).
  */
 
 import { readFileSync } from 'node:fs';
@@ -33,8 +34,11 @@ console.log('\n1. the pieces are in the page');
      /prefers-reduced-motion[\s\S]{0,120}\.sweep-disc \{ animation: none/.test(PAGE));
   ok('the beam follows the same site answer the radar comparison reads',
      /_rcMainSite === 'function'\) \? _rcMainSite\(\) : null/.test(PAGE));
-  ok('the disc is sized to the real 230 km range',
-     /230000 \/ \(111320 \* Math\.cos/.test(PAGE));
+  ok('the disc is sized to how far the data really reaches, not a fixed 230 km',
+     /\(_sweepKmNow \|\| RADAR_RANGE_KM\) \* 1000 \/ \(111320 \* Math\.cos/.test(PAGE)
+     && !/230000 \/ \(111320/.test(PAGE));
+  ok('every drawn picture tells the sweep its reach',
+     /_sweepNoteRange\(station, product, result && result\.bounds\)/.test(PAGE));
   ok('it sits over the radar and under the alerts',
      /sweepPane/.test(PAGE) && /pn\.style\.zIndex = '402';/.test(PAGE));
   ok('the toggle lives in Settings > Radar and persists',
