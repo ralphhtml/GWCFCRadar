@@ -27018,7 +27018,7 @@ function _l3AvailKnown(site) {
 
 // Does this site have anything at all under this code in the last few hours?
 async function _l3CodeExists(site, code) {
-  const sid = String(site).toUpperCase().replace(/^([KT])/, m => m === 'K' ? '' : '');
+  const sid = _arcSid(site);
   // Two hours back. The base products write every few minutes, but the
   // accumulations and echo tops are slower, and one empty hour on a slow
   // product is not the same as the product not existing.
@@ -52391,12 +52391,14 @@ const ARC_LS_MAX = 400;           // days kept across a reload
 // terminal radar left on.
 function _arcSid(site) {
   const up = String(site || '').toUpperCase();
-  // The bucket spells a NEXRAD without its leading K, and - measured
-  // against the live listing - a terminal radar without its leading T:
-  // Dallas Love is DAL_TZ0_..., Houston Hobby HOU_TZ0_.... TJUA is the
-  // one T-named NEXRAD, and _isTdwrSite already knows it.
-  if (typeof _isTdwrSite === 'function' && _isTdwrSite(up)) return up.replace(/^T/, '');
-  return up.replace(/^K/, '');
+  // The bucket spells every radar by the last three letters of its id,
+  // whatever the first one is - measured against the live listing: KTLX is
+  // TLX_, a terminal like TDAL is DAL_, and the radars outside the lower 48
+  // too: San Juan TJUA is JUA_, Hawaii PHKI is HKI_, Alaska PACG is ACG_,
+  // Guam PGUA is GUA_, Korea RKJK is KJK_. Only K and terminal T used to be
+  // dropped, so Puerto Rico, Hawaii, Alaska, Guam and Korea never found a
+  // single Level 3 file.
+  return up.length === 4 ? up.slice(1) : up;
 }
 function _arcDayStr(ms) {
   const d = new Date(ms);
@@ -74117,6 +74119,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-m', date: 'Sep 25, 2026',
+    text: 'Level 3 radar now works for Puerto Rico, Hawaii, Alaska, Guam and Korea. The radar archive names every site by the last three letters of its code, but the app only dropped a leading K (and the T of airport radars), so San Juan, the Hawaiian islands, Alaska, Guam and Korea never found a single file. They load like any other site now.' },
   { id: '2026-09-25-l', date: 'Sep 25, 2026',
     text: 'Bug sweep. Alerts issued by zone (no drawn polygon) all get their shape on the map again: about one in ten used to vanish because the page asked for hundreds of zone outlines at once and some timed out. Map pins sitting under a drawn layer can be clicked again. Differential Phase and the surface Hydrometeor Class now have their info buttons. The radar sweep can no longer trip over a half-ready map.' },
   { id: '2026-09-25-k', date: 'Sep 25, 2026',
