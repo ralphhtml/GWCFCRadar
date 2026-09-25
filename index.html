@@ -14468,6 +14468,8 @@ function updateFrameLabel(idx) {
 }
 
 function showFrame(idx) {
+  // The Inspector follows the frame on screen (read on the next paint).
+  if (typeof _inspEnabled !== 'undefined' && _inspEnabled) _inspScheduleUpdate();
   // The parsing server Radar picker sets currentProduct to its own product keys
   // (reflectivity, corrcoeff, ...), which match none of the checks below and
   // would otherwise fall through to painting the national mosaic underneath
@@ -33860,6 +33862,8 @@ function loadGoesLayer() {
 }
 
 function showGoesFrame(idx) {
+  // The Inspector follows the frame on screen (read on the next paint).
+  if (typeof _inspEnabled !== 'undefined' && _inspEnabled) _inspScheduleUpdate();
   if (!goesFrames.length) return;
   idx = Math.max(0, Math.min(goesFrames.length - 1, idx));
   goesCurrentFrame = idx;
@@ -45683,6 +45687,76 @@ function _inspQuadContains(mesh, k, lon, lat) {
   return inside;
 }
 
+// Reading a value back off a loop frame's picture. The colour scale that
+// drew it is sampled finely across the product's range once (and again if
+// the palette changes), and the pixel under the crosshair is matched to the
+// nearest colour in it. Returns undefined while the picture cannot be read,
+// null where there is no echo.
+const INSP_INV_RANGE = { ref: [-35, 85], vel: [-160, 160], cc: [0, 1.1], zdr: [-8, 8],
+  kdp: [-2, 10], sw: [0, 20], phi: [0, 360], et: [0, 80], vil: [0, 80], hc: [0, 160] };
+const _inspInvCache = new Map();
+let _inspInvCtx = null;
+function _inspInvLut(product) {
+  const fam = typeof _meshFamily === 'function' ? _meshFamily(product) : product;
+  let sig = '';
+  try { sig = JSON.stringify(typeof _fxPaletteFor === 'function' ? _fxPaletteFor(fam) : null) || ''; } catch (e) {}
+  const key = product + '|' + sig;
+  const hit = _inspInvCache.get(key);
+  if (hit) return hit;
+  if (!_inspInvCtx) {
+    const c = document.createElement('canvas'); c.width = c.height = 1;
+    _inspInvCtx = c.getContext('2d', { willReadFrequently: true });
+  }
+  const [lo, hi] = INSP_INV_RANGE[fam] || [-100, 300];
+  const n = 1600, fn = _meshColorFn(product), vals = [], rgb = [];
+  for (let i = 0; i <= n; i++) {
+    const v = lo + (hi - lo) * i / n;
+    const col = fn(v);
+    if (!col) continue;
+    _inspInvCtx.clearRect(0, 0, 1, 1);
+    _inspInvCtx.fillStyle = '#000'; _inspInvCtx.fillStyle = col;
+    _inspInvCtx.fillRect(0, 0, 1, 1);
+    const d = _inspInvCtx.getImageData(0, 0, 1, 1).data;
+    if (d[3] < 10) continue;
+    vals.push(v); rgb.push(d[0], d[1], d[2]);
+  }
+  const lut = { vals, rgb };
+  if (_inspInvCache.size > 24) _inspInvCache.clear();
+  _inspInvCache.set(key, lut);
+  return lut;
+}
+function _inspLoopFrameValue(product, cx, cy) {
+  const img = _l3Overlay && _l3Overlay.getElement && _l3Overlay.getElement();
+  if (!img || !img.complete || !img.naturalWidth) return undefined;
+  const rect = img.getBoundingClientRect();
+  if (cx < rect.left || cx > rect.right || cy < rect.top || cy > rect.bottom) return null;
+  let d;
+  try {
+    const c = _inspPixelCanvas(img);
+    const x = Math.max(0, Math.min(c.w - 1, Math.floor((cx - rect.left) / rect.width * c.w)));
+    const y = Math.max(0, Math.min(c.h - 1, Math.floor((cy - rect.top) / rect.height * c.h)));
+    d = c.ctx.getImageData(x, y, 1, 1).data;
+  } catch (e) { _inspPxForget(img); return undefined; }
+  if (d[3] < 10) return null;
+  const lut = _inspInvLut(product);
+  let best = -1, bestD = Infinity;
+  for (let i = 0, k = 0; i < lut.vals.length; i++, k += 3) {
+    const dr = d[0] - lut.rgb[k], dg = d[1] - lut.rgb[k + 1], db = d[2] - lut.rgb[k + 2];
+    const dd = dr * dr + dg * dg + db * db;
+    if (dd < bestD) { bestD = dd; best = i; }
+  }
+  // Far from every colour on the scale is not an echo of this product.
+  if (best < 0 || bestD > 2500) return null;
+  // Every value the scale paints in this exact colour. On a stepped scale
+  // that is a whole band, and the honest reading is the band, not a number
+  // with two decimals that the picture cannot actually tell apart.
+  const k0 = best * 3, R = lut.rgb[k0], G = lut.rgb[k0 + 1], B = lut.rgb[k0 + 2];
+  let lo = lut.vals[best], hi = lo;
+  for (let i = best - 1; i >= 0 && lut.rgb[i * 3] === R && lut.rgb[i * 3 + 1] === G && lut.rgb[i * 3 + 2] === B; i--) lo = lut.vals[i];
+  for (let i = best + 1; i < lut.vals.length && lut.rgb[i * 3] === R && lut.rgb[i * 3 + 1] === G && lut.rgb[i * 3 + 2] === B; i++) hi = lut.vals[i];
+  return { v: (lo + hi) / 2, lo, hi, step: lut.vals.length > 1 ? lut.vals[1] - lut.vals[0] : 0 };
+}
+
 function _inspFindMeshValue(lon, lat) {
   return _inspMeshValueIn(_lastMeshData, _lastMeshBounds, lon, lat);
 }
@@ -45913,6 +45987,36 @@ function _inspRadarMainRow(center, cx, cy) {
   // overlay is on the map, the mesh IS the radar picture being looked at.
   const meshOk = _lastMeshData && _lastMeshProduct
     && _l3Overlay && map.hasLayer(_l3Overlay);
+  // A loop playing an OLDER scan: the decoded values in hand belong to the
+  // newest scan, not the one on screen, so reading them put one scan's
+  // number under another scan's picture. That frame is read from the
+  // picture itself instead, through the same colour scale that drew it.
+  if (meshOk && typeof _l2LoopActive === 'function' && _l2LoopActive()) {
+    const fr = _l2Loop.frames[_l2Loop.idx];
+    if (fr && !fr.live) {
+      const prod = _l2Loop.product || _lastMeshProduct;
+      const fam = typeof _meshFamily === 'function' ? _meshFamily(prod) : prod;
+      const got = _inspLoopFrameValue(prod, cx, cy);
+      if (got === undefined) return { label: 'Radar', value: 'reading…', color: 'rgba(120,120,120,0.5)' };
+      if (got == null) return { label: 'Radar', value: 'No data', color: 'rgba(120,120,120,0.5)' };
+      const color = _meshColorFn(prod)(got.v) || 'rgba(120,120,120,0.5)';
+      const band = got.hi - got.lo > got.step * 3;
+      if (fam === 'vel') {
+        const a = _inspConvUnit(band ? got.lo : got.v, 'kt', 0);
+        const z = band ? _inspConvUnit(got.hi + got.step, 'kt', 0) : null;
+        if (a) return { label: 'Radar', value: z ? a.value + ' to ' + z.value : a.value, unit: a.unit, color };
+      }
+      if (band && fam !== 'hc') {
+        // The top of a band is where the next colour starts: 15 to 20 dBZ.
+        const top = Math.round((got.hi + got.step) * 100) / 100, bot = Math.round(got.lo * 100) / 100;
+        // The scale is sampled every step, so a band edge lands up to one
+        // step past the true one (20.05 for 20); snap it back.
+        const f = (x) => (Math.abs(x - Math.round(x)) <= got.step * 1.01 ? String(Math.round(x)) : x.toFixed(1));
+        return { label: 'Radar', value: f(bot) + ' to ' + f(top), unit: INSP_UNITS[fam] || '', color };
+      }
+      return { label: 'Radar', value: _inspFormatValue(prod, got.v), unit: INSP_UNITS[fam] || '', color };
+    }
+  }
   if (meshOk) {
     const value = _inspFindMeshValue(center.lng, center.lat);
     if (value == null || value !== value) return { label: 'Radar', value: 'No data', color: 'rgba(120,120,120,0.5)' };
@@ -52641,7 +52745,7 @@ async function _l2LoopBuild(product, station, curImg) {
   if (!curImg || !curImg.url) return;
   const token = ++_l2Loop.token;
   _pbFreeFrames(_l2Loop.frames);
-  _l2Loop.frames = [{ url: _pbBlob(curImg.url), bounds: curImg.leafletBounds,
+  _l2Loop.frames = [{ url: _pbBlob(curImg.url), bounds: curImg.leafletBounds, live: true,
                       time: curImg.timeIso ? Date.parse(curImg.timeIso) : Date.now() }];
   _l2Loop.idx = 0;
   _l2Loop.station = station;
@@ -53095,7 +53199,7 @@ async function _l3BucketLoopBuild(site, code, curImg, at) {
   if (!curImg || !curImg.url) return;
   const token = ++_l2Loop.token;
   _pbFreeFrames(_l2Loop.frames);
-  _l2Loop.frames = [{ url: _pbBlob(curImg.url), bounds: curImg.leafletBounds,
+  _l2Loop.frames = [{ url: _pbBlob(curImg.url), bounds: curImg.leafletBounds, live: true,
                       time: at == null ? Date.now() : at }];
   _l2Loop.idx = 0;
   _l2Loop.station = site;
@@ -53281,6 +53385,8 @@ function _l2LoopShow(idx) {
   } catch (e) {}
   const tl = document.getElementById('timeline');
   if (tl && +tl.value !== idx) tl.value = idx;
+  // The Inspector reads the frame now on screen, not one 400 ms stale.
+  if (typeof _inspEnabled !== 'undefined' && _inspEnabled) _inspScheduleUpdate();
   const at = document.getElementById('anim-time');
   if (at && _l2Loop.station) {
     at.textContent = _fmtHHMM(new Date(f[idx].time)) + ' · '
@@ -53314,10 +53420,11 @@ async function _loadL3DataInner(product, stationOverride, retried, gen, signal, 
   // A warm for this station already under way (the right-click menu or the
   // Level 2 menu started it): finish that rather than start the same
   // download again. Its picture, or at least its volume, is then in hand.
-  if (!warmOnly && stationOverride && _l2WarmInflight
-      && _l2WarmInflight.station === String(stationOverride).toLowerCase()) {
+  const warming = !warmOnly && stationOverride
+    && _l2WarmInflight.get(String(stationOverride).toLowerCase());
+  if (warming) {
     _l2LoadSay(stationOverride, product);
-    await _l2WarmInflight.p;
+    await warming.p;
     if (stale()) return;
   }
   // The cut being asked for, taken once at the start. _l2Tilt is rewritten
@@ -53883,7 +53990,27 @@ function _meshToImage(result, product, forceBounds) {
   // Longitude and latitude to pixels, worked out once instead of four
   // divisions per cell. At a few hundred thousand cells that is a million
   // divisions saved for two multiplications.
-  var sx = SIZE / lonRange, sy = SIZE / latRange;
+  var sx = SIZE / lonRange;
+  // Rows in the map's own projection, not in plain latitude. Leaflet
+  // stretches an image overlay evenly in Web Mercator, so a picture drawn
+  // with latitude spread evenly down it landed every gate between the top
+  // and bottom edges a little too far north or south: about 1.5 km across a
+  // Level 2 box, several over a big one. That was enough to put the Inspector
+  // (which reads the real gate at a point) on a different colour band from
+  // the picture under it. A table of the projection across the box keeps
+  // this to one multiply and one lookup per corner.
+  var _mercY = function (la) { return Math.log(Math.tan(Math.PI / 4 + la * Math.PI / 360)); };
+  var MY_N = 4096, myTop = _mercY(maxLat), myBot = _mercY(minLat);
+  var myTab = new Float64Array(MY_N + 1), myScale = SIZE / ((myTop - myBot) || 1e-12);
+  for (var mi = 0; mi <= MY_N; mi++) myTab[mi] = (myTop - _mercY(minLat + latRange * mi / MY_N)) * myScale;
+  var myStep = MY_N / (latRange || 1e-12);
+  var py = function (la) {
+    var f = (la - minLat) * myStep;
+    if (f <= 0) return myTab[0] + (myTab[1] - myTab[0]) * f;
+    if (f >= MY_N) return myTab[MY_N] + (myTab[MY_N] - myTab[MY_N - 1]) * (f - MY_N);
+    var i0 = f | 0;
+    return myTab[i0] + (myTab[i0 + 1] - myTab[i0]) * (f - i0);
+  };
   var colors = Object.keys(byColor);
 
   // Write the pixels directly, rather than asking the canvas to fill paths.
@@ -53927,10 +54054,10 @@ function _meshToImage(result, product, forceBounds) {
         for (var j = 0; j < idxs.length; j++) {
           var k = idxs[j];
           _meshFillQuad(buf, SIZE, v32,
-            (meshData[k]   - minLon) * sx, (maxLat - meshData[k+1]) * sy,
-            (meshData[k+2] - minLon) * sx, (maxLat - meshData[k+3]) * sy,
-            (meshData[k+4] - minLon) * sx, (maxLat - meshData[k+5]) * sy,
-            (meshData[k+6] - minLon) * sx, (maxLat - meshData[k+7]) * sy);
+            (meshData[k]   - minLon) * sx, py(meshData[k+1]),
+            (meshData[k+2] - minLon) * sx, py(meshData[k+3]),
+            (meshData[k+4] - minLon) * sx, py(meshData[k+5]),
+            (meshData[k+6] - minLon) * sx, py(meshData[k+7]));
         }
       }
     }
@@ -53950,10 +54077,10 @@ function _meshToImage(result, product, forceBounds) {
         var idxs2 = lists2[l2];
         for (var j2 = 0; j2 < idxs2.length; j2++) {
           var k2 = idxs2[j2];
-          ctx.moveTo((meshData[k2]   - minLon) * sx, (maxLat - meshData[k2+1]) * sy);
-          ctx.lineTo((meshData[k2+2] - minLon) * sx, (maxLat - meshData[k2+3]) * sy);
-          ctx.lineTo((meshData[k2+4] - minLon) * sx, (maxLat - meshData[k2+5]) * sy);
-          ctx.lineTo((meshData[k2+6] - minLon) * sx, (maxLat - meshData[k2+7]) * sy);
+          ctx.moveTo((meshData[k2]   - minLon) * sx, py(meshData[k2+1]));
+          ctx.lineTo((meshData[k2+2] - minLon) * sx, py(meshData[k2+3]));
+          ctx.lineTo((meshData[k2+4] - minLon) * sx, py(meshData[k2+5]));
+          ctx.lineTo((meshData[k2+6] - minLon) * sx, py(meshData[k2+7]));
           ctx.closePath();
           if (++pending >= BATCH) { ctx.fill(); ctx.beginPath(); pending = 0; }
         }
@@ -55185,12 +55312,14 @@ else window.addEventListener('load', _l2IdleWarmArm);
 // One warm at a time, and remembered while it runs, so the click it was
 // guessing at can pick it up. Without that the click started a second copy
 // of the same download beside the warm and the two raced each other.
-let _l2WarmInflight = null;     // { station, product, p }
+// Keyed by station, and two may run at once: a background guess (the idle
+// warm) must not block the station someone is actually pointing at.
+const _l2WarmInflight = new Map();   // station -> { station, product, p }
 function _l2WarmSite(station, product) {
   if (!station || !product) return;
   station = String(station).toLowerCase();
   if (_l3PicGet(station, product, _l2Tilt)) return;      // already in hand
-  if (_l2WarmInflight) return;
+  if (_l2WarmInflight.has(station) || _l2WarmInflight.size >= 2) return;
   // The loader notes the product and station it is working on as the ones on
   // screen, before its first pause. A warm is not on screen, so those are
   // put straight back, before anything else can read them.
@@ -55201,8 +55330,8 @@ function _l2WarmSite(station, product) {
     .catch(() => {});
   _l3Product = keepP; _l3Station = keepS;
   const job = { station, product, p };
-  _l2WarmInflight = job;
-  p.then(() => { if (_l2WarmInflight === job) _l2WarmInflight = null; });
+  _l2WarmInflight.set(station, job);
+  p.then(() => { if (_l2WarmInflight.get(station) === job) _l2WarmInflight.delete(station); });
 }
 
 // -- NEXRAD SITE MARKERS --
@@ -74753,6 +74882,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-zzzz', date: 'Sep 25, 2026',
+    text: 'The Inspector now matches the radar picture under it. Single-site radar pictures were drawn a few pixels out of place on the map (about a kilometre or two), so the value read at the crosshair often belonged to the next colour over; every site now draws exactly where its data is. While a loop plays, the Inspector reads the frame on screen instead of the newest scan, and it updates on every frame instead of trailing behind.' },
   { id: '2026-09-25-zzz', date: 'Sep 25, 2026',
     text: 'Switching to another tab and back no longer reloads the app. It used to reload whenever a new version had come out while you were away, which lost your map and everything on it. Now the app carries on, the radar and alerts catch up in the background, and the new version loads the next time you open it. The Storm Cone tool has a Back button: if you start a new cone by accident and it replaces the one you had, Back brings the old one back. Forecasters also get an Issue button on the Storm Cone toolbar, to publish their cones straight from the map.' },
   { id: '2026-09-25-zz', date: 'Sep 25, 2026',
