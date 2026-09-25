@@ -15649,6 +15649,8 @@ function loadAlerts(forceRender) {
 
 // The alerts currently drawn on the map, and whether the last read succeeded.
 let _alertsLive = { at: 0, ok: false, features: [] };
+const ALERTS_PAST_MS = 5 * 60 * 1000;
+let _alertsPastCache = null, _alertsPastAt = 0;
 
 async function _doLoadAlerts(forceRender) {
   updateLoadStatus('Intercepting severe weather alerts…');
@@ -15656,13 +15658,19 @@ async function _doLoadAlerts(forceRender) {
     // priority:'low' keeps these multi-megabyte JSON bodies out of the way of
     // the radar and basemap tiles during the first seconds of a load. Browsers
     // that do not know the field ignore it.
+    // The recently expired list only matters to the faded "past" polygons,
+    // which change on the scale of hours, so it is read every fifth refresh
+    // (five minutes) instead of every minute. Together with the live list it
+    // was over a megabyte a minute to download and parse on a phone.
+    const wantPast = forceRender || !_alertsPastCache || Date.now() - _alertsPastAt > ALERTS_PAST_MS;
     const [activeRes, pastRes] = await Promise.all([
       fetch('https://api.weather.gov/alerts/active?status=actual&message_type=alert', { signal: _abortSignal(15000), priority: 'low' }),
-      fetch('https://api.weather.gov/alerts?status=actual&message_type=alert&severity=Extreme,Severe,Moderate&limit=100', { signal: _abortSignal(15000), priority: 'low' })
+      wantPast ? fetch('https://api.weather.gov/alerts?status=actual&message_type=alert&severity=Extreme,Severe,Moderate&limit=100', { signal: _abortSignal(15000), priority: 'low' }) : null
     ]);
-    const [activeData, pastData] = await Promise.all([activeRes.json(), pastRes.json()]);
+    const [activeData, pastData] = await Promise.all([activeRes.json(), pastRes ? pastRes.json() : null]);
     const activeFeatures = activeData.features || [];
-    const rawPastFeatures = pastData.features || [];
+    if (pastData) { _alertsPastCache = pastData.features || []; _alertsPastAt = Date.now(); }
+    const rawPastFeatures = _alertsPastCache || [];
     // Fill in zone-based geometry BEFORE filtering, so alerts that only carry
     // a UGC zone code (no drawn polygon) aren't discarded for lacking geometry.
     await Promise.all([_fillMissingAlertGeometry(activeFeatures), _fillMissingAlertGeometry(rawPastFeatures)]);
@@ -16041,13 +16049,27 @@ function _zoneFetch(url) {
     if (_zoneFetchActive < 16) run(); else _zoneFetchQueue.push(run);
   });
 }
-async function _fetchZoneGeometry(ugc) {
+// A zone whose lookup failed is not asked again for ten minutes. Retrying it
+// on every one-minute alert refresh meant a handful of zones the NWS was
+// struggling with got requested forever, which showed in the network tab
+// as the same NEZ, NDZ and PKZ lookups over and over.
+const _zoneFailAt = new Map();
+const ZONE_RETRY_MS = 10 * 60 * 1000;
+// The alert already names each zone's exact address in affectedZones, type
+// and all. Guessing the type from the code instead (forecast first, then
+// fire) is what filled the network tab with 404s: every fire zone was asked
+// for as a forecast zone first. The guess is kept only for an alert that
+// does not list its zones.
+async function _fetchZoneGeometry(ugc, knownUrl) {
   if (_zoneGeomCache.has(ugc)) return _zoneGeomCache.get(ugc);
+  if (Date.now() - (_zoneFailAt.get(ugc) || 0) < ZONE_RETRY_MS) return null;
+  const urls = knownUrl ? [knownUrl]
+    : _zoneTypesFor(ugc).map(type => `https://api.weather.gov/zones/${type}/${ugc}`);
   const promise = (async () => {
     let failed = false;
-    for (const type of _zoneTypesFor(ugc)) {
+    for (const url of urls) {
       try {
-        const r = await _zoneFetch(`https://api.weather.gov/zones/${type}/${ugc}`);
+        const r = await _zoneFetch(url);
         if (!r.ok) { if (r.status !== 404) failed = true; continue; }
         const d = await r.json();
         if (d.geometry) return _simplifyGeometry(d.geometry);
@@ -16055,7 +16077,7 @@ async function _fetchZoneGeometry(ugc) {
     }
     // A network hiccup is not "this zone has no shape": forget it so the
     // next alert refresh asks again.
-    if (failed) _zoneGeomCache.delete(ugc);
+    if (failed) { _zoneGeomCache.delete(ugc); _zoneFailAt.set(ugc, Date.now()); }
     return null;
   })();
   _zoneGeomCache.set(ugc, promise);
@@ -16066,7 +16088,14 @@ async function _fillMissingAlertGeometry(features) {
     if (f.geometry || !f.properties) return;
     const ugcList = f.properties.geocode && f.properties.geocode.UGC;
     if (!Array.isArray(ugcList) || !ugcList.length) return;
-    const geoms = (await Promise.all(ugcList.map(_fetchZoneGeometry))).filter(Boolean);
+    const known = new Map();
+    (f.properties.affectedZones || []).forEach(u => {
+      const m = /^https:\/\/api\.weather\.gov\/zones\/[a-z]+\/([A-Z]{2}[CZ]\d{3})$/.exec(String(u));
+      if (m) known.set(m[1], m[0]);
+    });
+    const geoms = (await Promise.all(ugcList.map(u => _fetchZoneGeometry(u, known.get(u))))).filter(Boolean);
+    // The zone shapes are shared, simplified objects. The past list is now
+    // kept between refreshes, so a feature already given a shape keeps it.
     if (!geoms.length) return;
     const polys = [];
     geoms.forEach(g => {
@@ -20427,10 +20456,13 @@ function _hdSetBase(url) {
 // restart on its own after a network blip. The parsing server republishes the new one,
 // but the page had already cached the old one and went on asking a dead
 // address until a reload. So the page now watches the published address and
-// follows it: a small read every few seconds while the tab is on screen, and
+// follows it: a small read once a minute while the tab is on screen, and
 // the moment the address changes, every parsing server-backed feature is re-pointed at
-// the new one without a reload.
-const HD_WATCH_MS = 5000;
+// the new one without a reload. It used to read every five seconds, which a
+// tester spotted in the network tab as a request that never stopped: twelve
+// a minute, all day, on every phone, for an address that moves once in a
+// blue moon. A dead address is still caught sooner by the health check below.
+const HD_WATCH_MS = 60 * 1000;
 let _hdWatchTimer = null;
 let _hdWatchBusy = false;
 
@@ -40006,8 +40038,19 @@ async function init() {
     if (pill) pill.classList.toggle('active', !!activeLayers[id]);
   });
 
-  setInterval(() => { try { loadAlerts(); } catch(e){} }, 60000);
+  // Nothing refreshes behind a hidden tab: a phone with the app in the
+  // background was still pulling the alert feeds and the radar every few
+  // minutes. Coming back catches up at once instead.
+  setInterval(() => { if (document.hidden) return; try { loadAlerts(); } catch(e){} }, 60000);
+  let _bgHiddenAt = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { _bgHiddenAt = Date.now(); return; }
+    const away = _bgHiddenAt ? Date.now() - _bgHiddenAt : 0;
+    if (away > 60000) { try { loadAlerts(); } catch(e){} }
+    if (away > 300000 && !(typeof _tmMosaicAt === 'number' && _tmMosaicAt)) { try { loadNEXRAD(); } catch(e){} }
+  });
   setInterval(() => {
+    if (document.hidden) return;
     // A travelled mosaic does not move: the past has no live edge to follow.
     if (typeof _tmMosaicAt === 'number' && _tmMosaicAt) return;
     try { loadNEXRAD(); } catch(e){}
@@ -69539,7 +69582,8 @@ function _prBurst(ms) {
 }
 (function _prInit() {
   const go = () => {
-    setInterval(_prScan, 700);
+    // Paused behind a hidden tab, where nobody can resize anything.
+    setInterval(() => { if (!document.hidden) _prScan(); }, 700);
     document.addEventListener('pointermove', (e) => { if (e.buttons) _prBurst(300); }, { passive: true });
     document.addEventListener('pointerup', () => { _prBurst(600); setTimeout(_prScan, 80); }, true);
     document.addEventListener('keyup', () => setTimeout(_prScan, 80));
@@ -74476,6 +74520,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-y', date: 'Sep 25, 2026',
+    text: 'The app is much quieter on the network, which helps phones most. It checks the parsing server address once a minute instead of every 5 seconds. It reads the expired alert list every 5 minutes instead of every minute. It asks for alert zones at their exact address, so there are no 404s. It stops retrying zones that failed. Nothing refreshes while the app is in the background. County lines are no longer redrawn when the same counties are still on screen.' },
   { id: '2026-09-25-x', date: 'Sep 25, 2026',
     text: 'Opening a radar from the right-click menu (and any first Level 2 load) is much faster: about 5 seconds instead of 12 to 17. The radar decoder now starts ahead of time instead of when the data is already waiting, and the offline cache no longer holds up the app\'s own scripts. A Loading message also shows at the bottom while the radar comes in, so it never looks like nothing happened.' },
   { id: '2026-09-25-w', date: 'Sep 25, 2026',
@@ -88355,6 +88401,7 @@ async function _mbBuildAdmin1(kind) {
 // drawn points, FEWER than the 31,175 at zoom 6 where they were already
 // allowed. The floor was costing a feature and buying nothing.
 let _mbCountyFeats = null;
+let _mbCountyKey = '';
 
 function _mbBbox(geom) {
   let n = -90, s = 90, e = -180, w = 180;
@@ -88385,7 +88432,6 @@ async function _mbLoadCounties() {
 
 function _mbCountyRefresh() {
   if (!_mbOn.county || !_mbCountyFeats || typeof map === 'undefined') return;
-  if (_mbLayers.county) { try { map.removeLayer(_mbLayers.county); } catch (e) {} _mbLayers.county = null; }
   const b = map.getBounds().pad(0.25);
   const w = b.getWest(), s = b.getSouth(), e = b.getEast(), n = b.getNorth();
   const feats = [];
@@ -88394,6 +88440,13 @@ function _mbCountyRefresh() {
     if (bb[2] < w || bb[0] > e || bb[3] < s || bb[1] > n) continue;
     feats.push(_mbCountyFeats[i].f);
   }
+  // Panning inside the same patch of counties used to throw the layer away
+  // and draw an identical one. Same counties on screen, nothing to rebuild.
+  const key = feats.length + ':' + (feats[0] && _mbCountyFeats.findIndex(x => x.f === feats[0])) + ':'
+    + (feats.length && _mbCountyFeats.findIndex(x => x.f === feats[feats.length - 1]));
+  if (_mbLayers.county && key === _mbCountyKey && map.hasLayer(_mbLayers.county)) return;
+  if (_mbLayers.county) { try { map.removeLayer(_mbLayers.county); } catch (e) {} _mbLayers.county = null; }
+  _mbCountyKey = key;
   if (!feats.length) return;
   _mbLayers.county = L.geoJSON({ type: 'FeatureCollection', features: feats }, {
     pane: 'bordersPane', renderer: _mbCanvas(), interactive: false,
