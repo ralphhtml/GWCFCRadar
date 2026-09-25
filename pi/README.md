@@ -320,6 +320,27 @@ and the thing worth seeing is the two sitting next to each other, which is
 rotation. Green towards, red away, nothing at all at the middle, because a
 colour at zero fills the map with air that is not moving.
 
+### The radar Time Machine's archive doors
+
+The page reads the Level 2 archive (back to 1991) and the Level 3 bucket
+(from March 2022) itself. Three things it cannot reach on its own come
+through `radar_archive.py` and four doors in `serve.py`:
+
+    /radar/archive/mrms?product=<name>&at=<ms>       any MRMS product, Oct 2020 on
+    /radar/archive/l3?site=KTLX&codes=N0H&at=<ms>    Level 3 before March 2022
+    /radar/archive/l3file?site=&code=&stamp=&at=     one kept Level 3 file
+    /radar/archive/hrrr?field=refc&at=<ms>           HRRR reflectivity, July 2014 on
+
+MRMS comes from NOAA's noaa-mrms-pds bucket and is painted by the same
+`mrms_paint` the live build uses. HRRR comes from noaa-hrrr-bdp-pds through
+the model pipeline's own download and paint. Old Level 3 comes from Google's
+archive, where each radar-day is one compressed bundle (20 to 800 MB, .tar.Z
+before about 2014, .tar.gz after): the first ask for a radar-day streams it
+once through `gzip -dc` and keeps only the products the page can draw, so
+that first look takes a minute or two and the rest of the day is instant.
+Everything is cached under `~/wxdata/radar-archive/` and pruned by size.
+Nothing new to install: `gzip` and eccodes are already there.
+
 ## Cyclones, from DeepMind
 
     ~/wxenv/bin/python ~/GWCFCRadar/pi/cyclones_pipeline.py --check

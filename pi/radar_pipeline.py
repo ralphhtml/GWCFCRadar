@@ -1617,6 +1617,64 @@ def _mrms_read(url):
             pass
 
 
+def mrms_paint(arr, spec):
+    """One MRMS grid to an RGBA picture, the way every MRMS product is drawn.
+
+    Shared by the live build and the Time Machine's archive door
+    (radar_archive.py), so a product from three years ago is painted by the
+    very same steps as one from five minutes ago.
+    """
+    # MRMS writes -1 and -3 for missing and out of coverage. On a product
+    # where negative readings are real - temperature above all - that
+    # would erase half the map, so those opt out.
+    if spec.get("signed"):
+        arr[arr < -900] = np.nan
+    else:
+        arr[arr < 0] = np.nan
+    # Halve the grid by taking each 2x2 block's maximum, not by slicing.
+    # A rotation track is a filament one or two cells wide, and plain
+    # slicing deletes every filament that falls on a dropped row; these
+    # are both maximum-over-time products, so the block maximum is the
+    # honest way to shrink them.
+    nj, ni = arr.shape
+    with np.errstate(all="ignore"):
+        import warnings
+        with warnings.catch_warnings():
+            # A 2x2 block that is entirely out of coverage is all NaN, and
+            # nanmax warning about each one would flood the log for what
+            # is the ordinary state of most of the grid.
+            warnings.simplefilter("ignore", RuntimeWarning)
+            arr = np.nanmax(
+                arr[:nj - nj % 2, :ni - ni % 2]
+                .reshape(nj // 2, 2, ni // 2, 2), axis=(1, 3))
+    lo, hi = spec["range"]
+    norm = (arr - lo) / float(hi - lo)
+    # A product's own floor is optional, and forty-three of them do not
+    # carry one. spec["floor"] raised KeyError on the first of those, and
+    # nothing in this loop caught it, so the exception left build_mrms
+    # entirely and took every remaining product in the pass with it. A
+    # third of the catalogue could not be built at all, and the symptom
+    # was a menu that was simply short rather than an error anywhere.
+    #
+    # No floor means no extra floor: keep every real reading and let the
+    # palette's own first band decide what gets painted, which is what
+    # band_alpha below is for.
+    floor = spec.get("floor")
+    keep = np.isfinite(arr)
+    if floor is not None:
+        keep &= (arr >= floor)
+    idx = np.clip(np.nan_to_num(norm) * 255.0, 0, 255).astype(np.uint8)
+    rgb = lut_for(spec["ramp"], lo, hi)[idx]
+    alpha = np.where(keep, 205, 0).astype(np.uint8)
+    # MRMS already declares a floor per product, which is the one to keep
+    # where it is stricter. This adds the palette's own: a reading below
+    # the first band has no colour of its own and would be painted in the
+    # first band's, which is how a whole state ends up washed pale blue.
+    band_alpha(spec["ramp"], idx, alpha, lo, hi)
+    del arr, norm, keep, idx
+    return np.dstack([rgb, alpha])
+
+
 def _mrms_state_path():
     return os.path.join(OUT_DIR, "mrms", "state.json")
 
@@ -1788,54 +1846,9 @@ def build_mrms():
             if not got:
                 raise RuntimeError("no grid came back")
             arr, south, north, west, east = got
-            # MRMS writes -1 and -3 for missing and out of coverage. On a product
-            # where negative readings are real - temperature above all - that
-            # would erase half the map, so those opt out.
-            if spec.get("signed"):
-                arr[arr < -900] = np.nan
-            else:
-                arr[arr < 0] = np.nan
-            # Halve the grid by taking each 2x2 block's maximum, not by slicing.
-            # A rotation track is a filament one or two cells wide, and plain
-            # slicing deletes every filament that falls on a dropped row; these
-            # are both maximum-over-time products, so the block maximum is the
-            # honest way to shrink them.
-            nj, ni = arr.shape
-            with np.errstate(all="ignore"):
-                import warnings
-                with warnings.catch_warnings():
-                    # A 2x2 block that is entirely out of coverage is all NaN, and
-                    # nanmax warning about each one would flood the log for what
-                    # is the ordinary state of most of the grid.
-                    warnings.simplefilter("ignore", RuntimeWarning)
-                    arr = np.nanmax(
-                        arr[:nj - nj % 2, :ni - ni % 2]
-                        .reshape(nj // 2, 2, ni // 2, 2), axis=(1, 3))
+            rgba = mrms_paint(arr, spec)
+            del arr
             lo, hi = spec["range"]
-            norm = (arr - lo) / float(hi - lo)
-            # A product's own floor is optional, and forty-three of them do not
-            # carry one. spec["floor"] raised KeyError on the first of those, and
-            # nothing in this loop caught it, so the exception left build_mrms
-            # entirely and took every remaining product in the pass with it. A
-            # third of the catalogue could not be built at all, and the symptom
-            # was a menu that was simply short rather than an error anywhere.
-            #
-            # No floor means no extra floor: keep every real reading and let the
-            # palette's own first band decide what gets painted, which is what
-            # band_alpha below is for.
-            floor = spec.get("floor")
-            keep = np.isfinite(arr)
-            if floor is not None:
-                keep &= (arr >= floor)
-            idx = np.clip(np.nan_to_num(norm) * 255.0, 0, 255).astype(np.uint8)
-            rgb = lut_for(spec["ramp"], lo, hi)[idx]
-            alpha = np.where(keep, 205, 0).astype(np.uint8)
-            # MRMS already declares a floor per product, which is the one to keep
-            # where it is stricter. This adds the palette's own: a reading below
-            # the first band has no colour of its own and would be painted in the
-            # first band's, which is how a whole state ends up washed pale blue.
-            band_alpha(spec["ramp"], idx, alpha, lo, hi)
-            del arr, norm, keep, idx
             # One folder per scan, named for the time it was built, exactly the
             # way the radar frames and the satellite composites are. MRMS used to
             # overwrite a single PNG per product, which meant the page could only
@@ -1845,9 +1858,8 @@ def build_mrms():
             fout = os.path.join(out, fdir)
             os.makedirs(fout, exist_ok=True)
             path = os.path.join(fout, f"{name}.png")
-            Image.fromarray(np.dstack([rgb, alpha]), mode="RGBA").save(
-                path, optimize=True)
-            del rgb, alpha
+            Image.fromarray(rgba, mode="RGBA").save(path, optimize=True)
+            del rgba
             man["products"][name] = {
                 "file": f"{fdir}/{name}.png", "label": spec["label"],
                 "unit": spec["unit"], "min": lo, "max": hi,

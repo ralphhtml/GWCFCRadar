@@ -112,6 +112,9 @@ _sounding_gate = threading.Semaphore(SOUNDING_WORKERS)
 SAT_WORKERS = int(os.environ.get("GWCFC_SAT_WORKERS", "2"))
 SAT_QUEUE_WAIT_S = 40.0
 _sat_gate = threading.Semaphore(SAT_WORKERS)
+# The radar Time Machine's archive doors (radar_archive.py). An MRMS grid or
+# an HRRR hour is a few seconds of real work and memory, so one at a time.
+_radar_arc_gate = threading.Semaphore(1)
 
 # sounding_service.py lives beside this file. Python already puts a script's
 # own directory on the path, but a systemd unit can be started in ways that do
@@ -298,6 +301,10 @@ class CORSHandler(SimpleHTTPRequestHandler):
             return
         if head == "/mrrl/list":
             self._mrrl_list()
+            return
+        if head in ("/radar/archive/mrms", "/radar/archive/l3", "/radar/archive/l3file",
+                    "/radar/archive/hrrr"):
+            self._radar_archive(head)
             return
         if head == "/mrrl/vol":
             self._mrrl_vol()
@@ -778,6 +785,72 @@ class CORSHandler(SimpleHTTPRequestHandler):
         mrrl.DATA = os.path.join(getattr(self, "directory", None)
                                  or os.path.expanduser("~/wxdata"), "mrrl")
         return mrrl
+
+    # -- The radar Time Machine's archive doors ---------------------------------
+    # GET /radar/archive/mrms?product=<catalogue name>&at=<ms>
+    # GET /radar/archive/l3?site=KTLX&codes=N0H,HHC&at=<ms>     (before 2022)
+    # GET /radar/archive/l3file?site=KTLX&code=N0H&stamp=YYYYMMDDHHMM&at=<ms>
+    # GET /radar/archive/hrrr?field=refc&at=<ms>
+    # Every field is checked against a shape here and again in
+    # radar_archive.py; the product names against the site's own MRMS
+    # catalogue and Level 3 code list, so nothing else can be asked for.
+    def _radar_archive(self, head):
+        try:
+            import radar_archive as ra
+        except Exception as e:
+            self._reply_json(501, {"error": f"radar_archive.py is not beside serve.py ({e})"})
+            return
+        ra.DATA = getattr(self, "directory", None) or os.path.expanduser("~/wxdata")
+        one = self._sat_query()
+        try:
+            at = int(one("at"))
+        except ValueError:
+            self._reply_json(400, {"error": "at must be a moment in milliseconds"})
+            return
+        now_ms = int(time.time() * 1000)
+        if not 631152000000 <= at <= now_ms + 3600000:          # 1990 on
+            self._reply_json(400, {"error": "at must be a moment since 1990"})
+            return
+        try:
+            if head == "/radar/archive/l3":
+                site = one("site").upper()
+                codes = [c for c in one("codes").upper().split(",") if c][:4]
+                if not ra.SITE_RE.fullmatch(site) or not codes or any(c not in ra.L3_CODES for c in codes):
+                    self._reply_json(400, {"error": "site must be a radar and codes Level 3 product codes"})
+                    return
+                if at >= ra.L3_SPLIT_MS + 86400000:
+                    self._reply_json(400, {"error": "from March 2022 the page reads Level 3 itself"})
+                    return
+                self._reply_json(200, ra.l3_request(site, codes, at))
+                return
+            if head == "/radar/archive/l3file":
+                site, code, stamp = one("site").upper(), one("code").upper(), one("stamp")
+                if not ra.SITE_RE.fullmatch(site):
+                    self._reply_json(400, {"error": "site must be a radar"})
+                    return
+                body = ra.l3_file(site, code, stamp, at)
+                if body is None:
+                    self._reply_json(404, {"error": "that product is not on disk"})
+                    return
+                self._reply_bytes(200, body, "application/octet-stream")
+                return
+            if not _radar_arc_gate.acquire(timeout=SAT_QUEUE_WAIT_S):
+                self._reply_json(503, {"error": "the archive is busy, try again shortly"})
+                return
+            try:
+                if head == "/radar/archive/mrms":
+                    meta = ra.mrms_frame(one("product"), at)
+                else:
+                    meta = ra.hrrr_frame(one("field"), at)
+            finally:
+                _radar_arc_gate.release()
+            self._reply_json(200, meta)
+        except ValueError as e:
+            self._reply_json(400, {"error": str(e)})
+        except LookupError as e:
+            self._reply_json(404, {"error": str(e)})
+        except Exception as e:
+            self._reply_json(502, {"error": f"the archive could not be read ({e.__class__.__name__}: {e})"[:300]})
 
     def _mrrl_list(self):
         """GET /mrrl/list?site=BOO_ -> that radar's volumes, oldest first."""
