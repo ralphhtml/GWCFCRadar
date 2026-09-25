@@ -37,6 +37,12 @@ import threading
 import time
 import urllib.request
 
+try:                      # the IRIS converter (CABO, SABA), beside this file
+    import mrrl_iris
+except ImportError:       # pragma: no cover - run from another directory
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import mrrl_iris
+
 FEED = "https://feeds.mrrl.net/polling"
 UA = "GWCFCRadar parsing server (https://ralphhtml.github.io/GWCFCRadar/)"
 DATA = os.path.join(os.environ.get("GWCFC_DATA", os.path.expanduser("~/wxdata")), "mrrl")
@@ -45,7 +51,8 @@ CACHE_MAX_BYTES = int(os.environ.get("GWCFC_MRRL_CACHE_MB", "400")) * 1024 * 102
 # Shapes, checked before anything is fetched, so the doors in serve.py can
 # only ever ask the feed for a real site's real files.
 SITE_RE = re.compile(r"[A-Za-z0-9_]{4}")
-FILE_RE = re.compile(r"[A-Za-z0-9_]{4,48}(\.[A-Za-z0-9]{1,6}){0,2}")
+# Up to eight characters an extension: the IRIS volumes are .RAW02XU.gz.
+FILE_RE = re.compile(r"[A-Za-z0-9_]{4,48}(\.[A-Za-z0-9]{1,8}){0,2}")
 
 _lock = threading.Lock()
 _list_cache = {}          # site -> (fetched_at, entries)
@@ -63,15 +70,26 @@ def _get(url, timeout=30, first_bytes=None):
             return r.read()
 
 
-def site_codes(text=None):
-    """Every site config.cfg names, in its order."""
-    if text is None:
+def site_codes(text=None, index=None):
+    """Every site: the ones config.cfg names, in its order, then any folder
+    the feed's own directory listing has that config.cfg does not (a radar
+    added to the feed before its config line)."""
+    live = text is None
+    if live:
         text = _get(f"{FEED}/config.cfg", timeout=20).decode("utf-8", "replace")
     out = []
     for line in text.splitlines():
         m = re.match(r"\s*Site:\s*(\S+)", line)
         if m and SITE_RE.fullmatch(m.group(1)) and m.group(1) not in out:
             out.append(m.group(1))
+    if index is None and live:
+        try:
+            index = _get(f"{FEED}/", timeout=20).decode("utf-8", "replace")
+        except Exception:
+            index = ""
+    for d in re.findall(r'href="([^"/]+)/"', index or ""):
+        if SITE_RE.fullmatch(d) and d not in out:
+            out.append(d)
     return out
 
 
@@ -100,6 +118,11 @@ def parse_dir_list(site, text):
         name = parts[1]
         if not FILE_RE.fullmatch(name) or not name.startswith(site):
             continue
+        # Still being written (LT40's .ar2v.tmp), a stray double dot, or the
+        # feed's own bookkeeping: not a volume, and a half-written one listed
+        # as the newest would be drawn with most of the sweep missing.
+        if name.endswith(".tmp") or ".." in name or name.endswith(".json"):
+            continue
         t = stamp_ms(name)
         if t is None:
             continue
@@ -124,15 +147,18 @@ def listing(site):
     return entries
 
 
-def as_ar2v(raw):
+def as_ar2v(raw, site="____"):
     """The volume as plain Archive II. Some files are gzipped whole (the .gz
     ones, usually); some carry that name and are not. The magic number
-    decides, not the name."""
+    decides, not the name. An IRIS RAW volume (the Mexican radars) is
+    converted to Archive II here, so the browser reads it like any other."""
     if raw[:2] == b"\x1f\x8b":
         raw = gzip.decompress(raw)
-    if not raw.startswith(b"AR2V"):
-        raise ValueError("not an Archive II volume")
-    return raw
+    if raw.startswith(b"AR2V"):
+        return raw
+    if mrrl_iris.is_iris(raw):
+        return mrrl_iris.to_ar2v(raw, site)
+    raise ValueError("not an Archive II or IRIS volume")
 
 
 def _cache_path(site, name):
@@ -172,7 +198,7 @@ def volume(site, name):
             return f.read()
     except OSError:
         pass
-    data = as_ar2v(_get(f"{FEED}/{site}/{name}", timeout=60))
+    data = as_ar2v(_get(f"{FEED}/{site}/{name}", timeout=60), site)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".part"
     with open(tmp, "wb") as f:
@@ -282,7 +308,7 @@ def build_sites(codes=None, fetch_head=None, log=print):
             if head:
                 if head[:2] == b"\x1f\x8b":
                     head = gzip.GzipFile(fileobj=__import__("io").BytesIO(head)).read1(4_000_000)
-                where = site_location(head)
+                where = mrrl_iris.location(head) if mrrl_iris.is_iris(head) else site_location(head)
         except Exception as e:  # one site's trouble is not the network's
             log(f"{code}: {e.__class__.__name__}: {e}")
         if where:
