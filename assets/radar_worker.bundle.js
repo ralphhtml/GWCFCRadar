@@ -3086,6 +3086,9 @@
       try {
         const { name } = blockName(raf);
         const friendlyName = blockTypesFriendly[name];
+        if (options.seenMoments && friendlyName && !["volume", "elevation", "radial"].includes(friendlyName)) {
+          options.seenMoments.add(friendlyName);
+        }
         if (prevRecord && blockTypesFriendly[prevRecord.name]) {
           message.record[blockTypesFriendly[prevRecord.name]] = prevRecord;
         }
@@ -11820,16 +11823,12 @@
         }
       }
     }
-    for (let i = 1; i < nfeatures + 1; i++) {
-      const nwrap = regionTracker.unwrapNumber[i];
-      if (nwrap !== 0) {
-        for (let r = 0; r < labels.length; r++) {
-          for (let c = 0; c < labels[0].length; c++) {
-            if (labels[r][c] === i) {
-              scorr[r][c] += nwrap * nyquistInterval;
-            }
-          }
-        }
+    const unwrap = regionTracker.unwrapNumber;
+    for (let r = 0; r < labels.length; r++) {
+      const lr = labels[r], sr = scorr[r];
+      for (let c = 0; c < lr.length; c++) {
+        const nwrap = unwrap[lr[c]];
+        if (lr[c] > 0 && nwrap) sr[c] += nwrap * nyquistInterval;
       }
     }
     return scorr;
@@ -11950,11 +11949,12 @@
     return RE * Math.asin(rKm * Math.cos(elDeg * DEG) / (RE + h));
   };
   var slantForGround = (sKm, elDeg) => sKm / Math.cos(elDeg * DEG);
-  var readCut = (radar, elevationNumber, getter) => {
+  var readCut = (radar, elevationNumber, getter, prep) => {
     radar.setElevation(elevationNumber);
-    const data = getter();
+    let data = getter();
     const hs = radar.getHeader();
-    const heads = Array.isArray(hs) ? hs : [hs];
+    let heads = Array.isArray(hs) ? hs : [hs];
+    if (prep && Array.isArray(data)) ({ data, headers: heads } = prep(data, heads));
     const radials = [];
     let angSum = 0, angN = 0;
     for (let i = 0; i < data.length; i++) {
@@ -12086,6 +12086,171 @@
     const z = Math.pow(10, Math.min(dbz, 53) / 10);
     return Math.pow(z / 300, 1 / 1.4);
   };
+  var NOISE_MARGIN_DB = 5;
+  var NOISE_MIN_RUN_KM = 3;
+  var noiseMask = (radials, confirm) => radials.map((d, i) => {
+    if (!d || !Array.isArray(d.moment_data) || !(d.gate_size > 0)) return null;
+    const m = d.moment_data, n = m.length, gs = d.gate_size, fg = d.first_gate;
+    const B = Math.max(4, Math.round(1 / gs));
+    const nb = Math.floor(n / B);
+    const q = new Float32Array(nb).fill(NaN);
+    let considered = 0, filled = 0;
+    for (let b = 0; b < nb; b++) {
+      let s = 0, c = 0;
+      for (let k = b * B; k < (b + 1) * B; k++) {
+        const x = m[k];
+        if (Number.isFinite(x)) {
+          s += x;
+          c++;
+        }
+      }
+      const rk = fg + (b + 0.5) * B * gs;
+      if (c) q[b] = s / c - 20 * Math.log10(Math.max(rk, 0.5));
+      if (rk < 20) continue;
+      considered++;
+      if (c >= B * (confirm ? 0.3 : 0.6)) filled++;
+    }
+    if (considered < 10 || filled < considered * (confirm ? 0.3 : 0.6)) return null;
+    const vals = [];
+    for (let b = 0; b < nb; b++) {
+      const rk = fg + (b + 0.5) * B * gs;
+      if (rk >= 20 && Number.isFinite(q[b])) vals.push(q[b]);
+    }
+    vals.sort((a, b) => a - b);
+    const med = vals[vals.length >> 1];
+    let flat = 0;
+    for (const v of vals) if (Math.abs(v - med) <= 4) flat++;
+    const full = filled >= considered * 0.6;
+    if (flat < (full ? considered : vals.length) * 0.5) return null;
+    if (!full && !(confirm && confirm(i))) return null;
+    const bad = new Uint8Array(n);
+    const floor = med + NOISE_MARGIN_DB;
+    const above = (b) => Number.isFinite(q[b]) && q[b] >= floor;
+    for (let b = 0; b < nb; ) {
+      if (!above(b)) {
+        bad.fill(1, b * B, (b + 1) * B);
+        b++;
+        continue;
+      }
+      let e = b;
+      while (e < nb && above(e)) e++;
+      if (e - b < NOISE_MIN_RUN_KM) bad.fill(1, b * B, e * B);
+      b = e;
+    }
+    bad.fill(1, nb * B, n);
+    return bad;
+  });
+  var applyNoiseMask = (radials, masks, refRadials) => radials.map((d, i) => {
+    const mk = masks[i], ref = refRadials[i];
+    if (!d || !Array.isArray(d.moment_data) || !mk || !ref) return d;
+    const out = d.moment_data.slice();
+    for (let g = 0; g < out.length; g++) {
+      const rk = d.first_gate + g * d.gate_size;
+      const rg = Math.round((rk - ref.first_gate) / ref.gate_size);
+      if (rg < 0 || rg >= mk.length || mk[rg]) out[g] = null;
+    }
+    return Object.assign({}, d, { moment_data: out });
+  });
+  var velocityNoiseFlags = (d, nyquist) => {
+    const m = d.moment_data, n = m.length;
+    const W = Math.max(2, Math.round(0.5 / d.gate_size));
+    const N2 = 2 * nyquist, lim = (0.3 * nyquist) ** 2;
+    const step = new Float32Array(n).fill(NaN);
+    for (let g = 0; g + 1 < n; g++) {
+      const a = m[g], b = m[g + 1];
+      if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
+      let dv = b - a;
+      dv = ((dv + nyquist) % N2 + N2) % N2 - nyquist;
+      step[g] = dv * dv;
+    }
+    const flags = new Uint8Array(n);
+    for (let g = 0; g < n; g++) {
+      if (!Number.isFinite(m[g])) continue;
+      let s = 0, c = 0, f = 0;
+      for (let k = Math.max(0, g - W); k < Math.min(n, g + W); k++) {
+        if (Number.isFinite(m[k])) f++;
+        if (Number.isFinite(step[k])) {
+          s += step[k];
+          c++;
+        }
+      }
+      const span = Math.min(n, g + W) - Math.max(0, g - W);
+      if (!c || s / c > lim) flags[g] = 1;
+      else if (f < span * 0.5) flags[g] = 2;
+    }
+    return flags;
+  };
+  var velocityCallsNoise = (refRadials, velRadials, nyquist) => (i) => {
+    const d = refRadials[i], v = velRadials && velRadials[i];
+    if (!d || !v || !Array.isArray(v.moment_data) || !(nyquist > 0)) return false;
+    const flags = velocityNoiseFlags(v, nyquist);
+    let withRef = 0, withVel = 0, noisy = 0;
+    for (let g = 0; g < d.moment_data.length; g++) {
+      const rk = d.first_gate + g * d.gate_size;
+      if (rk < 20 || !Number.isFinite(d.moment_data[g])) continue;
+      withRef++;
+      const vg = Math.round((rk - v.first_gate) / v.gate_size);
+      if (vg < 0 || vg >= flags.length || !Number.isFinite(v.moment_data[vg])) continue;
+      withVel++;
+      if (flags[vg] === 1) noisy++;
+    }
+    if (!withRef) return false;
+    return withVel < withRef * 0.1 || noisy > withVel * 0.3;
+  };
+  var KEEP_STRONG_DBZ = 35;
+  var cleanVelocityNoise = (radials, nyquist, refRadials) => radials.map((d, i) => {
+    if (!d || !Array.isArray(d.moment_data) || !(d.gate_size > 0) || !(nyquist > 0)) return d;
+    const flags = velocityNoiseFlags(d, nyquist);
+    const ref = refRadials && refRadials[i];
+    const out = d.moment_data.slice();
+    for (let g = 0; g < out.length; g++) {
+      if (!flags[g]) continue;
+      if (ref && Array.isArray(ref.moment_data)) {
+        const rg = Math.round((d.first_gate + g * d.gate_size - ref.first_gate) / ref.gate_size);
+        const z = ref.moment_data[rg];
+        if (Number.isFinite(z) && z >= KEEP_STRONG_DBZ) continue;
+      }
+      out[g] = null;
+    }
+    return Object.assign({}, d, { moment_data: out });
+  });
+  var maskByVelocityNoise = (radials, velRadials, nyquist) => radials.map((d, i) => {
+    const v = velRadials && velRadials[i];
+    if (!d || !Array.isArray(d.moment_data) || !v || !Array.isArray(v.moment_data) || !(v.gate_size > 0) || !(nyquist > 0)) return d;
+    const flags = velocityNoiseFlags(v, nyquist);
+    const out = d.moment_data.slice();
+    for (let g = 0; g < out.length; g++) {
+      const rk = d.first_gate + g * d.gate_size;
+      const vg = Math.round((rk - v.first_gate) / v.gate_size);
+      if (vg >= 0 && vg < flags.length && flags[vg] === 1) out[g] = null;
+    }
+    return Object.assign({}, d, { moment_data: out });
+  });
+  var DESPECKLE_MIN = 0.3;
+  var despeckle = (radials) => {
+    const n = radials.length;
+    return radials.map((d, i) => {
+      if (!d || !Array.isArray(d.moment_data) || !(d.gate_size > 0)) return d;
+      const W = Math.max(2, Math.round(0.5 / d.gate_size));
+      const rows = [radials[(i + n - 1) % n], d, radials[(i + 1) % n]].filter((r) => r && Array.isArray(r.moment_data));
+      const m = d.moment_data, out = m.slice();
+      for (let g = 0; g < m.length; g++) {
+        if (!Number.isFinite(m[g])) continue;
+        const rk = d.first_gate + g * d.gate_size;
+        let f = 0, t = 0;
+        for (const r of rows) {
+          const c = Math.round((rk - r.first_gate) / r.gate_size);
+          for (let k = c - W; k <= c + W; k++) {
+            if (k < 0 || k >= r.moment_data.length) continue;
+            t++;
+            if (Number.isFinite(r.moment_data[k])) f++;
+          }
+        }
+        if (f < t * DESPECKLE_MIN) out[g] = null;
+      }
+      return Object.assign({}, d, { moment_data: out });
+    });
+  };
 
   // src/parse/radar_worker.js
   var LEVEL3_PARSE_MODE = "fast";
@@ -12121,10 +12286,112 @@
         return null;
     }
   };
-  var getLevel2MomentsForLayer = (layer) => {
+  var THIN_RADIALS = 720;
+  var THIN_GATE_KM = 0.25;
+  var thinSweep = (data, headers, layer) => {
+    const n = data.length;
+    const k = Math.max(1, Math.floor(n / THIN_RADIALS));
+    const d0 = data.find((d) => d && d.gate_size > 0);
+    const gm = d0 && d0.gate_size < THIN_GATE_KM * 0.8 ? Math.max(1, Math.round(THIN_GATE_KM / d0.gate_size)) : 1;
+    if (k === 1 && gm === 1) return { data, headers };
+    const outD = [], outH = [];
+    const useMax = layer === "REF";
+    for (let i = 0; i < n; i += k) {
+      const d = data[i];
+      outH.push(headers[i]);
+      if (!d || !Array.isArray(d.moment_data) || gm === 1) {
+        outD.push(d);
+        continue;
+      }
+      const m = d.moment_data, len = Math.floor(m.length / gm);
+      const out = new Array(len);
+      for (let j = 0; j < len; j++) {
+        let v = null;
+        for (let q = j * gm; q < (j + 1) * gm; q++) {
+          const x = m[q];
+          if (x === null || x === void 0) continue;
+          if (v === null || v === "rf") {
+            v = x;
+            if (!useMax && v !== "rf") break;
+            continue;
+          }
+          if (useMax && x !== "rf" && x > v) v = x;
+        }
+        out[j] = v;
+      }
+      outD.push(Object.assign({}, d, { moment_data: out, gate_size: d.gate_size * gm, gate_count: len }));
+    }
+    return { data: outD, headers: outH };
+  };
+  var _plainCache = null;
+  var fingerprint = (buf) => {
+    let h = buf.length;
+    const step = Math.max(1, Math.floor(buf.length / 997));
+    for (let i = 0; i < buf.length; i += step) h = h * 31 + buf[i] >>> 0;
+    return buf.length + ":" + h;
+  };
+  var plainVolume = (buf) => {
+    const key2 = fingerprint(buf);
+    if (_plainCache && _plainCache.key === key2) return _plainCache.buf;
+    const raf = decompress_default(new RandomAccessFile(buf, BIG_ENDIAN));
+    const plain = raf.buffer;
+    _plainCache = { key: key2, buf: plain };
+    return plain;
+  };
+  var MOMENT_LABEL = {
+    reflect: "reflectivity",
+    velocity: "velocity",
+    spectrum: "spectrum width",
+    zdr: "differential reflectivity",
+    phi: "differential phase",
+    rho: "correlation coefficient"
+  };
+  var getLevel2MomentsForLayer = (layer, options = {}) => {
     if (String(layer || "").toUpperCase() === "HCLS") return ["reflect", "zdr", "rho"];
     const m = getLevel2MomentForLayer(layer);
-    return m ? [m] : void 0;
+    if (!m) return void 0;
+    return options && options.noise_filter ? [.../* @__PURE__ */ new Set([m, "reflect", "velocity"])] : [m];
+  };
+  var safeRef = (radar) => {
+    try {
+      return radar.getHighresReflectivity();
+    } catch (e) {
+      return null;
+    }
+  };
+  var denoise = (radar, layer, radials, thin) => {
+    const same = (d) => {
+      if (!thin || !Array.isArray(d)) return d;
+      const hs2 = radar.getHeader();
+      return Array.isArray(hs2) && hs2.length === d.length ? thin(d, hs2).data : d;
+    };
+    if (!Array.isArray(radials)) return radials;
+    const ref = layer === "REF" ? radials : same(safeRef(radar));
+    const hs = radar.getHeader();
+    const h0 = Array.isArray(hs) ? hs.find((h) => h && h.radial) : hs;
+    const nyq = Number(h0 && h0.radial && h0.radial.nyquist_velocity);
+    let vel = null;
+    try {
+      vel = layer === "VEL" ? radials : same(radar.getHighresVelocity());
+    } catch (e) {
+      vel = null;
+    }
+    const velOk = Array.isArray(vel) && vel.length === radials.length && nyq > 0;
+    let out = radials;
+    if (Array.isArray(ref) && ref.length === radials.length) {
+      out = applyNoiseMask(
+        radials,
+        noiseMask(ref, velOk ? velocityCallsNoise(ref, vel, nyq) : void 0),
+        ref
+      );
+    }
+    if (layer === "VEL") out = cleanVelocityNoise(
+      out,
+      nyq,
+      Array.isArray(ref) && ref.length === out.length ? ref : null
+    );
+    else if (velOk) out = maskByVelocityNoise(out, vel, nyq);
+    return despeckle(out);
   };
   var getLevel2Vcp = (radar, header = null) => {
     const patternNumber = Number(radar?.vcp?.record?.pattern_number);
@@ -12281,6 +12548,11 @@
     if (!Array.isArray(radarData) || radarData.length === 0) {
       throw new Error(`No radar data available for layer: ${layer}`);
     }
+    let headers = radar.getHeader();
+    const thin = options.thin === false ? null : (data, hs) => thinSweep(data, hs, layer);
+    if (thin && Array.isArray(headers) && headers.length === radarData.length) {
+      ({ data: radarData, headers } = thin(radarData, headers));
+    }
     const numberOfRadarIterations = radarData.length;
     const range = readRangeOptions(options);
     const project = createRadarProjector(radarLocation[0], radarLocation[1]);
@@ -12288,7 +12560,7 @@
     const bbox = Array.isArray(options.bbox) && options.bbox.length === 4 && options.bbox.every(Number.isFinite) ? options.bbox : null;
     const builder = createMeshBuilder(includeGeojson, bbox);
     const scanIsPartial = Boolean(radar?.hasGaps || radar?.isTruncated);
-    const headers = radar.getHeader();
+    if (options && options.noise_filter) radarData = denoise(radar, layer, radarData, thin);
     const shouldDealiasLevel2Velocity = layer === "VEL" && options?.enableVelocityDealias !== false;
     if (shouldDealiasLevel2Velocity) {
       try {
@@ -12708,13 +12980,17 @@
     });
     return cut;
   };
-  var baseSweep = (radar, cuts) => {
+  var baseSweep = (radar, cuts, clean) => {
     for (const c of cuts) {
       radar.setElevation(c.el);
-      const data = radar.getHighresReflectivity();
+      let data = radar.getHighresReflectivity();
       if (Array.isArray(data) && data.some((d) => d && Array.isArray(d.moment_data))) {
-        const hs = radar.getHeader();
-        return { el: c.el, angle: c.a, data, headers: Array.isArray(hs) ? hs : [hs] };
+        const hs0 = radar.getHeader();
+        let headers = Array.isArray(hs0) ? hs0 : [hs0];
+        if (headers.length === data.length) ({ data, headers } = thinSweep(data, headers, "REF"));
+        const thin = (d, hs) => thinSweep(d, hs, "REF");
+        if (clean) data = denoise(radar, "REF", data, thin);
+        return { el: c.el, angle: c.a, data, headers };
       }
     }
     return null;
@@ -12737,14 +13013,22 @@
   var processDerived = (radar, radarLocation, layer, options = {}) => {
     const { cuts } = planCuts(radar);
     if (!cuts.length) throw new Error("no tilts in this volume");
-    const base = baseSweep(radar, cuts);
+    const clean = !!options.noise_filter;
+    const base = baseSweep(radar, cuts, clean);
     if (!base) throw new Error("no reflectivity in this volume");
+    const thinRef = (d, hs) => thinSweep(d, hs, "REF");
+    const refPrep = (d, hs) => {
+      const t = hs.length === d.length ? thinRef(d, hs) : { data: d, headers: hs };
+      if (clean) t.data = denoise(radar, "REF", t.data, thinRef);
+      return t;
+    };
     const limitKm = Number.isFinite(options.range_limit_km) && options.range_limit_km > 0 ? options.range_limit_km : Infinity;
     let values;
     if (layer === "HCLS") {
       radar.setElevation(base.el);
-      const zdr = compactCut(readCut(radar, base.el, () => radar.getHighresDiffReflectivity()));
-      const rho = compactCut(readCut(radar, base.el, () => radar.getHighresCorrelationCoefficient()));
+      const thinAs = (L) => (d, hs) => hs.length === d.length ? thinSweep(d, hs, L) : { data: d, headers: hs };
+      const zdr = compactCut(readCut(radar, base.el, () => radar.getHighresDiffReflectivity(), thinAs("ZDR")));
+      const rho = compactCut(readCut(radar, base.el, () => radar.getHighresCorrelationCoefficient(), thinAs("CC")));
       if (!zdr && !rho) throw new Error("this radar sends no dual polarization data");
       values = base.data.map((d, i) => {
         const h = base.headers[i];
@@ -12767,7 +13051,7 @@
     } else {
       const stack = [];
       for (const c of cuts) {
-        const cut = compactCut(readCut(radar, c.el, () => radar.getHighresReflectivity()));
+        const cut = compactCut(readCut(radar, c.el, () => radar.getHighresReflectivity(), refPrep));
         if (cut) stack.push(cut);
       }
       const samples = [];
@@ -12796,14 +13080,19 @@
       radarLocation,
       null,
       "REF",
-      Object.assign({}, options, layer === "HCLS" ? { merge: "first" } : {})
+      Object.assign({}, options, { noise_filter: false, thin: false }, layer === "HCLS" ? { merge: "first" } : {})
     );
     return Object.assign(built, { base });
   };
   var volumeStormMotion = (radar) => {
     const { cuts } = planCuts(radar);
     for (const c of cuts) {
-      const cut = readCut(radar, c.el, () => radar.getHighresVelocity());
+      const cut = readCut(
+        radar,
+        c.el,
+        () => radar.getHighresVelocity(),
+        (d, hs) => hs.length === d.length ? thinSweep(d, hs, "VEL") : { data: d, headers: hs }
+      );
       if (cut) return estimateStormMotion(compactCut(cut));
     }
     return { u: 0, v: 0 };
@@ -12820,9 +13109,10 @@
         const t = Date.parse(level2TimeIso(head) || "");
         if (!head || !Number.isFinite(t)) continue;
         if (vols.some((v) => v.t === t)) continue;
-        const base2 = baseSweep(radar, cuts);
+        const clean = !!options.noise_filter;
+        const base2 = baseSweep(radar, cuts, clean);
         if (!base2) continue;
-        const cut = compactCut(readCut(radar, base2.el, () => radar.getHighresReflectivity()));
+        const cut = compactCut(readCut(radar, base2.el, () => base2.data, (d) => ({ data: d, headers: base2.headers })));
         if (!cut) continue;
         vols.push({ t, cut });
         if (!newest || t > newest.t) newest = { t, radar, base: base2, head };
@@ -12854,7 +13144,13 @@
       return Object.assign({}, d, { moment_data: out });
     });
     const loc = [newest.head.volume.latitude, newest.head.volume.longitude];
-    const built = processRadarData(sweepOf(newest.radar, base, values), loc, null, "REF", options);
+    const built = processRadarData(
+      sweepOf(newest.radar, base, values),
+      loc,
+      null,
+      "REF",
+      Object.assign({}, options, { noise_filter: false, thin: false })
+    );
     return Object.assign(built, {
       timeIso: new Date(newest.t).toISOString(),
       elevationAngle: base.angle,
@@ -13017,10 +13313,23 @@
           timing: { parserStartMs, parserEndMs: parserStartMs, meshEndMs }
         }, [r.meshData.buffer]);
       } else {
-        const radar = new Level2Radar(buffer, {
+        const seenMoments = /* @__PURE__ */ new Set();
+        const radar = new Level2Radar(plainVolume(buffer), {
           logger: false,
-          includeMoments: getLevel2MomentsForLayer(layer)
+          includeMoments: getLevel2MomentsForLayer(layer, options),
+          seenMoments
         });
+        const needs = getLevel2MomentsForLayer(layer) || [];
+        const lacking = needs.filter((m) => !seenMoments.has(m));
+        if (seenMoments.size && lacking.length) {
+          self.postMessage({
+            type: "error",
+            missing: lacking[0],
+            moments: [...seenMoments],
+            message: `this radar does not send ${MOMENT_LABEL[lacking[0]] || lacking[0]}`
+          });
+          return;
+        }
         parserEndMs = toEpochMs(performance.now());
         const elevations = radar.listElevations();
         const elevationAngles = elevations.map((e) => meanElevationAngle(radar, e));
@@ -13131,7 +13440,10 @@
           // actually carries, so the list rides back with the result.
           availableElevations: elevations,
           elevationAngles,
-          elevationNumber: radar.elevation
+          elevationNumber: radar.elevation,
+          // Which moments this volume carries, so the menu can offer
+          // only the products this radar makes.
+          moments: [...seenMoments]
         };
         self.postMessage({
           type: "result",

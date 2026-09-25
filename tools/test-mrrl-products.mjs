@@ -41,6 +41,13 @@ console.log('\n1. the pieces');
   const bundle = readFileSync(join(ROOT, 'assets/radar_worker.bundle.js'), 'utf8');
   ok('the built worker carries the derived products', bundle.includes('process-multi') && bundle.includes('ETOP'));
   ok('an MRRL radar is drawn to 2000 km', /const MRRL_RANGE_KM = 2000;/.test(PAGE));
+  ok('and its noise is filtered, on every decode path', /noise_filter: mrrl \}/.test(PAGE)
+     && /noise_filter: _isMrrlSite\(who\)/.test(PAGE) && /noise_filter: true \}/.test(PAGE));
+  ok('an oversampled sweep is thinned, a NEXRAD one is not', bundle.includes('THIN_RADIALS') && bundle.includes('thinSweep'));
+  ok('the unfold is applied in one pass over the sweep, not one per region',
+     /const unwrap = regionTracker\.unwrapNumber;/.test(readFileSync(join(ROOT, 'src/parse/dealias.js'), 'utf8')));
+  ok('a repeat decode of the same volume skips the unpacking', bundle.includes('_plainCache'));
+  ok('an MRRL pill starts its volume downloading when pointed at', /if \(s\.mrrl\) \{ _mrrlWarm\(s\.id\); return; \}/.test(PAGE));
   ok('every Level 3 product has an MRRL route', ['reflectivity', 'velocity', 'corrcoeff', 'diffrefl', 'kdp',
      'srvelocity', 'hydroclass', 'hydrohybrid', 'echotops', 'vil', 'composite', 'onehour', 'stormtotal']
      .every(k => new RegExp(`\\n  ${k}: +\\{ layer: '`).test(PAGE)));
@@ -77,6 +84,38 @@ console.log('\n2. the math');
      && D.rainRate(70) === D.rainRate(53) && D.rainRate(5) === 0);
 }
 
+console.log('\n2b. the noise filter');
+{
+  const D = await import(pathToFileURL(join(ROOT, 'src/parse/derived.js')).href);
+  // 400 gates of 250 m. Receiver noise: the same power at every range, so
+  // dBZ = constant + 20 log10(r), with a little jitter. Rain: a real shape.
+  let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const radial = (fn) => ({ first_gate: 2, gate_size: 0.25, moment_data: Array.from({ length: 400 }, (_, g) => fn(2 + g * 0.25)) });
+  const noise = radial((r) => -30 + 20 * Math.log10(r) + (rnd() - 0.5) * 3);
+  const noiseWithCell = radial((r) => (r > 50 && r < 60 ? 45 : -30 + 20 * Math.log10(r) + (rnd() - 0.5) * 3));
+  const rain = radial((r) => 25 + 10 * Math.sin(r / 9) + (rnd() - 0.5) * 3);
+  const thresholded = radial((r) => (r > 40 && r < 55 ? 30 : null));
+  const m = D.noiseMask([noise, noiseWithCell, rain, thresholded]);
+  const kept = (i, a, b) => { const r = [noise, noiseWithCell, rain, thresholded][i]; let n = 0, t = 0;
+    r.moment_data.forEach((v, g) => { const km = 2 + g * 0.25; if (km < a || km > b || !Number.isFinite(v)) return; t++; if (!m[i] || !m[i][g]) n++; }); return t ? n / t : 0; };
+  ok('a flat noise radial is found and all of it dropped', m[0] && kept(0, 0, 100) === 0, kept(0, 0, 100));
+  ok('a real 45 dBZ cell inside a noise radial survives', kept(1, 51, 59) === 1 && kept(1, 70, 100) === 0, `${kept(1, 51, 59)} ${kept(1, 70, 100)}`);
+  ok('rain is not flat noise and is left alone', m[2] === null);
+  ok('a radial the radar already thresholded is left alone', m[3] === null);
+  const vel = (fn) => ({ first_gate: 2, gate_size: 0.25, moment_data: Array.from({ length: 400 }, (_, g) => fn(g)) });
+  const random = vel(() => (rnd() * 2 - 1) * 6.5), smooth = vel((g) => 5 * Math.sin(g / 40));
+  const f1 = D.velocityNoiseFlags(random, 6.7), f2 = D.velocityNoiseFlags(smooth, 6.7);
+  ok('random velocity is flagged, a smooth wind is not', f1.filter(x => x === 1).length > 350 && f2.every(x => x === 0));
+  const strongRef = [{ first_gate: 2, gate_size: 0.25, moment_data: new Array(400).fill(50) }];
+  ok('turbulent velocity inside a strong echo (a couplet, a hail core) is always kept',
+     D.cleanVelocityNoise([random], 6.7, strongRef)[0].moment_data.every(Number.isFinite));
+  const specks = [0, 1, 2].map((i) => ({ first_gate: 2, gate_size: 0.25, moment_data: new Array(400).fill(null) }));
+  specks[1].moment_data[200] = 20;
+  specks[1].moment_data.fill(30, 100, 140);
+  const ds = D.despeckle(specks);
+  ok('a lone speck goes, a real stretch of echo stays', ds[1].moment_data[200] === null && ds[1].moment_data[120] === 30);
+}
+
 console.log('\n3. the built worker, on a real-format volume');
 const DIR = mkdtempSync(join(tmpdir(), 'mrrlp-'));
 execFileSync('python3', [join(ROOT, 'tools/mrrl_synth.py'), join(DIR, 'BOO_'), 'BOO_', '54.0', '10.05', 'bz']);
@@ -102,7 +141,8 @@ execFileSync('python3', [join(ROOT, 'tools/mrrl_synth.py'), join(DIR, '1852'), '
   ok('echo tops: the beam height over the ring, well under 10 kft', etop.length > 1000
      && Math.min(...etop) > 0 && Math.max(...etop) < 10, `${Math.min(...etop)}..${Math.max(...etop)}`);
   ok('hydrometeor class without dual polarization says so, not a made-up picture',
-     R.HCLS.type === 'error' && /dual polarization/.test(R.HCLS.message), JSON.stringify(R.HCLS).slice(0, 120));
+     R.HCLS.type === 'error' && /does not send differential reflectivity/.test(R.HCLS.message)
+     && JSON.stringify(R.HCLS.moments) === '["reflect"]', JSON.stringify(R.HCLS).slice(0, 160));
   const D = await import(pathToFileURL(join(ROOT, 'src/parse/derived.js')).href);
   const fiveMin = D.rainRate(35) * 5 / 60;
   ok('one volume of rain is five minutes of 35 dBZ rain', acc.length > 1000 && acc.every(v => near(v, fiveMin, 1e-3)),
@@ -190,10 +230,12 @@ const pick = (product, at) => p.evaluate(async ([product, at]) => {
   w = r.seen.find(x => x.layer);
   ok('storm total adds up every volume the feed holds', w && w.vols === 24 && r.seen.some(x => x.drawn === 'dta'), JSON.stringify(w));
   r = await pick('hydroclass');
-  ok('no dual polarization: said plainly, nothing wrong drawn', r.toasts.some(t => /dual polarization/.test(t))
+  ok('no dual polarization: said plainly, nothing wrong drawn',
+     r.toasts.some(t => t === 'BOO does not send Hydro. Class. It sends reflectivity.')
      && !r.seen.some(x => x.drawn), JSON.stringify(r.toasts));
-  const menu = await p.evaluate(() => [..._l3AvailKnown('MR-BOO_') || []].length);
-  ok('the Level 3 menu greys nothing out for an MRRL radar', menu >= 13, menu);
+  const menu = await p.evaluate(() => [..._l3AvailKnown('MR-BOO_') || []].sort().join(','));
+  ok('the Level 3 menu offers exactly what this radar can make (reflectivity only here)',
+     menu === 'composite,echotops,onehour,reflectivity,stormtotal,vil', menu);
   r = await pick('composite', NOW - 40 * 60000);
   ok('the Time Machine reads the feed at the moment asked', r.seen.some(x => x.drawn === 'ncr') && /ARCHIVE/.test(r.time), JSON.stringify(r));
   r = await pick('composite', NOW - 5 * 86400000);

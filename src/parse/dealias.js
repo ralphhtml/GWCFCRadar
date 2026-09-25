@@ -894,16 +894,17 @@ export function dealias2D(velocities, nyquistVelocity, options = {}) {
 		}
 	}
 
-	for (let i = 1; i < nfeatures + 1; i++) {
-		const nwrap = regionTracker.unwrapNumber[i];
-		if (nwrap !== 0) {
-			for (let r = 0; r < labels.length; r++) {
-				for (let c = 0; c < labels[0].length; c++) {
-					if (labels[r][c] === i) {
-						scorr[r][c] += nwrap * nyquistInterval;
-					}
-				}
-			}
+	// GWCFC: one pass over the sweep, each gate looking up its own region's
+	// unfold. This was a pass over the WHOLE sweep for every region, so a
+	// noisy sweep (tens of thousands of little regions) on a radar with
+	// thousands of gates a radial took minutes; this is the same answer in
+	// one sweep's time.
+	const unwrap = regionTracker.unwrapNumber;
+	for (let r = 0; r < labels.length; r++) {
+		const lr = labels[r], sr = scorr[r];
+		for (let c = 0; c < lr.length; c++) {
+			const nwrap = unwrap[lr[c]];
+			if (lr[c] > 0 && nwrap) sr[c] += nwrap * nyquistInterval;
 		}
 	}
 

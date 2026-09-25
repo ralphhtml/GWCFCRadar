@@ -27821,21 +27821,21 @@ function _l3BucketKeyTime(key) {
 // what the decoder is asked for, `code` is the product it is drawn as, so the
 // colours, legend, value filter and Inspector are the Level 3 product's own.
 const MRRL_L3 = {
-  reflectivity: { layer: 'REF',  code: 'ref' },
-  velocity:     { layer: 'VEL',  code: 'vel' },
-  corrcoeff:    { layer: 'CC',   code: 'cc' },
-  diffrefl:     { layer: 'ZDR',  code: 'zdr' },
-  kdp:          { layer: 'KDP',  code: 'kdp' },
-  phi:          { layer: 'PHI',  code: 'phi' },
-  spectrum:     { layer: 'SW',   code: 'sw' },
-  srvelocity:   { layer: 'SRV',  code: 'n0s' },
-  hydroclass:   { layer: 'HCLS', code: 'n0h' },
-  hydrohybrid:  { layer: 'HCLS', code: 'hhc' },
-  echotops:     { layer: 'ETOP', code: 'eet' },
-  vil:          { layer: 'DVIL', code: 'dvl' },
-  composite:    { layer: 'CREF', code: 'ncr' },
-  onehour:      { layer: 'ACC',  code: 'daa', minutes: 60 },
-  stormtotal:   { layer: 'ACC',  code: 'dta', minutes: 6 * 60 },
+  reflectivity: { layer: 'REF',  code: 'ref', needs: ['reflect'] },
+  velocity:     { layer: 'VEL',  code: 'vel', needs: ['velocity'] },
+  corrcoeff:    { layer: 'CC',   code: 'cc', needs: ['rho'] },
+  diffrefl:     { layer: 'ZDR',  code: 'zdr', needs: ['zdr'] },
+  kdp:          { layer: 'KDP',  code: 'kdp', needs: ['phi'] },
+  phi:          { layer: 'PHI',  code: 'phi', needs: ['phi'] },
+  spectrum:     { layer: 'SW',   code: 'sw', needs: ['spectrum'] },
+  srvelocity:   { layer: 'SRV',  code: 'n0s', needs: ['velocity'] },
+  hydroclass:   { layer: 'HCLS', code: 'n0h', needs: ['reflect', 'zdr', 'rho'] },
+  hydrohybrid:  { layer: 'HCLS', code: 'hhc', needs: ['reflect', 'zdr', 'rho'] },
+  echotops:     { layer: 'ETOP', code: 'eet', needs: ['reflect'] },
+  vil:          { layer: 'DVIL', code: 'dvl', needs: ['reflect'] },
+  composite:    { layer: 'CREF', code: 'ncr', needs: ['reflect'] },
+  onehour:      { layer: 'ACC',  code: 'daa', minutes: 60, needs: ['reflect'] },
+  stormtotal:   { layer: 'ACC',  code: 'dta', minutes: 6 * 60, needs: ['reflect'] },
 };
 // The short Level 2 names as well, for callers that speak those.
 const MRRL_SHORT = { ref: 'reflectivity', vel: 'velocity', cc: 'corrcoeff', zdr: 'diffrefl',
@@ -27885,8 +27885,11 @@ async function _mrrlL3Show(site, at, asked) {
   _prBucketSite = SITE;
   _prOn = true;
   try { _prClear(); } catch (e) {}
-  // Every product is on offer for these radars; the menu should not grey any.
-  _l3Avail.set(SITE, { at: Date.now(), set: new Set(Object.keys(MRRL_L3)), done: true, inflight: null });
+  // Every product this radar's moments can make is on offer, and only those
+  // (all of them until a volume of it has been read).
+  const offer = () => _l3Avail.set(SITE, { at: Date.now(), done: true, inflight: null,
+    set: new Set(Object.keys(MRRL_L3).filter(k => _siteMakes(id, k))) });
+  offer();
   if (typeof _refreshNexradSiteStyles === 'function') _refreshNexradSiteStyles();
   const atEl = document.getElementById('anim-time');
   if (atEl) atEl.textContent = `Working out ${label}…`;
@@ -27899,7 +27902,7 @@ async function _mrrlL3Show(site, at, asked) {
         + Math.max(1, Math.round((list[list.length - 1].t - list[0].t) / 3600000))
         + ' hours or so, and there is no older archive for this radar');
     }
-    const opts = { station: id, range_limit_km: MRRL_RANGE_KM };
+    const opts = { station: id, range_limit_km: MRRL_RANGE_KM, noise_filter: true };
     let result;
     if (spec.layer === 'ACC') {
       const bufs = [];
@@ -27926,10 +27929,31 @@ async function _mrrlL3Show(site, at, asked) {
     }
   } catch (e) {
     if (e && e.message === 'superseded') return;
-    _prBucketSite = wasBucket;
     if (atEl) atEl.textContent = '';
+    if (e && e.missing) {
+      // The radar does not make this product. The last picture must not stay
+      // up under this product's name, which is exactly how a velocity tap
+      // on a radar with no velocity used to look like it worked.
+      try { _disableL3(); } catch (x) {}
+      offer();
+      if (typeof _prRenderPiRow === 'function' && document.getElementById('sub-bubbles')
+          && _radarSource === 'l3') { try { _prRenderPiRow('l3'); } catch (x) {} }
+      if (typeof showToast === 'function') showToast(_mrrlLacksText(id, label), 6000);
+      return;
+    }
+    _prBucketSite = wasBucket;
     if (typeof showToast === 'function') showToast(`${code} ${label}: ${e.message}`, 5000);
   }
+}
+// "1852 does not send Corr. Coeff. It sends reflectivity, velocity and
+// spectrum width." Said once, plainly, when a radar lacks a product.
+function _mrrlLacksText(id, label) {
+  const names = { reflect: 'reflectivity', velocity: 'velocity', spectrum: 'spectrum width',
+                  zdr: 'differential reflectivity', phi: 'differential phase', rho: 'correlation coefficient' };
+  const have = [...(_siteMoments.get(String(id).toLowerCase()) || [])].map(m => names[m] || m);
+  const name = String(_mrrlCode(id) || id).replace(/_+$/, '').toUpperCase();
+  const list = have.length > 1 ? have.slice(0, -1).join(', ') + ' and ' + have[have.length - 1] : have[0];
+  return `${name} does not send ${String(label).replace(/\.$/, '')}.` + (list ? ` It sends ${list}.` : '');
 }
 
 // Fetch, decode and draw one product for one site, entirely in the browser.
@@ -37195,10 +37219,11 @@ function toggleRadarL2Sub() {
   // the same rule the pill highlight uses.
   const _l2MenuSite = _l2Site
     || (typeof _l3Station !== 'undefined' && _l3Station) || null;
-  const l2Products = (_l2MenuSite && typeof _isTdwrSite === 'function'
+  // The same for an MRRL radar, from what its volumes were read to carry.
+  const l2Products = ((_l2MenuSite && typeof _isTdwrSite === 'function'
                       && _isTdwrSite(_l2MenuSite))
     ? RADAR_L2_BUBBLES.filter(b => ['ref', 'vel', 'sw'].includes(b.product))
-    : RADAR_L2_BUBBLES;
+    : RADAR_L2_BUBBLES).filter(b => !_l2MenuSite || _siteMakes(_l2MenuSite, b.product));
   l2Products.forEach(b => {
     const el = document.createElement('div');
     el.className = 'sub-bubble' + (currentProduct === b.product ? ' active' : '');
@@ -50487,7 +50512,32 @@ async function _mrrlList(code, signal) {
   _mrrlListCache.set(code, { at: Date.now(), list });
   return list;
 }
-async function _mrrlFetchVol(code, name, signal) {
+// The last few volumes fetched, kept as their download promises, so a pill
+// the pointer is resting on has its volume on the way before the click, and
+// the click (and every product switch after it) reuses the same bytes.
+const _mrrlVolMemo = new Map();
+const MRRL_VOL_MEMO = 4;
+function _mrrlFetchVol(code, name, signal) {
+  const key = code + '/' + name;
+  const hit = _mrrlVolMemo.get(key);
+  if (hit) return hit.then(b => b.slice(0));
+  // The shared download is never cancelled by one caller's signal: another
+  // may be waiting on it. A failed one is forgotten so the next can retry.
+  const p = _mrrlFetchVolRaw(code, name);
+  _mrrlVolMemo.set(key, p);
+  p.catch(() => _mrrlVolMemo.delete(key));
+  while (_mrrlVolMemo.size > MRRL_VOL_MEMO) _mrrlVolMemo.delete(_mrrlVolMemo.keys().next().value);
+  return p.then(b => b.slice(0));
+}
+// Point at an MRRL pill: its newest volume starts coming down.
+function _mrrlWarm(stationId) {
+  const code = _mrrlCode(stationId);
+  if (!code) return;
+  _mrrlList(code).then(list => {
+    if (list.length) return _mrrlFetchVol(code, list[list.length - 1].name);
+  }).catch(() => {});
+}
+async function _mrrlFetchVolRaw(code, name, signal) {
   const base = await _mrrlBase();
   const r = await fetch(`${base}/mrrl/vol?site=${encodeURIComponent(code)}&name=${encodeURIComponent(name)}`,
                         { signal: signal || _abortSignal(60000) });
@@ -50909,7 +50959,7 @@ let _radarWorkerPending = null;  // { resolve, reject } for current request
 // is a new URL, and a page from before the build keeps the URL its decoder
 // answers to. A mismatched pair is how "Parse failed" appears on one device
 // while the same click works everywhere else.
-var RADAR_WORKER_V = 'bfdf224e';
+var RADAR_WORKER_V = '7db70fde';
 
 function _getRadarWebWorker() {
   if (_radarWebWorker) return _radarWebWorker;
@@ -50920,7 +50970,12 @@ function _getRadarWebWorker() {
     var p = _radarWorkerPending; _radarWorkerPending = null;
     if (!p) return;
     if (p._timeout) clearTimeout(p._timeout);
-    if (e.data.type === 'error') p.reject(new Error(e.data.message));
+    if (e.data.type === 'error') {
+      // A missing moment says which one, and what the volume does carry.
+      var err = new Error(e.data.message);
+      if (e.data.missing) { err.missing = e.data.missing; err.moments = e.data.moments || []; }
+      p.reject(err);
+    }
     else p.resolve(e.data);
   };
   _radarWebWorker.onerror = function(e) {
@@ -50967,8 +51022,12 @@ function _workerProcess(buffer, layer, extraOptions) {
   var far = (layer === 'VEL' || layer === 'SRV' || /^N.U$|^N.V$/.test(String(layer || '')))
     ? RADAR_VEL_RANGE_KM : RADAR_RANGE_KM;
   var who = (extraOptions && extraOptions.station) || _l2ArcSiteHint || (typeof _l2Site !== 'undefined' && _l2Site);
-  if (_isMrrlSite(who)) far = MRRL_RANGE_KM;
-  var options = Object.assign({ range_limit_km: far }, extraOptions);
+  var mrrl = _isMrrlSite(who);
+  if (mrrl) far = MRRL_RANGE_KM;
+  // An MRRL radar's raw noise is filtered out in the decoder (see noiseMask
+  // in src/parse/derived.js): a NEXRAD does that before its data leaves the
+  // radar, and many of these radars do not.
+  var options = Object.assign({ range_limit_km: far, noise_filter: mrrl }, extraOptions);
   // Where the radar is, for a legacy (pre-2008) volume that does not say. The
   // worker only uses it when the file itself has no position.
   if (!Number.isFinite(options.siteLat)) {
@@ -51000,7 +51059,31 @@ function _workerProcess(buffer, layer, extraOptions) {
       reject(new Error('Radar parsing timed out - try a closer station or check your connection'));
     }, 45000);
     _getRadarWebWorker().postMessage({ type: 'process', arrayBuffer: buffer, layer: layer, options: options }, [buffer]);
+  }).then(function (r) {
+    _noteSiteMoments(who, r && r.metadata && r.metadata.moments);
+    return r;
+  }, function (e) {
+    if (e && e.moments) _noteSiteMoments(who, e.moments);
+    throw e;
   });
+}
+
+// What each radar has been seen to measure, from the decoder's own reading
+// of its volumes. The MRRL radars differ a great deal: some send all six
+// moments, some reflectivity and velocity and nothing else. The menus offer
+// only what the radar really makes; until a volume has been read, all of it.
+const _siteMoments = new Map();
+const L2_PRODUCT_MOMENTS = { ref: ['reflect'], vel: ['velocity'], sw: ['spectrum'], cc: ['rho'],
+                             zdr: ['zdr'], kdp: ['phi'], phi: ['phi'] };
+function _noteSiteMoments(site, moments) {
+  if (!site || !Array.isArray(moments) || !moments.length) return;
+  _siteMoments.set(String(site).toLowerCase(), new Set(moments));
+}
+function _siteMakes(site, product) {
+  const have = _siteMoments.get(String(site || '').toLowerCase());
+  const need = L2_PRODUCT_MOMENTS[product] || (MRRL_L3[product] && MRRL_L3[product].needs);
+  if (!have || !need) return true;
+  return need.every(m => have.has(m));
 }
 
 // -- Single-site Reflectivity (NWS GeoServer per station) --
@@ -51882,7 +51965,7 @@ function _pbDecode(buffer, layer, extra) {
       // for a comparison strip decoding a Level 2 volume at the same tilt
       // as the picture beside it.
       w.w.postMessage({ type: 'process', arrayBuffer: buffer, layer: layer,
-                        options: Object.assign({ range_limit_km: far }, extra || {}) }, [buffer]);
+                        options: Object.assign({ range_limit_km: far, noise_filter: _isMrrlSite(who) }, extra || {}) }, [buffer]);
     };
     start();
   });
@@ -52275,6 +52358,15 @@ async function _loadL3DataInner(product, stationOverride, retried, gen, signal, 
       return _loadL3DataInner(product, station, true, gen, signal, opts);
     }
     if (warmOnly) return;
+    if (e && e.missing) {
+      // This radar does not measure the product. Clear the old picture, which
+      // would otherwise stay on screen under this product's name, say what
+      // the radar does send, and redraw the menu without the product.
+      _disableL3();
+      showToast(_mrrlLacksText(station, (_MESH_LABELS[product] || product.toUpperCase())), 6000);
+      if (document.getElementById('sub-l2-ref')) toggleRadarL2Sub();
+      return;
+    }
     console.error('[L2] Parse failed:', e);
     _dpAlert('<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-close></use></svg> <b>Parse failed</b><br>' + e.message);
     return;
@@ -53983,8 +54075,9 @@ function _addNexradSiteMarker(s) {
     // for a station the pointer paused over, and nothing at all on a touch
     // screen, where there is no hover to fire it.
     const warmBoth = () => {
-      // The warm-ups below all ask NOAA; an MRRL radar is not there.
-      if (s.mrrl) return;
+      // The warm-ups below all ask NOAA; an MRRL radar is not there, but its
+      // own feed is, and its volume is the slow half of the click.
+      if (s.mrrl) { _mrrlWarm(s.id); return; }
       try { _rsWarm(s.id); } catch (e) {}
       try { _rsWarmSite(s.id); } catch (e) {}
       // And the archive listing, which is the slow half of a bucket click:
@@ -54088,6 +54181,7 @@ async function _siteView(s) {
         ['cc', 'zdr', 'kdp', 'phi'].includes(currentProduct)) {
       currentProduct = 'ref';
     }
+    if (!_siteMakes(s.id, currentProduct)) currentProduct = 'ref';
     if (document.getElementById('sub-l2-ref')) toggleRadarL2Sub();
     loadL3Data(currentProduct || 'ref', s.id);
     _refreshNexradSiteStyles();
@@ -72983,6 +73077,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-d', date: 'Sep 25, 2026',
+    text: 'The MRRL radars are much faster and much cleaner. Some of them (Cancun is the worst) send their raw receiver noise, which drew as a big fan of fake echoes with fake strong winds in it, plus thin spikes from other transmitters. That noise is now recognised and removed, while real showers and storms stay. Radars that sample far finer than their beam can see are thinned to normal radar detail, velocity unfolding is now one quick pass instead of a very slow one, switching product or tilt no longer unpacks the file again, and pointing at an MRRL pill starts its download before you tap. Cancun velocity went from well over a minute to under two seconds. And if a radar does not measure a product, the menu leaves it out and says what the radar does send, instead of leaving the old picture up.' },
   { id: '2026-09-25-c', date: 'Sep 25, 2026',
     text: 'The MRRL radars around the world now do every radar product, not just Level 2. They only send raw volumes, so the app works the rest out itself, the same way a NEXRAD does: composite reflectivity, echo tops, VIL, hydrometeor class, storm relative velocity, 1-hour rain and storm total. Pick any of them in the Level 3 menu on an MRRL radar. Those radars are also drawn out to the very last gate they measured now, instead of stopping at 460 km, and the broadcast sweep grows or shrinks to reach exactly as far as the radar picture on screen (it used to stop at a fixed 230 km).' },
   { id: '2026-09-25-b', date: 'Sep 25, 2026',

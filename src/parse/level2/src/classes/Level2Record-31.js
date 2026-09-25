@@ -89,6 +89,11 @@ export default (raf, message, offset, options) => {
 		try {
 			const { name } = blockName(raf);
 			const friendlyName = blockTypesFriendly[name];
+			// GWCFC: every moment the file carries, decoded or not, so a caller
+			// can say which products a radar makes without a second parse.
+			if (options.seenMoments && friendlyName && !['volume', 'elevation', 'radial'].includes(friendlyName)) {
+				options.seenMoments.add(friendlyName);
+			}
 			// no error was thrown, store the previous record
 			if (prevRecord && blockTypesFriendly[prevRecord.name]) {
 				// store the record under a friendly name

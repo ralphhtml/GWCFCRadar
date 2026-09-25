@@ -2,8 +2,12 @@ import { Buffer } from 'buffer';
 import { Level2Radar } from './level2/src/index.js';
 import nexradLevel3Data from './level3/src/browser.js';
 import { dealiasVelocityRadials } from './dealias.js';
+import decompressL2 from './level2/src/decompress.js';
+import { RandomAccessFile, BIG_ENDIAN } from './level2/src/classes/RandomAccessFile.js';
 import { DERIVED_LAYERS, beamHeightKm, groundKm, slantForGround, readCut, valueAt,
-         distinctCuts, columnValue, classify, estimateStormMotion, rainRate } from './derived.js';
+         distinctCuts, columnValue, classify, estimateStormMotion, rainRate,
+         noiseMask, applyNoiseMask, cleanVelocityNoise, maskByVelocityNoise,
+         velocityCallsNoise, despeckle } from './derived.js';
 
 const LEVEL3_PARSE_MODE = 'fast';
 
@@ -41,11 +45,106 @@ const getLevel2MomentForLayer = (layer) => {
         return null;
     }
 };
+// GWCFC: some radars (several on the MRRL feed) sample far finer than their
+// beam can see: Cancun sends 1501 radials of 4800 gates 62.5 m long, seven
+// million numbers a tilt, where a NEXRAD's super resolution is 720 radials
+// of 250 m. Drawing, unfolding and filtering all of that cost seconds and
+// showed nothing more, since a one degree beam is kilometres wide out there.
+// So a sweep like that is thinned first: every k-th radial kept so there are
+// about 720, and gates merged to about 250 m (the strongest reflectivity of
+// the group, so no core is lost; the first reading for the other moments).
+// A NEXRAD sweep is already at that resolution and passes through untouched.
+const THIN_RADIALS = 720, THIN_GATE_KM = 0.25;
+const thinSweep = (data, headers, layer) => {
+    const n = data.length;
+    const k = Math.max(1, Math.floor(n / THIN_RADIALS));
+    const d0 = data.find((d) => d && d.gate_size > 0);
+    const gm = d0 && d0.gate_size < THIN_GATE_KM * 0.8 ? Math.max(1, Math.round(THIN_GATE_KM / d0.gate_size)) : 1;
+    if (k === 1 && gm === 1) return { data, headers };
+    const outD = [], outH = [];
+    const useMax = layer === 'REF';
+    for (let i = 0; i < n; i += k) {
+        const d = data[i];
+        outH.push(headers[i]);
+        if (!d || !Array.isArray(d.moment_data) || gm === 1) { outD.push(d); continue; }
+        const m = d.moment_data, len = Math.floor(m.length / gm);
+        const out = new Array(len);
+        for (let j = 0; j < len; j++) {
+            let v = null;
+            for (let q = j * gm; q < (j + 1) * gm; q++) {
+                const x = m[q];
+                if (x === null || x === undefined) continue;
+                if (v === null || v === 'rf') { v = x; if (!useMax && v !== 'rf') break; continue; }
+                if (useMax && x !== 'rf' && x > v) v = x;
+            }
+            out[j] = v;
+        }
+        outD.push(Object.assign({}, d, { moment_data: out, gate_size: d.gate_size * gm, gate_count: len }));
+    }
+    return { data: outD, headers: outH };
+};
+
+// GWCFC: the last volume's decompressed bytes. Switching product or tilt
+// sends the same compressed file again; unpacking its bzip2 blocks is most
+// of the parse (two of Cancun's three seconds), so the unpacked copy is kept
+// and a repeat skips straight to reading it.
+let _plainCache = null;
+const fingerprint = (buf) => {
+    let h = buf.length;
+    const step = Math.max(1, Math.floor(buf.length / 997));
+    for (let i = 0; i < buf.length; i += step) h = (h * 31 + buf[i]) >>> 0;
+    return buf.length + ':' + h;
+};
+const plainVolume = (buf) => {
+    const key = fingerprint(buf);
+    if (_plainCache && _plainCache.key === key) return _plainCache.buf;
+    const raf = decompressL2(new RandomAccessFile(buf, BIG_ENDIAN));
+    const plain = raf.buffer;
+    _plainCache = { key, buf: plain };
+    return plain;
+};
+
+const MOMENT_LABEL = { reflect: 'reflectivity', velocity: 'velocity', spectrum: 'spectrum width',
+    zdr: 'differential reflectivity', phi: 'differential phase', rho: 'correlation coefficient' };
 // Every moment a layer needs. Hydrometeor class reads three at once.
-const getLevel2MomentsForLayer = (layer) => {
+const getLevel2MomentsForLayer = (layer, options = {}) => {
     if (String(layer || '').toUpperCase() === 'HCLS') return ['reflect', 'zdr', 'rho'];
     const m = getLevel2MomentForLayer(layer);
-    return m ? [m] : undefined;
+    if (!m) return undefined;
+    // The noise filter reads reflectivity to find the noise, whatever is drawn,
+    // and velocity to recognise it by.
+    return options && options.noise_filter ? [...new Set([m, 'reflect', 'velocity'])] : [m];
+};
+
+// GWCFC: a moment's radials with a radar's raw noise taken out (see
+// noiseMask in derived.js), for the radars that send it. The mask comes from
+// the reflectivity of the same cut; velocity is also checked on its own.
+const safeRef = (radar) => { try { return radar.getHighresReflectivity(); } catch (e) { return null; } };
+const denoise = (radar, layer, radials, thin) => {
+    // The other moments read here are thinned exactly as `radials` was, so
+    // radial i is the same beam in all of them.
+    const same = (d) => {
+        if (!thin || !Array.isArray(d)) return d;
+        const hs = radar.getHeader();
+        return Array.isArray(hs) && hs.length === d.length ? thin(d, hs).data : d;
+    };
+    if (!Array.isArray(radials)) return radials;
+    const ref = layer === 'REF' ? radials : same(safeRef(radar));
+    const hs = radar.getHeader();
+    const h0 = Array.isArray(hs) ? hs.find((h) => h && h.radial) : hs;
+    const nyq = Number(h0 && h0.radial && h0.radial.nyquist_velocity);
+    let vel = null;
+    try { vel = layer === 'VEL' ? radials : same(radar.getHighresVelocity()); } catch (e) { vel = null; }
+    const velOk = Array.isArray(vel) && vel.length === radials.length && nyq > 0;
+    let out = radials;
+    if (Array.isArray(ref) && ref.length === radials.length) {
+        out = applyNoiseMask(radials,
+            noiseMask(ref, velOk ? velocityCallsNoise(ref, vel, nyq) : undefined), ref);
+    }
+    if (layer === 'VEL') out = cleanVelocityNoise(out, nyq,
+        Array.isArray(ref) && ref.length === out.length ? ref : null);
+    else if (velOk) out = maskByVelocityNoise(out, vel, nyq);
+    return despeckle(out);
 };
 
 const getLevel2Vcp = (radar, header = null) => {
@@ -277,6 +376,13 @@ const processRadarData = (radar, radarLocation, extent, layer, options = {}) => 
         throw new Error(`No radar data available for layer: ${layer}`);
     }
 
+    // GWCFC: an oversampled sweep thinned to what the beam resolves (see
+    // thinSweep), before anything else touches it.
+    let headers = radar.getHeader();
+    const thin = options.thin === false ? null : (data, hs) => thinSweep(data, hs, layer);
+    if (thin && Array.isArray(headers) && headers.length === radarData.length) {
+        ({ data: radarData, headers } = thin(radarData, headers));
+    }
     const numberOfRadarIterations = radarData.length;
     const range = readRangeOptions(options);
     const project = createRadarProjector(radarLocation[0], radarLocation[1]);
@@ -285,7 +391,8 @@ const processRadarData = (radar, radarLocation, extent, layer, options = {}) => 
         && options.bbox.every(Number.isFinite) ? options.bbox : null;
     const builder = createMeshBuilder(includeGeojson, bbox);
     const scanIsPartial = Boolean(radar?.hasGaps || radar?.isTruncated);
-    const headers = radar.getHeader();
+
+    if (options && options.noise_filter) radarData = denoise(radar, layer, radarData, thin);
 
     const shouldDealiasLevel2Velocity = layer === 'VEL' && options?.enableVelocityDealias !== false;
 
@@ -831,13 +938,17 @@ const compactCut = (cut) => {
 
 // The lowest tilt that carries reflectivity, as the base every derived
 // picture is drawn on: its elevation number, mean angle, radials and headers.
-const baseSweep = (radar, cuts) => {
+const baseSweep = (radar, cuts, clean) => {
     for (const c of cuts) {
         radar.setElevation(c.el);
-        const data = radar.getHighresReflectivity();
+        let data = radar.getHighresReflectivity();
         if (Array.isArray(data) && data.some((d) => d && Array.isArray(d.moment_data))) {
-            const hs = radar.getHeader();
-            return { el: c.el, angle: c.a, data, headers: Array.isArray(hs) ? hs : [hs] };
+            const hs0 = radar.getHeader();
+            let headers = Array.isArray(hs0) ? hs0 : [hs0];
+            if (headers.length === data.length) ({ data, headers } = thinSweep(data, headers, 'REF'));
+            const thin = (d, hs) => thinSweep(d, hs, 'REF');
+            if (clean) data = denoise(radar, 'REF', data, thin);
+            return { el: c.el, angle: c.a, data, headers };
         }
     }
     return null;
@@ -864,15 +975,25 @@ const planCuts = (radar) => {
 const processDerived = (radar, radarLocation, layer, options = {}) => {
     const { cuts } = planCuts(radar);
     if (!cuts.length) throw new Error('no tilts in this volume');
-    const base = baseSweep(radar, cuts);
+    const clean = !!options.noise_filter;
+    const base = baseSweep(radar, cuts, clean);
     if (!base) throw new Error('no reflectivity in this volume');
+    // Every input thinned and cleaned here, so the builder below must not do
+    // either again (it would be reading the derived numbers as if they were dBZ).
+    const thinRef = (d, hs) => thinSweep(d, hs, 'REF');
+    const refPrep = (d, hs) => {
+        const t = hs.length === d.length ? thinRef(d, hs) : { data: d, headers: hs };
+        if (clean) t.data = denoise(radar, 'REF', t.data, thinRef);
+        return t;
+    };
     const limitKm = Number.isFinite(options.range_limit_km) && options.range_limit_km > 0
         ? options.range_limit_km : Infinity;
     let values;
     if (layer === 'HCLS') {
         radar.setElevation(base.el);
-        const zdr = compactCut(readCut(radar, base.el, () => radar.getHighresDiffReflectivity()));
-        const rho = compactCut(readCut(radar, base.el, () => radar.getHighresCorrelationCoefficient()));
+        const thinAs = (L) => (d, hs) => (hs.length === d.length ? thinSweep(d, hs, L) : { data: d, headers: hs });
+        const zdr = compactCut(readCut(radar, base.el, () => radar.getHighresDiffReflectivity(), thinAs('ZDR')));
+        const rho = compactCut(readCut(radar, base.el, () => radar.getHighresCorrelationCoefficient(), thinAs('CC')));
         if (!zdr && !rho) throw new Error('this radar sends no dual polarization data');
         values = base.data.map((d, i) => {
             const h = base.headers[i];
@@ -891,7 +1012,7 @@ const processDerived = (radar, radarLocation, layer, options = {}) => {
     } else {
         const stack = [];
         for (const c of cuts) {
-            const cut = compactCut(readCut(radar, c.el, () => radar.getHighresReflectivity()));
+            const cut = compactCut(readCut(radar, c.el, () => radar.getHighresReflectivity(), refPrep));
             if (cut) stack.push(cut);
         }
         const samples = [];
@@ -916,7 +1037,7 @@ const processDerived = (radar, radarLocation, layer, options = {}) => {
         });
     }
     const built = processRadarData(sweepOf(radar, base, values), radarLocation, null, 'REF',
-        Object.assign({}, options, layer === 'HCLS' ? { merge: 'first' } : {}));
+        Object.assign({}, options, { noise_filter: false, thin: false }, layer === 'HCLS' ? { merge: 'first' } : {}));
     return Object.assign(built, { base });
 };
 
@@ -925,7 +1046,8 @@ const processDerived = (radar, radarLocation, layer, options = {}) => {
 const volumeStormMotion = (radar) => {
     const { cuts } = planCuts(radar);
     for (const c of cuts) {
-        const cut = readCut(radar, c.el, () => radar.getHighresVelocity());
+        const cut = readCut(radar, c.el, () => radar.getHighresVelocity(),
+            (d, hs) => (hs.length === d.length ? thinSweep(d, hs, 'VEL') : { data: d, headers: hs }));
         if (cut) return estimateStormMotion(compactCut(cut));
     }
     return { u: 0, v: 0 };
@@ -948,9 +1070,10 @@ const processAccumulation = (buffers, options = {}) => {
             if (!head || !Number.isFinite(t)) continue;
             // The same scan twice (a file fetched again) is still one scan's rain.
             if (vols.some((v) => v.t === t)) continue;
-            const base = baseSweep(radar, cuts);
+            const clean = !!options.noise_filter;
+            const base = baseSweep(radar, cuts, clean);
             if (!base) continue;
-            const cut = compactCut(readCut(radar, base.el, () => radar.getHighresReflectivity()));
+            const cut = compactCut(readCut(radar, base.el, () => base.data, (d) => ({ data: d, headers: base.headers })));
             if (!cut) continue;
             vols.push({ t, cut });
             if (!newest || t > newest.t) newest = { t, radar, base, head };
@@ -982,7 +1105,8 @@ const processAccumulation = (buffers, options = {}) => {
         return Object.assign({}, d, { moment_data: out });
     });
     const loc = [newest.head.volume.latitude, newest.head.volume.longitude];
-    const built = processRadarData(sweepOf(newest.radar, base, values), loc, null, 'REF', options);
+    const built = processRadarData(sweepOf(newest.radar, base, values), loc, null, 'REF',
+        Object.assign({}, options, { noise_filter: false, thin: false }));
     return Object.assign(built, {
         timeIso: new Date(newest.t).toISOString(),
         elevationAngle: base.angle,
@@ -1149,10 +1273,22 @@ self.onmessage = (event) => {
                 timing: { parserStartMs, parserEndMs: parserStartMs, meshEndMs }
             }, [r.meshData.buffer]);
         } else {
-            const radar = new Level2Radar(buffer, {
+            const seenMoments = new Set();
+            const radar = new Level2Radar(plainVolume(buffer), {
                 logger: false,
-                includeMoments: getLevel2MomentsForLayer(layer)
+                includeMoments: getLevel2MomentsForLayer(layer, options),
+                seenMoments
             });
+            // GWCFC: a radar that does not measure this product at all (many
+            // MRRL radars send only reflectivity and velocity) says so, and
+            // says what it does send, instead of failing as an empty volume.
+            const needs = getLevel2MomentsForLayer(layer) || [];
+            const lacking = needs.filter((m) => !seenMoments.has(m));
+            if (seenMoments.size && lacking.length) {
+                self.postMessage({ type: 'error', missing: lacking[0], moments: [...seenMoments],
+                    message: `this radar does not send ${MOMENT_LABEL[lacking[0]] || lacking[0]}` });
+                return;
+            }
             parserEndMs = toEpochMs(performance.now());
 
             const elevations = radar.listElevations();
@@ -1279,7 +1415,10 @@ self.onmessage = (event) => {
                 // actually carries, so the list rides back with the result.
                 availableElevations: elevations,
                 elevationAngles,
-                elevationNumber: radar.elevation
+                elevationNumber: radar.elevation,
+                // Which moments this volume carries, so the menu can offer
+                // only the products this radar makes.
+                moments: [...seenMoments]
             };
 
             self.postMessage({
