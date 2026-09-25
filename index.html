@@ -65,18 +65,24 @@ if ('serviceWorker' in navigator) {
     reg.update().catch(() => {});
     setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
   }).catch(() => {});
-  // sw.js calls skipWaiting, so a new worker takes over mid-session. Reload once
-  // so the page and the worker are the same version, guarding against the reload
-  // loop this causes if the worker is replaced again during startup.
-  let _swReloaded = false;
-  // Only when an old worker was replaced. On a first visit there is no old
-  // worker: the new one simply takes charge, and reloading for that threw
-  // away the whole first load and did it all again, every request twice.
+  // sw.js calls skipWaiting, so a new worker takes over mid-session. This used
+  // to reload the page when it did, and the update check that finds a new
+  // worker runs when a backgrounded tab wakes up, so coming back to the tab
+  // after any release threw away the whole session: the map, the layers, the
+  // loop, a half-drawn cone. It no longer reloads. The page carries on (its
+  // data refreshes by itself), and the new version is what the next visit
+  // opens. A quiet note says so, once.
   const _swHadController = !!navigator.serviceWorker.controller;
+  let _swNoted = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (_swReloaded || !_swHadController) return;
-    _swReloaded = true;
-    location.reload();
+    if (_swNoted || !_swHadController) return;
+    _swNoted = true;
+    const say = () => { try { showToast('An update is ready. It loads the next time you open the app.', 5000); } catch (e) {} };
+    if (document.hidden) document.addEventListener('visibilitychange', function once() {
+      if (document.hidden) return;
+      document.removeEventListener('visibilitychange', once);
+      setTimeout(say, 1500);
+    }); else say();
   });
 }
 </script>
@@ -44778,8 +44784,9 @@ function _txtOpenNativePicker() {
 // -- STORM CONE TOOL ------------------------------------------------------
 // Drag once on the map to draw a threat cone (direction + spread based on
 // the drag), then list every city from CITIES that falls inside it, with
-// distance/ETA/arrival based on an editable storm speed. Single cone at a
-// time, no undo/redo , redrawing or hitting "+ New" just replaces it.
+// distance/ETA/arrival based on an editable storm speed. "+ New" keeps the
+// cone on the map and starts another; clicking the map instead replaces the
+// one on screen, and Back brings a replaced cone back.
 const SC_EARTH_RADIUS_MILES = 3958.7613;
 const SC_ARC_SEGMENTS = 28;
 const SC_MIN_TRACK_MILES = 1;
@@ -45302,6 +45309,7 @@ function _scSyncMultiBtns() {
 
 // One click, one point. The cone previews live from two points on.
 function _scMultiClick(latlng) {
+  if (!_scMultiPts.length) _scRememberReplaced();
   _scMultiPts.push(latlng);
   _scMultiPreview(null);
   _scSyncMultiBtns();
@@ -45384,6 +45392,8 @@ function toggleStormConeTool() {
   map.getContainer().addEventListener('touchstart', _onScTouchStart, { passive: false });
   map.getContainer().addEventListener('touchmove', _onScTouchMove, { passive: false });
   _scSyncModeUi();
+  _scSyncBackBtn();
+  _scSyncIssueBtn();
 }
 
 function _scSetStatus(msg) {
@@ -47089,7 +47099,9 @@ function _onScClick(e) {
   if (_scMode === 'multi') { _scMultiClick(e.latlng); return; }
 
   if (!_scFirstPoint) {
-    // First click - set start point
+    // First click - set start point. The cone on screen is about to be
+    // replaced by this one, so it is kept for the Back button first.
+    _scRememberReplaced();
     _scFirstPoint = e.latlng;
     _scWarningShown = false;
     _scDragPath = [_scFirstPoint];
@@ -47106,7 +47118,9 @@ function _onScClick(e) {
     _scTrack = _scBuildTrack(_scDragPath);
     _scFinishDrag();
     _scFirstPoint = null;
-    map.off('mousemove', _onScMove);
+    // The move handler stays on: it does nothing until the next first click,
+    // and turning it off here left every cone after the first with no
+    // preview until its second click.
   }
 }
 
@@ -47122,6 +47136,7 @@ function _onScTouchStart(e) {
   if (_scMode === 'multi') { _scMultiClick(latlng); return; }
 
   if (!_scFirstPoint) {
+    _scRememberReplaced();
     _scFirstPoint = latlng;
     _scDragPath = [_scFirstPoint];
     _scSetStatus('Now touch second point OR move to preview. <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-warning></use></svg> TOUCH TRACKING ON');
@@ -47130,7 +47145,6 @@ function _onScTouchStart(e) {
     _scTrack = _scBuildTrack(_scDragPath);
     _scFinishDrag();
     _scFirstPoint = null;
-    map.getContainer().removeEventListener('touchmove', _onScTouchMove);
   }
 }
 function _onScTouchMove(e) {
@@ -47423,6 +47437,92 @@ function _scSaveImage() {
   });
 }
 
+// -- BACK: undo an accidental new cone -------------------------------------
+// Clicking the map with a cone on screen starts a new cone, and the new one
+// takes the old one's place. Done by accident, that used to erase the old
+// cone for good. Now the cone being replaced is kept first, with everything
+// it was drawn with, and Back puts it back (and drops the new one). Several
+// in a row step back one at a time.
+const SC_BACK_MAX = 20;
+let _scBackStack = [];
+function _scRememberReplaced() {
+  if (!_scTrack || !_scTrack.ring) return;
+  _scBackStack.push({
+    track: _scTrack, id: _scActiveConeId, color: _scActiveConeColor,
+    style: { ..._scStyle }, speed: _scGetSpeedMph(), curve: _scGetCurve(),
+    dots: _scGetDots(), offset: _scGetOffset(), width: _scGetWidth(),
+    mode: _scTrack.mode === 'multi' ? 'multi' : 'drag',
+  });
+  if (_scBackStack.length > SC_BACK_MAX) _scBackStack.shift();
+  // The replacement is a new cone, with its own number, not the old one's.
+  _scActiveConeId = null; _scActiveConeColor = null;
+  _scSyncBackBtn();
+}
+function _scSyncBackBtn() {
+  const b = document.getElementById('sc-back-btn');
+  if (!b) return;
+  b.disabled = !_scBackStack.length;
+  b.style.opacity = _scBackStack.length ? '' : '0.35';
+}
+function _scBack() {
+  const snap = _scBackStack.pop();
+  if (!snap) return;
+  // Whatever is half drawn or drawn in its place goes.
+  _scFirstPoint = null; _scDragPath = []; _scMultiPts = [];
+  _scSetMode(snap.mode);
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set('sc-speed-input', snap.speed); set('sc-curve-input', snap.curve);
+  set('sc-dots-input', snap.dots);   set('sc-offset-input', snap.offset);
+  set('sc-width-input', snap.width);
+  _scStyle = { ...snap.style };
+  _scTrack = snap.track;
+  _scActiveConeId = snap.id; _scActiveConeColor = snap.color;
+  _scEditingPointIdx = null;
+  _scRenderCone();
+  _scComputeAndShowResults();
+  _scRebuildConeList();
+  _scSyncBackBtn();
+  _scSyncMultiBtns();
+  _scSetStatus('Brought back the cone the new one replaced.');
+}
+
+// Forecasters only: issue the cones straight from the toolbar, through the
+// Forecaster Desk's own Issue, so it is the same document, the same rules
+// and the same archive. The outlook in force is read first, so issuing
+// cones keeps its storms and areas rather than replacing them with nothing.
+async function _scIssue() {
+  if (typeof _fdPublish !== 'function') return;
+  const p = await _fdLoadProfile(true);
+  if (!_fdIsForecaster(p)) {
+    _scSetStatus('Only forecasters can issue cones.');
+    _scSyncIssueBtn();
+    return;
+  }
+  const n = _scCones.length + (_scTrack && _scTrack.ring ? 1 : 0);
+  if (!n) { _scSetStatus('Draw a cone first, then issue it.'); return; }
+  const ok = window.confirm(`Issue ${n} forecast cone${n === 1 ? '' : 's'} to everyone now?\n\n`
+    + 'They replace the cones in the GWCFC outlook in force. Its storms and '
+    + 'areas stay as they are.');
+  if (!ok) return;
+  const btn = document.getElementById('sc-issue-btn');
+  if (btn) btn.disabled = true;
+  _fdStatusSink = (msg) => _scSetStatus(msg);
+  try {
+    await _fdSeedFromPublished();
+    await _fdPublish();
+  } finally {
+    _fdStatusSink = null;
+    if (btn) btn.disabled = false;
+  }
+}
+async function _scSyncIssueBtn() {
+  const b = document.getElementById('sc-issue-btn');
+  if (!b) return;
+  let may = false;
+  try { may = typeof _fdIsForecaster === 'function' && _fdIsForecaster(await _fdLoadProfile()); } catch (e) {}
+  b.style.display = may ? '' : 'none';
+}
+
 // Freeze the active cone in place (keeps its layers on the map) so a new one
 // can be drawn on top without erasing it. Snapshots the full per-cone
 // config (speed/curve/dots/offset/style), not just the rendered layers, so
@@ -47460,6 +47560,7 @@ function _scClearAll() {
   _scCones.forEach(c => [c.polygon, c.centerLine, c.dotLayer].forEach(l => { if (l) { try { map.removeLayer(l); } catch(e){} } }));
   _scCones = [];
   _scTrack = null;
+  _scBackStack = []; _scSyncBackBtn();
   _scActiveConeId = null; _scActiveConeColor = null; _scNextConeId = 1;
   _scEditingPointIdx = null;
   _scRenderCone();
@@ -74652,6 +74753,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-zzz', date: 'Sep 25, 2026',
+    text: 'Switching to another tab and back no longer reloads the app. It used to reload whenever a new version had come out while you were away, which lost your map and everything on it. Now the app carries on, the radar and alerts catch up in the background, and the new version loads the next time you open it. The Storm Cone tool has a Back button: if you start a new cone by accident and it replaces the one you had, Back brings the old one back. Forecasters also get an Issue button on the Storm Cone toolbar, to publish their cones straight from the map.' },
   { id: '2026-09-25-zz', date: 'Sep 25, 2026',
     text: 'Fixed radar site markers that sat in the wrong place, away from the middle of their own radar picture. Five sites had wrong coordinates in the map: KIWX (Northern Indiana) was 58 km off, KMXX (East Alabama) 186 km, KHDC (Hammond, Louisiana) 208 km, KDDC (Dodge City) 4 km and KFDX (Cannon AFB) 1 km. Every site now uses NOAA\'s official location, and a check makes sure they stay that way.' },
   { id: '2026-09-25-z', date: 'Sep 25, 2026',
@@ -77093,6 +77196,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <input type="number" id="sc-offset-input" min="-50" max="50" step="5" value="0" oninput="_scOnOffsetChange()" title="Storm center line offset (%)">
   </div>
   <div class="sc-tb-row">
+    <button class="dtb-btn" id="sc-back-btn" onclick="_scBack()" disabled style="opacity:0.35" title="Bring back the cone that starting a new one replaced">&#8630; Back</button>
     <button class="dtb-btn" id="sc-finish-btn" onclick="_scMultiFinish()" style="display:none" title="Finish the multi-point cone with the points placed so far">&#10003; Finish</button>
     <button class="dtb-btn" id="sc-undo-btn" onclick="_scMultiUndo()" style="display:none" title="Remove the most recent point">&#8617; Undo Point</button>
     <button class="dtb-btn" id="sc-style-btn" onclick="_scToggleStyle(event)" title="Cone colors &amp; opacity"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-palette></use></svg> Style</button>
@@ -77103,6 +77207,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="dtb-sep"></div>
     <button class="dtb-btn" id="sc-results-btn" onclick="_scToggleResults(event)" title="Show city list"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-menu></use></svg> Cities</button>
     <button class="dtb-btn" id="sc-new-btn" onclick="_scNew()" title="Start a new cone">+ New</button>
+    <button class="dtb-btn" id="sc-issue-btn" onclick="_scIssue()" style="display:none" title="Forecasters: issue these cones to everyone as part of the GWCFC outlook">&#128227; Issue</button>
   </div>
   <div id="sc-tb-list"></div>
 </div>
@@ -87444,6 +87549,7 @@ async function _fdLoadProfile(force) {
 // disabled control that says "issue products" is an invitation to ask why,
 // and there is nothing useful to answer someone who is not a forecaster.
 async function _fdSyncButton() {
+  if (typeof _scSyncIssueBtn === 'function') { try { _scSyncIssueBtn(); } catch (e) {} }
   const g = document.getElementById('fd-settings-group');
   if (!g) return;
   let may = false;
@@ -87974,9 +88080,11 @@ async function _fdPublish() {
 }
 
 // -- The panel -------------------------------------------------------------
+let _fdStatusSink = null;   // the cone toolbar, while it is the one issuing
 function _fdStatus(msg) {
   const el = document.getElementById('fd-status');
   if (el) el.textContent = msg || '';
+  if (_fdStatusSink) { try { _fdStatusSink(msg || ''); } catch (e) {} }
 }
 
 function _fdShow() {
