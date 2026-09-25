@@ -7643,6 +7643,16 @@ body.theme-picking, body.theme-picking * { cursor: crosshair !important; }
   border-bottom-right-radius: 16px;
 }
 #lqm-ai-overlay.ai-sized { max-height: none; max-width: none; }
+/* The same corner grip on every other panel. It lives on the page itself
+   (not inside the panel) so a panel that scrolls cannot scroll it away; the
+   code keeps it sitting on the panel's bottom-right corner. */
+.panel-grip {
+  position: fixed; left: 0; top: 0; width: 18px; height: 18px; display: none;
+  cursor: nwse-resize; z-index: 2147483000; touch-action: none;
+  background: linear-gradient(135deg, transparent 0 50%, rgba(255,255,255,0.4) 50% 58%, transparent 58% 68%,
+                              rgba(255,255,255,0.4) 68% 76%, transparent 76%);
+}
+.panel-grip.on { display: block; }
 
 /* -- LIVE CHAT (bridged with Discord) -- */
 #lqm-chat-overlay {
@@ -68930,6 +68940,214 @@ function _aiWireResize() {
     el.style.left = ''; el.style.top = ''; el.style.transform = '';   // back to centre, too
   });
 }
+// -- Every panel can be resized ----------------------------------------------
+// Asturio's corner grip, for the rest of the app. Rather than wiring each of
+// the fifty-odd panels by hand (and missing the ones built on the fly, like
+// soundings and meteograms), this looks every so often for any panel on
+// screen and gives it a grip. A panel is anything whose id ends in -panel,
+// -overlay or -modal, plus the models-style panels. A see-through backdrop
+// that covers the whole screen is skipped, and the card inside it gets the
+// grip instead. Each panel's size is saved by its id; double-click the grip
+// to put that panel back to normal.
+const PANEL_SIZE_KEY = 'gwcfc_panel_sizes';
+const _PR_SEL = '[id$="-panel"], [id$="-overlay"], [id$="-modal"], .models-style-panel, [data-resizable]';
+const _PR_PROPS = ['width', 'height', 'maxWidth', 'maxHeight', 'minWidth', 'minHeight', 'boxSizing',
+                   'overflow', 'left', 'top', 'right', 'bottom', 'transform', 'margin'];
+const _prGrips = new Map();            // panel -> its grip
+function _prSizes() {
+  try { return JSON.parse(localStorage.getItem(PANEL_SIZE_KEY) || '{}') || {}; } catch (e) { return {}; }
+}
+function _prSave(key, v) {
+  const all = _prSizes();
+  if (v) all[key] = v; else delete all[key];
+  try { localStorage.setItem(PANEL_SIZE_KEY, JSON.stringify(all)); } catch (e) {}
+}
+// The panel's own inline styles, kept the first time we touch it, so a
+// reset hands back exactly what the panel had.
+function _prRemember(el) {
+  if (el._prOrig) return;
+  el._prOrig = {};
+  _PR_PROPS.forEach(p => { el._prOrig[p] = el.style[p]; });
+}
+function _prReset(el) {
+  if (!el._prOrig) return;
+  _PR_PROPS.forEach(p => { el.style[p] = el._prOrig[p]; });
+  el._prOrig = null;
+}
+function _prApply(el, w, h) {
+  const W = Math.round(Math.max(200, Math.min(w, window.innerWidth - 16)));
+  const H = Math.round(Math.max(120, Math.min(h, window.innerHeight - 16)));
+  _prRemember(el);
+  const s = el.style;
+  s.boxSizing = 'border-box';          // so the width set is the width seen
+  s.width = W + 'px'; s.height = H + 'px';
+  s.maxWidth = 'none'; s.maxHeight = 'none'; s.minWidth = '0'; s.minHeight = '0';
+  // Made smaller than what is in it: scroll, rather than spill out.
+  if (getComputedStyle(el).overflow === 'visible' && (el.scrollHeight > H + 2 || el.scrollWidth > W + 2)) s.overflow = 'auto';
+}
+// A floating panel is held by its top-left corner while it is resized, so
+// the corner being dragged stays under the finger. Panels that sit in the
+// page's flow (centred in a backdrop) are left where they are.
+function _prPin(el) {
+  const cs = getComputedStyle(el);
+  if (cs.position !== 'fixed' && cs.position !== 'absolute') return false;
+  const r = el.getBoundingClientRect();
+  let L = r.left, T = r.top;
+  const op = cs.position === 'absolute' ? el.offsetParent : null;
+  if (op) { const o = op.getBoundingClientRect(); L = r.left - o.left - op.clientLeft + op.scrollLeft; T = r.top - o.top - op.clientTop + op.scrollTop; }
+  _prApply(el, r.width, r.height);
+  const s = el.style;
+  s.transform = 'none'; s.margin = '0'; s.right = 'auto'; s.bottom = 'auto';
+  s.left = L + 'px'; s.top = T + 'px';
+  return true;
+}
+// On screen, big enough to be a panel, and not faded out.
+function _prShown(el) {
+  if (!el.isConnected) return null;
+  const r = el.getBoundingClientRect();
+  if (r.width < 120 || r.height < 80) return null;
+  if (r.right < 0 || r.bottom < 0 || r.left > window.innerWidth || r.top > window.innerHeight) return null;
+  const cs = getComputedStyle(el);
+  if (cs.visibility === 'hidden' || +cs.opacity < 0.05) return null;
+  return r;
+}
+const _prCovers = (r) => r.width >= window.innerWidth * 0.9 && r.height >= window.innerHeight * 0.9;
+function _prMoveGrip(g, r) {
+  const x = Math.round(r.right - 18), y = Math.round(r.bottom - 18);
+  if (g._x === x && g._y === y) return;
+  g._x = x; g._y = y;
+  g.style.transform = `translate(${x}px, ${y}px)`;
+}
+function _prAttach(el, key) {
+  const g = document.createElement('div');
+  g.className = 'panel-grip';
+  g.title = 'Drag to resize (double-click to reset)';
+  document.body.appendChild(g);
+  _prGrips.set(el, g);
+  g.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const r0 = el.getBoundingClientRect();
+    const pinned = _prPin(el);
+    const x0 = e.clientX, y0 = e.clientY;
+    let gx = 1, gy = 1, plain = false;
+    try { g.setPointerCapture(e.pointerId); } catch (err) {}
+    const move = (ev) => {
+      const dx = ev.clientX - x0, dy = ev.clientY - y0;
+      if (pinned || plain) {
+        const r = el.getBoundingClientRect();
+        _prApply(el, Math.min(r0.width + dx, window.innerWidth - r.left - 8),
+                     Math.min(r0.height + dy, window.innerHeight - r.top - 8));
+      } else {
+        // A centred panel grows on both sides, so its corner moves at half
+        // speed. Grow it until the corner meets the pointer, learning how
+        // fast the corner moves as it goes.
+        const tx = r0.right + dx, ty = r0.bottom + dy;
+        let r = el.getBoundingClientRect();
+        for (let i = 0; i < 4; i++) {
+          const ex = tx - r.right, ey = ty - r.bottom;
+          if (Math.abs(ex) < 1 && Math.abs(ey) < 1) break;
+          _prApply(el, r.width + ex * gx, r.height + ey * gy);
+          const r2 = el.getBoundingClientRect();
+          const kx = Math.abs(r2.width - r.width) > 2 ? (r2.right - r.right) / (r2.width - r.width) : null;
+          const ky = Math.abs(r2.height - r.height) > 2 ? (r2.bottom - r.bottom) / (r2.height - r.height) : null;
+          if ((kx !== null && kx < 0.2) || (ky !== null && ky < 0.2)) { plain = true; break; }
+          if (kx) gx = 1 / kx;
+          if (ky) gy = 1 / ky;
+          r = r2;
+        }
+      }
+      _prMoveGrip(g, el.getBoundingClientRect());
+    };
+    const up = () => {
+      g.removeEventListener('pointermove', move);
+      g.removeEventListener('pointerup', up);
+      g.removeEventListener('pointercancel', up);
+      const b = el.getBoundingClientRect();
+      _prSave(key, { w: Math.round(b.width), h: Math.round(b.height) });
+    };
+    g.addEventListener('pointermove', move);
+    g.addEventListener('pointerup', up);
+    g.addEventListener('pointercancel', up);
+  });
+  g.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    _prSave(key, null);
+    _prReset(el);
+    _prBurst(400);
+  });
+  // A size saved earlier comes back the first time the panel shows, fitted
+  // to this screen and slid back on it if it would run off an edge.
+  const saved = _prSizes()[key];
+  if (saved && isFinite(saved.w) && isFinite(saved.h)) {
+    _prApply(el, saved.w, saved.h);
+    const r = el.getBoundingClientRect();
+    const ox = Math.max(0, r.right - (window.innerWidth - 8)), oy = Math.max(0, r.bottom - (window.innerHeight - 8));
+    if ((ox || oy) && _prPin(el)) {
+      el.style.left = (parseFloat(el.style.left) - Math.min(ox, Math.max(0, r.left - 8))) + 'px';
+      el.style.top = (parseFloat(el.style.top) - Math.min(oy, Math.max(0, r.top - 8))) + 'px';
+    }
+  }
+}
+function _prScan() {
+  if (document.hidden || !document.body) return;
+  const seen = new Set();
+  const phone = window.innerWidth < 700;
+  document.querySelectorAll(_PR_SEL).forEach(c => {
+    if (c.closest('#lqm-ai-overlay, .leaflet-pane, [data-no-resize]')) return;   // Asturio has its own
+    let el = c, r = _prShown(c);
+    if (!r) return;
+    if (_prCovers(r)) {
+      // A backdrop: the card inside it is the panel.
+      el = null;
+      for (const k of c.children) {
+        const kr = _prShown(k);
+        if (kr && !_prCovers(kr)) { el = k; r = kr; break; }
+      }
+      if (!el) return;
+    }
+    if (seen.has(el)) return;
+    for (let a = el.parentElement; a; a = a.parentElement) if (seen.has(a)) return;   // a panel inside a panel
+    if (phone && r.width >= window.innerWidth - 4) return;   // a full-width phone sheet
+    seen.add(el);
+    if (!_prGrips.has(el)) _prAttach(el, el.id || ((c.id || 'panel') + '-card'));
+  });
+  _prGrips.forEach((g, el) => {
+    if (!el.isConnected) { g.remove(); _prGrips.delete(el); return; }
+    let on = seen.has(el);
+    if (on) {
+      const r = el.getBoundingClientRect();
+      // Hidden when something else sits over the panel's corner.
+      const hit = document.elementsFromPoint(r.right - 10, r.bottom - 10).find(n => !n.classList.contains('panel-grip'));
+      if (hit && !el.contains(hit)) on = false;
+      else _prMoveGrip(g, r);
+    }
+    g.classList.toggle('on', on);
+  });
+}
+// The grip follows its panel frame by frame only while something is moving
+// (a drag, an opening animation); the rest of the time the scan keeps it
+// placed, so an idle page does no work for it.
+let _prBurstUntil = 0, _prRaf = 0;
+function _prBurst(ms) {
+  _prBurstUntil = Math.max(_prBurstUntil, performance.now() + ms);
+  if (_prRaf || !_prGrips.size) return;
+  const tick = () => {
+    _prGrips.forEach((g, el) => { if (g.classList.contains('on')) _prMoveGrip(g, el.getBoundingClientRect()); });
+    _prRaf = performance.now() < _prBurstUntil ? requestAnimationFrame(tick) : 0;
+  };
+  _prRaf = requestAnimationFrame(tick);
+}
+(function _prInit() {
+  const go = () => {
+    setInterval(_prScan, 700);
+    document.addEventListener('pointermove', (e) => { if (e.buttons) _prBurst(300); }, { passive: true });
+    document.addEventListener('pointerup', () => { _prBurst(600); setTimeout(_prScan, 80); }, true);
+    document.addEventListener('keyup', () => setTimeout(_prScan, 80));
+    window.addEventListener('resize', () => _prBurst(300));
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
+})();
+
 function lqmOpenAI() {
   document.getElementById('lqm-ai-overlay')?.classList.add('lqm-panel-open');
   _aiWireResize();
@@ -73858,6 +74076,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-j', date: 'Sep 25, 2026',
+    text: 'Every panel can now be resized, just like the Asturio window. Drag the little striped corner at the bottom right of any open panel (Settings, alerts, forecasts, soundings, model panels and the rest) to make it bigger or smaller. Each panel remembers its size, and double-clicking the corner puts it back to normal.' },
   { id: '2026-09-25-i', date: 'Sep 25, 2026',
     text: 'More fixes from the testing log. Radar tiles load up to four times faster: they now download from the tile server and its three mirrors at once instead of waiting in one line of six. Smoothing is now per product (Settings > Display): Single-Site Smoothing with a switch for each product, MRMS Smoothing on its own, and a Reflectivity Filter slider. Satellite sectors work on the first tap: picking one turns the satellite on and takes the map there. The Asturio window can be resized from its corner (double-click the corner to reset). Zooming out is gentler, and there is a new Zoom Speed setting. The Forecaster Desk fits phone screens and its map no longer says API KEY REQUIRED.' },
   { id: '2026-09-25-h', date: 'Sep 25, 2026',
