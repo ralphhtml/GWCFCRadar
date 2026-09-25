@@ -757,6 +757,36 @@ OnUnitActiveSec=1d
 WantedBy=timers.target
 EOF
 
+# Accumulated Cyclone Energy for every basin (pi/ace_pipeline.py): this
+# season's running total against the 1991-2020 normal, from NOAA's IBTrACS
+# and NHC best tracks. Light: a few megabytes and seconds of work, and the
+# 144 MB record since 1980 only once a week for the normal.
+cat > "$UNITS/gwcfc-ace.service" <<EOF
+[Unit]
+Description=Accumulated Cyclone Energy, every basin (ace.json)
+
+[Service]
+Type=oneshot
+ExecStart=$VENV/bin/python $REPO/pi/ace_pipeline.py
+TimeoutStartSec=1800
+Nice=10
+EOF
+
+cat > "$UNITS/gwcfc-ace.timer" <<'EOF'
+[Unit]
+Description=ACE, hourly
+
+[Timer]
+# A minute after install so the overlay has data the same hour, then hourly:
+# NHC's best tracks move every six hours and IBTrACS once a day, so hourly
+# never misses either by much.
+OnActiveSec=1min
+OnUnitActiveSec=1h
+
+[Install]
+WantedBy=timers.target
+EOF
+
 # Keeping itself current. Without this the Pi runs whatever was cloned until
 # somebody remembers to pull, which is how it ends up an hour of debugging away
 # from a bug that was fixed days ago.
@@ -955,6 +985,7 @@ systemctl --user enable --now gwcfc-lows.timer     >/dev/null 2>&1
 systemctl --user enable --now gwcfc-ensfields.timer >/dev/null 2>&1
 systemctl --user enable --now gwcfc-spag.timer     >/dev/null 2>&1
 systemctl --user enable --now gwcfc-mrrl.timer     >/dev/null 2>&1
+systemctl --user enable --now gwcfc-ace.timer      >/dev/null 2>&1
 systemctl --user enable --now gwcfc-feeds.timer    >/dev/null 2>&1
 systemctl --user enable --now gwcfc-update.timer   >/dev/null 2>&1
 # The publishing account, BEFORE the publisher is started.
