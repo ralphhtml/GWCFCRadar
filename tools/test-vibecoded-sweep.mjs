@@ -44,6 +44,7 @@
  */
 
 import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync as _lfRead, existsSync as _lfHas } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -177,6 +178,15 @@ if (!chromium) {
   const errs = [];
   p.on('pageerror', e => errs.push(String(e).slice(0, 160)));
 
+  await p.route(/leaflet@[\d.]+\/dist\/leaflet\.(js|css)$/, r => {
+    // Served from a local copy when there is one, so the page does not
+    // depend on reaching the CDN from wherever the test runs.
+    const LF = process.env.LEAFLET_DIST || '/tmp/node_modules/leaflet/dist';
+    const css = r.request().url().endsWith('.css');
+    const file = LF + (css ? '/leaflet.css' : '/leaflet.js');
+    if (!_lfHas(file)) return r.continue();
+    return r.fulfill({ contentType: css ? 'text/css' : 'application/javascript', body: _lfRead(file, 'utf8') });
+  });
   await p.goto('file://' + join(ROOT, 'index.html'),
                { waitUntil: 'domcontentloaded' });
   await p.waitForTimeout(2600);
