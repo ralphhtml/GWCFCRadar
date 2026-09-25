@@ -13796,7 +13796,7 @@ let lastPastIdx = 0;
 
 // -- IEM NOAA L3 N0Q composite frame fetch --
 // IEM NEXRAD composites run every 5 min at predictable times - compute timestamps directly.
-// No API call needed; tiles exist at mesonet.agron.iastate.edu/cache/tile.py/.../nexrad-n0q-{key}/...
+// No API call needed; tiles exist at mesonet.agron.iastate.edu/cache/tile.py/.../ridge::USCOMP-N0Q-{key}/...
 // `endMs`, when given, is the mosaic time machine's moment: the loop then
 // ends there instead of at the live edge, and needs no publishing lag.
 function _generateL3Frames(count, endMs) {
@@ -13916,9 +13916,13 @@ const _radarFrameHasTiles = [];
 let _firstValidFrame = 0;  // oldest frame index with confirmed tile data
 
 // IEM NEXRAD: pre-rendered tile cache loads in ~100ms/tile; WMS fallback on first error
-const IEM_TILE_BASE    = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-';
+// Iowa Mesonet names a past national mosaic ridge::USCOMP-N0Q-<time>. The
+// old nexrad-n0q-<time> name now answers 404 for every time, which quietly
+// sent every frame to the slow WMS fallback (and made the loop flicker as
+// frames swapped over one by one).
+const IEM_TILE_BASE    = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::USCOMP-N0Q-';
 // The same tiles, with {s} standing for '', '1', '2' or '3' (the mirrors).
-const IEM_TILE_SHARD   = 'https://mesonet{s}.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-';
+const IEM_TILE_SHARD   = 'https://mesonet{s}.agron.iastate.edu/cache/tile.py/1.0.0/ridge::USCOMP-N0Q-';
 const IEM_NEXRAD_WMS   = 'https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q-t.cgi';
 const IEM_NEXRAD_LAYER = 'nexrad-n0q-wmst';
 // Before N0Q existed (it starts November 2010), Iowa Mesonet's national
@@ -74076,6 +74080,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-k', date: 'Sep 25, 2026',
+    text: 'Fixed the radar flashing and flickering. Iowa Mesonet renamed its fast radar picture tiles, so every radar frame had been quietly falling back to a much slower backup. Frames kept swapping over as that backup loaded, which made the map flash, and clicking set off another round of reloads. The radar now uses the new names, loads fast again and stays steady.' },
   { id: '2026-09-25-j', date: 'Sep 25, 2026',
     text: 'Every panel can now be resized, just like the Asturio window. Drag the little striped corner at the bottom right of any open panel (Settings, alerts, forecasts, soundings, model panels and the rest) to make it bigger or smaller. Each panel remembers its size, and double-clicking the corner puts it back to normal.' },
   { id: '2026-09-25-i', date: 'Sep 25, 2026',
