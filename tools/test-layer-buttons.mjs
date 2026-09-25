@@ -290,8 +290,10 @@ console.log('\n5. every overlay pill flips, and flips back');
      r.every(x => x.flipped), JSON.stringify(r.filter(x => !x.flipped).map(x => x.id)));
   ok('and returns to where it started on the second',
      r.every(x => x.restored), JSON.stringify(r.filter(x => !x.restored).map(x => x.id)));
-  ok('the three that are on by default started lit',
-     ['alerts', 'forecasts', 'fronts'].every(id => r.find(x => x.id === id)?.start === true));
+  // Forecast dots start on only in Lite-ning mode; this is a Wx-pert boot.
+  ok('the ones that are on by default started lit (alerts and fronts)',
+     ['alerts', 'fronts'].every(id => r.find(x => x.id === id)?.start === true),
+     JSON.stringify(r.filter(x => x.start).map(x => x.id)));
 }
 
 console.log('\n6. satellite sector pills and an info button');

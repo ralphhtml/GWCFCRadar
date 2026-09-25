@@ -162,9 +162,11 @@ console.log('\n3. a shot shows ONLY what its link asks for');
      fc.forecasts === true && fc.cityMarkers > 0, JSON.stringify(fc));
 
   const deep = await boot('?lat=35&lon=-97&z=5');
+  // The forecast dots (and the city markers they bring) start on only in
+  // Lite-ning mode now; a Wx-pert boot, which is what this is, leaves them off.
   ok('a plain deep link (no shot) leaves the friendly defaults alone',
-     deep.forecasts === true && deep.tornado === true && deep.fronts === true
-     && deep.cityMarkers > 0, JSON.stringify(deep));
+     deep.tornado === true && deep.fronts === true && deep.alertsPane === true
+     && deep.forecasts === (deep.cityMarkers > 0), JSON.stringify(deep));
 
   ok('nothing threw across the boots', errs.length === 0, errs.slice(0, 3).join(' | '));
 

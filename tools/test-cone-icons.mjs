@@ -25,6 +25,7 @@
  */
 
 import { readdirSync, existsSync } from 'fs';
+import { readFileSync as _lfRead, existsSync as _lfHas } from 'node:fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -96,6 +97,15 @@ page.on('pageerror', e => errors.push(e.message));
 await page.addInitScript(LEAFLET_REAL_ENOUGH);
 await page.route('**://**', (r) =>
   r.request().url().startsWith('file://') ? r.continue() : r.abort());
+await page.route(/leaflet@[\d.]+\/dist\/leaflet\.(js|css)$/, r => {
+  // Served from a local copy when there is one, so the page does not
+  // depend on reaching the CDN from wherever the test runs.
+  const LF = process.env.LEAFLET_DIST || '/tmp/node_modules/leaflet/dist';
+  const css = r.request().url().endsWith('.css');
+  const file = LF + (css ? '/leaflet.css' : '/leaflet.js');
+  if (!_lfHas(file)) return r.continue();
+  return r.fulfill({ contentType: css ? 'text/css' : 'application/javascript', body: _lfRead(file, 'utf8') });
+});
 await page.goto('file://' + join(ROOT, 'index.html'),
                 { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(3500);

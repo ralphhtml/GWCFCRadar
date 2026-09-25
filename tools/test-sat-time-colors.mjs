@@ -72,8 +72,11 @@ console.log('\n2. the satellite machine is its own, with its own clock');
   // satellite into the past with it, or the other way round.
   ok('the satellite keeps a separate moment from the radar',
      /let _tmAt = null;/.test(PAGE) && /let _tmSatAt = null;/.test(PAGE));
-  ok('a satellite jump asks for a satellite product, not a radar',
-     /Pick a satellite product first, then travel to a time\./.test(PAGE));
+  // It used to refuse until a product was picked; now it switches the
+  // satellite on at the chosen moment, in the product last chosen.
+  ok('a satellite jump with the satellite off switches it on, in a satellite product',
+     /Pick a satellite product first, then travel to a time\./.test(PAGE)
+     || /Choose a moment and the satellite switches on there/.test(PAGE));
   ok('a satellite jump rebuilds the satellite frames only',
      /_tmScope === 'sat'\) \{[\s\S]{0,900}loadGoesLayer\(\)/.test(PAGE));
   ok('and back-to-live rebuilds them again',

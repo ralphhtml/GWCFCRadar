@@ -25,6 +25,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { readFileSync as _lfRead, existsSync as _lfHas } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -78,11 +79,11 @@ console.log('\n2. the claims that were wrong');
   ok('the dual-pol products are placed under Level 2, where they are',
      /LEVEL 2[\s\S]{0,600}Spectrum Width/.test(TUT));
   ok('Models is three panels, not two',
-     says('Three sub-bubbles') && says('AI Cyclones'));
+     says('Three sub-bubbles') && says('DeepMind Models'));   // AI Cyclones was renamed (#74)
   // The row under the logo is retired; the five app buttons live at the top
   // of the account panel now, and the tutorial says so.
-  ok('the account menu is described with all five of its buttons',
-     ['Settings', 'Navigation', 'Tutorial', 'Credits', 'Feedback']
+  ok('the account menu is described with all six of its buttons',
+     ['Settings', 'Tutorial', 'Credits', 'Feedback', 'Updates', 'Messages']
        .every(b => /ACCOUNT MENU[\s\S]{0,1600}/.exec(TUT)[0].includes(b)));
   ok('and as open to everyone, signed in or not',
      says('there whether or not you are signed in'));
@@ -133,13 +134,13 @@ console.log('\n3. the features it never mentioned at all');
        .every(m => sections.includes(m[1])));
   // The eight that were missing entirely.
   [['Time Machine', 'Time Machine'],
-   ['AI Cyclones', 'AI CYCLONES'],
+   ['DeepMind Models (once AI Cyclones)', 'DeepMind Models'],
    ['Cross Section', 'CROSS SECTION'],
    ['the right-click menu', 'Right-click anywhere on the map'],
    ['soundings', 'SOUNDING HERE'],
    ['keyboard shortcuts', 'KEYBOARD SHORTCUTS'],
    ['starred search', 'SEARCH &amp; STARS'],
-   ['the export tool', 'Exporting a loop']]
+   ['the export tool', 'Export panel lives in']]
     .forEach(([what, needle]) => ok(what + ' is covered', says(needle)));
 }
 
@@ -156,6 +157,15 @@ if (!chromium) {
   p.on('dialog', d => d.dismiss().catch(() => {}));
   const errs = [];
   p.on('pageerror', e => errs.push(String(e).slice(0, 160)));
+  await p.route(/leaflet@[\d.]+\/dist\/leaflet\.(js|css)$/, r => {
+    // Served from a local copy when there is one, so the page does not
+    // depend on reaching the CDN from wherever the test runs.
+    const LF = process.env.LEAFLET_DIST || '/tmp/node_modules/leaflet/dist';
+    const css = r.request().url().endsWith('.css');
+    const file = LF + (css ? '/leaflet.css' : '/leaflet.js');
+    if (!_lfHas(file)) return r.continue();
+    return r.fulfill({ contentType: css ? 'text/css' : 'application/javascript', body: _lfRead(file, 'utf8') });
+  });
   await p.goto('file://' + join(ROOT, 'index.html'),
                { waitUntil: 'domcontentloaded' });
   await p.waitForTimeout(2800);
@@ -207,9 +217,11 @@ if (!chromium) {
      `${r.demoLabels} vs ${r.realLabels}`);
   ok('and draws them with the bubbles\' own icons',
      r.demoIcon === r.realIcon && r.demoIcon.length > 20);
-  ok('with the info button and drag handle a real row has',
+  // The bubbles lost their drag handle (the Layer Order list in Settings
+  // does the reordering now), so the diagram shows only the info button.
+  ok('with the info button a real row has, and no drag handle it no longer has',
      r.demoParts.join(',')
-       === 'sb-icon,sb-label,tut-bubble-info,tut-bubble-drag',
+       === 'sb-icon,sb-label,tut-bubble-info',
      r.demoParts.join(','));
   ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
 }

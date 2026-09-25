@@ -69879,7 +69879,7 @@ function lqmSetTZ(tz) {
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg></div>
       <div class="fc-title">ACCOUNT MENU</div>
-      <p class="fc-body">Tap the <strong>account pill</strong>, top left (or the <strong>GWCFC logo</strong>, top center) to open the account panel. A strip of five buttons sits at its top: <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg> Settings</strong>, <strong>Tutorial</strong> (this page), <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-star></use></svg> Credits</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-mail></use></svg> Feedback</strong> and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-sparkle></use></svg> Updates</strong> (the changelog), there whether or not you are signed in. The app also comes in two modes, <strong>Wx-pert</strong> (everything) and <strong>Lite-ning</strong> (just radar, warnings and forecasts); switch with the two mode buttons right under that strip, or in Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Display.</p>
+      <p class="fc-body">Tap the <strong>account pill</strong>, top left (or the <strong>GWCFC logo</strong>, top center) to open the account panel. A strip of six buttons sits at its top: <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg> Settings</strong>, <strong>Tutorial</strong> (this page), <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-star></use></svg> Credits</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-mail></use></svg> Feedback</strong>, <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-sparkle></use></svg> Updates</strong> (the changelog) and <strong><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-mail></use></svg> Messages</strong> (direct messages with other users), there whether or not you are signed in. The app also comes in two modes, <strong>Wx-pert</strong> (everything) and <strong>Lite-ning</strong> (just radar, warnings and forecasts); switch with the two mode buttons right under that strip, or in Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Display.</p>
     </div>
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-search></use></svg></div>
@@ -70700,7 +70700,7 @@ function lqmSetTZ(tz) {
     </div>
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gauge></use></svg></div>
-      <div class="fc-title">UNITS &amp; TIME</div>
+      <div class="fc-title">UNITS</div>
       <p class="fc-body">Six rows: <strong>Wind &amp; Speed</strong> (mph / km/h / knots), <strong>Temperature</strong> (°F / °C), <strong>Pressure</strong> (mb / inHg), <strong>Rain &amp; Hail</strong> (inches / mm), <strong>Distance</strong> (miles / km) and <strong>Timezone</strong>. Most have a "both" option. Change one and every layer that shows that kind of value updates immediately, the Inspector included, with no reload.</p>
     </div>
     <div class="feature-card">
@@ -74119,6 +74119,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-n', date: 'Sep 25, 2026',
+    text: 'Tutorial corrections: the account panel is described with all six of its buttons (Messages was missing), and the Units section is called Units, matching the Settings tab.' },
   { id: '2026-09-25-m', date: 'Sep 25, 2026',
     text: 'Level 3 radar now works for Puerto Rico, Hawaii, Alaska, Guam and Korea. The radar archive names every site by the last three letters of its code, but the app only dropped a leading K (and the T of airport radars), so San Juan, the Hawaiian islands, Alaska, Guam and Korea never found a single file. They load like any other site now.' },
   { id: '2026-09-25-l', date: 'Sep 25, 2026',
