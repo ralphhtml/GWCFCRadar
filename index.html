@@ -30460,7 +30460,7 @@ const SST_SOURCE_ROW = [
   { id: 'aoml', label: 'Ocean Heat', pi: true,
     note: 'AOML cyclone heat potential and 26 C isotherm depth.' },
   { id: 'hycom', label: 'Ocean Depth', pi: true,
-    note: 'Water temperature below the surface (HYCOM), from the surface down to 1,000 m. The Ocean slider on the map picks the depth.' },
+    note: 'Water temperature below the surface (HYCOM), from the surface down to 1,000 m. The Ocean column of the level slider on the map picks the depth.' },
 ];
 const SST_VARIANT_ROW = {
   oisst: ['actual', 'anomaly', 'anomaly_gmr', 'anomaly_records',
@@ -30523,6 +30523,14 @@ function toggleSstSourceSub() {
         if (_wavesLayer) { try { map.removeLayer(_wavesLayer); } catch (e) {} _wavesLayer = null; }
       }
       const vs = SST_VARIANT_ROW[s.id] || [];
+      // Ocean Depth has no row of depth buttons: the depth is the Ocean
+      // column of the level slider on the map, so this starts at whatever
+      // depth that slider was last left on and stays on this row.
+      if (s.id === 'hycom') {
+        const d = (typeof _omLevel !== 'undefined' && LVL_STEPS.ocean.includes(_omLevel.ocean)) ? _omLevel.ocean : 0;
+        _sstEnable('hycom', 't' + d).then(() => toggleSstSourceSub());
+        return;
+      }
       const keep = vs.includes(_sstVariant) ? _sstVariant : vs[0];
       _sstEnable(s.id, keep).then(() => toggleSstVariantSub(s.id));
     };
@@ -30538,6 +30546,8 @@ function toggleSstVariantSub(source) {
   const wrap = document.getElementById('sub-bubbles');
   if (!wrap) return;
   source = source || _sstSource;
+  // Depths are picked on the map's level slider, never as a button row.
+  if (source === 'hycom') { toggleSstSourceSub(); return; }
   wrap.innerHTML = '';
   _radarBackBubble(wrap, () => toggleSstSourceSub());
   (SST_VARIANT_ROW[source] || []).forEach(v => {
@@ -75200,6 +75210,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-zzzzzzzzz', date: 'Sep 25, 2026',
+    text: 'Ocean Depth no longer opens a list of seven depth buttons. Turn it on and pick the depth on the Ocean slider on the map, the same level slider Temperature, Wind and Heights use; it remembers the depth you left it on.' },
   { id: '2026-09-25-zzzzzzzz', date: 'Sep 25, 2026',
     text: 'Model run times. The Run Models panel has a clock button that opens a live table for HRRR, the 48 hour HRRR, GFS, ECMWF, NAM and NAM 3 km: whether a run is coming in right now (with how far along it is and when it finishes) or when the next one starts, all in your own time zone. A line under the Run picker says when the model you have chosen gets its next run.' },
   { id: '2026-09-25-zzzzzzz', date: 'Sep 25, 2026',

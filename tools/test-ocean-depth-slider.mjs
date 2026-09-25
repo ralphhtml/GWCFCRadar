@@ -158,6 +158,27 @@ console.log('\n4. and away');
   ok('nothing threw', errs.length === 0, errs.slice(0, 2).join(' | '));
 }
 
+console.log('\nno row of depth buttons: the slider picks the depth');
+{
+  const r = await p.evaluate(async () => {
+    // The depth the slider was last left on.
+    _omLevel.ocean = 300;
+    let asked = null;
+    const real = window._sstEnable;
+    window._sstEnable = (src, v) => { asked = src + ':' + v; return Promise.resolve(); };
+    toggleSstSourceSub();
+    document.getElementById('sub-sstsrc-hycom').click();
+    await new Promise(res => setTimeout(res, 50));
+    const buttons = document.querySelectorAll('[id^="sub-sstvar-"]').length;
+    toggleSstVariantSub('hycom');
+    const after = document.querySelectorAll('[id^="sub-sstvar-"]').length;
+    window._sstEnable = real;
+    return { asked, buttons, after, stillSources: !!document.getElementById('sub-sstsrc-hycom') };
+  });
+  ok('turning Ocean Depth on starts at the depth the slider was left on', r.asked === 'hycom:t300', JSON.stringify(r));
+  ok('and opens no row of depth buttons', r.buttons === 0 && r.after === 0 && r.stillSources, JSON.stringify(r));
+}
+
 await b.close();
 console.log(fail ? `\n${fail} FAILED, ${pass} passed` : `\nall ${pass} passed`);
 process.exit(fail ? 1 : 0);
