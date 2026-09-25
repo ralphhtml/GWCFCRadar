@@ -74434,6 +74434,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-w', date: 'Sep 25, 2026',
+    text: 'Radar 3D\'s Solid surface is smooth now instead of a pile of pixel blocks. The shell is drawn where the blended radar values cross your Show above setting, pinned down between steps, and lit by the storm\'s own shape, so towers and anvils read as rounded surfaces. Lit cloud and Raw pixels are unchanged.' },
   { id: '2026-09-25-v', date: 'Sep 25, 2026',
     text: 'Radar 3D\'s Terrain, Walk and VR buttons no longer spill their words over each other: they size to fit, like the other 3D panels.' },
   { id: '2026-09-25-u', date: 'Sep 25, 2026',
@@ -80450,6 +80452,51 @@ function _r3dMarchBand(P, prm, y0, y1, data) {
   // signed product (velocity) its distance from calm.
   const mg = signed ? (v) => (v ? (v >= 128 ? v - 128 : 128 - v) : 0) : (v) => v;
 
+  // Solid surface, done as a real isosurface: the shell is where the
+  // blended value (not each gate's on/off) crosses the Show above cut, found
+  // to a fraction of a step by halving, and shaded by the blended field's
+  // own gradient. The on/off version drew every gate as a box, which is
+  // why it looked like a pile of pixels.
+  const iso = prm.iso >= 0 && lerp ? prm.iso : -1;
+  let fByte = 0;                       // the colour byte of the last field read
+  const fieldAt = (x, y, zt) => {
+    const dxs = x - sx, dys = y - sy;
+    const s2 = Math.sqrt(dxs * dxs + dys * dys);
+    const ir2 = (s2 - r0) * invR - 0.5;
+    if (ir2 < 0 || ir2 >= nRm1 || s2 < 0.05 || zt < 0) return -1;
+    let rel2 = Math.atan2(dxs, dys) * DEG - az0;
+    rel2 -= 360 * Math.floor(rel2 / 360);
+    if (!full && rel2 >= span) return -1;
+    let se2 = ((zt + RE) * (zt + RE) - s2 * s2 - RE * RE) / (2 * s2 * RE);
+    if (se2 > 1) se2 = 1; else if (se2 < -1) se2 = -1;
+    // The tilt, blended between the two elevation cells either side rather
+    // than stepped, so the shell has no ledges from one cell to the next.
+    const ef = (Math.asin(se2) * DEG - elMin) * invElStep - 0.5;
+    let ei2 = Math.floor(ef), et = ef - ei2;
+    if (ei2 < 0) { ei2 = 0; et = 0; }
+    if (ei2 >= angN - 1) { ei2 = angN - 1; et = 0; }
+    const fA = angIdx[ei2], fB = et > 0 ? angIdx[ei2 + 1] : fA;
+    if (fA < 0 && (fB < 0 || et === 0)) return -1;
+    const f2 = fA < 0 ? fB : fB < 0 ? fA : fA + (fB - fA) * et;
+    const fadeE = angFade[ei2] + (et > 0 && fB >= 0 ? (angFade[ei2 + 1] - angFade[ei2]) * et : 0);
+    const a0 = f2 | 0, fr = f2 - a0, a1 = fr > 0.001 && a0 + 1 < nS ? a0 + 1 : a0;
+    const q0 = sweeps[a0], q1 = sweeps[a1];
+    const ia2 = rel2 * invA + 0.5, i0 = ia2 | 0, tA = ia2 - i0, ri = ir2 | 0, tR = ir2 - ri;
+    const b0 = i0 * nR + ri, b1 = b0 + nR;
+    const taps = [q0[b0], q0[b0 + 1], q0[b1], q0[b1 + 1], q1[b0], q1[b0 + 1], q1[b1], q1[b1 + 1]];
+    const wts = [(1 - tA) * (1 - tR) * (1 - fr), (1 - tA) * tR * (1 - fr), tA * (1 - tR) * (1 - fr), tA * tR * (1 - fr),
+                 (1 - tA) * (1 - tR) * fr, (1 - tA) * tR * fr, tA * (1 - tR) * fr, tA * tR * fr];
+    let m = 0, best = -1, bw = -1, anyW = -1, any = 0;
+    for (let q = 0; q < 8; q++) {
+      const g = taps[q], w = wts[q], mm = mg(g);
+      m += w * mm;
+      if (g && mm >= iso && w > bw) { bw = w; best = g; }
+      if (g && w > anyW) { anyW = w; any = g; }
+    }
+    fByte = best >= 0 ? best : any;
+    return m * fadeE;
+  };
+
   // The floor: the lowest tilt, bilinear, at the point where a ray meets
   // the ground. Bare ground where the tilt holds nothing.
   const floorAt = (x, y, acc) => {
@@ -80535,6 +80582,48 @@ function _r3dMarchBand(P, prm, y0, y1, data) {
         const s0 = f | 0, ft = f - s0;
         const s1 = ft > 0.001 && s0 + 1 < nS ? s0 + 1 : s0;
         const pl0 = sweeps[s0], pl1 = sweeps[s1];
+        if (iso >= 0) {
+          const fv = fieldAt(x, y, zt);
+          if (fv >= iso) {
+            // Crossed the shell between the last step and this one: halve
+            // the gap until the crossing is pinned to a sliver of a step.
+            let ta2 = t - stepKm, tb2 = t;
+            for (let h = 0; h < 6; h++) {
+              const tm = (ta2 + tb2) / 2;
+              const fm = fieldAt(camX + dx * tm, camY + dy * tm, (camZ + dz * tm) * invExag);
+              if (fm >= iso) tb2 = tm; else ta2 = tm;
+            }
+            const hx = camX + dx * tb2, hy = camY + dy * tb2, hz = (camZ + dz * tb2) * invExag;
+            fieldAt(hx, hy, hz);
+            const cb = fByte, li = cb << 2;
+            let cr = lut[li], cg = lut[li + 1], cbl = lut[li + 2];
+            const ca = lut[li + 3] || 1;
+            cr /= ca; cg /= ca; cbl /= ca;
+            // The field's gradient, about one gate each way, is the surface's
+            // normal: wide enough to step over the seams between gates, so
+            // the light reads the storm's shape, not the radar's grid.
+            const hk = Math.max(0.5, rStep * 1.2);
+            const g = (ax, ay, az) => { const v = fieldAt(ax, ay, az); return v < 0 ? 0 : v; };
+            let nX = g(hx - hk, hy, hz) - g(hx + hk, hy, hz);
+            let nY = g(hx, hy - hk, hz) - g(hx, hy + hk, hz);
+            let nZ = (g(hx, hy, hz - hk * invExag) - g(hx, hy, hz + hk * invExag)) * invExag;
+            const nl = Math.sqrt(nX * nX + nY * nY + nZ * nZ);
+            let shade = 0.8;
+            if (nl > 1e-6) {
+              nX /= nl; nY /= nl; nZ /= nl;
+              const d = nX * lx + nY * ly + nZ * lz;
+              // Light, plus a little from the viewer so the far side of a
+              // tower is shaded rather than black.
+              const v = -(nX * dx + nY * dy + nZ * dz);
+              shade = 0.3 + 0.62 * (d > 0 ? d : 0) + 0.22 * (v > 0 ? v : 0);
+            }
+            const k = 1 - accA;
+            accR += k * cr * shade; accG += k * cg * shade; accB += k * cbl * shade; accA = 1;
+            break;
+          }
+          t += stepKm;
+          continue;
+        }
         if (lerp) {
           const i0 = ia | 0, tA = ia - i0, ri = ir | 0, tR = ir - ri;
           const b0 = i0 * nR + ri, b1 = b0 + nR;
@@ -81174,6 +81263,18 @@ function _r3dRenderIdle(timeoutMs) {
 // are. Alpha is baked for the current march step length, so both quality
 // modes look the same, just at different sharpness. The "Show above"
 // slider lives here too: below its cutoff the alpha is exactly zero.
+// The Show above cut in the marcher's own terms (a gate byte, or for a
+// signed product its distance from calm), for the solid surface: the
+// smallest strength the colour table draws. -1 when not solid.
+function _r3dIsoByte(lut, spec) {
+  if (_r3dMode !== 'solid' || !lut) return -1;
+  if (spec && spec.signed) {
+    for (let m = 1; m < 128; m++) if (lut[((128 + m) << 2) + 3] > 0 || lut[((128 - m) << 2) + 3] > 0) return m;
+    return -1;
+  }
+  for (let b = 1; b < 256; b++) if (lut[(b << 2) + 3] > 0) return b;
+  return -1;
+}
 function _r3dLutFor(product, stepKm) {
   const spec = _r3dSpec(product);
   const key = spec.id + '|' + _r3dFilterPct + '|' + stepKm.toFixed(3) + '|' + _r3dPaletteGen
@@ -81373,7 +81474,7 @@ async function _r3dPaint(ctx, w, h, dpr, frame) {
           lz = -0.35 * v.rz + 0.75 * v.uz - 0.55 * v.fz;
       const ll = Math.hypot(lx, ly, lz) || 1; lx /= ll; ly /= ll; lz /= ll;
       const prm = {
-        iw, ih, fine: fine ? 1 : 0, crisp: _r3dMode === 'pixels' ? 1 : 0, exag, stepKm,
+        iw, ih, fine: fine ? 1 : 0, crisp: _r3dMode === 'pixels' ? 1 : 0, iso: _r3dIsoByte(pack.lut, spec), exag, stepKm,
         cam: new Float64Array([v.camX, v.camY, v.camZ, v.rx, v.ry, v.rz, v.ux, v.uy, v.uz, v.fx, v.fy, v.fz]),
         minX: box.minX, maxX: box.maxX, minY: box.minY, maxY: box.maxY, maxZ: topKm * exag,
         lut: pack.lut, floorRgb: pack.floorRgb, signed: !!spec.signed,
