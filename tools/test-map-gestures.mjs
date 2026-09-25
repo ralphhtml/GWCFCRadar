@@ -144,7 +144,7 @@ console.log('\n3. two taps that are not a double tap');
   ok('and the tap after it does not re-open on its own', r.third === false);
 }
 
-console.log('\n4. the mouse keeps double click to zoom, unless asked');
+console.log('\n4. double click opens the map menu by default (asked for in #688), and can go back to zoom');
 {
   const r = await page.evaluate(async () => {
     __closeMenu();
@@ -173,8 +173,8 @@ console.log('\n4. the mouse keeps double click to zoom, unless asked');
     __closeMenu();
     return { zoomOnByDefault, openedByMouse, zoomOffNow, openedAfterOptIn, stored, zoomBack };
   });
-  ok('double click zoom is on by default', r.zoomOnByDefault === true);
-  ok('a mouse double click does not open the menu by default', r.openedByMouse === false);
+  ok('by default double click is the menu, so its zoom is off', r.zoomOnByDefault === false);
+  ok('and a mouse double click opens the menu by default', r.openedByMouse === true);
   ok('turning the setting on gives up double click to zoom', r.zoomOffNow === false);
   ok('and a mouse double click then opens the menu', r.openedAfterOptIn === true);
   ok('the choice is remembered', r.stored === 'true', r.stored);
