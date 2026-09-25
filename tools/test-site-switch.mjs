@@ -258,7 +258,7 @@ console.log('\n7. the previous picture is not taken down before there is a new o
   ok('the old pool is kept, not cleared at the top',
      /const oldPool = _refSitePool\.slice\(\)/.test(src));
   ok('it is dropped when the new frame loads',
-     /newest\.once\('load', dropOld\)/.test(src));
+     /newest\.once\('load', retire\)/.test(src) && /retired = true;\s*dropOld\(\);/.test(src));
   ok('and on a timer too, so a dead station cannot leave the wrong radar up',
      /handoverTimer/.test(src) && /RS_HANDOVER_MS/.test(src));
 }
