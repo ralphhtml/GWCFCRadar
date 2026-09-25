@@ -25,7 +25,8 @@ const from = src.indexOf('const MAP_OPTIONS = JSON.parse(');
 const to = src.indexOf('const client = new Client({');
 const PLACES = { us: 1, southeast: 1, midwest: 1, northeast: 1, plains: 1, gulf: 1, west: 1, atlantic: 1 };
 const block = src.slice(from, to)
-  .replace("new URL('./map-options.json', import.meta.url)", JSON.stringify(new URL('./map-options.json', import.meta.url).pathname));
+  .replace("new URL('./map-options.json', import.meta.url)", JSON.stringify(new URL('./map-options.json', import.meta.url).pathname))
+  .replace("new URL('./map-menu.json', import.meta.url)", JSON.stringify(new URL('./map-menu.json', import.meta.url).pathname));
 
 let pass = 0, fail = 0;
 const ok = (name, cond, extra) => { if (cond) { pass++; console.log('  ok   ' + name); }
