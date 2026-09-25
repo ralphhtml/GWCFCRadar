@@ -6656,18 +6656,34 @@ body.lite-mode #export-modal { display: none !important; }
    element with a pure CSS rotation, so it costs a compositor layer and
    nothing else; the map only repositions and resizes it. -- */
 .radar-sweep { pointer-events: none; }
+/* The look is set from Settings > Radar through these (see _sweepApplyCfg):
+   the beam's colour, how strong it is at the leading edge, how long a glow
+   it leaves behind (degrees), and how long one turn takes. */
+:root { --sweep-rgb: 140,255,190; --sweep-a: 0.55; --sweep-trail: 70deg; --sweep-dur: 3.2s; }
 .sweep-disc {
   position: absolute; left: 0; top: 0;
   border-radius: 50%;
+  /* The disc turns clockwise, so the bright edge is at 360deg and the glow
+     fades back from it, anticlockwise, behind the beam. It used to start
+     bright at 0deg and fade clockwise, which put the glow in FRONT of the
+     beam: the trail led the way it was going. */
   background: conic-gradient(from 0deg,
-    rgba(140,255,190,0.55) 0deg, rgba(140,255,190,0.26) 16deg,
-    rgba(140,255,190,0.08) 42deg, rgba(140,255,190,0) 70deg);
+    rgba(var(--sweep-rgb),0) 0deg,
+    rgba(var(--sweep-rgb),0) calc(360deg - var(--sweep-trail)),
+    rgba(var(--sweep-rgb),calc(var(--sweep-a) * 0.15)) calc(360deg - var(--sweep-trail) * 0.6),
+    rgba(var(--sweep-rgb),calc(var(--sweep-a) * 0.47)) calc(360deg - var(--sweep-trail) * 0.23),
+    rgba(var(--sweep-rgb),var(--sweep-a)) 359.4deg,
+    rgba(var(--sweep-rgb),0) 360deg);
   -webkit-mask-image: radial-gradient(circle, #000 0%, #000 70%, transparent 99%);
   mask-image: radial-gradient(circle, #000 0%, #000 70%, transparent 99%);
   mix-blend-mode: screen;
-  animation: sweep-spin 3.2s linear infinite;
+  animation: sweep-spin var(--sweep-dur) linear infinite;
   will-change: transform;
 }
+.sweep-cfg { display: none; flex-direction: column; gap: 4px; padding: 2px 0 6px 10px; }
+.sweep-cfg.on { display: flex; }
+.sweep-cfg .lqm-settings-row { padding-top: 2px; padding-bottom: 2px; }
+.sweep-cfg input[type="color"] { width: 34px; height: 20px; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; background: none; padding: 0; }
 @keyframes sweep-spin { to { transform: rotate(360deg); } }
 /* A vestibular-safe screen keeps the range disc but not the spin. */
 @media (prefers-reduced-motion: reduce) {
@@ -12913,6 +12929,110 @@ const WZ_SETTLE_MS         = 110;
 // the in-between levels the gesture flies straight past. When the wheel has
 // been still for WZ_SETTLE_MS the zoom is committed once, the same way a
 // pinch ends: one zoomend, one set of tiles, for the level you stopped on.
+// -- THE WORLD WRAPS ------------------------------------------------------------
+// Leaflet can pan round the world (worldCopyJump keeps the centre between
+// -180 and 180 and jumps seamlessly as you cross), but by itself it draws only
+// ONE copy of everything: tiles stop at the edge when a layer says noWrap,
+// and every marker, line, polygon and picture sits in the -180..180 copy, so
+// looking across the date line from Hawaii the typhoon off Japan was simply
+// not there. Three small patches make every layer in the app wrap without
+// touching each one:
+//   tiles      every tile layer repeats round the world (noWrap off)
+//   markers    placed on the copy of the world nearest the middle of the view
+//   shapes and pictures  the same, the whole shape shifted as one
+// and when the view has moved far enough round that a different copy is now
+// the nearest for things on screen, they are re-placed once (not per frame).
+function _wrapShift(m, lng) {
+  if (!m || !m._loaded || !isFinite(lng)) return 0;
+  const c = m.getCenter().lng;
+  return 360 * Math.round((c - lng) / 360);
+}
+let _worldWrapDone = false;
+function _worldWrapInit() {
+  if (_worldWrapDone || typeof L === 'undefined') return;
+  _worldWrapDone = true;
+  try {
+    L.GridLayer.addInitHook(function () { this.options.noWrap = false; });
+
+    const MP = L.Marker.prototype;
+    MP.update = function () {
+      if (this._icon && this._map) {
+        const ll = this._latlng, k = _wrapShift(this._map, ll.lng);
+        this._setPos(this._map.latLngToLayerPoint(k ? L.latLng(ll.lat, ll.lng + k) : ll).round());
+      }
+      return this;
+    };
+    MP._animateZoom = function (opt) {
+      const ll = this._latlng, k = _wrapShift(this._map, ll.lng);
+      const pos = this._map._latLngToNewLayerPoint(k ? L.latLng(ll.lat, ll.lng + k) : ll, opt.zoom, opt.center).round();
+      this._setPos(pos);
+    };
+
+    const PL = L.Polyline.prototype;
+    const _plProject = PL._project;
+    PL._project = function () {
+      const b = this._bounds;
+      this._wrapK = (b && b.isValid && b.isValid()) ? _wrapShift(this._map, b.getCenter().lng) : 0;
+      return _plProject.call(this);
+    };
+    PL._projectLatlngs = function (latlngs, result, projectedBounds) {
+      const flat = latlngs[0] instanceof L.LatLng, k = this._wrapK || 0;
+      if (flat) {
+        const ring = [];
+        for (let i = 0; i < latlngs.length; i++) {
+          const ll = latlngs[i];
+          ring[i] = this._map.latLngToLayerPoint(k ? L.latLng(ll.lat, ll.lng + k) : ll);
+          projectedBounds.extend(ring[i]);
+        }
+        result.push(ring);
+      } else {
+        for (let i = 0; i < latlngs.length; i++) this._projectLatlngs(latlngs[i], result, projectedBounds);
+      }
+    };
+
+    const CM = L.CircleMarker.prototype;
+    const _cmProject = CM._project;
+    CM._project = function () {
+      const ll = this._latlng, k = _wrapShift(this._map, ll.lng);
+      if (!k) return _cmProject.call(this);
+      const keep = this._latlng;
+      this._latlng = L.latLng(ll.lat, ll.lng + k);
+      try { return _cmProject.call(this); } finally { this._latlng = keep; }
+    };
+
+    const IO = L.ImageOverlay.prototype;
+    const shiftedBounds = (self) => {
+      const b = self._bounds, k = _wrapShift(self._map, b.getCenter().lng);
+      return k ? L.latLngBounds([b.getSouth(), b.getWest() + k], [b.getNorth(), b.getEast() + k]) : b;
+    };
+    const _ioReset = IO._reset, _ioAnim = IO._animateZoom;
+    IO._reset = function () {
+      const keep = this._bounds; this._bounds = shiftedBounds(this);
+      try { return _ioReset.call(this); } finally { this._bounds = keep; }
+    };
+    IO._animateZoom = function (e) {
+      const keep = this._bounds; this._bounds = shiftedBounds(this);
+      try { return _ioAnim.call(this, e); } finally { this._bounds = keep; }
+    };
+  } catch (e) { console.warn('world wrap:', e); }
+}
+// Re-place everything once the view has swung far enough round the world
+// that a different copy could now be the nearest one for what is on screen.
+let _worldWrapAt = null;
+function _worldWrapRefresh(m) {
+  const c = m.getCenter().lng;
+  if (_worldWrapAt !== null && Math.abs(c - _worldWrapAt) < 30) return;
+  _worldWrapAt = c;
+  m.eachLayer(l => {
+    try {
+      if (l instanceof L.Renderer) l._reset();
+      else if (l instanceof L.Marker) l.update();
+      else if (l instanceof L.ImageOverlay) l._reset();
+      else if (l instanceof L.Path && !l._renderer) { l._project(); l._update(); }
+    } catch (e) {}
+  });
+}
+
 function _wireWheelZoom(m) {
   const el = m.getContainer && m.getContainer();
   if (!el) return;
@@ -13243,13 +13363,19 @@ function initMap() {
   // for the length of the animation, which is exactly when memory peaks.
   if (_isIOS) { try { L.Browser.retina = false; } catch (e) {} }
   if (_isIOS) _iosFlatTiles();
+  _worldWrapInit();
   map = L.map('map', {
     center: [37.5, -96],
     zoom: 5,
     zoomControl: false,
     attributionControl: true,
-    maxBounds: [[-90, -180], [90, 180]],
+    // The world wraps east and west (see _worldWrapInit): only the poles are
+    // a wall. The map used to stop dead at the 180th meridian, so the Pacific
+    // could never be seen whole and a typhoon crossing the date line was cut
+    // in two at the edge of the world.
+    maxBounds: [[-90, -3600], [90, 3600]],
     maxBoundsViscosity: 1.0,
+    worldCopyJump: true,
     fadeAnimation: !_isIOS,
     markerZoomAnimation: !_isIOS,
     // Fractional zoom, so the map can sit between whole levels and a scroll
@@ -13261,6 +13387,7 @@ function initMap() {
   });
 
   _wireWheelZoom(map);
+  map.on('moveend', () => _worldWrapRefresh(map));
 
   // The attribution folds to a small copyright chip. The credit is required
   // by the map data licenses, so it stays in the page; tapping the chip
@@ -44460,10 +44587,21 @@ function _scBuildTrack(path, existing, mode) {
   }
 
   // Assemble the outline ring
-  const ring = [];
+  let ring = [];
   for (let i = 0; i <= N; i++) ring.push(leftEdges[i]);
   for (const p of cap) ring.push(p);
   for (let i = N; i >= 0; i--) ring.push(rightEdges[i]);
+  // A track that turns tighter than the cone is wide pushes its inside edge
+  // into the cone, and the outline folds over (a bow tie of fill) or dips in
+  // (a notch cut out of the cone). The cone is really every circle of
+  // uncertainty along the track merged into one shape, so when the simple
+  // outline is wrong in either way, that merged shape is traced instead. A
+  // track that bends gently keeps the exact outline above.
+  const radiiMiles = center.map((_, i) => capRadiusMiles * (i / N));
+  if (_scRingSelfIntersects(ring) || _scRingDipsIn(ring, center, radiiMiles, capRadiusMiles)) {
+    const merged = _scUnionRing(center, radiiMiles);
+    if (merged && merged.length > 8) ring = merged;
+  }
 
   // 4) Offset storm-center line: shifted by offset% of the LOCAL half-width so it
   //    always stays inside the cone.
@@ -44478,6 +44616,145 @@ function _scBuildTrack(path, existing, mode) {
            center, centerLine, leftEdges, rightEdges, path: pts,
            pointCurves, pointCats, pointSpeeds,
            mode: isMulti ? 'multi' : 'drag' };
+}
+
+// Does a closed outline cross itself? Every pair of edges that are not
+// neighbours, tested in plain lat/lng (fine for a crossing test at cone scale).
+function _scRingSelfIntersects(ring) {
+  const n = ring.length;
+  if (n < 4) return false;
+  const P = (i) => ring[i % n];
+  const cross = (a, b, c) => (b.lng - a.lng) * (c.lat - a.lat) - (b.lat - a.lat) * (c.lng - a.lng);
+  const hit = (a, b, c, d) => {
+    const d1 = cross(c, d, a), d2 = cross(c, d, b), d3 = cross(a, b, c), d4 = cross(a, b, d);
+    return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0)) && d1 && d2 && d3 && d4;
+  };
+  for (let i = 0; i < n; i++) {
+    const a = L.latLng(P(i)), b = L.latLng(P(i + 1));
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue;          // the closing edge touches the first
+      if (hit(a, b, L.latLng(P(j)), L.latLng(P(j + 1)))) return true;
+    }
+  }
+  return false;
+}
+
+// Does the simple outline cut into the cone? Every point of a right outline is
+// on the edge of the merged circles; a point well INSIDE one of the other
+// circles is the inside of a tight turn folding in. (On a straight or gently
+// bending track no edge point is inside another circle, so this stays quiet.)
+function _scRingDipsIn(ring, center, radiiMiles, capMiles) {
+  const tol = 0.03 * capMiles * 1609.344;
+  for (const q of ring) {
+    for (let i = 0; i < center.length; i++) {
+      if (map.distance(q, center[i]) - radiiMiles[i] * 1609.344 < -tol) return true;
+    }
+  }
+  return false;
+}
+
+// The cone as what it really is: the union of the uncertainty circles along
+// the track, radius growing from the apex to the cap. Built on a grid, not by
+// clipping polygons: every grid point gets its distance to the nearest piece
+// of the shape (a capsule between each pair of neighbouring circles, radius
+// tapering along it), and the outline is the zero line of that field, traced
+// with marching squares and interpolated, so it is smooth rather than
+// stair-stepped. The outer loop is kept, which is the cone's outline however
+// the track turns, loops or doubles back. Pure arithmetic, no library.
+function _scUnionRing(center, radiiMiles) {
+  if (!center || center.length < 2) return null;
+  const KM = 1.609344;
+  const lat0 = center.reduce((a, c) => a + c.lat, 0) / center.length;
+  const lng0 = center.reduce((a, c) => a + c.lng, 0) / center.length;
+  const kx = 111.32 * Math.cos(lat0 * Math.PI / 180), ky = 110.57;
+  const pts = center.map(c => [(c.lng - lng0) * kx, (c.lat - lat0) * ky]);
+  const rad = radiiMiles.map(r => Math.max(0, r * KM));
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  pts.forEach(([x, y], i) => {
+    x0 = Math.min(x0, x - rad[i]); x1 = Math.max(x1, x + rad[i]);
+    y0 = Math.min(y0, y - rad[i]); y1 = Math.max(y1, y + rad[i]);
+  });
+  const span = Math.max(x1 - x0, y1 - y0) || 1;
+  const cell = span / 300;
+  x0 -= 2 * cell; y0 -= 2 * cell;
+  const W = Math.ceil((x1 - x0) / cell) + 3, H = Math.ceil((y1 - y0) / cell) + 3;
+  // The field: distance to the union, negative inside.
+  const f = new Float32Array(W * H).fill(Infinity);
+  for (let k = 0; k + 1 < pts.length; k++) {
+    const [ax, ay] = pts[k], [bx, by] = pts[k + 1], ra = rad[k], rb = rad[k + 1];
+    const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+    const rmax = Math.max(ra, rb);
+    const i0 = Math.max(0, Math.floor((Math.min(ax, bx) - rmax - x0) / cell) - 1);
+    const i1 = Math.min(W - 1, Math.ceil((Math.max(ax, bx) + rmax - x0) / cell) + 1);
+    const j0 = Math.max(0, Math.floor((Math.min(ay, by) - rmax - y0) / cell) - 1);
+    const j1 = Math.min(H - 1, Math.ceil((Math.max(ay, by) + rmax - y0) / cell) + 1);
+    for (let j = j0; j <= j1; j++) {
+      const py = y0 + j * cell;
+      for (let i = i0; i <= i1; i++) {
+        const px = x0 + i * cell;
+        let t = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const qx = ax + t * dx - px, qy = ay + t * dy - py;
+        const d = Math.sqrt(qx * qx + qy * qy) - (ra + t * (rb - ra));
+        const o = j * W + i;
+        if (d < f[o]) f[o] = d;
+      }
+    }
+  }
+  // Marching squares: one or two segments per cell, each joining two edge
+  // crossings, then chained into loops.
+  const val = (i, j) => { const v = f[j * W + i]; return v === Infinity ? 1e9 : v; };
+  const pt = new Map();                    // edge id -> [x, y]
+  const edgeH = (i, j) => { const id = 'h' + i + '_' + j; if (!pt.has(id)) { const a = val(i, j), b = val(i + 1, j); pt.set(id, [x0 + (i + a / (a - b)) * cell, y0 + j * cell]); } return id; };
+  const edgeV = (i, j) => { const id = 'v' + i + '_' + j; if (!pt.has(id)) { const a = val(i, j), b = val(i, j + 1); pt.set(id, [x0 + i * cell, y0 + (j + a / (a - b)) * cell]); } return id; };
+  const links = new Map();
+  const link = (a, b) => { (links.get(a) || links.set(a, []).get(a)).push(b); (links.get(b) || links.set(b, []).get(b)).push(a); };
+  for (let j = 0; j + 1 < H; j++) {
+    for (let i = 0; i + 1 < W; i++) {
+      const v0 = val(i, j) < 0, v1 = val(i + 1, j) < 0, v2 = val(i + 1, j + 1) < 0, v3 = val(i, j + 1) < 0;
+      const c = (v0 ? 1 : 0) | (v1 ? 2 : 0) | (v2 ? 4 : 0) | (v3 ? 8 : 0);
+      if (c === 0 || c === 15) continue;
+      const B = () => edgeH(i, j), R = () => edgeV(i + 1, j), T = () => edgeH(i, j + 1), Lf = () => edgeV(i, j);
+      switch (c) {
+        case 1: case 14: link(Lf(), B()); break;
+        case 2: case 13: link(B(), R()); break;
+        case 3: case 12: link(Lf(), R()); break;
+        case 4: case 11: link(R(), T()); break;
+        case 6: case 9: link(B(), T()); break;
+        case 7: case 8: link(Lf(), T()); break;
+        case 5: case 10: {
+          const mid = (val(i, j) + val(i + 1, j) + val(i + 1, j + 1) + val(i, j + 1)) / 4 < 0;
+          if ((c === 5) === mid) { link(Lf(), T()); link(B(), R()); } else { link(Lf(), B()); link(R(), T()); }
+          break;
+        }
+      }
+    }
+  }
+  // Chain into loops; the longest is the outer outline.
+  const seen = new Set();
+  let best = null;
+  for (const start of links.keys()) {
+    if (seen.has(start)) continue;
+    const loop = [start];
+    seen.add(start);
+    let prev = null, cur = start;
+    for (;;) {
+      const next = (links.get(cur) || []).find(n => n !== prev && !seen.has(n));
+      if (!next) break;
+      seen.add(next); loop.push(next); prev = cur; cur = next;
+    }
+    if (!best || loop.length > best.length) best = loop;
+  }
+  if (!best || best.length < 8) return null;
+  // Thin the loop (a point every ~2 cells is plenty for a smooth line) and
+  // back to latitude and longitude.
+  const step = Math.max(1, Math.floor(best.length / 240));
+  const out = [];
+  for (let k = 0; k < best.length; k += step) {
+    const [x, y] = pt.get(best[k]);
+    out.push(L.latLng(lat0 + y / ky, lng0 + x / kx));
+  }
+  return out;
 }
 
 // A smooth path through clicked points: Catmull-Rom, the classic
@@ -48150,13 +48427,32 @@ function _cmGoRadar() {
   const s = _cmNearestStation(ll.lat, ll.lng);
   if (!s) return;
   map.flyTo([s.lat, s.lon], Math.max(map.getZoom(), 8));
+  // The product has to be one a single radar's volume carries. This passed
+  // whatever was showing straight to the Level 2 decoder, so from the
+  // national mosaic ('radar' / 'mrms') or a Normal-menu product (hydro class,
+  // the accumulations) it asked for something no volume holds and nothing
+  // came up. And the station was never recorded as the Level 2 site, so the
+  // next product tapped went to a different radar.
+  if (!['ref', 'vel', 'cc', 'zdr', 'kdp', 'sw', 'phi'].includes(currentProduct)) currentProduct = 'ref';
   if (typeof _isTdwrSite === 'function' && _isTdwrSite(s.id)
       && ['cc', 'zdr', 'kdp', 'phi'].includes(currentProduct)) {
     currentProduct = 'ref';
   }
+  // Whatever radar picture was up (the mosaic, a tile product) comes down,
+  // exactly as a switch to Level 2 from the menu does. Clearing it resets the
+  // product, so the chosen one is put back after.
+  const keep = currentProduct;
+  try { _disableSatellite(); } catch (e) {}
+  try { _disableRadar(); } catch (e) {}
+  try { _clearSingleSiteRef(); } catch (e) {}
+  activeLayers.nexrad = false;
+  currentProduct = keep;
+  _radarSource = 'l2';
+  // The Level 2 row on screen, then the same door a tap on the site's pill
+  // uses: it records the site, redraws that row for it and loads the volume.
   toggleRadarSub();
   toggleRadarL2Sub();
-  loadL3Data(currentProduct || 'ref', s.id);
+  _siteView(s);
 }
 
 function _cmGoForecast() {
@@ -55942,6 +56238,42 @@ function _sweepSync() {
   _sweepFor = site;
   _sweepResize();
 }
+// The sweep's look, from Settings > Radar, kept in this browser. Applied as
+// CSS variables on the page, so the running animation picks it up at once.
+const SWEEP_DEFAULTS = { color: '#8cffbe', speed: 3.2, alpha: 0.55, trail: 70 };
+function _sweepCfg() {
+  let c = {};
+  try { c = JSON.parse(localStorage.getItem('gwcfc_sweep_cfg') || '{}') || {}; } catch (e) {}
+  const out = { ...SWEEP_DEFAULTS };
+  if (/^#[0-9a-f]{6}$/i.test(c.color)) out.color = c.color;
+  if (isFinite(c.speed)) out.speed = Math.min(12, Math.max(1, +c.speed));
+  if (isFinite(c.alpha)) out.alpha = Math.min(1, Math.max(0.1, +c.alpha));
+  if (isFinite(c.trail)) out.trail = Math.min(240, Math.max(10, +c.trail));
+  return out;
+}
+function _sweepApplyCfg() {
+  const c = _sweepCfg(), r = document.documentElement.style;
+  const n = parseInt(c.color.slice(1), 16);
+  r.setProperty('--sweep-rgb', `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`);
+  r.setProperty('--sweep-a', String(c.alpha));
+  r.setProperty('--sweep-trail', c.trail + 'deg');
+  r.setProperty('--sweep-dur', c.speed + 's');
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  const txt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('sweep-color', c.color); set('sweep-speed', c.speed); set('sweep-alpha', c.alpha); set('sweep-trail', c.trail);
+  txt('sweep-speed-val', c.speed.toFixed(1) + ' s'); txt('sweep-alpha-val', Math.round(c.alpha * 100) + '%');
+  txt('sweep-trail-val', Math.round(c.trail) + '°');
+  const box = document.getElementById('sweep-cfg');
+  if (box) box.classList.toggle('on', _sweepWanted());
+}
+function _sweepSet(what, v) {
+  let c = _sweepCfg();
+  if (what === 'reset') c = { ...SWEEP_DEFAULTS };
+  else c[what] = what === 'color' ? v : +v;
+  try { localStorage.setItem('gwcfc_sweep_cfg', JSON.stringify(c)); } catch (e) {}
+  _sweepApplyCfg();
+}
+try { _sweepApplyCfg(); } catch (e) {}
 (function _sweepBoot() {
   const arm = () => {
     if (typeof map === 'undefined' || !map) { setTimeout(arm, 1500); return; }
@@ -55949,6 +56281,7 @@ function _sweepSync() {
     setInterval(_sweepSync, 1000);
     const box = document.getElementById('lqm-set-sweep');
     if (box) box.checked = _sweepWanted();
+    _sweepApplyCfg();
   };
   arm();
 })();
@@ -61385,6 +61718,41 @@ function selectProduct(p) {
         <div class="lqm-toggle-track"></div>
         <div class="lqm-toggle-knob"></div>
       </label>
+    </div>
+    <!-- The sweep's own look: shown while the sweep is on. -->
+    <div class="sweep-cfg on" id="sweep-cfg">
+      <div class="lqm-settings-row">
+        <span class="lqm-settings-lbl">Beam Colour</span>
+        <input type="color" id="sweep-color" value="#8cffbe" oninput="_sweepSet('color', this.value)">
+      </div>
+      <div class="lqm-settings-row">
+        <span class="lqm-settings-lbl">Speed</span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <input type="range" id="sweep-speed" min="1" max="12" step="0.2" value="3.2" class="lqm-slider"
+            oninput="_sweepSet('speed', this.value)" title="Seconds for one turn">
+          <span id="sweep-speed-val" style="font-family:var(--mono);font-size:9px;color:var(--accent2);min-width:34px;">3.2 s</span>
+        </div>
+      </div>
+      <div class="lqm-settings-row">
+        <span class="lqm-settings-lbl">Brightness</span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <input type="range" id="sweep-alpha" min="0.1" max="1" step="0.05" value="0.55" class="lqm-slider"
+            oninput="_sweepSet('alpha', this.value)">
+          <span id="sweep-alpha-val" style="font-family:var(--mono);font-size:9px;color:var(--accent2);min-width:34px;">55%</span>
+        </div>
+      </div>
+      <div class="lqm-settings-row">
+        <span class="lqm-settings-lbl">Trail Length</span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <input type="range" id="sweep-trail" min="10" max="240" step="5" value="70" class="lqm-slider"
+            oninput="_sweepSet('trail', this.value)" title="How far behind the beam its glow reaches, in degrees">
+          <span id="sweep-trail-val" style="font-family:var(--mono);font-size:9px;color:var(--accent2);min-width:34px;">70°</span>
+        </div>
+      </div>
+      <div class="lqm-settings-row">
+        <span class="lqm-settings-lbl"></span>
+        <button class="lqm-settings-btn" style="padding:3px 8px;font-size:10px" onclick="_sweepSet('reset')">Reset Sweep Look</button>
+      </div>
     </div>
     <div class="lqm-settings-row">
       <span class="lqm-settings-lbl">Loop Speed</span>
@@ -68762,6 +69130,7 @@ function lqmToggleSetting(key, val) {
   } else if (key === 'sweep') {
     try { localStorage.setItem('gwcfc_sweep', val ? '1' : '0'); } catch (e) {}
     if (typeof _sweepSync === 'function') _sweepSync();
+    if (typeof _sweepApplyCfg === 'function') _sweepApplyCfg();
   } else if (key === 'discordrp') {
     try { localStorage.setItem('gwcfc_discord_rp', val ? '1' : '0'); } catch (e) {}
     if (val) { if (typeof _presenceStart === 'function') _presenceStart(); }
@@ -73218,6 +73587,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-h', date: 'Sep 25, 2026',
+    text: 'Fixes from the testing log. The map now wraps round the world: pan straight across the Pacific past the date line, and storms, markers and shapes on the far side stay on screen. The broadcast sweep\'s glow now trails behind the beam instead of running ahead of it, and Settings > Radar has new sweep controls: beam colour, speed, brightness and trail length. Right-click > Radar opens that radar properly again, whatever was on screen before. And storm cones on tracks that turn sharply or double back no longer fold over themselves: the cone is drawn as all its uncertainty circles merged into one clean shape.' },
   { id: '2026-09-25-g', date: 'Sep 25, 2026',
     text: 'Privacy fix: turning Show My Location off now keeps it off, even after a refresh. Before, the app asked your browser for your position again every time the page opened, and could guess your city from your connection, so your location came back on screen. Now nothing asks for it until you turn it back on. Also new in Settings > Location: Zoom to My Location on Load and Open My Forecast on Load. Both are on by default in Lite-ning and off by default in Wx-pert, and you can switch either one in either mode.' },
   { id: '2026-09-25-f', date: 'Sep 25, 2026',

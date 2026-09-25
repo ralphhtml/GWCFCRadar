@@ -29,7 +29,7 @@ console.log('\n1. the pieces are in the page');
 {
   ok('the disc spins in CSS, not in JavaScript',
      /@keyframes sweep-spin \{ to \{ transform: rotate\(360deg\); \} \}/.test(PAGE)
-     && /animation: sweep-spin [\d.]+s linear infinite;/.test(PAGE));
+     && /animation: sweep-spin var\(--sweep-dur\) linear infinite;/.test(PAGE));
   ok('a reduced-motion screen keeps the disc but not the spin',
      /prefers-reduced-motion[\s\S]{0,120}\.sweep-disc \{ animation: none/.test(PAGE));
   ok('the beam follows the same site answer the radar comparison reads',
@@ -117,6 +117,60 @@ console.log('\n2. the beam lives and dies with the single-site picture');
   ok('and brings it straight back', r.backOn === true);
   ok('no single-site radar, no beam', r.goneWithSite === true);
   ok('and nothing threw', errs.length === 0, errs.slice(0, 3).join(' | '));
+}
+
+console.log('\n3. the glow trails the beam, and its look is a setting');
+{
+  // A frozen disc, drawn on its own page so nothing else is in the pixels:
+  // at rotation 0 the beam points straight up and turns clockwise, so just
+  // anticlockwise of 12 o'clock (behind it) must glow and just clockwise
+  // (ahead of it) must be dark.
+  const css = await p.evaluate(() => [...document.styleSheets].flatMap(sh => { try { return [...sh.cssRules]; } catch (e) { return []; } })
+    .map(r => r.cssText).filter(t => /sweep-disc|--sweep-/.test(t)).join('\n'));
+  const q = await b.newPage({ viewport: { width: 220, height: 220 } });
+  const sample = async (vars) => {
+    await q.setContent(`<style>${css} body{margin:0;background:#000}
+      .sweep-disc{animation:none !important;mix-blend-mode:normal;width:200px;height:200px;left:10px;top:10px}
+      :root{${vars}}</style><div class="sweep-disc"></div>`);
+    return q.screenshot();
+  };
+  const read = async (vars) => {
+    const png = await sample(vars);
+    const b64 = png.toString('base64');
+    return p.evaluate(async (b64) => {
+      const im = new Image(); im.src = 'data:image/png;base64,' + b64; await im.decode();
+      const c = document.createElement('canvas'); c.width = im.width; c.height = im.height;
+      const x = c.getContext('2d'); x.drawImage(im, 0, 0);
+      const at = (deg) => {   // a point 70 px out from the centre, deg clockwise from 12 o'clock
+        const a = deg * Math.PI / 180, px = Math.round(110 + 70 * Math.sin(a)), py = Math.round(110 - 70 * Math.cos(a));
+        const d = x.getImageData(px, py, 1, 1).data; return d[0] + d[1] + d[2];
+      };
+      const hex = (deg) => { const a = deg * Math.PI / 180; const d = x.getImageData(Math.round(110 + 70 * Math.sin(a)), Math.round(110 - 70 * Math.cos(a)), 1, 1).data; return [d[0], d[1], d[2]]; };
+      return { behind: at(-8), ahead: at(8), farBehind: at(-150), rgbBehind: hex(-4) };
+    }, b64);
+  };
+  let r = await read('');
+  ok('just behind the beam glows, just ahead of it is dark', r.behind > 60 && r.ahead < 10, JSON.stringify(r));
+  ok('and the glow fades out behind it', r.farBehind < r.behind / 4, JSON.stringify(r));
+  r = await read('--sweep-rgb: 255,0,0; --sweep-trail: 200deg; --sweep-a: 1;');
+  ok('the colour, trail and brightness come from the settings variables',
+     r.rgbBehind[0] > 150 && r.rgbBehind[1] < 30 && r.farBehind > 5, JSON.stringify(r));
+  await q.close();
+
+  const s = await p.evaluate(() => {
+    _sweepSet('speed', 6); _sweepSet('color', '#ff0000'); _sweepSet('alpha', 0.9); _sweepSet('trail', 120);
+    const st = document.documentElement.style;
+    const out = { dur: st.getPropertyValue('--sweep-dur'), rgb: st.getPropertyValue('--sweep-rgb'),
+      a: st.getPropertyValue('--sweep-a'), trail: st.getPropertyValue('--sweep-trail'),
+      saved: JSON.parse(localStorage.getItem('gwcfc_sweep_cfg')), label: document.getElementById('sweep-speed-val').textContent };
+    _sweepSet('reset');
+    out.reset = document.documentElement.style.getPropertyValue('--sweep-dur');
+    return out;
+  });
+  ok('Settings > Radar sets the speed, colour, brightness and trail, and keeps them',
+     s.dur === '6s' && s.rgb === '255,0,0' && s.a === '0.9' && s.trail === '120deg'
+     && s.saved.speed === 6 && s.label === '6.0 s', JSON.stringify(s));
+  ok('and Reset puts the broadcast look back', s.reset === '3.2s', s.reset);
 }
 
 await b.close();
