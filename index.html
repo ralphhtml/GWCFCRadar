@@ -5208,7 +5208,8 @@ body.lite-mode #export-modal { display: none !important; }
 }
 .mb-city-data {
   display: block;
-  margin-top: 0;
+  margin: 0 auto;
+  overflow: hidden; text-overflow: ellipsis;
   font-family: var(--mono);
   font-size: 8.5px;
   font-weight: 700;
@@ -8015,7 +8016,7 @@ body.theme-picking, body.theme-picking * { cursor: crosshair !important; }
 .ai-hdr-btn {
   background-image: var(--grad-raise); box-shadow: var(--edge-3d-soft);
   border: 1px solid var(--edge-red); border-radius: 6px;
-  color: #0b1520; font-size: 10px; cursor: pointer;
+  color: var(--on-raise, #0b1520); font-size: 10px; cursor: pointer;
   padding: 3px 7px; font-family: var(--mono); font-weight: 600; line-height: 1.4;
 }
 .ai-hdr-btn:hover { background-image: var(--grad-raise-h); }
@@ -8052,7 +8053,7 @@ body.theme-picking, body.theme-picking * { cursor: crosshair !important; }
   font-size: 9px; padding: 5px 10px; cursor: pointer; line-height: 1.4;
   text-align: left;
 }
-.ai-chip:hover { background-image: var(--grad-raise); color: #0b1520; border-color: transparent; }
+.ai-chip:hover { background-image: var(--grad-raise); color: var(--on-raise, #0b1520); border-color: transparent; }
 /* Messages */
 #lqm-ai-messages {
   flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;
@@ -8082,7 +8083,7 @@ body.theme-picking, body.theme-picking * { cursor: crosshair !important; }
 .ai-tool {
   background-image: var(--grad-raise); box-shadow: var(--edge-3d-soft);
   border: 1px solid var(--edge-red); border-radius: 8px;
-  color: #0b1520; font-size: 13px; cursor: pointer;
+  color: var(--on-raise, #0b1520); font-size: 13px; cursor: pointer;
   width: 28px; height: 26px; padding: 0; line-height: 1;
   display: flex; align-items: center; justify-content: center;
 }
@@ -64611,6 +64612,94 @@ function themeSurfaceStops(v, n) {
   _themeRender();
 }
 
+// -- LEGIBILITY GUARD ----------------------------------------------------
+// Any theme, shipped or hand-made, can put text on a surface it cannot be
+// read against: the pressable controls used to wear fixed near-black ink
+// because the default raised gradient is light blue, and on a theme where
+// that gradient is deep purple the dropdown text simply vanished; a muted
+// colour chosen for one panel can sit almost on top of another. So after
+// every theme change the page measures its own colours and fixes the ink:
+//   --on-raise  black or white, whichever reads better on --grad-raise
+//   --muted     pulled toward the main text colour until it clears 4.5:1
+//               against the panels it sits on
+// Nothing a person picked is thrown away: their muted colour is kept when it
+// already reads, and nudged only as far as it has to go.
+function _lgColors(v) {
+  const out = [];
+  String(v || '').replace(/#([0-9a-f]{3,8})\b|rgba?\(([^)]+)\)/gi, (m, hex, fn) => {
+    if (hex) {
+      let h = hex.length <= 4 ? hex.split('').map(x => x + x).join('') : hex;
+      const a = h.length >= 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1;
+      out.push([parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), a]);
+    } else {
+      const n = fn.split(/[ ,/]+/).filter(Boolean).map(parseFloat);
+      out.push([n[0], n[1], n[2], n.length > 3 ? n[3] : 1]);
+    }
+    return m;
+  });
+  return out;
+}
+function _lgLum(c) {
+  const f = (x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); };
+  return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]);
+}
+function _lgContrast(a, b) {
+  const la = _lgLum(a), lb = _lgLum(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+// A surface's colour as the eye averages it: its stops, each composited over
+// what is behind it (the panels are dark, so black is the fair backdrop).
+function _lgSurface(v, under) {
+  const cs = _lgColors(v);
+  if (!cs.length) return null;
+  const base = under || [0, 0, 0];
+  const mix = cs.map(c => [0, 1, 2].map(i => c[i] * c[3] + base[i] * (1 - c[3])));
+  return [0, 1, 2].map(i => mix.reduce((t, c) => t + c[i], 0) / mix.length);
+}
+function _legibilityGuard() {
+  const r = document.documentElement, cs = getComputedStyle(r);
+  const get = (k) => cs.getPropertyValue(k).trim();
+  const raise = _lgSurface(get('--grad-raise'));
+  if (raise) {
+    const dark = [11, 21, 32], light = [255, 255, 255];
+    const ink = _lgContrast(raise, dark) >= _lgContrast(raise, light) ? '#0b1520' : '#ffffff';
+    if (get('--on-raise') !== ink) r.style.setProperty('--on-raise', ink);
+  }
+  // The muted colour against the panels it appears on; it has to read on
+  // all of them. _lgOwn is what the theme asked for, _lgSet what this guard
+  // last wrote: a --muted that is neither is a new choice and becomes _lgOwn.
+  const panels = [_lgSurface(get('--grad-panel')), _lgSurface(get('--grad-surface')),
+                  _lgSurface(get('--grad-card'), _lgSurface(get('--grad-panel')))].filter(Boolean);
+  const text = _lgColors(get('--text'))[0];
+  const cur = get('--muted');
+  if (cur !== _legibilityGuard._set) _legibilityGuard._own = cur;
+  const ownStr = _legibilityGuard._own || cur;
+  const own = _lgColors(ownStr)[0];
+  if (!panels.length || !text || !own) return;
+  const worst = (c) => Math.min.apply(null, panels.map(p => _lgContrast(c, p)));
+  let c = own.slice(0, 3), t = 0;
+  while (worst(c) < 4.5 && t < 1) {
+    t = Math.min(1, t + 0.05);
+    c = [0, 1, 2].map(k => Math.round(own[k] + (text[k] - own[k]) * t));
+  }
+  const next = t ? 'rgb(' + c.join(',') + ')' : ownStr;
+  _legibilityGuard._set = next;
+  if (cur !== next) r.style.setProperty('--muted', next);
+}
+// Every theme change goes through the root element's inline style, so one
+// watcher there catches all of them: presets, single colour picks, imports,
+// resets and the saved theme at start-up.
+(function _legibilityWatch() {
+  let t = null;
+  const run = () => { t = null; try { _legibilityGuard(); } catch (e) {} };
+  const kick = () => { if (!t) t = setTimeout(run, 60); };
+  try {
+    new MutationObserver(kick).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+  } catch (e) {}
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', kick);
+  else kick();
+})();
+
 function themeApplyPreset(key) {
   const p = THEME_PRESETS[key];
   if (!p) return;
@@ -74882,6 +74971,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-zzzzz', date: 'Sep 25, 2026',
+    text: 'City names on the map no longer overlap. They are placed biggest first, and a name that would run into one already there is left out, with room kept for the reading under it. That also means many more names fit: the map shows smaller towns as you zoom in, filling in the space that is free. All text now stays readable on every theme: buttons and dropdowns switch to light or dark text to suit the colour behind them, and faint help text is brightened until it reads clearly.' },
   { id: '2026-09-25-zzzz', date: 'Sep 25, 2026',
     text: 'The Inspector now matches the radar picture under it. Single-site radar pictures were drawn a few pixels out of place on the map (about a kilometre or two), so the value read at the crosshair often belonged to the next colour over; every site now draws exactly where its data is. While a loop plays, the Inspector reads the frame on screen instead of the newest scan, and it updates on every frame instead of trailing behind.' },
   { id: '2026-09-25-zzz', date: 'Sep 25, 2026',
@@ -83941,12 +84032,12 @@ function closeCredits() {
    timestamp chip already proved works, clearing 8:1+ on every stop, so
    every text-bearing control on this gradient wears black ink instead of
    the white the rest of the file's DARKER surfaces use. */
-.lqm-set-tab:hover { background-image: var(--grad-raise); color: #0b1520; }
+.lqm-set-tab:hover { background-image: var(--grad-raise); color: var(--on-raise, #0b1520); }
 .lqm-set-tab.on {
   background-image: var(--grad-raise);
   border-color: var(--edge-red);
   box-shadow: var(--edge-3d), 0 0 0 1px rgba(255,90,80,0.25);
-  color: #0b1520;
+  color: var(--on-raise, #0b1520);
 }
 .lqm-settings-btn,
 .lqm-settings-select,
@@ -83956,7 +84047,7 @@ function closeCredits() {
   background-image: var(--grad-raise);
   box-shadow: var(--edge-3d-soft);
   border-color: var(--edge-red);
-  color: #0b1520;
+  color: var(--on-raise, #0b1520);
 }
 .lqm-settings-btn:hover { background-image: var(--grad-raise-h); }
 /* The track a slider runs in should look cut into the panel, not laid on it. */
@@ -84411,11 +84502,11 @@ function closeCredits() {
   background-image: var(--grad-raise);
   box-shadow: var(--edge-3d-soft);
   border-color: var(--edge-red);
-  color: #0b1520;
+  color: var(--on-raise, #0b1520);
 }
 #past-alerts-toggle:hover {
   background-image: var(--grad-raise-h);
-  color: #0b1520;
+  color: var(--on-raise, #0b1520);
 }
 /* The search button in the layer bubbles' red, by request - it left the
    shared raise group above so the buttons' cyan cannot pull it back. */
@@ -88899,7 +88990,10 @@ async function _mbCoastMaybeUpgrade() {
 // out view of the eastern seaboard is a solid block of text, and with only a
 // cap the names you get are whichever happened to come first in the file
 // rather than the ones worth showing.
-const MB_CITY_CAP = 90;
+// How many names are considered, biggest first. The screen decides how many
+// actually show: a name that would touch one already placed is left out, so
+// the cap can be generous without the labels piling up.
+const MB_CITY_CAP = 400;
 let _mbCityFeats = null;
 let _mbCityLayer = null;
 
@@ -88992,17 +89086,79 @@ function _mbCityFillValues() {
     : setTimeout(slice, 60);
 }
 
+// Lower than they were: overlaps are now prevented by placement, so the
+// population floor only has to keep the candidate list sensible.
 function _mbCityMinPop(z) {
-  if (z <= 3) return 3000000;
-  if (z <= 4) return 1200000;
-  if (z <= 5) return 500000;
-  if (z <= 6) return 200000;
-  if (z <= 7) return 80000;
-  if (z <= 8) return 30000;
-  if (z <= 9) return 12000;
-  if (z <= 10) return 4000;
+  if (z <= 3) return 1500000;
+  if (z <= 4) return 500000;
+  if (z <= 5) return 150000;
+  if (z <= 6) return 50000;
+  if (z <= 7) return 20000;
+  if (z <= 8) return 8000;
+  if (z <= 9) return 3000;
   return 0;
 }
+
+// -- Names that never overlap ---------------------------------------------
+// Placed biggest first. Each label reserves the box it will take up, the
+// name plus the reading line under it, and a smaller place whose box would
+// touch one already taken is left out. Measured with the label's own font
+// on a canvas, so no layout is forced.
+let _mbMeasureCtx = null, _mbMeasureFont = '';
+function _mbLabelFont() {
+  try {
+    const probe = document.createElement('span');
+    probe.className = 'mb-city';
+    probe.style.visibility = 'hidden';
+    probe.textContent = 'M';
+    (map.getPane('mapLabelsPane') || document.body).appendChild(probe);
+    const cs = getComputedStyle(probe);
+    const f = cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+    const px = parseFloat(cs.fontSize) || 12;
+    probe.remove();
+    return { font: f, px };
+  } catch (e) { return { font: '600 12px sans-serif', px: 12 }; }
+}
+function _mbMeasure(text, font) {
+  if (!_mbMeasureCtx) _mbMeasureCtx = document.createElement('canvas').getContext('2d');
+  if (_mbMeasureFont !== font) { _mbMeasureCtx.font = font; _mbMeasureFont = font; }
+  return _mbMeasureCtx.measureText(text).width;
+}
+// The reading under a name ("Air Quality Alert", "21.00dBZ") arrives after
+// the names, so its room is reserved up front and anything longer is
+// clipped to it rather than spilling into a neighbour.
+const MB_CITY_DATA_W = 84, MB_CITY_DATA_H = 11, MB_CITY_GAP = 4;
+function _mbCityPlace(cands, placed, lf) {
+  const out = [];
+  const lineH = lf.px * 1.2;
+  for (const c of cands) {
+    const pt = map.latLngToContainerPoint([c.lat, c.lng]);
+    const w = Math.max(_mbMeasure(c.name, lf.font), MB_CITY_DATA_W) + MB_CITY_GAP * 2;
+    const h = lineH + MB_CITY_DATA_H + MB_CITY_GAP * 2;
+    const box = { x0: pt.x - w / 2, x1: pt.x + w / 2, y0: pt.y - h / 2, y1: pt.y + h / 2 };
+    let hit = false;
+    for (let i = 0; i < placed.length; i++) {
+      const o = placed[i];
+      if (box.x0 < o.x1 && box.x1 > o.x0 && box.y0 < o.y1 && box.y1 > o.y0) { hit = true; break; }
+    }
+    if (hit) continue;
+    placed.push(box);
+    out.push(Object.assign({ w: w - MB_CITY_GAP * 2 }, c));
+  }
+  return out;
+}
+function _mbCityMarker(c) {
+  return L.marker([c.lat, c.lng], {
+    pane: 'mapLabelsPane', interactive: false, keyboard: false,
+    icon: L.divIcon({
+      className: '', iconSize: [0, 0], iconAnchor: [0, 0],
+      html: '<span class="mb-city" data-lat="' + c.lat + '" data-lng="' + c.lng
+          + '">' + _mbEsc(c.name) + '<span class="mb-city-data" style="max-width:'
+          + Math.ceil(c.w) + 'px"></span></span>',
+    }),
+  });
+}
+let _mbCityGen = 0;
 
 async function _mbLoadCities() {
   if (_mbCityFeats) return _mbCityFeats;
@@ -89024,26 +89180,41 @@ async function _mbLoadCities() {
 function _mbCityRefresh() {
   if (!_mbOn.cities || !_mbCityFeats || typeof map === 'undefined') return;
   if (_mbCityLayer) { try { map.removeLayer(_mbCityLayer); } catch (e) {} _mbCityLayer = null; }
+  const gen = ++_mbCityGen;
   const z = map.getZoom();
   const minPop = _mbCityMinPop(z);
   const b = map.getBounds();
-  const out = [];
-  for (let i = 0; i < _mbCityFeats.length && out.length < MB_CITY_CAP; i++) {
+  const cands = [];
+  for (let i = 0; i < _mbCityFeats.length && cands.length < MB_CITY_CAP; i++) {
     const c = _mbCityFeats[i];
     if (c.pop < minPop) break;             // the list is sorted, so this is the end of it
     if (!b.contains([c.lat, c.lng])) continue;
-    out.push(c);
+    cands.push(c);
   }
-  if (!out.length) return;
-  _mbCityLayer = L.layerGroup(out.map(c => L.marker([c.lat, c.lng], {
-    pane: 'mapLabelsPane', interactive: false, keyboard: false,
-    icon: L.divIcon({
-      className: '', iconSize: [0, 0], iconAnchor: [0, 0],
-      html: '<span class="mb-city" data-lat="' + c.lat + '" data-lng="' + c.lng
-          + '">' + _mbEsc(c.name) + '<span class="mb-city-data"></span></span>',
-    }),
-  }))).addTo(map);
+  const lf = _mbLabelFont();
+  const placed = [];
+  const out = _mbCityPlace(cands, placed, lf);
+  _mbCityLayer = L.layerGroup(out.map(_mbCityMarker)).addTo(map);
   _mbCityFillValues();
+  // Zoomed in, the built-in list runs out of towns long before the screen
+  // runs out of room. The same town list the city dots use (every named
+  // place, from the parsing server, or the web list when it is away) fills
+  // what space is left, around the names already placed.
+  if (z >= 7 && typeof _cityGazetteerVisible === 'function') {
+    _cityGazetteerVisible(b).then(rows => {
+      if (gen !== _mbCityGen || !_mbCityLayer || !Array.isArray(rows) || !rows.length) return;
+      const have = out.map(c => (c.name || '').toLowerCase());
+      const more = rows
+        .map(r => ({ name: r.name, lat: r.lat, lng: r.lon }))
+        .filter(r => r.name && !out.some(c => c.name === r.name
+          && Math.abs(c.lat - r.lat) < 0.2 && Math.abs(c.lng - r.lng) < 0.2)
+          && have.indexOf(r.name.toLowerCase()) === -1);
+      const extra = _mbCityPlace(more, placed, lf);
+      if (!extra.length) return;
+      extra.forEach(c => _mbCityMarker(c).addTo(_mbCityLayer));
+      _mbCityFillValues();
+    }).catch(() => {});
+  }
 }
 
 function _mbEsc(s) {
@@ -89124,8 +89295,13 @@ function _mbCitySize(px) {
     if (pane) pane.style.setProperty('--mb-city-size', n + 'px');
   } catch (e) {}
   document.documentElement.style.setProperty('--mb-city-size', n + 'px');
+  // Bigger names need more room, so the placement is worked out again once
+  // the slider settles.
+  clearTimeout(_mbCitySizeTimer);
+  _mbCitySizeTimer = setTimeout(() => { try { _mbCityRefresh(); } catch (e) {} }, 250);
   return n;
 }
+let _mbCitySizeTimer = null;
 </script>
 
 <script>
