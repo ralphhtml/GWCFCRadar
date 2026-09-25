@@ -20,7 +20,7 @@ const DATA_BODY_CAP = 8 * 1024 * 1024;   // a Level 2 volume is not a cache line
 let _dataPuts = 0;
 
 // -- Radar tile caches ----------------------------------------
-const IEM_L3_RE = /\/cache\/tile\.py\/1\.0\.0\/nexrad-n0q-\d{12}\//;
+const IEM_L3_RE = /\/cache\/tile\.py\/1\.0\.0\/(?:nexrad-n0q-|ridge::USCOMP-N0Q-)\d{12}\//;
 const RV_TILE_RE = /\/v2\/radar\/\d+\//;
 
 // Severity to badge art, mirroring the page's _severityBadge(). The large icon
@@ -515,7 +515,7 @@ async function _checkAndNotify() {
       const px  = Math.floor((xF - tx) * 256);
       const py  = Math.floor((yF - ty) * 256);
 
-      const tileUrl = `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-${_swTileKey}/${Z}/${tx}/${ty}.png`;
+      const tileUrl = `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::USCOMP-N0Q-${_swTileKey}/${Z}/${tx}/${ty}.png`;
 
       // Try the SW cache first - this tile was already downloaded by the map
       const radarCache = await caches.open(CACHE);
