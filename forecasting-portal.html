@@ -117,6 +117,34 @@ body, button, input, select, textarea, table, code, kbd, pre,
 .leaflet-top.leaflet-left { top: 21.5%; }
 #live-fcstr { left: 66.18%; top: 12.35%; width: 30.76%; height: 8.15%; }
 
+/* -- A TALL SCREEN (a phone upright, a tablet in portrait) ----------------
+   The design is one 16:9 page stretched over the whole window, which is
+   right on a computer and wrong on a phone: stretched to a tall screen, the
+   title was squashed to half its width and every pill and legend with it.
+   Here the page is shown as its two bands instead, each at its own shape:
+   the header (rows 0..375 of the 2880x1620 picture) across the top, the
+   legends (rows 1265..1620) across the bottom, with the map between. The
+   live pills, the zoom buttons and the toolbar move with them. */
+.two-band { display: none; }
+@media (max-aspect-ratio: 13/10) {
+  #two-frame { display: none; }
+  .two-band {
+    display: block; position: absolute; left: 0; width: 100%;
+    z-index: 450; pointer-events: none;
+    background-image: url(icons/two-frame.png);
+    background-repeat: no-repeat; background-size: 100% auto;
+  }
+  #two-frame-top { top: 0; aspect-ratio: 2880 / 375; background-position: center top; }
+  #two-frame-bot { bottom: 0; aspect-ratio: 2880 / 355; background-position: center bottom; }
+  /* The pills' rectangles in the design (y 200..332 of 1620), in the band. */
+  #live-time, #live-fcstr { top: calc(100vw * 200 / 2880); height: calc(100vw * 132 / 2880);
+                            font-size: calc(100vw * 40 / 1440); }
+  .leaflet-top.leaflet-left { top: calc(100vw * 375 / 2880 + 6px); }
+  #format #topright { top: auto; bottom: calc(100vw * 355 / 2880 + 10px); }
+  /* The map's credit line sits above the legend band, not over it. */
+  .leaflet-bottom { bottom: calc(100vw * 355 / 2880); }
+}
+
 /* -- LEGENDS -------------------------------------------------------------- */
 #legends { flex: none; display: flex; gap: 12px; align-items: flex-start;
            flex-wrap: wrap; }
@@ -847,6 +875,11 @@ body, button, input, select, textarea, table, code, kbd, pre,
 
   <!-- The design itself: the PDF page, background removed, over the map. -->
   <img id="two-frame" src="icons/two-frame.png" alt="" draggable="false">
+  <!-- The same design split into its two bands, for a tall screen (see the
+       max-aspect-ratio rule): the header along the top, the legends along
+       the bottom, each at its true shape. -->
+  <div id="two-frame-top" class="two-band" aria-hidden="true"></div>
+  <div id="two-frame-bot" class="two-band" aria-hidden="true"></div>
   <div id="live-time" class="live-pill stroketext">Date/Time Issued: <span id="two-time">?/?/? ??:?? UTC</span></div>
   <div id="live-fcstr" class="live-pill stroketext">Forecaster [<span id="two-fcstr">??????</span>]</div>
 
@@ -1445,8 +1478,11 @@ function zoneBarCancel() { if (PICK) pickCancel(); else zoneCancel(); }
 function initMap() {
   map = L.map('map', { zoomControl: true, worldCopyJump: true })
          .setView([22, -62], 4);           // the Atlantic basin, as the NHC frames it
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OpenStreetMap, &copy; CARTO', maxZoom: 10,
+  // Esri's dark grey canvas, which needs no key. CARTO's dark tiles used to
+  // be here, and CARTO now stamps "API KEY REQUIRED" across every tile served
+  // without one, which is what the desk's map had turned into.
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '&copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors', maxZoom: 10,
   }).addTo(map);
   layers.cones  = L.layerGroup().addTo(map);   // under the symbols on purpose
   layers.areas  = L.layerGroup().addTo(map);
@@ -1569,11 +1605,13 @@ function fitTitle() {
 window.addEventListener('resize', () => { fitTitle(); });
 
 function fitPills() {
+  // Down to 6px in half steps: on an upright phone the pills are only a few
+  // hundred pixels wide, and a 10px floor left the date cut off at both ends.
   document.querySelectorAll('.live-pill').forEach(el => {
     el.style.fontSize = '';
     let size = parseFloat(getComputedStyle(el).fontSize);
-    while (size > 10 && el.scrollWidth > el.clientWidth) {
-      size -= 1;
+    while (size > 6 && el.scrollWidth > el.clientWidth) {
+      size -= 0.5;
       el.style.fontSize = size + 'px';
     }
   });

@@ -197,15 +197,32 @@ console.log('\n3. twice the scroll is about twice the zoom');
      ratio > 1.8 && ratio < 2.2, ratio.toFixed(3));
 }
 
-console.log('\n4. scrolling the other way zooms out, by the same amount');
+console.log('\n4. scrolling the other way zooms out, a little more gently');
 {
   await setup();
   const inZ = (await scroll(-240, 4)) - 5;
   await setup();
   const outZ = 5 - (await scroll(240, 4));
   ok('down zooms out', outZ > 0, outZ);
-  ok('and in and out are symmetric',
-     Math.abs(inZ - outZ) < 0.01, inZ + ' vs ' + outZ);
+  // A tester found zooming out far quicker than zooming in: a level out shows
+  // four times the ground. Out is damped to 0.65 of in (WZ_OUT_DAMP).
+  ok('and out is 0.65 of in, so it no longer feels faster',
+     Math.abs(outZ / inZ - 0.65) < 0.01, inZ + ' vs ' + outZ);
+}
+
+console.log('\n4b. Settings > Map > Zoom Speed scales both');
+{
+  await setup();
+  const base = (await scroll(-240, 4)) - 5;
+  await page.evaluate(() => lqmSetZoomSpeed(2));
+  await setup();
+  const fast = (await scroll(-240, 4)) - 5;
+  await page.evaluate(() => lqmSetZoomSpeed(0.5));
+  await setup();
+  const slow = (await scroll(-240, 4)) - 5;
+  await page.evaluate(() => lqmSetZoomSpeed(1));
+  ok('2x zooms twice as far, 0.5x half as far', Math.abs(fast / base - 2) < 0.05 && Math.abs(slow / base - 0.5) < 0.05,
+     [base, fast, slow].map(x => x.toFixed(2)).join(' '));
 }
 
 console.log('\n5. a mouse wheel notch is still about one level');

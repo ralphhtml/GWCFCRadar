@@ -47,6 +47,10 @@ function _plainText(v) {
 const CACHE_HOSTS = new Set([
   'api.maptiler.com',
   'mesonet.agron.iastate.edu',
+  // The radar tile mirrors the page spreads tiles across.
+  'mesonet1.agron.iastate.edu',
+  'mesonet2.agron.iastate.edu',
+  'mesonet3.agron.iastate.edu',
   'tilecache.rainviewer.com',
   'api.rainviewer.com',
   'opengeo.ncep.noaa.gov',
@@ -215,7 +219,7 @@ self.addEventListener('fetch', e => {
   }
 
   let ttl;
-  if (url.hostname === 'mesonet.agron.iastate.edu' && IEM_L3_RE.test(url.pathname)) {
+  if (/^mesonet[123]?\.agron\.iastate\.edu$/.test(url.hostname) && IEM_L3_RE.test(url.pathname)) {
     ttl = 24 * 3600 * 1000;
   } else if (url.hostname === 'tilecache.rainviewer.com' && RV_TILE_RE.test(url.pathname)) {
     ttl = 24 * 3600 * 1000;
