@@ -69,8 +69,12 @@ if ('serviceWorker' in navigator) {
   // so the page and the worker are the same version, guarding against the reload
   // loop this causes if the worker is replaced again during startup.
   let _swReloaded = false;
+  // Only when an old worker was replaced. On a first visit there is no old
+  // worker: the new one simply takes charge, and reloading for that threw
+  // away the whole first load and did it all again, every request twice.
+  const _swHadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (_swReloaded) return;
+    if (_swReloaded || !_swHadController) return;
     _swReloaded = true;
     location.reload();
   });
@@ -2774,14 +2778,6 @@ img.wx-model-smooth {
 #fd-title {
   font-family: var(--mono); font-size: 11px; letter-spacing: 2px;
   text-transform: uppercase; color: var(--accent2);
-}
-/* Not the amber SIMULATED chip the Alert Desk wears. What is issued here is
-   real GWCFC output, and saying otherwise on the same screen it is composed
-   would be the most misleading label on the page. */
-#fd-head-note {
-  font-family: var(--mono); font-size: 9px; letter-spacing: 0.6px;
-  color: #7fe0c0; border: 1px solid rgba(127,224,192,0.5);
-  background: rgba(127,224,192,0.1); border-radius: 5px; padding: 3px 7px;
 }
 #fd-body {
   padding: 14px 16px 20px; overflow-y: auto;
@@ -14051,7 +14047,12 @@ function _buildRadarPool() {
       const next = currentFrame + d; if (next < radarFrames.length) arr.push(next);
     }
     setTimeout(() => { near.forEach(i => { if (_radarPoolBuilt) _ensureNexradLayer(i); }); }, 150);
-    setTimeout(() => { far.forEach(i  => { if (_radarPoolBuilt) _ensureNexradLayer(i); }); }, 400);
+    // On a phone the rest of the loop waits a few seconds: eight or more
+    // frames of tiles landing at once were competing with the first
+    // picture, the alerts and the basemap for one mobile connection. They
+    // are still in long before anybody reaches for the play button.
+    const farDelay = (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) ? 3500 : 400;
+    setTimeout(() => { far.forEach(i  => { if (_radarPoolBuilt) _ensureNexradLayer(i); }); }, farDelay);
   }
 }
 
@@ -15673,25 +15674,31 @@ async function _doLoadAlerts(forceRender) {
     const rawPastFeatures = _alertsPastCache || [];
     // Fill in zone-based geometry BEFORE filtering, so alerts that only carry
     // a UGC zone code (no drawn polygon) aren't discarded for lacking geometry.
-    await Promise.all([_fillMissingAlertGeometry(activeFeatures), _fillMissingAlertGeometry(rawPastFeatures)]);
     const activeIds = new Set(activeFeatures.map(f => f.properties.id || f.id));
+    // Only the expired alerts that will actually be drawn get their zones
+    // looked up. The list is a hundred long and most of it is either still
+    // active (drawn from the live list) or too old to show, and every one
+    // of those used to cost its zone lookups anyway.
+    const now = Date.now();
+    const pastWindow = (f) => {
+      const p = f.properties;
+      const fid = p.id || f.id;
+      if (activeIds.has(fid)) return false;
+      const onset   = p.onset   ? new Date(p.onset).getTime()   : null;
+      const expires = p.expires ? new Date(p.expires).getTime() : null;
+      if (!expires || now < expires) return false;
+      const duration = (onset && expires > onset) ? (expires - onset) : 3600000;
+      return now < expires + duration;
+    };
+    const pastShown = rawPastFeatures.filter(pastWindow);
+    await Promise.all([_fillMissingAlertGeometry(activeFeatures), _fillMissingAlertGeometry(pastShown)]);
 
     // Skip full re-render on 60s refresh if nothing changed
     const sig = [...activeIds].sort().join(',');
     const unchanged = sig === _lastAlertSig;
     _lastAlertSig = sig;
 
-    const now = Date.now();
-    const pastFeatures = rawPastFeatures.filter(f => {
-      const p = f.properties;
-      const fid = p.id || f.id;
-      if (activeIds.has(fid) || !f.geometry) return false;
-      const onset   = p.onset   ? new Date(p.onset).getTime()   : null;
-      const expires = p.expires ? new Date(p.expires).getTime() : null;
-      if (!expires || now < expires) return false;
-      const duration = (onset && expires > onset) ? (expires - onset) : 3600000;
-      return now < expires + duration;
-    });
+    const pastFeatures = pastShown.filter(f => !!f.geometry);
 
     // Keep what was actually drawn, so anything else that wants to talk about
     // the alerts (the AI, above all) describes the same set the map is showing
@@ -16055,6 +16062,40 @@ function _zoneFetch(url) {
 // as the same NEZ, NDZ and PKZ lookups over and over.
 const _zoneFailAt = new Map();
 const ZONE_RETRY_MS = 10 * 60 * 1000;
+// Zone outlines barely ever change, but every visit used to download all of
+// them again: a few hundred requests in the first seconds of a load, fighting
+// the radar and the basemap for a phone's connection. The simplified shapes
+// are now kept on the device for two weeks, so a return visit asks the
+// network only for zones it has not seen before.
+const ZONE_STORE = 'gwcfc-zones-v1';
+const ZONE_STORE_MS = 14 * 24 * 3600 * 1000;
+let _zoneStoreP = null;
+function _zoneStoreOpen() {
+  if (!_zoneStoreP) {
+    _zoneStoreP = (typeof caches !== 'undefined' && caches.open)
+      ? caches.open(ZONE_STORE).catch(() => null) : Promise.resolve(null);
+  }
+  return _zoneStoreP;
+}
+const _zoneStoreKey = (ugc) => 'https://zones.gwcfc.invalid/' + ugc;
+async function _zoneStoreGet(ugc) {
+  try {
+    const c = await _zoneStoreOpen();
+    const r = c && await c.match(_zoneStoreKey(ugc));
+    if (!r) return null;
+    const d = await r.json();
+    if (!d || !d.g || Date.now() - d.t > ZONE_STORE_MS) return null;
+    return d.g;
+  } catch (e) { return null; }
+}
+async function _zoneStorePut(ugc, g) {
+  try {
+    const c = await _zoneStoreOpen();
+    if (c) await c.put(_zoneStoreKey(ugc), new Response(JSON.stringify({ t: Date.now(), g }),
+      { headers: { 'Content-Type': 'application/json' } }));
+  } catch (e) {}
+}
+
 // The alert already names each zone's exact address in affectedZones, type
 // and all. Guessing the type from the code instead (forecast first, then
 // fire) is what filled the network tab with 404s: every fire zone was asked
@@ -16066,13 +16107,15 @@ async function _fetchZoneGeometry(ugc, knownUrl) {
   const urls = knownUrl ? [knownUrl]
     : _zoneTypesFor(ugc).map(type => `https://api.weather.gov/zones/${type}/${ugc}`);
   const promise = (async () => {
+    const kept = await _zoneStoreGet(ugc);
+    if (kept) return kept;
     let failed = false;
     for (const url of urls) {
       try {
         const r = await _zoneFetch(url);
         if (!r.ok) { if (r.status !== 404) failed = true; continue; }
         const d = await r.json();
-        if (d.geometry) return _simplifyGeometry(d.geometry);
+        if (d.geometry) { const g = _simplifyGeometry(d.geometry); _zoneStorePut(ugc, g); return g; }
       } catch(e) { failed = true; }
     }
     // A network hiccup is not "this zone has no shape": forget it so the
@@ -27312,8 +27355,8 @@ async function _l2ArcGunzip(bytes, truncated) {
 // seen to fail. So it is asked first, and the tar mirror is the fallback.
 const L2AWS_BUCKET = 'https://unidata-nexrad-level2.s3.amazonaws.com';
 const _l2AwsDayCache = new Map();
-function _l2AwsSid(site) {
-  let sid = String(site).toUpperCase();
+function _l2AwsSid(site, atMs) {
+  let sid = _radarDataId(String(site).toUpperCase(), atMs);
   if (sid.length === 3) sid = 'K' + sid;
   return sid;
 }
@@ -27322,7 +27365,7 @@ function _l2AwsStampMs(key) {
   return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : NaN;
 }
 async function _l2AwsDayKeys(site, dayMs) {
-  const sid = _l2AwsSid(site);
+  const sid = _l2AwsSid(site, dayMs);
   const d = new Date(dayMs);
   const p2 = n => String(n).padStart(2, '0');
   const prefix = `${d.getUTCFullYear()}/${p2(d.getUTCMonth() + 1)}/${p2(d.getUTCDate())}/${sid}/`;
@@ -27376,7 +27419,7 @@ async function _l2AwsVolumes(site, at, n, cap, startBack) {
 // moments of each other and the walk is a hundred small ranged reads.
 const _l2ArcIndexCache = new Map();
 async function _l2ArcIndex(site, at) {
-  let sid = String(site).toUpperCase();
+  let sid = _radarDataId(String(site).toUpperCase(), at);
   if (sid.length === 3) sid = 'K' + sid;
   const d = new Date(at);
   const p2 = n => String(n).padStart(2, '0');
@@ -37730,6 +37773,14 @@ function toggleRadarSub() {
 // radar you are looking at.
 function toggleRadarL2Sub() {
   if (typeof _radarWorkerWarm === 'function') _radarWorkerWarm();
+  // The first product tapped needs a volume. The station it will most likely
+  // be for is the one nearest the middle of the map, so that one starts now.
+  if (!_l2Site && typeof map !== 'undefined' && map && typeof _cmNearestStation === 'function') {
+    try {
+      const c = map.getCenter(), st = _cmNearestStation(c.lat, c.lng);
+      if (st) _l2WarmSite(st.id, _cmRadarProduct(st.id));
+    } catch (e) {}
+  }
   const wrap = document.getElementById('sub-bubbles');
   _prDisable();
   wrap.innerHTML = '';
@@ -47586,6 +47637,10 @@ function _cmOpen(e) {
   const lat = e.latlng.lat.toFixed(4), lng = e.latlng.lng.toFixed(4);
   const st = _cmNearestStation(e.latlng.lat, e.latlng.lng);
   const nc = _cmNearestCity(e.latlng.lat, e.latlng.lng);
+  // The Radar row is the slow one: a volume to find, download and decode,
+  // five seconds or so. It starts now, while the menu is being read, so by
+  // the time the row is clicked the picture is usually finished.
+  if (st) { try { _l2WarmSite(st.id, _cmRadarProduct(st.id)); } catch (err) {} }
   _cmAlertList = _cmAlertsAt(e.latlng.lat, e.latlng.lng);
   // Only while a parsing server model is actually on the map. The row names the model
   // and the hour being looked at, because that is the whole question it
@@ -48911,6 +48966,16 @@ function _cmCopyFallback(text, done) {
   }
 }
 
+// The product the Radar row will open for this station: the one showing when
+// a single radar's volume carries it, otherwise reflectivity.
+function _cmRadarProduct(id) {
+  let pr = currentProduct;
+  if (!['ref', 'vel', 'cc', 'zdr', 'kdp', 'sw', 'phi'].includes(pr)) pr = 'ref';
+  if (typeof _isTdwrSite === 'function' && _isTdwrSite(id)
+      && ['cc', 'zdr', 'kdp', 'phi'].includes(pr)) pr = 'ref';
+  return pr;
+}
+
 // Fly to the nearest radar and put its products on screen: the radar menu's
 // Level 2 row, decoded from the raw feed, exactly as if its site pill had
 // been tapped.
@@ -48927,11 +48992,7 @@ function _cmGoRadar() {
   // the accumulations) it asked for something no volume holds and nothing
   // came up. And the station was never recorded as the Level 2 site, so the
   // next product tapped went to a different radar.
-  if (!['ref', 'vel', 'cc', 'zdr', 'kdp', 'sw', 'phi'].includes(currentProduct)) currentProduct = 'ref';
-  if (typeof _isTdwrSite === 'function' && _isTdwrSite(s.id)
-      && ['cc', 'zdr', 'kdp', 'phi'].includes(currentProduct)) {
-    currentProduct = 'ref';
-  }
+  currentProduct = _cmRadarProduct(s.id);
   // Whatever radar picture was up (the mosaic, a tile product) comes down,
   // exactly as a switch to Level 2 from the menu does. Clearing it resets the
   // product, so the chosen one is put back after.
@@ -51208,7 +51269,7 @@ async function _s3Xml(params) {
 
 async function _s3VolTime(station, vol) {
   // When one volume started, read from its first chunk's name.
-  const x = await _s3Xml('prefix=' + station + '/' + vol + '/&max-keys=1');
+  const x = await _s3Xml('prefix=' + _radarDataId(station) + '/' + vol + '/&max-keys=1');
   const k = x.querySelector('Contents > Key');
   if (!k) return '';
   const bits = k.textContent.split('/').pop().split('-');
@@ -51223,7 +51284,7 @@ let _l2SkipNewest = null;
 // live load and the loop build that follows it rather than fetched twice.
 async function _s3VolumeList(station) {
   return _s3ListCached('vols:' + station, async () => {
-    const dirs = await _s3Xml('prefix=' + station + '/&delimiter=/&max-keys=1000');
+    const dirs = await _s3Xml('prefix=' + _radarDataId(station) + '/&delimiter=/&max-keys=1000');
     return [...dirs.querySelectorAll('CommonPrefixes > Prefix')]
       .map(p => p.textContent.replace(/\/$/, '').split('/').pop())
       .filter(v => /^\d+$/.test(v))
@@ -51496,7 +51557,7 @@ async function _fetchVolumeDirect(stationId, cap, requireComplete, opts) {
 // one in seven. `opts.split` is set true when a rest is actually coming.
 async function _assembleVolume(station, vol, cap, requireComplete, opts) {
   const byteCap = cap || L2_DIRECT_CAP;
-  const x = await _s3Xml('prefix=' + station + '/' + vol + '/&max-keys=200');
+  const x = await _s3Xml('prefix=' + _radarDataId(station) + '/' + vol + '/&max-keys=200');
   const entries = [...x.querySelectorAll('Contents')].map(c => ({
     key: c.querySelector('Key').textContent,
     size: parseInt(c.querySelector('Size')?.textContent || '0', 10),
@@ -52148,7 +52209,7 @@ function _nearestStation(lat, lon) {
 async function _fetchVelTimestamps(station, signal) {
   // Cache-bust + no-store so we always read the latest scan times (a cached
   // GetCapabilities is what makes radar show stale data on re-open).
-  const url = `https://opengeo.ncep.noaa.gov/geoserver/${station}/ows?service=wms&version=1.3.0&request=GetCapabilities&_=${Date.now()}`;
+  const url = `https://opengeo.ncep.noaa.gov/geoserver/${_radarDataId(station)}/ows?service=wms&version=1.3.0&request=GetCapabilities&_=${Date.now()}`;
   // The caller's signal when it has one, so the NEXT click can cancel this.
   // Eight seconds was the only way out before, and an abandoned request still
   // holds one of the handful of connections a browser allows to a single host,
@@ -52165,7 +52226,7 @@ async function _fetchVelTimestamps(station, signal) {
     const nameEl = lyr.querySelector(':scope > Name');
     if (!nameEl) continue;
     const nm = nameEl.textContent.trim().toLowerCase();
-    if (nm.includes('sr_bvel') || nm === `${station}_sr_bvel`) {
+    if (nm.includes('sr_bvel') || nm === `${_radarDataId(station)}_sr_bvel`) {
       // WMS 1.3.0 uses <Dimension>
       const dim = lyr.querySelector('Dimension[name="time"]') ||
                   lyr.querySelector('Extent[name="time"]');
@@ -52187,8 +52248,8 @@ function _buildVelPool(station, frames) {
   _velLayerPool  = [];
   _velPoolLoaded = [];
 
-  const wmsUrl   = `https://opengeo.ncep.noaa.gov/geoserver/${station}/ows`;
-  const layerNm  = `${station}_sr_bvel`;
+  const wmsUrl   = `https://opengeo.ncep.noaa.gov/geoserver/${_radarDataId(station)}/ows`;
+  const layerNm  = `${_radarDataId(station)}_sr_bvel`;
   frames.forEach((frame, i) => {
     const l = L.tileLayer.wms(wmsUrl, {
       layers:      layerNm,
@@ -52299,8 +52360,8 @@ function showVelFrame(idx) {
     if (velocityLayer) { map.removeLayer(velocityLayer); velocityLayer = null; }
     const station = _velStation || 'ktlx';
     velocityLayer = L.tileLayer.wms(
-      `https://opengeo.ncep.noaa.gov/geoserver/${station}/ows`, {
-        layers:      `${station}_sr_bvel`,
+      `https://opengeo.ncep.noaa.gov/geoserver/${_radarDataId(station)}/ows`, {
+        layers:      `${_radarDataId(station)}_sr_bvel`,
         format:      'image/png',
         transparent: true,
         opacity:     radarOpacity,
@@ -52326,10 +52387,10 @@ function _dpAlert(html) {
 }
 async function _fetchDpTimestamps(station, layerSuffix) {
   // Cache-bust + no-store so dual-pol/accum products read the latest scan times.
-  const url = `https://opengeo.ncep.noaa.gov/geoserver/${station}/ows?service=wms&version=1.3.0&request=GetCapabilities&_=${Date.now()}`;
+  const url = `https://opengeo.ncep.noaa.gov/geoserver/${_radarDataId(station)}/ows?service=wms&version=1.3.0&request=GetCapabilities&_=${Date.now()}`;
   const res  = await fetch(url, { cache: 'no-store', signal: _abortSignal(10000) });
   const xml  = new DOMParser().parseFromString(await res.text(), 'text/xml');
-  const target = `${station}_${layerSuffix}`.toLowerCase();
+  const target = `${_radarDataId(station)}_${layerSuffix}`.toLowerCase();
   const allNames = [...xml.querySelectorAll('Layer > Name')].map(n=>n.textContent.trim()).filter(Boolean);
   for (const lyr of xml.querySelectorAll('Layer')) {
     const nm = lyr.querySelector(':scope > Name')?.textContent?.trim().toLowerCase() ?? '';
@@ -52379,8 +52440,8 @@ function _buildDpPool(station, frames, layerSuffix) {
       _dpLayerPool[i] = l;
     });
   } else {
-    const wmsUrl  = `https://opengeo.ncep.noaa.gov/geoserver/${station}/ows`;
-    const layerNm = `${station}_${layerSuffix}`;
+    const wmsUrl  = `https://opengeo.ncep.noaa.gov/geoserver/${_radarDataId(station)}/ows`;
+    const layerNm = `${_radarDataId(station)}_${layerSuffix}`;
     frames.forEach((frame, i) => {
       const l = L.tileLayer.wms(wmsUrl, {
         layers: layerNm, format: 'image/png', transparent: true,
@@ -52690,8 +52751,26 @@ const ARC_LS_MAX = 400;           // days kept across a reload
 
 // The bucket spells a site without its leading K, and with the T of a
 // terminal radar left on.
-function _arcSid(site) {
-  const up = String(site || '').toUpperCase();
+// NOAA re-identified the Palm Beach terminal radar: TPBI's data is filed as
+// TDJT from August 2026 (PBI stops on July 31, DJT starts in August). The map
+// keeps calling it TPBI; only the requests for its data use the new name,
+// and a moment from before the change still asks for the old one.
+const RADAR_DATA_ALIASES = { TPBI: { id: 'TDJT', from: Date.UTC(2026, 7, 1) } };
+function _radarDataId(site, atMs) {
+  const s = String(site || ''), up = s.toUpperCase();
+  const a = RADAR_DATA_ALIASES[up] || RADAR_DATA_ALIASES['T' + up];
+  if (!a || (isFinite(atMs) && atMs < a.from)) return s;
+  const id = up.length === 3 ? a.id.slice(1) : a.id;
+  return s === up ? id : id.toLowerCase();
+}
+// And back: the name the map shows for an identifier a feed reports.
+function _radarDisplayId(id) {
+  const up = String(id || '').toUpperCase();
+  for (const k in RADAR_DATA_ALIASES) if (RADAR_DATA_ALIASES[k].id === up) return k;
+  return up;
+}
+function _arcSid(site, atMs) {
+  const up = _radarDataId(String(site || '').toUpperCase(), atMs);
   // The bucket spells every radar by the last three letters of its id,
   // whatever the first one is - measured against the live listing: KTLX is
   // TLX_, a terminal like TDAL is DAL_, and the radars outside the lower 48
@@ -52731,7 +52810,7 @@ function _arcSaveLS(store) {
 // Every scan this site published of this product on this UTC day, oldest
 // first. One HTTP request, up to a thousand keys.
 async function _arcDayKeys(site, code, dayMs, opts) {
-  const sid = _arcSid(site);
+  const sid = _arcSid(site, dayMs);
   const day = _arcDayStr(dayMs);
   const ck = `${sid}|${code}|${day}`;
   const isToday = _arcDayStr(Date.now()) === day;
@@ -52785,7 +52864,7 @@ async function _arcDayKeys(site, code, dayMs, opts) {
 // with the hover warm, so a click usually finds its hour already read.
 const _arcHourMem = new Map();             // prefix -> { at, p }
 function _arcHourKeys(site, code, hourMs) {
-  const sid = _arcSid(site);
+  const sid = _arcSid(site, hourMs);
   const d = new Date(hourMs);
   const prefix = `${sid}_${code}_${_arcDayStr(hourMs)}_${String(d.getUTCHours()).padStart(2, '0')}_`;
   const hit = _arcHourMem.get(prefix);
@@ -53131,6 +53210,15 @@ async function _loadL3DataInner(product, stationOverride, retried, gen, signal, 
   // Warming: decode into the cache and draw nothing. A hover is a guess, and a
   // guess must never move what is on screen.
   const warmOnly = !!(opts && opts.warm);
+  // A warm for this station already under way (the right-click menu or the
+  // Level 2 menu started it): finish that rather than start the same
+  // download again. Its picture, or at least its volume, is then in hand.
+  if (!warmOnly && stationOverride && _l2WarmInflight
+      && _l2WarmInflight.station === String(stationOverride).toLowerCase()) {
+    _l2LoadSay(stationOverride, product);
+    await _l2WarmInflight.p;
+    if (stale()) return;
+  }
   // The cut being asked for, taken once at the start. _l2Tilt is rewritten
   // from the decoder's answer partway through this function, so reading it
   // later would be reading what came back rather than what was requested, and
@@ -53167,6 +53255,7 @@ async function _loadL3DataInner(product, stationOverride, retried, gen, signal, 
                                  + String(product).toLowerCase(),
                               bounds: hit.box };
     _l2LoopReset();
+    _l2LoadDone(station);
     _l3Attach(hit.img, hit.result, product, station);
     if (typeof _l2LoopBuild === 'function') _l2LoopBuild(product, station, hit.img);
     // Older than one volume: keep it on screen, but go and get the current one
@@ -54954,22 +55043,65 @@ function _rsWarm(station) {
 // volume for someone looking at the national mosaic is megabytes spent on a
 // product they are not in. One at a time, so running the pointer along a row
 // of pills does not start twenty downloads.
-let _rsWarmingL2 = null;
 function _rsWarmSite(station) {
   if (!station) return;
   if (_radarSource !== 'l2' && _radarSource !== 'l3') return;
   if (typeof _l3Product !== 'string' || !_l3Product) return;
+  _l2WarmSite(station, _l3Product);
+}
+
+// On a computer, the radar nearest the middle of a zoomed-in map is
+// prepared a few seconds after the map stops moving, so a right-click Radar
+// or a first Level 2 product finds its picture already made and appears at
+// once. Only on a computer with memory to spare, only zoomed in to a region,
+// only with the tab on screen, and each station at most once every five
+// minutes: phones are left alone, where data and battery matter more.
+const L2_IDLE_WARM_MS = 5 * 60 * 1000;
+const _l2IdleWarmAt = new Map();
+let _l2IdleWarmTimer = null;
+function _l2IdleWarmArm() {
+  if (typeof map === 'undefined' || !map || typeof map.on !== 'function') { setTimeout(_l2IdleWarmArm, 1500); return; }
+  const desktop = typeof matchMedia === 'function' && matchMedia('(pointer: fine)').matches
+    && !(typeof _isIOS !== 'undefined' && _isIOS)
+    && ((typeof navigator !== 'undefined' && navigator.deviceMemory) || 8) > 4;
+  if (!desktop) return;
+  const go = () => {
+    if (document.hidden || map.getZoom() < 7) return;
+    const c = map.getCenter(), st = _cmNearestStation(c.lat, c.lng);
+    if (!st) return;
+    const id = String(st.id).toLowerCase();
+    if (Date.now() - (_l2IdleWarmAt.get(id) || 0) < L2_IDLE_WARM_MS) return;
+    _l2IdleWarmAt.set(id, Date.now());
+    _l2WarmSite(id, _cmRadarProduct(id));
+  };
+  map.on('movestart', () => clearTimeout(_l2IdleWarmTimer));
+  map.on('moveend', () => { clearTimeout(_l2IdleWarmTimer); _l2IdleWarmTimer = setTimeout(go, 3000); });
+  _l2IdleWarmTimer = setTimeout(go, 8000);
+}
+if (document.readyState === 'complete') _l2IdleWarmArm();
+else window.addEventListener('load', _l2IdleWarmArm);
+
+// One warm at a time, and remembered while it runs, so the click it was
+// guessing at can pick it up. Without that the click started a second copy
+// of the same download beside the warm and the two raced each other.
+let _l2WarmInflight = null;     // { station, product, p }
+function _l2WarmSite(station, product) {
+  if (!station || !product) return;
   station = String(station).toLowerCase();
-  if (_l3PicGet(station, _l3Product, _l2Tilt)) return;   // already in hand
-  if (_rsWarmingL2) return;
-  _rsWarmingL2 = station;
+  if (_l3PicGet(station, product, _l2Tilt)) return;      // already in hand
+  if (_l2WarmInflight) return;
+  // The loader notes the product and station it is working on as the ones on
+  // screen, before its first pause. A warm is not on screen, so those are
+  // put straight back, before anything else can read them.
+  const keepP = _l3Product, keepS = _l3Station;
   // No generation and no signal: a warm is nobody's switch, so a click must
   // not cancel it. It either finishes into the cache or it is discarded.
-  Promise.resolve()
-    .then(() => _loadL3DataInner(_l3Product, station, false, null, undefined,
-                                 { warm: true }))
-    .catch(() => {})
-    .then(() => { _rsWarmingL2 = null; });
+  const p = _loadL3DataInner(product, station, false, null, undefined, { warm: true })
+    .catch(() => {});
+  _l3Product = keepP; _l3Station = keepS;
+  const job = { station, product, p };
+  _l2WarmInflight = job;
+  p.then(() => { if (_l2WarmInflight === job) _l2WarmInflight = null; });
 }
 
 // -- NEXRAD SITE MARKERS --
@@ -55561,7 +55693,7 @@ function _rcRenderSlot(slot) {
     // the picture is up before the scan list is even asked for; the list
     // arrives behind it and from then on the strip follows the playbar.
     const site = slot.site;
-    slot.layer = L.tileLayer.wms(`https://opengeo.ncep.noaa.gov/geoserver/${site}/ows`, {
+    slot.layer = L.tileLayer.wms(`https://opengeo.ncep.noaa.gov/geoserver/${_radarDataId(site)}/ows`, {
       layers: plan.layer, format: 'image/png', transparent: true, version: '1.3.0',
       opacity: typeof radarOpacity === 'number' ? radarOpacity : 0.85, pane: paneName,
       crossOrigin: 'anonymous', noWrap: true, keepBuffer: 2,
@@ -55594,7 +55726,7 @@ async function _rcOpengeoTimes(site, layerNm) {
       if (c && c.frames && c.frames.length && Date.now() - c.at < RS_CAPS_TTL_MS) return c.frames;
     } catch (e) {}
   }
-  const url = `https://opengeo.ncep.noaa.gov/geoserver/${site}/ows?service=wms&version=1.3.0&request=GetCapabilities&_=${Date.now()}`;
+  const url = `https://opengeo.ncep.noaa.gov/geoserver/${_radarDataId(site)}/ows?service=wms&version=1.3.0&request=GetCapabilities&_=${Date.now()}`;
   const res = await fetch(url, { cache: 'no-store', signal: _abortSignal(10000) });
   const xml = new DOMParser().parseFromString(await res.text(), 'text/xml');
   let frames = [];
@@ -56874,7 +57006,7 @@ async function _fetchNexradStatus() {
       const p   = f.properties || {};
       const rda = (p.rda && p.rda.properties) || {};
       const op  = (rda.operabilityStatus || '').toLowerCase();
-      const sid = (p.id || '').toUpperCase();
+      const sid = _radarDisplayId((p.id || '').toUpperCase());
       if (!sid) return;
       // Only explicitly offline/shut-down counts as "down"
       const isDown = op.includes('off-line') || op.includes('offline') || op === 'shutdown';
@@ -57112,7 +57244,7 @@ function _clearMrms() {
 async function _fetchRefTimestamps(station, signal) {
   // Cache-bust + no-store so we always read the latest scan times (a cached
   // GetCapabilities is what makes radar show stale data on re-open).
-  const url = `https://opengeo.ncep.noaa.gov/geoserver/${station}/ows?service=wms&version=1.3.0&request=GetCapabilities&_=${Date.now()}`;
+  const url = `https://opengeo.ncep.noaa.gov/geoserver/${_radarDataId(station)}/ows?service=wms&version=1.3.0&request=GetCapabilities&_=${Date.now()}`;
   // The caller's signal when it has one, so the NEXT click can cancel this.
   // Eight seconds was the only way out before, and an abandoned request still
   // holds one of the handful of connections a browser allows to a single host,
@@ -57123,7 +57255,7 @@ async function _fetchRefTimestamps(station, signal) {
   let timeStr = '';
   for (const lyr of xml.querySelectorAll('Layer')) {
     const nm = lyr.querySelector(':scope > Name')?.textContent?.trim().toLowerCase() ?? '';
-    if (nm.includes('sr_bref') || nm === `${station}_sr_bref`) {
+    if (nm.includes('sr_bref') || nm === `${_radarDataId(station)}_sr_bref`) {
       const dim = lyr.querySelector('Dimension[name="time"]') || lyr.querySelector('Extent[name="time"]');
       if (dim) { timeStr = dim.textContent.trim(); break; }
     }
@@ -57156,8 +57288,8 @@ function _buildRefSitePool(stationId, useOpengeo, opts) {
 
   if (useOpengeo) {
     // NOAA GeoServer Level III SR_BREF
-    const wmsUrl  = `https://opengeo.ncep.noaa.gov/geoserver/${stationId}/ows`;
-    const layerNm = `${stationId}_sr_bref`;
+    const wmsUrl  = `https://opengeo.ncep.noaa.gov/geoserver/${_radarDataId(stationId)}/ows`;
+    const layerNm = `${_radarDataId(stationId)}_sr_bref`;
     _refSiteFrames.forEach((frame, i) => {
       if (!_want(i)) return;
       const l = L.tileLayer.wms(wmsUrl, {
@@ -74520,6 +74652,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-z', date: 'Sep 25, 2026',
+    text: 'Radar opens much faster. Right-clicking the map starts loading the nearest radar straight away, so it is usually ready by the time you pick Radar. On a computer, the radar nearest the middle of a zoomed-in map is prepared a few seconds after you stop moving. Alert zone shapes are now kept on your device, so return visits skip hundreds of downloads, and the page no longer loads itself twice on a first visit. The Palm Beach terminal radar is now filed by NOAA as TDJT: the app fetches its data under the new name and keeps showing it as TPBI. The green note in the Forecaster Desk header is gone.' },
   { id: '2026-09-25-y', date: 'Sep 25, 2026',
     text: 'The app is much quieter on the network, which helps phones most. It checks the parsing server address once a minute instead of every 5 seconds. It reads the expired alert list every 5 minutes instead of every minute. It asks for alert zones at their exact address, so there are no 404s. It stops retrying zones that failed. Nothing refreshes while the app is in the background. County lines are no longer redrawn when the same counties are still on screen.' },
   { id: '2026-09-25-x', date: 'Sep 25, 2026',
@@ -87883,7 +88017,6 @@ function _fdBuild() {
     <div id="fd-shell">
       <div id="fd-head">
         <span id="fd-title">Forecaster Desk</span>
-        <span id="fd-head-note">Issued for real, to everyone</span>
         <span class="ad-spacer"></span>
         <button type="button" class="ad-btn" onclick="_fdClose()">Close</button>
       </div>

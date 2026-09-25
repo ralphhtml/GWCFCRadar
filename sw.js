@@ -108,7 +108,10 @@ self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
     .then(keys => Promise.all(
       keys.filter(k => k !== CACHE && k !== NOTIF_CACHE && k !== STATIC_CACHE
-                    && k !== DATA_CACHE)
+                    && k !== DATA_CACHE
+                    // The page's own store of alert zone outlines: kept for
+                    // two weeks by the page, not by this worker's version.
+                    && k !== 'gwcfc-zones-v1')
         .map(k => caches.delete(k))
     ))
     .then(() => clients.claim())
