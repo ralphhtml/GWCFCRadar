@@ -27107,11 +27107,13 @@ async function _l2ArcVolumes(site, at, n, cap, startBack) {
 
 // Show one archived Level 2 scan through the exact pipeline the live radar
 // uses: same worker, same mesh renderer, same colours.
-async function _l2ArcShow(site, at) {
+async function _l2ArcShow(site, at, asked) {
   const longMap = { reflectivity: 'ref', velocity: 'vel', corrcoeff: 'cc',
                     diffrefl: 'zdr', kdp: 'kdp', phi: 'phi' };
   const shortOk = ['ref', 'vel', 'cc', 'zdr', 'kdp', 'sw', 'phi'];
-  const want = (typeof _prProduct !== 'undefined' && _prProduct) || '';
+  // The product asked for wins. Without it the Level 3 menu's product was
+  // read first, so Level 2 velocity in the past came back as reflectivity.
+  const want = asked || (typeof _prProduct !== 'undefined' && _prProduct) || '';
   const product = longMap[want] || (shortOk.includes(want) ? want : null)
     || (typeof currentProduct !== 'undefined' && shortOk.includes(currentProduct)
         ? currentProduct : 'ref');
@@ -27158,8 +27160,232 @@ const MOSAIC_FLOOR = Date.UTC(1995, 0, 1);
 let _tmScope = 'radar';
 
 function _tmSite() {
-  return _prBucketSite || _l2Site || _refStation || null;
+  return _tmRadarKind().site || null;
 }
+
+// -- What the radar Time Machine is looking at -----------------------------
+// Decided from the menu that is actually on screen, not from whichever
+// station was last remembered: the Level 2 station is kept across visits,
+// and reading it first sent the MRMS and Observations menus down the
+// single-station road.
+//   l2       a Level 2 station product, from the Level 2 archive at any date
+//   l3       a Level 3 station product
+//   station  a Normal-menu station product (velocity, hydro class, the two
+//            accumulations, single-site reflectivity), from the same
+//            station archives
+//   mrms     the MRMS mosaic or MRMS products, from NOAA's MRMS archive
+//   obs      the Observations row (HRRR reflectivity, NDFD forecasts)
+//   mosaic   the national NEXRAD composite
+const TM_NORMAL_STATION = { vel: 'velocity', hc: 'hydroclass', accum: 'stormtotal',
+                            boha: 'onehour', ref: 'reflectivity' };
+function _tmRadarKind() {
+  const src = typeof _radarSource !== 'undefined' ? _radarSource : 'normal';
+  if (src === 'l2' && typeof _l2Site !== 'undefined' && _l2Site) {
+    const p = ['ref', 'vel', 'cc', 'zdr', 'kdp', 'sw', 'phi'].includes(currentProduct) ? currentProduct : 'ref';
+    return { kind: 'l2', site: _l2Site, product: p };
+  }
+  // _prBucketSite is only set while a Level 3 station picture is actually on
+  // screen (it is cleared when that picture goes), so it counts on its own.
+  if (_prBucketSite || (src === 'l3' && _prSite)) {
+    return { kind: 'l3', site: _prBucketSite || _prSite, product: _prProduct || 'reflectivity' };
+  }
+  if ((typeof _mrmsActive !== 'undefined' && _mrmsActive) || (typeof _mrmsAnyOn === 'function' && _mrmsAnyOn())) {
+    const names = typeof _mrmsOn !== 'undefined' ? Object.keys(_mrmsOn).filter(k => _mrmsOn[k]) : [];
+    if (typeof _mrmsActive !== 'undefined' && _mrmsActive && !names.includes('composite')) names.unshift('composite');
+    return { kind: 'mrms', products: names };
+  }
+  if (typeof _nwsOn !== 'undefined' && _nwsOn && _nwsOn.bubble === 'radar') {
+    return { kind: 'obs', src: _nwsOn.src, field: _nwsOn.field, label: _nwsOn.label };
+  }
+  if (currentProduct !== 'ref' && TM_NORMAL_STATION[currentProduct]) {
+    const st = (currentProduct === 'vel' ? _velStation : _dpStation)
+      || (typeof _nearestStation === 'function' && map ? _nearestStation(map.getCenter().lat, map.getCenter().lng) : null);
+    if (st) return { kind: 'station', site: st, product: TM_NORMAL_STATION[currentProduct] };
+  }
+  if (typeof _refStation !== 'undefined' && _refStation) {
+    return { kind: 'station', site: _refStation, product: 'reflectivity' };
+  }
+  return { kind: 'mosaic' };
+}
+
+// Level 3 before March 2022: the products a Level 2 volume holds the same
+// measurement for are read from the Level 2 archive (full resolution, back
+// to 1991); the ones only the radar's product generator makes come from the
+// parsing server, which pulls that radar-day out of Google's Level 3 archive.
+const TM_L3_FROM_L2 = { reflectivity: 'ref', velocity: 'vel', corrcoeff: 'cc', diffrefl: 'zdr', kdp: 'kdp' };
+// The codes each product went by over the years, newest first: the digital
+// products replaced older ones around 2013 (DVL for NVL, DAA for N1P...).
+const TM_L3_OLD_CODES = {
+  srvelocity: ['N0S'], hydroclass: ['N0H'], hydrohybrid: ['HHC'], echotops: ['EET'],
+  vil: ['DVL', 'NVL'], onehour: ['DAA', 'N1P'], stormtotal: ['DTA', 'NTP'],
+  reflectivity: ['N0B', 'N0Q'], velocity: ['N0G', 'N0U'], corrcoeff: ['N0C'], diffrefl: ['N0X'], kdp: ['N0K'],
+};
+async function _tmStationShow(site, product, at) {
+  if (at >= TM_FLOOR) return _l3BucketShow(site, at, product);
+  if (TM_L3_FROM_L2[product]) return _l2ArcShow(site, at, TM_L3_FROM_L2[product]);
+  return _l3ArcPiShow(site, product, at);
+}
+// An old Level 3 product through the parsing server. The first ask for a
+// radar-day streams the whole day's bundle (tens to hundreds of MB), so the
+// door answers "working" until it is on disk, and this asks again.
+async function _l3ArcPiShow(site, product, at) {
+  const SITE = String(site).toUpperCase();
+  const codes = TM_L3_OLD_CODES[product];
+  const label = (PR_PRODUCTS[product] || {}).label || product;
+  const atEl = document.getElementById('anim-time');
+  const say = (m, ms) => { if (typeof showToast === 'function') showToast(m, ms || 6000); };
+  if (!codes) { say(`${label} has no archive before March 2022.`); return; }
+  let base = null;
+  try { base = (typeof _hdBase !== 'undefined' && _hdBase) || await _hdResolveBase(); } catch (e) {}
+  if (!base) {
+    say(`${SITE} ${label} before March 2022 comes from NOAA's Level 3 archive through the `
+      + 'parsing server, and it is not reachable right now.', 7000);
+    return;
+  }
+  const gen = ++_tmArcGen;
+  const q = `site=${SITE}&codes=${codes.join(',')}&at=${Math.round(at)}`;
+  const t0 = Date.now();
+  let told = false, got = null;
+  while (Date.now() - t0 < 12 * 60000) {
+    let r;
+    try { r = await (await fetch(`${base}/radar/archive/l3?${q}`, { signal: _abortSignal(30000) })).json(); }
+    catch (e) { say(`${SITE} ${label}: the parsing server did not answer (${e.message}).`); return; }
+    if (gen !== _tmArcGen) return;
+    if (r.status === 'ready') { got = r; break; }
+    if (r.status === 'missing' || r.error) { say(`${SITE} ${label}: ${r.error || 'nothing archived'}.`, 7000); return; }
+    const pct = r.size ? Math.min(99, Math.round(100 * r.read / r.size)) : 0;
+    if (atEl) atEl.textContent = `Reading ${SITE}'s ${new Date(at).getUTCFullYear()} Level 3 archive… ${pct}%`;
+    if (!told) {
+      told = true;
+      say(`Fetching ${SITE}'s whole day of Level 3 products from NOAA's archive through the parsing `
+        + 'server. The first look at a radar-day takes a minute or two; the rest of that day is instant after.', 8000);
+    }
+    await new Promise(res => setTimeout(res, 3000));
+  }
+  if (!got) { say(`${SITE} ${label}: the archive took too long. Try again in a minute.`); return; }
+  try {
+    const buf = await fetch(`${base}/radar/archive/l3file?site=${SITE}&code=${got.code}&stamp=${got.stamp}&at=${Math.round(at)}`,
+      { signal: _abortSignal(30000) }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); });
+    if (gen !== _tmArcGen) return;
+    const result = await _workerProcess(buf, got.code);
+    _l3MeshNormalize(result.meshData, got.code);
+    _prBucketSite = SITE;
+    _prOn = true;
+    _prClear();
+    _disableL3();
+    _renderMesh(result, got.code.toLowerCase(), site);
+    if (atEl) {
+      atEl.textContent = 'ARCHIVE · ' + new Date(got.t).toISOString().slice(0, 16).replace('T', ' ') + 'Z';
+      atEl.style.color = 'var(--accent)';
+    }
+  } catch (e) {
+    if (e && e.message === 'superseded') return;
+    say(`${SITE} ${label}: ${e.message}`);
+  }
+}
+
+// -- MRMS and Observations in the past --------------------------------------
+// Drawn as one picture per product on top of everything else in the radar
+// pane, with the live ones hidden underneath until Back to Live.
+let _tmArcLayers = [];
+let _tmArcGen = 0;
+let _tmArcHidden = [];
+function _tmArcClear() {
+  _tmArcGen++;
+  _tmArcLayers.forEach(l => { try { map.removeLayer(l); } catch (e) {} });
+  _tmArcLayers = [];
+  _tmArcHidden.forEach(([l, op]) => { try { l.setOpacity(op); } catch (e) {} });
+  _tmArcHidden = [];
+}
+function _tmArcHide(layer) {
+  if (!layer || typeof layer.setOpacity !== 'function') return;
+  const op = layer.options && layer.options.opacity != null ? layer.options.opacity : 0.8;
+  _tmArcHidden.push([layer, op]);
+  layer.setOpacity(0);
+}
+async function _tmArcBase() {
+  try { return (typeof _hdBase !== 'undefined' && _hdBase) || await _hdResolveBase(); } catch (e) { return null; }
+}
+async function _tmMrmsShow(products, at) {
+  const say = (m, ms) => { if (typeof showToast === 'function') showToast(m, ms || 6000); };
+  _tmArcClear();
+  const gen = _tmArcGen;
+  const base = await _tmArcBase();
+  const onlyComposite = products.length === 1 && products[0] === 'composite';
+  if (!base || at < Date.UTC(2020, 9, 14)) {
+    // No archive for it: the composite is the one MRMS picture with a stand
+    // in, the NEXRAD national composite, which Iowa has kept since 1995.
+    say(!base ? "MRMS in the past comes from NOAA's MRMS archive through the parsing server, which is not reachable right now."
+              : "NOAA's MRMS archive starts in October 2020.", 6000);
+    if (onlyComposite) return false;
+    // Nothing to show for the rest, and today's pictures under a badge that
+    // says otherwise would be the one real way this could mislead.
+    Object.keys(_mrmsOv || {}).forEach(k => _tmArcHide(_mrmsOv[k]));
+    return true;
+  }
+  // The live pictures come down while the past is up.
+  if (typeof _mrmsActive !== 'undefined' && _mrmsActive) _refSitePool.forEach(l => _tmArcHide(l));
+  Object.keys(_mrmsOv || {}).forEach(k => _tmArcHide(_mrmsOv[k]));
+  const atEl = document.getElementById('anim-time');
+  if (atEl) atEl.textContent = 'Reading the MRMS archive…';
+  let shown = 0, when = null;
+  for (const name of products) {
+    let r;
+    try {
+      r = await fetch(`${base}/radar/archive/mrms?product=${encodeURIComponent(name)}&at=${Math.round(at)}`,
+        { signal: _abortSignal(120000) }).then(x => x.json());
+    } catch (e) { say(`MRMS ${name}: the parsing server did not answer (${e.message}).`); continue; }
+    if (gen !== _tmArcGen) return true;
+    if (!r || r.error) { say(`MRMS ${name}: ${r ? r.error : 'no answer'}.`); continue; }
+    const ov = L.imageOverlay(`${base}/${r.file}`, r.bounds, { opacity: 0.8, interactive: false, pane: 'radarPane' }).addTo(map);
+    _tmArcLayers.push(ov);
+    shown++; when = r.t;
+  }
+  if (atEl && when) {
+    atEl.textContent = 'MRMS ARCHIVE · ' + new Date(when).toISOString().slice(0, 16).replace('T', ' ') + 'Z';
+    atEl.style.color = 'var(--accent)';
+  }
+  return true;
+}
+async function _tmObsShow(k, at) {
+  const say = (m, ms) => { if (typeof showToast === 'function') showToast(m, ms || 7000); };
+  _tmArcClear();
+  const gen = _tmArcGen;
+  (typeof _nwsLayers !== 'undefined' ? _nwsLayers : []).forEach(l => _tmArcHide(l));
+  if (k.src === 'hrrr') {
+    const base = await _tmArcBase();
+    if (!base) { say('HRRR in the past is built by the parsing server, which is not reachable right now.'); return; }
+    if (at < Date.UTC(2014, 6, 30, 18)) { say("NOAA's HRRR archive starts in July 2014."); return; }
+    const atEl = document.getElementById('anim-time');
+    if (atEl) atEl.textContent = 'Building that hour of HRRR…';
+    let r;
+    try {
+      r = await fetch(`${base}/radar/archive/hrrr?field=refc&at=${Math.round(at)}`,
+        { signal: _abortSignal(180000) }).then(x => x.json());
+    } catch (e) { say(`HRRR: the parsing server did not answer (${e.message}).`); return; }
+    if (gen !== _tmArcGen) return;
+    if (!r || r.error) { say(`HRRR: ${r ? r.error : 'no answer'}.`); return; }
+    _tmArcLayers.push(L.imageOverlay(`${base}/${r.file}`, r.bounds,
+      { opacity: typeof NWS_OPACITY !== 'undefined' ? NWS_OPACITY : 0.78, interactive: false, pane: 'radarPane' }).addTo(map));
+    if (atEl) {
+      atEl.textContent = 'HRRR ARCHIVE · ' + new Date(r.t).toISOString().slice(0, 13).replace('T', ' ') + 'Z';
+      atEl.style.color = 'var(--accent)';
+    }
+    return;
+  }
+  // NDFD is a forecast, and the Weather Service keeps only the current one.
+  // Rainfall has a measured stand in, MRMS's own hourly total; the rest have
+  // none, and say so rather than showing today's forecast with an old date.
+  if (k.field === 'qpf') {
+    say('Past NDFD forecasts are not kept anywhere public, so Precip Amount in the past shows '
+      + "what actually fell instead: MRMS's measured 1 hour rainfall.", 8000);
+    await _tmMrmsShow(['qpemulti01'], at);
+    return;
+  }
+  say(`${k.label || 'This forecast'} is an NDFD forecast, and past NDFD forecasts are not kept anywhere `
+    + 'public, so there is nothing to show for that moment. Back to Live brings it back.', 8000);
+}
+
 
 // Whether the satellite layer is on and in a mode the time machine can
 // drive. The WMS bands take any TIME their archive holds; the parsing server's own RGB
@@ -27208,6 +27434,10 @@ async function _tmJump(ms) {
     _tmMosaicAt = at;
     _tmClose();
     if (typeof showToast === 'function') showToast(`radar mosaic at ${when}`, 3000);
+    const kind = _tmRadarKind();
+    if (kind.kind === 'obs') { await _tmObsShow(kind, at); _tmSyncBadge(); return; }
+    if (kind.kind === 'mrms' && await _tmMrmsShow(kind.products, at)) { _tmSyncBadge(); return; }
+    _tmArcClear();
     // The MRMS 1 km mosaic keeps a few hours and no more; the NEXRAD national
     // composite is the archive, so the travelled picture is that one.
     if (typeof _mrmsActive !== 'undefined' && _mrmsActive) {
@@ -27242,14 +27472,35 @@ async function _tmJump(ms) {
   if (typeof showToast === 'function') {
     showToast(`${String(site).toUpperCase()} at ${when}`, 3000);
   }
-  // Level 3's bucket floor is March 2022. Older than that, the moment is
-  // read from the Level 2 tape mirror: one full-resolution scan, decoded
-  // in this browser by the same worker that decodes the live feed.
-  if (at < TM_FLOOR) await _l2ArcShow(site, at);
-  else await _l3BucketShow(site, at);
+  const kind = _tmRadarKind();
+  if (kind.kind === 'l2') {
+    // Level 2 reads its own archive at every date: every volume since 1991,
+    // in the product that is on, not Level 3's reflectivity.
+    await _l2ArcShow(site, at, kind.product);
+  } else if (kind.kind === 'station') {
+    // A Normal-menu station product has no archive of its own; the same
+    // measurement comes from that station's Level 3 / Level 2 archive.
+    _tmHideNormalStation();
+    await _tmStationShow(site, kind.product, at);
+  } else {
+    // Level 3's own bucket reaches back to March 2022; before that the same
+    // product comes from the Level 2 tape or the parsing server.
+    await _tmStationShow(site, kind.product || _prProduct, at);
+  }
   _tmSyncBadge();
   // Radar 3D keeps the radar's clock: an open volume travels with it.
   if (typeof _r3dTmSync === 'function') _r3dTmSync();
+}
+
+// The Normal menu's live station pictures come down while the archive's
+// version of the same product is up.
+function _tmHideNormalStation() {
+  try {
+    (typeof _velLayerPool !== 'undefined' ? _velLayerPool : []).forEach(l => { try { map.removeLayer(l); } catch (e) {} });
+    (typeof _dpLayerPool !== 'undefined' ? _dpLayerPool : []).forEach(l => { try { map.removeLayer(l); } catch (e) {} });
+    if (typeof velocityLayer !== 'undefined' && velocityLayer) { try { map.removeLayer(velocityLayer); } catch (e) {} }
+    (typeof _refSitePool !== 'undefined' ? _refSitePool : []).forEach(l => { try { l.setOpacity(0); } catch (e) {} });
+  } catch (e) {}
 }
 
 async function _tmLive() {
@@ -27263,13 +27514,23 @@ async function _tmLive() {
   }
   if (_tmScope === 'mosaic') {
     _tmMosaicAt = null;
+    _tmArcClear();
     if (activeLayers.nexrad) { try { await loadNEXRAD(); } catch (e) {} }
     _tmSyncBadge();
     return;
   }
-  const site = _tmSite();
+  const kind = _tmRadarKind();
+  const site = kind.site;
   _tmAt = null;
-  if (site) await _l3BucketShow(site, null);
+  if (kind.kind === 'l2' && typeof loadL3Data === 'function') {
+    loadL3Data(kind.product || 'ref', site);
+  } else if (kind.kind === 'station') {
+    try { _prClear(); _disableL3(); } catch (e) {}
+    _prOn = false; _prBucketSite = null;
+    if (typeof selectProduct === 'function') selectProduct(currentProduct);
+  } else if (site) {
+    await _l3BucketShow(site, null);
+  }
   _tmSyncBadge();
   if (typeof _r3dTmSync === 'function') _r3dTmSync();
 }
@@ -27412,13 +27673,22 @@ function _tmOpen(scope) {
              + 'playbar scrubs the approach. The plain bands come straight off '
              + "NOAA's own scan archive through the parsing server; the parsing server composites keep "
              + 'three days. '
-         : mosaic ? 'The national NEXRAD composite, every five minutes, from Iowa '
-             + 'Mesonet. The MRMS 1 km mosaic only keeps its last few hours, so a '
-             + 'travelled moment shows the NEXRAD composite in its place; the '
-             + 'playbar scrubs the hours leading up to your moment. '
-             : 'Before March 2022 the picture comes straight off the Level 2 '
-             + 'tape archive: one full-resolution scan per visit, and a site '
-             + 'still on the pre-2009 tape format will say so. ')
+         : mosaic ? ({
+             mrms: "MRMS comes from NOAA's MRMS archive (every product, from October 2020) "
+               + 'through the parsing server, painted like the live one; before that the MRMS 1 km '
+               + 'mosaic has the NEXRAD national composite as its stand in. ',
+             obs: 'HRRR Reflectivity is rebuilt for that hour from NOAA\'s HRRR archive (from July 2014) '
+               + 'through the parsing server. NDFD forecasts are not kept once they are replaced, so '
+               + 'Precip Amount shows what actually fell (MRMS rainfall) and the others say so. ',
+           }[_tmRadarKind().kind] || ('The national NEXRAD composite, every five minutes, from Iowa '
+             + 'Mesonet; the playbar scrubs the hours leading up to your moment. '))
+             : ({
+             l2: 'Level 2 comes straight off the Level 2 tape archive at every date since 1991, '
+               + 'in the product you have on: one full-resolution scan per visit. ',
+           }[_tmRadarKind().kind] || ('From March 2022 the station\'s own Level 3 archive; before that the '
+             + 'same measurement off the Level 2 tape, and the products only Level 3 makes (hydro class, '
+             + 'storm relative velocity, rainfall, VIL, echo tops) from NOAA\'s Level 3 archive through the '
+             + 'parsing server. The first look at a radar-day takes a minute or two. ')))
       + 'A source that was down that day has nothing to show, and will say so.'
     : (sat ? `Choose a moment and the satellite switches on there, showing `
              + `<b>${_ccEsc((typeof _goesProduct === 'function' && _goesProduct().label) || 'Clean IR')}</b>`
@@ -27537,8 +27807,11 @@ function _l3BucketKeyTime(key) {
 }
 
 // Fetch, decode and draw one product for one site, entirely in the browser.
-async function _l3BucketShow(site, at) {
-  const product = _prProduct;
+async function _l3BucketShow(site, at, asked) {
+  // A product can be named for this one call (the Time Machine showing a
+  // Normal-menu station product from the archive) without changing the
+  // Level 3 menu's own choice.
+  const product = asked || _prProduct;
   const code = _l3BucketCode(site, product, _prTilt);
   const label = (PR_PRODUCTS[product] || {}).label || product;
   if (!code) {
@@ -36761,7 +37034,7 @@ function toggleRadarSub() {
     tm.innerHTML = '<span class="sb-icon">' + _eicon('\u{1F550}')
                  + '</span><span class="sb-label">Time Machine</span>';
     // A single site on screen travels the site; otherwise the mosaic travels.
-    tm.onclick = () => _tmOpen(_tmSite() ? 'radar' : 'mosaic');
+    tm.onclick = () => _tmOpen(_tmSite() ? 'radar' : 'mosaic');   // the station kinds travel alone; MRMS, Observations and the mosaic share the mosaic clock
     if (LAYER_DESCRIPTIONS['timemachine']) {
       tm.appendChild(_makeInfoBtn(LAYER_DESCRIPTIONS['timemachine']));
     }
@@ -72516,6 +72789,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-b', date: 'Sep 25, 2026',
+    text: "The radar Time Machine works with every radar product now. Level 2 reads its own archive at every date back to 1991, in the product you have on (it was quietly showing reflectivity). Level 3 uses its archive from 2022, and before that reads the same measurement off the Level 2 tape, or (for hydro class, storm relative velocity, rainfall, VIL and echo tops) pulls that radar's day out of NOAA's Level 3 archive through the parsing server. The Normal menu's velocity, hydro class and rainfall products travel through the same station archives. MRMS, all of it, comes from NOAA's MRMS archive from October 2020, painted like the live one, and HRRR Reflectivity is rebuilt for any hour back to 2014. Past NDFD forecasts are not kept anywhere, so Precip Amount shows the rain that actually fell and the others say so. The machine also follows the menu you are in now, instead of a station remembered from last time." },
   { id: '2026-09-25-a', date: 'Sep 25, 2026',
     text: "The Discord bot's /map is four boxes now: place, layer, overlay and zoom. A layer is picked the way you pick it on the site, through the menu: Waves > Sea Surf. Temp > Coral Reef Watch > Actual, Radar > Level 2 > Velocity, and every other path through every menu. Type any words from it (coral actual) and it offers the matches; join several with |. Overlays work the same way, with the outlooks carrying their day and hazard: SPC Outlook > Day 2 > Tornado. The picture comes from a link that taps that exact path in the site's own menu, so it shows exactly what those taps show by hand." },
   { id: '2026-09-24-zd', date: 'Sep 24, 2026',

@@ -53,19 +53,23 @@ def func(name):
 
 build = func("build_mrms")
 assert build is not None, "build_mrms not found"
+# The painting steps live in mrms_paint now, shared with the Time Machine's
+# archive door (radar_archive.py); the build loop calls it inside its guard.
+paint = func("mrms_paint")
+assert paint is not None, "mrms_paint not found"
 
 
 print("\n1. the missing floor cannot crash a pass")
 # Every subscript of a spec, anywhere in build_mrms.
 subs = set()
-for n in ast.walk(build):
+for n in list(ast.walk(build)) + list(ast.walk(paint)):
     if (isinstance(n, ast.Subscript) and isinstance(n.value, ast.Name)
             and n.value.id == "spec" and isinstance(n.slice, ast.Constant)):
         subs.add(n.slice.value)
 ok("floor is no longer read as a required key", "floor" not in subs,
    f"spec[...] reads {sorted(subs)}")
 ok("it is read with a default instead",
-   'spec.get("floor")' in ast.get_source_segment(src, build))
+   'spec.get("floor")' in ast.get_source_segment(src, paint))
 
 # And the catalogue really does contain products without one, so this is a
 # live path rather than a defensive nicety.
@@ -95,8 +99,10 @@ ok("there is exactly one try wrapping the product", len(tries) == 1, str(len(tri
 
 guarded = ast.dump(tries[0]) if tries else ""
 # The three steps after the download that used to sit outside it.
-ok("the decode is inside it", "nanmax" in guarded)
-ok("the palette lookup is inside it", "lut_for" in guarded)
+painted = ast.dump(paint)
+ok("the paint step is called inside it", "mrms_paint" in guarded)
+ok("which is where the decode happens", "nanmax" in painted)
+ok("and the palette lookup", "lut_for" in painted)
 ok("and so is writing the PNG", "fromarray" in guarded and "save" in guarded)
 ok("the failure is logged with its reason",
    any("mrms {name}: {failed}" in (ast.get_source_segment(src, n) or "")
