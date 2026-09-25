@@ -6643,7 +6643,7 @@ body.lite-mode #export-modal { display: none !important; }
 }
 
 /* -- BROADCAST SWEEP: the TV radar beam. A rotating wedge over the active
-   single-site radar, sized to the real 230 km reflectivity range. One
+   single-site radar, sized to reach as far as that radar's data does. One
    element with a pure CSS rotation, so it costs a compositor layer and
    nothing else; the map only repositions and resizes it. -- */
 .radar-sweep { pointer-events: none; }
@@ -26772,6 +26772,7 @@ async function _l3CodeExists(site, code) {
 // and null means "carry on offering everything", because hiding a working
 // product because the network hiccuped is the worse mistake by far.
 async function _l3ProbeSite(site) {
+  if (_isMrrlSite(site)) return null;       // nothing in the Level 3 bucket to ask
   const SITE = String(site).toUpperCase();
   const cached = _l3AvailKnown(SITE);
   if (cached) return cached;
@@ -27108,6 +27109,8 @@ async function _l2ArcVolumes(site, at, n, cap, startBack) {
 // Show one archived Level 2 scan through the exact pipeline the live radar
 // uses: same worker, same mesh renderer, same colours.
 async function _l2ArcShow(site, at, asked) {
+  // The MRRL radars are not in the American archive; their own feed is.
+  if (_isMrrlSite(site)) return _mrrlL3Show(site, at, asked || currentProduct || 'ref');
   const longMap = { reflectivity: 'ref', velocity: 'vel', corrcoeff: 'cc',
                     diffrefl: 'zdr', kdp: 'kdp', phi: 'phi' };
   const shortOk = ['ref', 'vel', 'cc', 'zdr', 'kdp', 'sw', 'phi'];
@@ -27221,6 +27224,7 @@ const TM_L3_OLD_CODES = {
   reflectivity: ['N0B', 'N0Q'], velocity: ['N0G', 'N0U'], corrcoeff: ['N0C'], diffrefl: ['N0X'], kdp: ['N0K'],
 };
 async function _tmStationShow(site, product, at) {
+  if (_isMrrlSite(site)) return _mrrlL3Show(site, at, product);
   if (at >= TM_FLOOR) return _l3BucketShow(site, at, product);
   if (TM_L3_FROM_L2[product]) return _l2ArcShow(site, at, TM_L3_FROM_L2[product]);
   return _l3ArcPiShow(site, product, at);
@@ -27806,8 +27810,133 @@ function _l3BucketKeyTime(key) {
   return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
 }
 
+// -- EVERY PRODUCT FOR AN MRRL RADAR ---------------------------------------
+// The MRRL radars send nothing but their Level 2 volumes, so each Level 3
+// product is worked out in the decoder from the volume itself, the same
+// calculations a NEXRAD's own product generator runs (src/parse/derived.js):
+// composite reflectivity, echo tops and VIL from every tilt stacked over each
+// spot, hydrometeor class from reflectivity, ZDR and correlation, storm
+// relative velocity with the storm's own motion (from the volume's wind)
+// taken off, and rainfall summed over the feed's recent volumes. `layer` is
+// what the decoder is asked for, `code` is the product it is drawn as, so the
+// colours, legend, value filter and Inspector are the Level 3 product's own.
+const MRRL_L3 = {
+  reflectivity: { layer: 'REF',  code: 'ref' },
+  velocity:     { layer: 'VEL',  code: 'vel' },
+  corrcoeff:    { layer: 'CC',   code: 'cc' },
+  diffrefl:     { layer: 'ZDR',  code: 'zdr' },
+  kdp:          { layer: 'KDP',  code: 'kdp' },
+  phi:          { layer: 'PHI',  code: 'phi' },
+  spectrum:     { layer: 'SW',   code: 'sw' },
+  srvelocity:   { layer: 'SRV',  code: 'n0s' },
+  hydroclass:   { layer: 'HCLS', code: 'n0h' },
+  hydrohybrid:  { layer: 'HCLS', code: 'hhc' },
+  echotops:     { layer: 'ETOP', code: 'eet' },
+  vil:          { layer: 'DVIL', code: 'dvl' },
+  composite:    { layer: 'CREF', code: 'ncr' },
+  onehour:      { layer: 'ACC',  code: 'daa', minutes: 60 },
+  stormtotal:   { layer: 'ACC',  code: 'dta', minutes: 6 * 60 },
+};
+// The short Level 2 names as well, for callers that speak those.
+const MRRL_SHORT = { ref: 'reflectivity', vel: 'velocity', cc: 'corrcoeff', zdr: 'diffrefl',
+                     kdp: 'kdp', sw: 'spectrum', phi: 'phi', hc: 'hydroclass',
+                     accum: 'stormtotal', boha: 'onehour' };
+// Rainfall reads several whole volumes; this is the most it will fetch.
+const MRRL_ACC_MAX_VOLS = 36;
+// Several volumes into one product, on the same one-slot worker as a single
+// decode (so a newer tap supersedes it exactly the same way).
+function _workerProcessMulti(buffers, options) {
+  return new Promise(function (resolve, reject) {
+    if (_radarWorkerPending) {
+      var old = _radarWorkerPending;
+      _radarWorkerPending = null;
+      if (old._timeout) clearTimeout(old._timeout);
+      _killRadarWorker();
+      old.reject(new Error('superseded'));
+    }
+    var p = { resolve: resolve, reject: reject, _timeout: null };
+    _radarWorkerPending = p;
+    p._timeout = setTimeout(function () {
+      _radarWorkerPending = null;
+      _killRadarWorker();
+      reject(new Error('Rainfall took too long to add up - try the 1-Hr product'));
+    }, 120000);
+    _getRadarWebWorker().postMessage({ type: 'process-multi', buffers: buffers, options: options }, buffers);
+  });
+}
+// The feed's volumes at or before `at` (or the newest), newest first.
+function _mrrlPick(list, at, minutes) {
+  const end = at == null ? list.length - 1
+    : list.reduce((best, v, i) => (v.t <= at + 60000 ? i : best), -1);
+  if (end < 0) return [];
+  const newest = list[end];
+  if (!minutes) return [newest];
+  return list.slice(0, end + 1).filter(v => v.t > newest.t - minutes * 60000)
+    .slice(-MRRL_ACC_MAX_VOLS).reverse();
+}
+async function _mrrlL3Show(site, at, asked) {
+  const SITE = String(site).toUpperCase();
+  const id = String(site).toLowerCase();
+  const want = MRRL_L3[asked] ? asked : (MRRL_SHORT[asked] || 'reflectivity');
+  const spec = MRRL_L3[want];
+  const label = (PR_PRODUCTS[want] || {}).label || want;
+  const code = _mrrlCode(id);
+  const wasBucket = _prBucketSite;
+  _prBucketSite = SITE;
+  _prOn = true;
+  try { _prClear(); } catch (e) {}
+  // Every product is on offer for these radars; the menu should not grey any.
+  _l3Avail.set(SITE, { at: Date.now(), set: new Set(Object.keys(MRRL_L3)), done: true, inflight: null });
+  if (typeof _refreshNexradSiteStyles === 'function') _refreshNexradSiteStyles();
+  const atEl = document.getElementById('anim-time');
+  if (atEl) atEl.textContent = `Working out ${label}…`;
+  try {
+    const list = await _mrrlList(code);
+    if (!list.length) throw new Error('the feed has no volumes right now');
+    const picks = _mrrlPick(list, at, spec.minutes);
+    if (!picks.length || (at != null && at - picks[0].t > 30 * 60000)) {
+      throw new Error('the MRRL feed keeps only its last '
+        + Math.max(1, Math.round((list[list.length - 1].t - list[0].t) / 3600000))
+        + ' hours or so, and there is no older archive for this radar');
+    }
+    const opts = { station: id, range_limit_km: MRRL_RANGE_KM };
+    let result;
+    if (spec.layer === 'ACC') {
+      const bufs = [];
+      for (let i = 0; i < picks.length; i += 3) {
+        const got = await Promise.all(picks.slice(i, i + 3).map(v =>
+          _mrrlFetchVol(code, v.name).catch(() => null)));
+        got.forEach(b => { if (b) bufs.push(b); });
+        if (atEl) atEl.textContent = `Adding up rain: ${bufs.length} of ${picks.length} volumes…`;
+      }
+      if (!bufs.length) throw new Error('no volume could be read');
+      result = await _workerProcessMulti(bufs, opts);
+    } else {
+      const buf = await _mrrlFetchVol(code, picks[0].name);
+      result = await _workerProcess(buf, spec.layer, opts);
+    }
+    if (_prBucketSite !== SITE) return;       // another site was tapped meanwhile
+    _disableL3();
+    _renderMesh(result, spec.code, id);
+    if (atEl) {
+      const t = new Date(picks[0].t).toISOString().slice(0, 16).replace('T', ' ') + 'Z';
+      const acc = result.metadata && result.metadata.accumMinutes;
+      atEl.textContent = (at != null ? 'ARCHIVE · ' : '') + t
+        + (spec.layer === 'ACC' && acc ? ` · ${acc} min of rain` : '');
+    }
+  } catch (e) {
+    if (e && e.message === 'superseded') return;
+    _prBucketSite = wasBucket;
+    if (atEl) atEl.textContent = '';
+    if (typeof showToast === 'function') showToast(`${code} ${label}: ${e.message}`, 5000);
+  }
+}
+
 // Fetch, decode and draw one product for one site, entirely in the browser.
 async function _l3BucketShow(site, at, asked) {
+  // An MRRL radar has no Level 3 files anywhere: every product is worked out
+  // from its Level 2 volume instead (see _mrrlL3Show).
+  if (_isMrrlSite(site)) return _mrrlL3Show(site, at, asked || _prProduct);
   // A product can be named for this one call (the Time Machine showing a
   // Normal-menu station product from the archive) without changing the
   // Level 3 menu's own choice.
@@ -39003,7 +39132,7 @@ const LOAD_FACTS = [
   "Switch the base map between <b>Dark, Light, Satellite, and Topographic</b> tiles any time using the map-type buttons.",
   "The <b>Satellite layer</b> pulls in GOES and global IR composite imagery , switch regions and products from the layer sub-menu.",
   "All drawing tool windows are <b>draggable</b> , grab the handle at the top of any tool panel and reposition it anywhere on screen.",
-  "Turn on the <b>Broadcast Sweep</b> in Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Radar and a TV-style beam rotates over the active radar site, sized to its real 230 km range at every zoom.",
+  "Turn on the <b>Broadcast Sweep</b> in Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Radar and a TV-style beam rotates over the active radar site, sized to reach exactly as far as that radar's data at every zoom.",
   "Make your mouse a storm: Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> General offers a <b>tornado, hurricane or supercell pointer</b> , text boxes keep the normal cursor so typing still feels like typing.",
   "The <b>Compare</b> switch in the radar and satellite menus splits the view into side-by-side strips , different products, bands, regions or times at once.",
   "The <b>Export panel</b> in Settings <svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-arrow></use></svg> Display saves the current view as a PNG or records the whole animation loop as a video, stepping the frames itself.",
@@ -50780,7 +50909,7 @@ let _radarWorkerPending = null;  // { resolve, reject } for current request
 // is a new URL, and a page from before the build keeps the URL its decoder
 // answers to. A mismatched pair is how "Parse failed" appears on one device
 // while the same click works everywhere else.
-var RADAR_WORKER_V = '6bbbd26a';
+var RADAR_WORKER_V = 'bfdf224e';
 
 function _getRadarWebWorker() {
   if (_radarWebWorker) return _radarWebWorker;
@@ -50826,9 +50955,19 @@ const RADAR_RANGE_KM = 460;
 // about 300 km at best, and there is nothing beyond that to draw.
 const RADAR_VEL_RANGE_KM = 300;
 
+// An MRRL radar's volume is drawn to the last gate it measured, whatever the
+// product: those radars run their own scan strategies (some reach well past
+// 460 km), and the whole point of reaching them is seeing all of it.
+const MRRL_RANGE_KM = 2000;
+function _isMrrlSite(id) {
+  var sid = String(id || '').toLowerCase();
+  return !!sid && typeof _mrrlCode === 'function' && !!_mrrlCode(sid);
+}
 function _workerProcess(buffer, layer, extraOptions) {
   var far = (layer === 'VEL' || layer === 'SRV' || /^N.U$|^N.V$/.test(String(layer || '')))
     ? RADAR_VEL_RANGE_KM : RADAR_RANGE_KM;
+  var who = (extraOptions && extraOptions.station) || _l2ArcSiteHint || (typeof _l2Site !== 'undefined' && _l2Site);
+  if (_isMrrlSite(who)) far = MRRL_RANGE_KM;
   var options = Object.assign({ range_limit_km: far }, extraOptions);
   // Where the radar is, for a legacy (pre-2008) volume that does not say. The
   // worker only uses it when the file itself has no position.
@@ -51727,8 +51866,9 @@ function _pbDecode(buffer, layer, extra) {
       const w = _pbWorker();
       if (!w) { setTimeout(start, 15); return; }
       w.busy = true;
-      const far = /^N.U$|^N.V$|VEL|SRV/.test(String(layer || ''))
-        ? RADAR_VEL_RANGE_KM : RADAR_RANGE_KM;
+      const who = (extra && extra.station) || (typeof _l2Site !== 'undefined' && _l2Site);
+      const far = _isMrrlSite(who) ? MRRL_RANGE_KM
+        : /^N.U$|^N.V$|VEL|SRV/.test(String(layer || '')) ? RADAR_VEL_RANGE_KM : RADAR_RANGE_KM;
       w.pending = {
         resolve, reject,
         timer: setTimeout(() => {
@@ -52650,6 +52790,8 @@ function _renderMesh(result, product, station) {
   // Filed under the cut it IS, and remembering the cut that was ASKED for, so
   // an open request finds it again even though the answer had a number.
   _l3PicPut(station, product, _l3TiltKeyOf(result, _l2Tilt), img, result, _l2Tilt);
+  // The broadcast sweep reaches exactly as far as this picture does.
+  try { _sweepNoteRange(station, product, result && result.bounds); } catch (e) {}
 
   // The Inspector reads real dBZ/velocity values out of the mesh rather than
   // sampling the drawn colour, and a filter or palette change repaints from
@@ -53912,8 +54054,16 @@ function _refreshNexradSiteStyles() {
 // the source currently selected. Kept whole, and now reached through the
 // popup's View button (or straight from code).
 async function _siteView(s) {
-  // An MRRL radar only ever has its Level 2 volume, so tapping one switches
-  // to Level 2 (keeping the product when it is one Level 2 draws).
+  // An MRRL radar only ever publishes its Level 2 volume. The Level 3 menu's
+  // products, and the Normal menu's station products Level 2 has no moment
+  // for, are worked out from that volume (_mrrlL3Show); the plain moments
+  // switch to Level 2, which draws them straight.
+  if (s && s.mrrl && _radarSource === 'l3') { await _mrrlL3Show(s.id, null, _prProduct); return; }
+  if (s && s.mrrl && _radarSource !== 'l2' && TM_NORMAL_STATION[currentProduct]
+      && !['ref', 'vel'].includes(currentProduct)) {
+    await _mrrlL3Show(s.id, null, TM_NORMAL_STATION[currentProduct]);
+    return;
+  }
   if (s && s.mrrl && _radarSource !== 'l2') {
     try { _disableSatellite(); } catch (e) {}
     try { _disableRadar(); } catch (e) {}
@@ -55493,26 +55643,60 @@ window.addEventListener('pointercancel', () => { _scGridDrag = null; });
 
 // -- BROADCAST SWEEP --------------------------------------------------------
 // The TV radar beam: a wedge rotating over whichever single-site radar owns
-// the screen, sized to the real 230 km reflectivity range. The spin itself
-// is pure CSS (see .sweep-disc); this code only decides WHERE the disc sits
-// and how many pixels 230 km is at the current zoom. Which site to circle is
+// the screen, reaching exactly as far as that radar's picture does. The spin
+// itself is pure CSS (see .sweep-disc); this code only decides WHERE the disc
+// sits and how many pixels its reach is at the current zoom. Which site to circle is
 // the same answer the radar comparison reads (_rcMainSite), so the beam
 // follows the picture through every source and product, and disappears with
 // it. Toggled in Settings > Radar, on by default.
-let _sweepMarker = null, _sweepFor = '';
+let _sweepMarker = null, _sweepFor = '', _sweepKmNow = 0;
+// How far each site's picture really reaches, from the last one drawn for
+// it (see _renderMesh): the distance from the antenna to the furthest cell.
+// Kept per product, growing only, so a quiet frame in a loop does not shrink
+// the beam and a busier one does not make it jump about.
+const _sweepReach = new Map();
+function _sweepNoteRange(station, product, bounds) {
+  if (!station || !bounds) return;
+  const ll = _sweepStationLL(station);
+  if (!ll) return;
+  const kmLat = 111.32, kmLon = 111.32 * Math.cos(ll.lat * Math.PI / 180);
+  let km = 0;
+  for (const lon of [bounds[0], bounds[2]]) for (const lat of [bounds[1], bounds[3]]) {
+    // The furthest a cell can be is the corner of its box only when the
+    // box is square to the site; the larger of the two axis distances is the
+    // honest reach of a round picture.
+    km = Math.max(km, Math.abs(lat - ll.lat) * kmLat, Math.abs(lon - ll.lng) * kmLon);
+  }
+  if (!(km > 5)) return;
+  const id = String(station).toLowerCase();
+  const had = _sweepReach.get(id);
+  const p = String(product || '');
+  _sweepReach.set(id, { p, km: had && had.p === p ? Math.max(had.km, km) : km });
+}
+// A site with nothing drawn by this page (the Normal menu's tile pictures)
+// reaches as far as its product does: velocity about 300 km, the rest 460.
+function _sweepKm(site) {
+  const r = _sweepReach.get(String(site).toLowerCase());
+  if (r) return r.km;
+  const vel = _radarSource === 'l3' ? /velocity/.test(_prProduct || '')
+    : _radarSource === 'l2' ? currentProduct === 'vel' : currentProduct === 'vel';
+  return vel ? RADAR_VEL_RANGE_KM : RADAR_RANGE_KM;
+}
 function _sweepWanted() {
   try { return localStorage.getItem('gwcfc_sweep') !== '0'; } catch (e) { return true; }
 }
 function _sweepStationLL(site) {
   try {
-    const s = NEXRAD_STATIONS.find(x => x.id === String(site).toLowerCase());
+    // The same lookup the picture itself is placed by, so every spelling of
+    // a site (ktlx, tlx, an MRRL radar's mr- id) finds its antenna.
+    const s = _meshSiteLatLon(site);
     return s ? L.latLng(s.lat, s.lon) : null;
   } catch (e) { return null; }
 }
 function _sweepRadiusPx(ll) {
-  // 230 km of longitude at this latitude, measured in on-screen pixels, so
-  // the disc hugs the real edge of the radar's picture at every zoom.
-  const east = 230000 / (111320 * Math.cos(ll.lat * Math.PI / 180));
+  // The picture's reach in longitude at this latitude, measured in on-screen
+  // pixels, so the disc hugs the real edge of the radar's data at every zoom.
+  const east = (_sweepKmNow || RADAR_RANGE_KM) * 1000 / (111320 * Math.cos(ll.lat * Math.PI / 180));
   const p1 = map.latLngToLayerPoint(ll);
   const p2 = map.latLngToLayerPoint(L.latLng(ll.lat, ll.lng + east));
   return Math.max(24, Math.abs(p2.x - p1.x));
@@ -55534,10 +55718,20 @@ function _sweepResize() {
 }
 function _sweepSync() {
   if (typeof map === 'undefined' || !map) return;
-  const site = (_sweepWanted() && typeof _rcMainSite === 'function') ? _rcMainSite() : null;
+  let site = (_sweepWanted() && typeof _rcMainSite === 'function') ? _rcMainSite() : null;
+  // An MRRL radar's derived products are drawn through the Level 3 machinery
+  // whichever menu asked for them.
+  if (_sweepWanted() && _prOn && _prBucketSite && _isMrrlSite(_prBucketSite)) {
+    site = String(_prBucketSite).toLowerCase();
+  }
   const ll = site ? _sweepStationLL(site) : null;
   if (!ll) { _sweepClear(); return; }
-  if (_sweepFor === site && _sweepMarker) return;
+  const km = _sweepKm(site);
+  if (_sweepFor === site && _sweepMarker) {
+    if (km !== _sweepKmNow) { _sweepKmNow = km; _sweepResize(); }
+    return;
+  }
+  _sweepKmNow = km;
   _sweepClear();
   if (!map.getPane('sweepPane')) {
     // Over the radar picture, under the alerts (403) and their popups.
@@ -69362,7 +69556,7 @@ function lqmSetTZ(tz) {
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-antenna></use></svg></div>
       <div class="fc-title">RADAR &amp; RADAR COLORS</div>
-      <p class="fc-body">Radar behaviour, including the <strong>Broadcast Sweep</strong>: a TV-style beam that rotates over the active single-site radar, sized to its real 230 km range. Plus a full colour-table editor: per-level control, value-anchored stops, presets, invert and a live preview, so you can build a scale that matches whatever you are used to reading.</p>
+      <p class="fc-body">Radar behaviour, including the <strong>Broadcast Sweep</strong>: a TV-style beam that rotates over the active single-site radar, sized to reach exactly as far as its data does. Plus a full colour-table editor: per-level control, value-anchored stops, presets, invert and a live preview, so you can build a scale that matches whatever you are used to reading.</p>
     </div>
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-palette></use></svg></div>
@@ -72789,6 +72983,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-c', date: 'Sep 25, 2026',
+    text: 'The MRRL radars around the world now do every radar product, not just Level 2. They only send raw volumes, so the app works the rest out itself, the same way a NEXRAD does: composite reflectivity, echo tops, VIL, hydrometeor class, storm relative velocity, 1-hour rain and storm total. Pick any of them in the Level 3 menu on an MRRL radar. Those radars are also drawn out to the very last gate they measured now, instead of stopping at 460 km, and the broadcast sweep grows or shrinks to reach exactly as far as the radar picture on screen (it used to stop at a fixed 230 km).' },
   { id: '2026-09-25-b', date: 'Sep 25, 2026',
     text: "The radar Time Machine works with every radar product now. Level 2 reads its own archive at every date back to 1991, in the product you have on (it was quietly showing reflectivity). Level 3 uses its archive from 2022, and before that reads the same measurement off the Level 2 tape, or (for hydro class, storm relative velocity, rainfall, VIL and echo tops) pulls that radar's day out of NOAA's Level 3 archive through the parsing server. The Normal menu's velocity, hydro class and rainfall products travel through the same station archives. MRMS, all of it, comes from NOAA's MRMS archive from October 2020, painted like the live one, and HRRR Reflectivity is rebuilt for any hour back to 2014. Past NDFD forecasts are not kept anywhere, so Precip Amount shows the rain that actually fell and the others say so. The machine also follows the menu you are in now, instead of a station remembered from last time." },
   { id: '2026-09-25-a', date: 'Sep 25, 2026',
