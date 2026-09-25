@@ -6642,6 +6642,15 @@ body.lite-mode #export-modal { display: none !important; }
   cursor: text !important;
 }
 
+/* -- ALERT FLASH: the white copies of flashing warnings fade in and out on
+   the compositor (see _alertFlashCanvas). Opacity only, so no repaint per
+   frame. The duration is set from Settings > Alerts by _alertFlashTiming. -- */
+.alert-flash-pane { pointer-events: none !important; opacity: 0; will-change: opacity;
+  animation: gw-alert-pulse 500ms ease-in-out infinite alternate; }
+.alert-flash-pane * { pointer-events: none !important; }
+@keyframes gw-alert-pulse { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .alert-flash-pane { animation: none; opacity: 0; } }
+
 /* -- BROADCAST SWEEP: the TV radar beam. A rotating wedge over the active
    single-site radar, sized to reach as far as that radar's data does. One
    element with a pure CSS rotation, so it costs a compositor layer and
@@ -15591,6 +15600,33 @@ let _alertFlashRAF = null;
 // Set between movestart and moveend, so the flash can sit out a gesture.
 let _alertMapMoving = false;
 let _alertNewLayers = [];   // { layer, fillLayer, color, until }
+// The white copies that pulse over flashing warnings, and the timers that
+// retire the ones only meant to flash for their first minute.
+let _alertFlashGroup = null;
+let _alertFlashTimers = [];
+// The two panes the white copies live in, inside the alert pane (so hiding
+// alerts hides them too), each with one plain canvas. The pulse itself is
+// the CSS animation on the pane (see .leaflet-alertFlashPane-pane).
+const _alertFlashCanvases = {};
+function _alertFlashCanvas(fast) {
+  const name = fast ? 'alertFlashFastPane' : 'alertFlashPane';
+  if (!map.getPane(name)) {
+    const pn = map.createPane(name, map.getPane('alertsPane'));
+    pn.classList.add('alert-flash-pane');
+    pn.style.pointerEvents = 'none';
+  }
+  if (!_alertFlashCanvases[name]) _alertFlashCanvases[name] = L.canvas({ pane: name, padding: 0.1 });
+  return _alertFlashCanvases[name];
+}
+// The pulse period from Settings > Alerts: one full in-and-out per period,
+// so each half (the animation alternates) is half of it; emergencies twice
+// as fast.
+function _alertFlashTiming() {
+  const per = Number(_alertFlashCfg.period) || 1000;
+  const a = map.getPane('alertFlashPane'), b = map.getPane('alertFlashFastPane');
+  if (a) a.style.animationDuration = (per / 2) + 'ms';
+  if (b) b.style.animationDuration = (per / 4) + 'ms';
+}
 
 // One shared canvas renderer for every alert shape. The default is SVG: one
 // DOM node per polygon, and a big outbreak means many hundreds of them, each
@@ -15844,6 +15880,8 @@ function renderAlerts(features) {
   // cleared with clearTimeout; cancelAnimationFrame on a timeout id is a no-op
   // and left the old loop running against removed layers.
   if (_alertFlashRAF) { clearTimeout(_alertFlashRAF); _alertFlashRAF = null; }
+  _alertFlashTimers.forEach(clearTimeout); _alertFlashTimers = [];
+  if (_alertFlashGroup) { try { map.removeLayer(_alertFlashGroup); } catch (e) {} _alertFlashGroup = null; }
   _alertNewLayers = [];
   if (alertsLayer) { map.removeLayer(alertsLayer); alertsLayer = null; }
 
@@ -15946,41 +15984,38 @@ function renderAlerts(features) {
   const _ap = map.getPane('alertsPane');
   if (_ap) _ap.style.display = alertsLayerVisible ? '' : 'none';
 
-  // Flash newly-issued alerts (pulse toward white) for their first minute.
-  // Throttled to ~15fps: the pulse is a slow one-second sine, so restyling at
-  // a full 60fps was four times the repaint work for a wave the eye cannot
-  // tell apart. On the shared canvas each restyle repaints every alert, which
-  // makes the cheap tick matter even more.
+  // Flashing warnings pulse toward white. This used to restyle each flashing
+  // polygon fifteen times a second, and on the shared alert canvas every
+  // restyle repaints EVERY alert: with warnings up, that was a 60 ms repaint
+  // every 70 ms for as long as the page was open, holding a fast desktop to
+  // about fifteen frames a second (Reed's "laggy in general" on Windows).
+  //
+  // Now a white copy of each flashing warning is drawn ONCE, on a canvas of
+  // its own inside the alert layer, and that canvas fades in and out with a
+  // CSS opacity animation. White laid over the colour at opacity t is exactly
+  // the old blend toward white by t, and an opacity animation runs on the
+  // compositor: no JavaScript and no repaint per frame at all. Emergencies
+  // pulse at half the period on a second copy, as before.
   if (_alertNewLayers.length) {
-    const start = Date.now();
-    const tick = () => {
-      const now = Date.now();
-      _alertNewLayers = _alertNewLayers.filter(o => {
-        if (now > o.until) { try { o.layer.setStyle({ color:o.color, fillColor:o.color }); } catch(e){} return false; }
-        return true;
-      });
-      if (!_alertNewLayers.length) { _alertFlashRAF = null; return; }
-      // Each layer gets its own phase because emergencies run at half the
-      // period. One shared phase would put them in lockstep with everything
-      // else and lose the very distinction the faster pulse is there to make.
-      // While the map is being panned, pinched or zoomed, every restyle
-      // repaints the whole alert canvas in the middle of the gesture, the
-      // worst moment to spend the time. The pulse just waits for it to end.
-      if (map._animatingZoom || (map.dragging && map.dragging.moving && map.dragging.moving())
-          || (map.touchZoom && map.touchZoom._moved) || _alertMapMoving) {
-        _alertFlashRAF = setTimeout(() => requestAnimationFrame(tick), 150);
-        return;
+    const flash = L.layerGroup();
+    const now = Date.now();
+    _alertNewLayers.forEach(({ layer, until, fast }) => {
+      if (!layer.feature || until <= now) return;
+      const copy = L.geoJSON(layer.feature, {
+        pane: fast ? 'alertFlashFastPane' : 'alertFlashPane',
+        renderer: _alertFlashCanvas(fast), interactive: false,
+        style: () => ({ color: '#ffffff', fillColor: '#ffffff', weight: layer.options.weight,
+                        opacity: 1, fillOpacity: layer.options.fillOpacity, interactive: false }),
+      }).addTo(flash);
+      // A 'new' flash ends after its minute; 'all' runs while the alert is up.
+      if (isFinite(until)) {
+        _alertFlashTimers.push(setTimeout(() => { try { flash.removeLayer(copy); } catch (e) {} },
+                                          Math.min(until - now, 2147483000)));
       }
-      const base = _alertFlashCfg.period;
-      _alertNewLayers.forEach(({ layer, color, fast }) => {
-        const per = fast ? base / 2 : base;
-        const phase = Math.sin(((now - start) % per) / per * Math.PI * 2) * 0.5 + 0.5;
-        const c = _lerpColor(color, '#ffffff', phase);
-        try { layer.setStyle({ color:c, fillColor:c }); } catch(e){}
-      });
-      _alertFlashRAF = setTimeout(() => requestAnimationFrame(tick), 66);
-    };
-    tick();
+    });
+    _alertFlashTiming();
+    flash.addTo(map);
+    _alertFlashGroup = flash;
   }
 
   // Side panel
@@ -73077,6 +73112,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-e', date: 'Sep 25, 2026',
+    text: 'Big lag fix for computers. Whenever warnings were on the map, the flashing effect redrew every alert shape about fifteen times a second, forever, which kept even fast PCs stuck at low frame rates the moment the app opened. The flash now fades a white copy in and out using the graphics card instead, so it looks the same but costs next to nothing, and the app sits idle when you are not doing anything.' },
   { id: '2026-09-25-d', date: 'Sep 25, 2026',
     text: 'The MRRL radars are much faster and much cleaner. Some of them (Cancun is the worst) send their raw receiver noise, which drew as a big fan of fake echoes with fake strong winds in it, plus thin spikes from other transmitters. That noise is now recognised and removed, while real showers and storms stay. Radars that sample far finer than their beam can see are thinned to normal radar detail, velocity unfolding is now one quick pass instead of a very slow one, switching product or tilt no longer unpacks the file again, and pointing at an MRRL pill starts its download before you tap. Cancun velocity went from well over a minute to under two seconds. And if a radar does not measure a product, the menu leaves it out and says what the radar does send, instead of leaving the old picture up.' },
   { id: '2026-09-25-c', date: 'Sep 25, 2026',

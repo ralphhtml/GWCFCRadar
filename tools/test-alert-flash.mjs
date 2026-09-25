@@ -201,16 +201,19 @@ console.log('\n7. emergencies really do run at a different rate');
 {
   // Two layers with the same period would pulse in lockstep and lose the
   // distinction the faster rate exists to make.
-  ok('the tick computes a period per layer, not one shared phase',
-     /const per = fast \? base \/ 2 : base;/.test(PAGE));
-  ok('and the phase is derived from that per-layer period',
-     /const phase = Math\.sin\(\(\(now - start\) % per\) \/ per \* Math\.PI \* 2\)/.test(PAGE));
+  ok('emergencies pulse on their own pane at half the period',
+     /if \(a\) a\.style\.animationDuration = \(per \/ 2\) \+ 'ms';/.test(PAGE)
+     && /if \(b\) b\.style\.animationDuration = \(per \/ 4\) \+ 'ms';/.test(PAGE)
+     && /pane: fast \? 'alertFlashFastPane' : 'alertFlashPane'/.test(PAGE));
   ok('the queue records which layers are fast',
      /fast: _alertFlashCfg\.emerFast && _alertIsEmergency\(p\)/.test(PAGE));
-  // Infinity as the deadline is what "for as long as it is on the map" means,
-  // and the filter has to let it through rather than treating it as expired.
-  ok('an Infinity deadline survives the expiry filter',
-     /if \(now > o\.until\)/.test(PAGE));
+  // Infinity as the deadline is what "for as long as it is on the map" means:
+  // only a finite one gets a timer to retire its copy.
+  ok('an Infinity deadline is never retired; a finite one is',
+     /if \(isFinite\(until\)\) \{/.test(PAGE) && /flash\.removeLayer\(copy\)/.test(PAGE));
+  ok('the pulse is a compositor fade, with no per-frame restyle anywhere',
+     /@keyframes gw-alert-pulse \{ from \{ opacity: 0; \} to \{ opacity: 1; \} \}/.test(PAGE)
+     && !/_lerpColor\(color, '#ffffff', phase\)/.test(PAGE));
 }
 
 console.log('\n8. house rules');
