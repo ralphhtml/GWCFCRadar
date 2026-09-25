@@ -450,7 +450,9 @@ console.log('\n1b. the Inspector reads a parsing server model chart into a numbe
   ok('the Inspector shows a row for the model field',
      !!t, JSON.stringify(rows));
   ok('and the pixel color reads back as the number it was painted from',
-     t && t.value === '≈20.0' && t.unit === '°C', t && (t.value + ' ' + t.unit));
+     // 20 C, shown in whichever temperature unit the Units tab has (68 F).
+     t && ((t.value === '≈20.0' && t.unit === '°C') || (t.value === '≈68.0' && t.unit === '°F')),
+     t && (t.value + ' ' + t.unit));
 
   ok('nothing threw along the way', errors.length === 0, errors.join(' | '));
   await page.close();

@@ -145,7 +145,7 @@ console.log('\n5. the city labels, and the cost that sank the first attempt');
   ok('model charts survive light mode',
      /Kept in light mode: model charts are the reading people want/.test(PAGE));
   ok('while the rest of the pixel readers are still skipped',
-     /if \(!light && typeof activeLayers !== 'undefined' && activeLayers\.satellite\)/.test(PAGE)
+     /if \(!light && typeof activeLayers !== 'undefined' && activeLayers\.satellite( && [^)]*\))?\)/.test(PAGE)
      && /if \(!light && typeof _mrmsAnyOn/.test(PAGE));
 
   // The other half of what went wrong: a stack of coloured blocks per city.

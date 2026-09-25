@@ -45620,8 +45620,8 @@ function _inspSampleRadarColor(cx, cy) {
     // size of the whole tile on EVERY read, and a city-label pass reads
     // ninety times per pan.
     const c = _inspPixelCanvas(found);
-    let x = Math.round((cx - rect.left) / rect.width * c.w);
-    let y = Math.round((cy - rect.top) / rect.height * c.h);
+    let x = Math.floor((cx - rect.left) / rect.width * c.w);   // floor: pixel x spans x..x+1
+    let y = Math.floor((cy - rect.top) / rect.height * c.h);
     x = Math.max(0, Math.min(c.w - 1, x));
     y = Math.max(0, Math.min(c.h - 1, y));
     const d = c.ctx.getImageData(x, y, 1, 1).data;
@@ -45699,13 +45699,21 @@ function _inspSampleColorFrom(container, cx, cy) {
     // Same shared pixel cache as the radar sampler, for the same reason: a
     // 3200 pixel satellite or model image is 20 MB of canvas per read.
     const c = _inspPixelCanvas(found);
-    let x = Math.round((cx - rect.left) / rect.width * c.w);
-    let y = Math.round((cy - rect.top) / rect.height * c.h);
+    // Floor, not round: pixel x covers x to x+1, and rounding read the
+    // neighbour to the right or below for half of every pixel.
+    let x = Math.floor((cx - rect.left) / rect.width * c.w);
+    let y = Math.floor((cy - rect.top) / rect.height * c.h);
     x = Math.max(0, Math.min(c.w - 1, x));
     y = Math.max(0, Math.min(c.h - 1, y));
     const d = c.ctx.getImageData(x, y, 1, 1).data;
     if (d[3] < 10) return { transparent: true };
-    return { r: d[0], g: d[1], b: d[2] };
+    // The pixels around it too, for the readers that need context: a
+    // satellite colour that stands for two temperatures is told apart by
+    // what surrounds it, and inside a big cold core that can be a way off.
+    const R = 24, x0 = Math.max(0, x - R), y0 = Math.max(0, y - R);
+    const nw = Math.min(c.w, x + R + 1) - x0, nh = Math.min(c.h, y + R + 1) - y0;
+    const nb = nw > 0 && nh > 0 ? c.ctx.getImageData(x0, y0, nw, nh).data : null;
+    return { r: d[0], g: d[1], b: d[2], nb, nbW: nw, nbH: nh, nbX: x - x0, nbY: y - y0 };
   } catch (e) {
     _inspPxForget(found);
     return { tainted: true };
@@ -45851,6 +45859,127 @@ const GOES_IR_WARM_C = 40;   // darkest end of the grayscale ramp
 const GOES_IR_COLD_C = -100; // pure-white end of the grayscale ramp - the actual coldest reading,
                               // colder than any of the colorized bands below it
 
+// -- Exact satellite temperatures ---------------------------------------
+// Iowa Mesonet paints each GOES band from a 256-colour table in which the
+// slot number IS the scan's brightness count, and the count follows a fixed
+// rule to kelvin. Both were measured against NOAA's own calibrated files of
+// the same scans, pixel for pixel (the pictures are on NOAA's own 2 km grid):
+//   IR, bands 13-15   slot < 176: K = 329.75 - slot / 2, else K = 417.5 - slot
+//                     (within 0.15 K)
+//   water vapour 8-10 K = 163.33 + 0.643 x slot (within 0.3 K)
+//   band 11           K = 128.16 + 0.8373 x slot (within 0.25 K)
+// So a colour under the crosshair turns back into the real temperature,
+// to about half a degree, where it used to be sorted into five buckets.
+// A few colours sit in two places in a table (the IR greys stand for both
+// warm ground and the coldest overshooting tops; black for both ends of the
+// water vapour scale); the pixels around it decide, since a cloud's
+// temperature changes smoothly and its neighbours' colours are unambiguous.
+const _SAT_PAL_HEX = {
+  ir:  '0000000202020404040606060808080a0a0a0c0c0c0e0e0e1010101212121414141616161818181a1a1a1c1c1c1e1e1e2020202222222424242626262828282a2a2a2c2c2c2e2e2e3030303232323434343636363838383a3a3a3c3c3c3e3e3e4040404242424444444646464848484a4a4a4c4c4c4e4e4e5050505252525454545656565858585a5a5a5c5c5c5e5e5e6060606262626464646666666868686a6a6a6c6c6c6e6e6e7070707272727474747676767878780303030606060909090c0c0c0f0f0f1212121515151818181b1b1b1e1e1e2121212424242727272a2a2a2d2d2d3030303333333636363939393c3c3c3f3f3f4242424545454848484b4b4b4e4e4e5151515454545757575a5a5a5b5b5b5c5c5c5d5d5d5e5e5e5f5f5f6060606161616262626363636464646767676a6a6a6e6e6e7171717474747878787b7b7b7f7f7f8282828585858989898c8c8c8f8f8f9393939696969a9a9a9d9d9da0a0a0a4a4a4a7a7a7aaaaaaaeaeaeb1b1b1b5b5b5b8b8b8bbbbbbbfbfbfc2c2c2c5c5c5c9c9c9ccccccd0d0d0d3d3d3d6d6d6dadadadddddde0e0e0e4e4e4e7e7e7ebebebeeeeeef1f1f1f5f5f5f8f8f8fafafaf3defbedc2fbe6a7fce08bfcd96ffdd353fdcc38fec61cfebf00ffbf00ffb200ffa600ff9900ff8c00ff7f00ff7300ff6600ff5900ff4c00ff4000ff3300ff2600ff1900ff0d00ff0000ff000cf20019e50026d90032cc003fbf004cb20059a600669900728c007f7f008c7300996600a55900b24c00bf4000cc3300d92600e51900f20d00ff0019ff0033ff004cff0066ff007fff0099ff00b2ff00ccff00e5ff00ffff00ffe500ffcc00ffb200ff9900ff7f00ff6600ff4c00ff3300ff1900ff0000e50000cc0000b200009900007f00006600004c00003300001900000000001414141e1e1e2828283131313b3b3b4545454f4f4f5959596262626c6c6c7676768080808a8a8a9393939d9d9da7a7a7b1b1b1bababac4c4c4cececed8d8d8e2e2e2ebebebf5f5f5ffffffffffffe3e3e3c6c6c6aaaaaa8e8e8e7171715555553939391c1c1c000000',
+  wv:  '00000000fefe00fcf900f9f400f6ef00f3eb00f0e600eee100ebdc00e8d700e5d300e3ce00e0c900ddc400dabf00d7ba00d5b600d2b100cfac00cca700caa200c79d00c49900c19400be8f00bc8a00b98500b68100b37c00b17700ae7200ab6d00a86800a56400a35f00a05a009d55009a5000974b009547009242008f3d008c38008a3300872f00842a008125007e20007c1b00791600761200730d007108006e03026d020871080e740e1477141a7b1a1f7e1f2581252b852b318831378c373d8f3d4392434896484e994e549c545aa05a60a36066a7666caa6c71ad7177b1777db47d83b78389bb898fbe8f95c2959ac59aa0c8a0a6cca6accfacb2d2b2b8d6b8bed9bec3ddc3c9e0c9cfe3cfd5e7d5dbeadbe1eee1e7f1e7ecf4ecf2f8f2f8fbf8fefefef7f7fcededf9e4e4f6dadaf2d1d1efc7c7ebbdbde8b4b4e5aaaae1a0a0de9797db8d8dd78383d47a7ad07070cd6666ca5d5dc65353c34949c04040bc3636b92c2cb62323b21919af1010ab0606a80404a310109c1b1b9426268d3232863d3d7e4848775454705f5f686a6a6175755a8181528c8c4b979743a3a33caeae35b9b92dc5c526d0d01fdbdb17e7e710f2f209fdfd01fff600ffec00ffe100ffd600ffcc00ffc100ffb700ffac00ffa100ff9700ff8c00ff8200ff7700ff6d00ff6200ff5700ff4d00ff4200ff3800ff2d00ff2200ff1800ff0d00ff03000c0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000',
+  g11: '0000000101010202020303030505050606060707070808080909090a0a0a0c0c0c0d0d0d0e0e0e0f0f0f1010101111111313131414141515151616161717171818181a1a1a1b1b1b1c1c1c1d1d1d1e1e1e1f1f1f2121212222222323232424242525252727272828282929292b2b2b2c2c2c2e2e2e2f2f2f3030303232323333333535353636363838383939393a3a3a3c3c3c3d3d3d3f3f3f4040404141414343434444444646464747474848484a4a4a4b4b4b4d4d4d4e4e4e5050505151515252525353535454545555555656565757575858585a5a5a5b5b5b5c5c5c5d5d5d5e5e5e5f5f5f6060606161616262626363636464646565656666666767676868686969696a6a6a6b6b6b6c6c6c6d6d6d6e6e6e6f6f6f7070707171717272727373737575757676767777777878787979797a7a7a7b7b7b7c7c7c7d7d7d7e7e7e7f7f7f8181818282828383838484848585858686868787878888888989898a8a8a8c8c8c8d8d8d8e8e8e8f8f8f9090909191919292929393939494949595959797979898989999999a9a9a9c9c9c9d9d9d9e9e9e9f9f9fa0a0a0a2a2a2a3a3a3a4a4a4a5a5a5a7a7a7a8a8a8a9a9a9aaaaaaabababadadadaeaeaeafafafb0b0b0b2b2b2b3b3b3b4b4b4b5b5b5b6b6b6b8b8b8b9b9b9babababbbbbbbdbdbdbebebebebebebfbfbfc0c0c0c1c1c1c2c2c2c3c3c3c4c4c4c5c5c5c5c5c5c6c6c6c7c7c7c8c8c8c9c9c9cacacacbcbcbcccccccccccccdcdcdcecececfcfcfd0d0d0d1d1d1d2d2d2d3d3d3d4d4d4d4d4d4d5d5d5d6d6d6d7d7d7d8d8d8d9d9d9dadadadadadadbdbdbdcdcdcdcdcdcdddddddedededfdfdfdfdfdfe0e0e0e1e1e1e1e1e1e2e2e2e3e3e3e4e4e4e4e4e4e5e5e5e6e6e6e7e7e7e7e7e7e8e8e8e9e9e9e9e9e9eaeaeaebebebececececececedededeeeeeeeeeeeeefefeff0f0f0f0f0f0f1f1f1f1f1f1f2f2f2f2f2f2f3f3f3f3f3f3f4f4f4f4f4f4f5f5f5f5f5f5f6f6f6f6f6f6f7f7f7f7f7f7f7f7f7f8f8f8f8f8f8f9f9f9f9f9f9fafafafafafafbfbfbfbfbfbfcfcfcfcfcfcfdfdfdfdfdfdfefefefefefeffffffffffff',
+};
+const _SAT_PAL = {};
+function _satPal(kind) {
+  if (_SAT_PAL[kind]) return _SAT_PAL[kind];
+  const hex = _SAT_PAL_HEX[kind], byRgb = new Map(), rgb = [];
+  for (let i = 0; i < 256; i++) {
+    const r = parseInt(hex.substr(i * 6, 2), 16), g = parseInt(hex.substr(i * 6 + 2, 2), 16),
+          b = parseInt(hex.substr(i * 6 + 4, 2), 16);
+    rgb.push([r, g, b]);
+    const k = (r << 16) | (g << 8) | b;
+    if (!byRgb.has(k)) byRgb.set(k, []);
+    byRgb.get(k).push(i);
+  }
+  return (_SAT_PAL[kind] = { byRgb, rgb });
+}
+const _SAT_KELVIN = {
+  ir:  (c) => c < 176 ? 329.75 - c / 2 : 417.5 - c,
+  wv:  (c) => 163.33 + 0.643 * c,
+  g11: (c) => 128.16 + 0.8373 * c,
+};
+// Which table a product is painted from, for the live Iowa pictures.
+function _satPalKind(productId) {
+  if (/^ch1[345]$/.test(productId)) return 'ir';
+  if (/^ch(08|09|10)$/.test(productId)) return 'wv';
+  if (productId === 'ch11') return 'g11';
+  return null;
+}
+// The slots a colour could be: exact, or the nearest colour in the table.
+function _satSlots(pal, r, g, b) {
+  const hit = pal.byRgb.get((r << 16) | (g << 8) | b);
+  if (hit) return hit;
+  let best = 0, bd = Infinity;
+  pal.rgb.forEach((c, i) => {
+    const d = (c[0] - r) ** 2 + (c[1] - g) ** 2 + (c[2] - b) ** 2;
+    if (d < bd) { bd = d; best = i; }
+  });
+  return bd <= 300 ? pal.byRgb.get((pal.rgb[best][0] << 16) | (pal.rgb[best][1] << 8) | pal.rgb[best][2]) : null;
+}
+// The exact slot under the crosshair, settled by its neighbours when its
+// colour is shared.
+function _satSlotAt(kind, s) {
+  const pal = _satPal(kind);
+  const own = _satSlots(pal, s.r, s.g, s.b);
+  if (!own || !own.length) return null;
+  if (own.length === 1) return own[0];
+  // Ring by ring outward from the pixel, until a handful of unambiguous
+  // colours turn up: the nearest ones say which meaning this one has.
+  const near = [];
+  if (s.nb && s.nbW) {
+    const at = (i, j) => {
+      if (i < 0 || j < 0 || i >= s.nbW || j >= s.nbH) return;
+      const k = (j * s.nbW + i) * 4;
+      if (s.nb[k + 3] < 10) return;
+      const c = pal.byRgb.get((s.nb[k] << 16) | (s.nb[k + 1] << 8) | s.nb[k + 2]);
+      if (c && c.length === 1) near.push(c[0]);
+    };
+    const R = Math.max(s.nbW, s.nbH);
+    for (let r = 1; r <= R && near.length < 6; r++) {
+      for (let t = -r; t <= r; t++) {
+        at(s.nbX + t, s.nbY - r); at(s.nbX + t, s.nbY + r);
+        if (t > -r && t < r) { at(s.nbX - r, s.nbY + t); at(s.nbX + r, s.nbY + t); }
+      }
+    }
+  }
+  if (near.length) {
+    near.sort((a, b) => a - b);
+    const mid = near[near.length >> 1];
+    return own.reduce((a, b) => Math.abs(b - mid) < Math.abs(a - mid) ? b : a);
+  }
+  // Nothing unambiguous nearby: the ordinary range is far the likeliest
+  // (warm ground above 300 K and tops below 200 K are both rare).
+  if (kind === 'ir') return own.find(c => c >= 61 && c < 176) ?? own[0];
+  if (kind === 'wv') return own.find(c => c >= 20 && c < 176) ?? own[own.length - 1];
+  return own[0];
+}
+// Degrees Celsius for a live Iowa pixel, or null when this product has no
+// exact table (the reading then falls back to the old estimate).
+function _inspSatExactC(productId, s) {
+  const kind = _satPalKind(productId);
+  if (!kind || !s || s.r == null) return null;
+  const slot = _satSlotAt(kind, s);
+  if (slot == null) return null;
+  // Black at the top of the water vapour table is "warmer than the scale".
+  if (kind === 'wv' && slot >= 176) return { c: _SAT_KELVIN.wv(175) - 273.15, beyond: 'warm' };
+  return { c: _SAT_KELVIN[kind](slot) - 273.15 };
+}
+// A Time Machine picture comes from the parsing server in grey (IR 180 to
+// 320 K, cold at 255) and is coloured here from GOES_ARC_IR_STOPS, so its
+// colour runs back through that same table.
+function _inspArcTempC(kind, r, g, b) {
+  if (typeof _goesArcLut !== 'function') return null;
+  const lut = _goesArcLut(kind);
+  let best = -1, bd = Infinity;
+  for (let i = 0; i < 256; i++) {
+    const d = (lut[i * 3] - r) ** 2 + (lut[i * 3 + 1] - g) ** 2 + (lut[i * 3 + 2] - b) ** 2;
+    if (d < bd) { bd = d; best = i; }
+  }
+  if (best < 0 || bd > 600) return null;
+  const [lo, span] = kind === 'wv' ? [190, 80] : [180, 140];
+  return lo + (1 - best / 255) * span - 273.15;
+}
+
 function _inspIrTempC(r, g, b) {
   const maxC = Math.max(r, g, b), minC = Math.min(r, g, b);
   if (maxC - minC <= 18) {
@@ -45901,9 +46030,21 @@ function _inspSatReading(label, s, productId, productLabel) {
   if (s.transparent) return { label, value: 'No image', color: 'rgba(120,120,120,0.35)' };
   const color = `rgb(${s.r},${s.g},${s.b})`;
   if (GOES_THERMAL_CHANNELS.has(productId)) {
+    const suffix = productLabel ? ' · ' + productLabel : '';
+    // A travelled moment is a parsing server picture in the app's own ramp;
+    // live is Iowa's, with its exact table where the band has one.
+    const travelled = typeof _tmSatAt === 'number' && !!_tmSatAt;
+    const arcKind = travelled ? (_satPalKind(productId) === 'wv' ? 'wv' : 'ir') : null;
+    const arcC = arcKind ? _inspArcTempC(arcKind, s.r, s.g, s.b) : null;
+    const exact = arcC != null ? { c: arcC } : (!travelled ? _inspSatExactC(productId, s) : null);
+    if (exact) {
+      const f = exact.c * 9 / 5 + 32;
+      return { label, value: (exact.beyond ? '>' : '') + fmtTemp(f),
+               unit: _inspCloudClass(exact.c) + ' · ' + Math.round(exact.c + 273.15) + ' K' + suffix, color };
+    }
     const tempC = _inspIrTempC(s.r, s.g, s.b);
     return { label, value: `≈${fmtTemp(tempC * 9 / 5 + 32)}`,
-             unit: _inspCloudClass(tempC) + (productLabel ? ' · ' + productLabel : ''), color };
+             unit: _inspCloudClass(tempC) + suffix, color };
   }
   const row = _inspPixelRow(label, s);
   if (productLabel && row) row.unit = (row.unit ? row.unit + ' · ' : '') + productLabel;
@@ -45986,8 +46127,8 @@ function _inspReadOverlayPixel(img, cx, cy) {
   if (cx < rect.left || cx > rect.right || cy < rect.top || cy > rect.bottom) return null;
   try {
     const c = _inspPixelCanvas(img);
-    let x = Math.round((cx - rect.left) / rect.width * c.w);
-    let y = Math.round((cy - rect.top) / rect.height * c.h);
+    let x = Math.floor((cx - rect.left) / rect.width * c.w);   // floor: pixel x spans x..x+1
+    let y = Math.floor((cy - rect.top) / rect.height * c.h);
     x = Math.max(0, Math.min(c.w - 1, x));
     y = Math.max(0, Math.min(c.h - 1, y));
     const d = c.ctx.getImageData(x, y, 1, 1).data;
@@ -74270,6 +74411,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-t', date: 'Sep 25, 2026',
+    text: 'The Inspector reads satellite temperatures exactly now. It runs the colour under the crosshair back through the satellite picture\'s own colour table, so infrared and water vapour show the real cloud-top temperature (checked against NOAA\'s own data: within about half a degree everywhere, including the coldest hurricane tops, where it used to be off by 20 degrees or more). Every pixel reader also reads the exact pixel under the crosshair instead of its neighbour.' },
   { id: '2026-09-25-s', date: 'Sep 25, 2026',
     text: 'Satellite 3D now follows a satellite comparison. With the Picture on What the map is showing, a 3D box drawn across the compare divider shows both products, each side wearing the product of the pane above it, and it re-splits when you move the divider or pan the map.' },
   { id: '2026-09-25-r', date: 'Sep 25, 2026',
