@@ -346,7 +346,8 @@ console.log('\n5b. every product of every layer has a seat, and the terminal rad
     hcL3only: (() => { const x = XS_PRODUCTS.find(y => y.id === 'hc'); return x && x.layer === null && x.l3 === 'hydroclass'; })(),
     swL2only: (() => { const x = XS_PRODUCTS.find(y => y.id === 'sw'); return x && x.layer === 'SW' && x.l3 === null; })(),
     colorable: XS_PRODUCTS.every(x => _meshFamily(x.colorAs) !== null),
-    sids: { tdal: _arcSid('TDAL'), thou: _arcSid('thou'), ktlx: _arcSid('KTLX'), tjua: _arcSid('TJUA') },
+    sids: { tdal: _arcSid('TDAL'), thou: _arcSid('thou'), ktlx: _arcSid('KTLX'), tjua: _arcSid('TJUA'),
+            phki: _arcSid('PHKI'), pacg: _arcSid('PACG'), pgua: _arcSid('PGUA'), rkjk: _arcSid('RKJK') },
   }));
   ok('all nine vertical products are offered',
      r.products.join(',') === 'ref,vel,srv,cc,zdr,kdp,sw,phi,hc', r.products.join(','));
@@ -354,8 +355,11 @@ console.log('\n5b. every product of every layer has a seat, and the terminal rad
   ok('spectrum width and diff phase stay Level 2 alone', r.swL2only
      && (() => true)(), '');
   ok('every product resolves to a colour family', r.colorable);
-  ok('the bucket spells a terminal radar without its T, and TJUA keeps its name',
-     r.sids.tdal === 'DAL' && r.sids.thou === 'HOU' && r.sids.ktlx === 'TLX' && r.sids.tjua === 'TJUA',
+  // Checked against the live bucket: JUA_N0B_... exists and TJUA_ has no
+  // files at all; Hawaii, Alaska, Guam and Korea drop their first letter too.
+  ok('the bucket spells every radar by its last three letters (TJUA is JUA, PHKI is HKI)',
+     r.sids.tdal === 'DAL' && r.sids.thou === 'HOU' && r.sids.ktlx === 'TLX' && r.sids.tjua === 'JUA'
+     && r.sids.phki === 'HKI' && r.sids.pacg === 'ACG' && r.sids.pgua === 'GUA' && r.sids.rkjk === 'KJK',
      JSON.stringify(r.sids));
   const PAGE2 = readFileSync(join(ROOT, 'index.html'), 'utf8');
   ok('a travelled Time Machine slices the archive',
