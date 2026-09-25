@@ -10744,7 +10744,9 @@ body.gwcfc-crosshair #map::after {
   flex-direction: column;
   gap: 6px;
   pointer-events: none;
-  max-width: 185px;
+  /* Wide enough for the widest panel (ACE's chart, 300px); every other panel
+     sets its own 180px width, so this cap changes nothing for them. */
+  max-width: 310px;
   max-height: calc(100vh - 140px); /* stop before the bottom animbar even with several panels open at once */
   overflow-y: auto;
 }
@@ -10761,7 +10763,7 @@ body.gwcfc-crosshair #map::after {
 }
 
 /* Shared panel shell - applied to all overlay panels */
-#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #ectc-controls, #lows-controls, #meso-panel, #storm-reports-panel, #tornado-tracks-panel {
+#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #ectc-controls, #ace-controls, #lows-controls, #meso-panel, #storm-reports-panel, #tornado-tracks-panel {
   position: static;
   transform: none;
   width: 180px;
@@ -10788,6 +10790,28 @@ body.gwcfc-crosshair #map::after {
   color: #ff7aff; text-align: center; text-transform: uppercase; margin-bottom: 1px; flex: 1;
 }
 #ectc-controls .spc-picker-row { flex-wrap: wrap; }
+/* ACE: wider than the other panels, it carries a chart and a storm list. */
+#ace-controls { border: 1.5px solid rgba(255,196,0,0.5); width: min(300px, calc(100vw - 80px)); }
+#ace-controls .spc-picker-row { flex-wrap: wrap; }
+.ace-title { color: #ffc400; }
+.ace-head { font-size: 10px; line-height: 1.4; text-align: center; }
+.ace-head b { font-size: 15px; color: #ffc400; font-family: var(--mono); }
+.ace-chart { width: 100%; height: auto; display: block; }
+.ace-storms { max-height: 150px; overflow-y: auto; font-size: 9.5px; }
+.ace-storms table { width: 100%; border-collapse: collapse; }
+.ace-storms td { padding: 1px 3px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+.ace-storms td.n { text-align: right; font-family: var(--mono); }
+.ace-live { color: #ff5a5a; font-weight: 700; }
+.ace-key { display: flex; flex-wrap: wrap; gap: 3px 8px; justify-content: center; font-size: 8.5px; opacity: .9; }
+.ace-key i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 3px; }
+/* The map labels: one card per basin, a small tag per active storm. */
+.ace-basin-card { width: max-content; background: rgba(8,12,16,0.88); border: 1.5px solid rgba(255,196,0,0.6); border-radius: 8px;
+  padding: 3px 7px; color: #fff; font-size: 10px; line-height: 1.25; white-space: nowrap; text-align: center;
+  transform: translate(-50%, -50%); box-shadow: 0 2px 8px rgba(0,0,0,0.5); cursor: pointer; }
+.ace-basin-card b { color: #ffc400; font-size: 13px; font-family: var(--mono); }
+.ace-basin-card .pct { font-size: 9px; opacity: .85; }
+.ace-storm-tag { width: max-content; background: rgba(255,196,0,0.95); color: #111; border-radius: 6px; padding: 1px 5px; font-size: 9.5px;
+  font-weight: 700; white-space: nowrap; transform: translate(10px, -50%); box-shadow: 0 1px 4px rgba(0,0,0,0.5); }
 .ectc-legend { display: flex; height: 10px; border-radius: 3px; overflow: hidden; }
 .ectc-sw { flex: 1; }
 .ectc-legend-lbl { display: flex; font-family: var(--mono); font-size: 7.5px; opacity: .8; }
@@ -34162,6 +34186,8 @@ function toggleOverlayPill(id) {
     }
   } else if (id === 'ecmwf-tc') {
     _ectcToggle();
+  } else if (id === 'ace') {
+    _aceToggle();
   } else if (id === 'low-tracks') {
     _lowsToggle();
   } else if (id === 'atcf') {
@@ -66322,6 +66348,7 @@ function _presenceSummary() {
     Object.keys(OVERLAY_LABELS).forEach(k => { if (activeLayers[k]) overlays.push(OVERLAY_LABELS[k]); });
     if (typeof _metarActive !== 'undefined' && _metarActive) overlays.push('METAR Stations');
     if (typeof _ectcOn !== 'undefined' && _ectcOn) overlays.push('ECMWF TC Probability');
+    if (typeof _aceOn !== 'undefined' && _aceOn) overlays.push('ACE');
   } catch (e) {}
 
   return {
@@ -73112,6 +73139,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-f', date: 'Sep 25, 2026',
+    text: 'New overlay: ACE (Accumulated Cyclone Energy), in the overlay list next to ATCF Updates. It measures how much hurricane activity a season has had. Every ocean basin gets a card on the map with its total so far and how that compares with normal, and each storm that is up now gets a tag with its own ACE. The panel has a tab for every basin, both hemispheres and the whole globe, with a running total chart (this season against the 1991-2020 normal, its usual range and last season), the season\'s rank since 1980, and every storm ranked by ACE. Tap a basin card to jump to its chart. Worked out every hour from NOAA\'s own storm records, the same way Triple-A Tropics and CSU count it.' },
   { id: '2026-09-25-e', date: 'Sep 25, 2026',
     text: 'Big lag fix for computers. Whenever warnings were on the map, the flashing effect redrew every alert shape about fifteen times a second, forever, which kept even fast PCs stuck at low frame rates the moment the app opened. The flash now fades a white copy in and out using the graphics card instead, so it looks the same but costs next to nothing, and the app sits idle when you are not doing anything.' },
   { id: '2026-09-25-d', date: 'Sep 25, 2026',
@@ -75013,6 +75042,7 @@ document.addEventListener('DOMContentLoaded', () => {
   _makeDraggable(document.getElementById('spc-controls'),        document.getElementById('spc-drag'));
   _makeDraggable(document.getElementById('wpc-controls'),        document.getElementById('wpc-drag'));
   _makeDraggable(document.getElementById('ectc-controls'),       document.getElementById('ectc-drag'));
+  _makeDraggable(document.getElementById('ace-controls'),        document.getElementById('ace-drag'));
   _makeDraggable(document.getElementById('lows-controls'),       document.getElementById('lows-drag'));
   _makeDraggable(document.getElementById('fw-controls'),         document.getElementById('fw-drag'));
   _makeDraggable(document.getElementById('cpc-controls'),        document.getElementById('cpc-drag'));
@@ -75580,6 +75610,9 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
     <div class="ov-pill" id="op-atcf" data-ovid="atcf" title="ATCF Updates - live Automated Tropical Cyclone Forecast fixes for every active system and invest worldwide, via KnackWX">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('atcf')">ATCF Updates</span><span class="ov-drag" title="Drag to reorder">⠿</span>
+    </div>
+    <div class="ov-pill" id="op-ace" data-ovid="ace" title="ACE - Accumulated Cyclone Energy for every ocean basin, each hemisphere and the globe: this season's running total against the 1991-2020 normal, and every storm's own share">
+      <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('ace')">ACE</span><span class="ov-drag" title="Drag to reorder">⠿</span>
     </div>
     <div class="ov-pill" id="op-ecmwf-tc" data-ovid="ecmwf-tc" title="ECMWF TC Probability - the chance a tropical depression, storm or hurricane passes within 120 km, from the 51 member ECMWF ensemble, including storms that have not formed yet">
       <span class="ov-bullet"></span><span class="ov-rowname" onclick="toggleOverlayPill('ecmwf-tc')">ECMWF TC Probability</span><span class="ov-drag" title="Drag to reorder">⠿</span>
@@ -76298,6 +76331,15 @@ function _tlTickHTML(times, fmt) {
     </div>
   </div>
 
+  <div id="ace-controls">
+    <div class="ov-panel-header-row"><div class="dtb-drag" id="ace-drag" title="Drag to move">⠿</div><div class="ectc-float-title ace-title">ACE · Accumulated Cyclone Energy</div></div>
+    <div class="spc-picker-row" id="ace-tabs"></div>
+    <div class="ace-head" id="ace-head"></div>
+    <svg class="ace-chart" id="ace-chart" viewBox="0 0 300 160" role="img" aria-label="Cumulative ACE chart"></svg>
+    <div class="ace-key"><span><i style="background:#ffc400"></i>this season</span><span><i style="background:#fff;opacity:.8"></i>1991-2020 normal</span><span><i style="background:rgba(255,255,255,0.18);height:8px"></i>usual range</span><span><i style="background:#6fa8ff"></i>last season</span></div>
+    <div class="ace-storms" id="ace-storms"></div>
+    <div id="ace-note" class="ectc-cap" style="opacity:.75"></div>
+  </div>
   <div id="ectc-controls">
     <div class="ov-panel-header-row"><div class="dtb-drag" id="ectc-drag" title="Drag to move">⠿</div><div class="ectc-float-title">ECMWF TC Probability</div></div>
     <div class="spc-picker-row">
@@ -76938,6 +76980,7 @@ function _ccClose(){ _ccHideModal(); _ccAdminUnlocked=false; }
 // ===============================================================================
 const OV_DESCRIPTIONS = {
   'navigation':       'Turn-by-turn navigation with the weather drawn onto the route: each leg is coloured by the radar and conditions along it, so you can see where the drive gets bad before you are in it. Add stops by searching or tapping the map, get live guidance with voice, and report road weather for others. Drag the panel by its handle to put it anywhere.',
+  'ace':              'ACE (Accumulated Cyclone Energy): how much hurricane activity a season has had, in one number. Every six hours a tropical or subtropical cyclone of at least 34 kt adds its wind speed squared (in knots, divided by 10,000), so a long lived major hurricane piles it up and brief weak storms barely count. The map shows each ocean basin\'s total so far this season against the 1991-2020 normal to the same date, and a tag on every storm that is up now with its own ACE. Tap a basin (or the tabs) for the cumulative chart: this season, the normal and its usual range, and last season, plus each hemisphere and the whole globe, and every storm ranked by ACE. Computed on the parsing server from NOAA\'s IBTrACS and NHC best tracks, the same way Triple-A Tropics and CSU count it.',
   'ecmwf-tc':         'ECMWF TC Probability: the chance that a tropical cyclone passes within 120 km of each place, from all 51 members of the ECMWF ensemble, the same maps ECMWF call strike probability and tropical cyclone activity. Pick the strength (tropical depression, tropical storm or hurricane), the time window, and whether to count every storm the ensemble makes, including ones that have not formed yet (All + genesis), or only the ones that already exist. Built on the parsing server from ECMWF\'s open data after each 00z and 12z run; strength comes from each storm\'s central pressure, so the hurricane map runs a little conservative. The Inspector reads the exact percentage.',
   'low-tracks':       'Low Tracks: every low pressure centre the models forecast, not only tropical ones. Pick GEFS or EPS (the GFS and ECMWF ensembles, one line per member, each member its own colour) or the ordinary GFS or ECMWF run (one bold line). Tracks draws every path with a dot at each forecast point and a ring where the low is at the chosen hour; Centers draws an L with its central pressure for every low at that hour, the classic ensemble low map. Deeper than hides the weak lows. Found on the parsing server as closed lows in sea level pressure after each run, the same way for every model. The Inspector names the nearest low and its pressure.',
   'atcf':             'ATCF Updates: every active tropical system in the world, drawn straight from the Automated Tropical Cyclone Forecast feed. Hurricanes are coloured by category, storms and depressions by strength, and invests come dashed. Tap any system for the full advisory: class, winds in knots and mph, pressure, movement, fix time, basin, and the raw ATCF line itself. Re-checks the feed every 10 minutes while on.',
@@ -81848,7 +81891,7 @@ function closeCredits() {
 #ad-shell,
 #dtb-color-modal,
 #tutorial-modal-inner,
-#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #ectc-controls, #lows-controls,
+#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #ectc-controls, #ace-controls, #lows-controls,
 #meso-panel, #storm-reports-panel, #tornado-tracks-panel,
 .models-style-panel,
 .ss-firstrun-card,
@@ -82624,7 +82667,7 @@ body {
    The overlay LIST itself is deliberately not in here. That is a menu you
    drive the app from, not a thing laid over the weather, so it stays in the
    house colour with the rest of the chrome. */
-#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #ectc-controls, #lows-controls,
+#spc-controls, #wpc-controls, #fw-controls, #cpc-controls, #ec-controls, #ectc-controls, #ace-controls, #lows-controls,
 #meso-panel, #storm-reports-panel, #tornado-tracks-panel {
   background-image: var(--grad-ink);
   box-shadow: var(--lift-3d), var(--edge-3d-ink);
@@ -82680,7 +82723,7 @@ body {
 :root[data-glass] #tutorial-modal-inner,
 :root[data-glass] #spc-controls, :root[data-glass] #wpc-controls,
 :root[data-glass] #fw-controls, :root[data-glass] #cpc-controls,
-:root[data-glass] #ec-controls, :root[data-glass] #ectc-controls, :root[data-glass] #lows-controls, :root[data-glass] #meso-panel,
+:root[data-glass] #ec-controls, :root[data-glass] #ectc-controls, :root[data-glass] #ace-controls, :root[data-glass] #lows-controls, :root[data-glass] #meso-panel,
 :root[data-glass] #storm-reports-panel, :root[data-glass] #tornado-tracks-panel,
 :root[data-glass] .models-style-panel,
 :root[data-glass] .ss-firstrun-card,
@@ -82758,7 +82801,7 @@ body {
    two weights of glass in one column would read as a mistake. */
 :root[data-glass] #spc-controls, :root[data-glass] #wpc-controls,
 :root[data-glass] #fw-controls, :root[data-glass] #cpc-controls,
-:root[data-glass] #ec-controls, :root[data-glass] #ectc-controls, :root[data-glass] #lows-controls, :root[data-glass] #meso-panel,
+:root[data-glass] #ec-controls, :root[data-glass] #ectc-controls, :root[data-glass] #ace-controls, :root[data-glass] #lows-controls, :root[data-glass] #meso-panel,
 :root[data-glass] #storm-reports-panel, :root[data-glass] #tornado-tracks-panel {
   background-color: transparent !important;
   background-image: linear-gradient(180deg,
@@ -91402,6 +91445,163 @@ function _inspEctcRow(center) {
   const p = g.data[j * g.w + i];
   return { label, value: p + '%', unit: 'days ' + _ectcWinLabel(a + '_' + b).replace('d', ''),
            color: _ectcColor(p) || 'rgba(150,150,150,0.55)' };
+}
+
+// -- ACE: ACCUMULATED CYCLONE ENERGY -------------------------------------------
+// How much hurricane activity a season has had: every six hours each tropical
+// or subtropical cyclone of 34 kt or more adds (wind in kt)^2 / 10,000. The
+// parsing server adds it up for every basin, each hemisphere and the globe
+// (pi/ace_pipeline.py, from NOAA's IBTrACS and NHC best tracks, the way
+// Triple-A Tropics and CSU count it) against the 1991-2020 normal. Here: a
+// card on each basin, a tag on each storm that is up now, and a panel with
+// the cumulative chart for any region.
+const ACE_TTL = 30 * 60 * 1000;
+const ACE_TABS = [['NA', 'ATL'], ['EP', 'EPAC'], ['WP', 'WPAC'], ['NI', 'NIO'], ['SI', 'SIO'],
+                  ['SP', 'SPAC'], ['SA', 'SATL'], ['NH', 'N Hemi'], ['SH', 'S Hemi'], ['GL', 'Global']];
+let _aceOn = false, _aceData = null, _aceAt = 0, _aceTimer = null, _aceLayer = null, _aceGen = 0;
+let _aceRegion = 'NA';
+try { const r = localStorage.getItem('gwcfc_ace_region'); if (r && ACE_TABS.some(t => t[0] === r)) _aceRegion = r; } catch (e) {}
+
+function _acePane() {
+  if (!map.getPane('acePane')) {
+    const p = map.createPane('acePane');
+    p.style.zIndex = 640;          // over the tropical overlays, under popups
+  }
+  return 'acePane';
+}
+function _aceSay(msg) { const el = document.getElementById('ace-note'); if (el) el.textContent = msg || ''; }
+const _aceFmt = v => (v == null ? '-' : v >= 100 ? v.toFixed(0) : v.toFixed(1));
+function _acePct(r) { return r.pct_of_normal == null ? '' : `${r.pct_of_normal}% of normal`; }
+function _aceOrdinal(n) { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
+
+async function _aceFresh(force) {
+  if (!force && _aceData && Date.now() - _aceAt < ACE_TTL) return _aceData;
+  const base = (typeof _hdBase !== 'undefined' && _hdBase) || (typeof _hdResolveBase === 'function' ? await _hdResolveBase() : null);
+  if (!base) return _aceData;
+  const d = await fetch(`${base}/ace/ace.json?t=${Date.now()}`, { cache: 'no-store' })
+    .then(r => r.ok ? r.json() : null).catch(() => null);
+  if (d && d.regions) { _aceData = d; _aceAt = Date.now(); }
+  return _aceData;
+}
+
+async function _aceDraw(force) {
+  const gen = ++_aceGen;
+  const d = await _aceFresh(force);
+  if (gen !== _aceGen || !_aceOn) return;
+  if (!d) {
+    _aceSay('No ACE from the parsing server yet. It adds it up every hour.');
+    _aceRender();
+    return;
+  }
+  if (_aceLayer) { try { map.removeLayer(_aceLayer); } catch (e) {} }
+  const g = L.layerGroup();
+  const pane = _acePane();
+  Object.entries(d.regions).forEach(([k, r]) => {
+    if (!r.at) return;
+    const card = L.marker(r.at, { pane, keyboard: false, icon: L.divIcon({ className: '', iconSize: [0, 0],
+      html: `<div class="ace-basin-card" title="${r.name} ${r.season}: tap for the chart"><div>${r.name}</div>`
+          + `<b>${_aceFmt(r.ace)}</b> <span class="pct">ACE${r.pct_of_normal != null ? ' · ' + r.pct_of_normal + '%' : ''}</span></div>` }) });
+    card.on('click', () => { _acePick(k); });
+    card.addTo(g);
+    (r.storms || []).filter(s => s.active && s.lat != null && s.lon != null).forEach(s => {
+      L.marker([s.lat, s.lon], { pane, interactive: false, keyboard: false, icon: L.divIcon({ className: '', iconSize: [0, 0],
+        html: `<div class="ace-storm-tag" title="${s.name}: ${s.ace} ACE so far, peak ${s.peak || '-'} kt">${s.name} ${_aceFmt(s.ace)}</div>` }) }).addTo(g);
+    });
+  });
+  _aceLayer = g.addTo(map);
+  const age = d.latest_fix ? Math.round((Date.now() - Date.parse(d.latest_fix.replace('Z', ':00Z'))) / 3600000) : null;
+  _aceSay(`NOAA IBTrACS and NHC best tracks · newest fix ${age != null ? age + ' h ago' : 'unknown'} · normal ${d.normal_years.join('-')}`);
+  _aceRender();
+}
+
+function _acePick(k) {
+  _aceRegion = k;
+  try { localStorage.setItem('gwcfc_ace_region', k); } catch (e) {}
+  _aceRender();
+}
+
+// The cumulative chart: this season (gold), the normal (white, dashed) with
+// its 10th-90th percentile band, and last season (blue), across the season.
+function _aceChart(r, hemi) {
+  const W = 300, H = 160, L0 = 30, R0 = 6, T0 = 8, B0 = 18;
+  const n = 366;
+  const all = [].concat(r.curve || [], r.p90 || [], r.prior && r.prior.curve || [], r.normal || []);
+  const top = Math.max(1, ...all) * 1.08;
+  const x = i => L0 + (W - L0 - R0) * i / (n - 1);
+  const y = v => T0 + (H - T0 - B0) * (1 - v / top);
+  const path = arr => arr.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('');
+  let svg = '';
+  // gridlines and axis labels
+  const step = top > 400 ? 100 : top > 150 ? 50 : top > 60 ? 20 : top > 20 ? 5 : top > 5 ? 2 : 1;
+  for (let v = 0; v <= top; v += step) {
+    svg += `<line x1="${L0}" x2="${W - R0}" y1="${y(v)}" y2="${y(v)}" stroke="rgba(255,255,255,0.08)"/>`
+         + `<text x="${L0 - 3}" y="${y(v) + 3}" fill="rgba(255,255,255,0.6)" font-size="8" text-anchor="end">${v}</text>`;
+  }
+  const months = hemi === 'S' ? ['J', 'A', 'S', 'O', 'N', 'D', 'J', 'F', 'M', 'A', 'M', 'J'] : ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+  months.forEach((m, i) => {
+    const d0 = Math.round(i * 30.5);
+    svg += `<text x="${x(d0 + 15)}" y="${H - 5}" fill="rgba(255,255,255,0.6)" font-size="8" text-anchor="middle">${m}</text>`;
+  });
+  if (r.p10 && r.p90 && r.p10.length) {
+    const up = r.p90.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('');
+    const down = r.p10.map((v, i) => [i, v]).reverse().map(([i, v]) => `L${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('');
+    svg += `<path d="${up}${down}Z" fill="rgba(255,255,255,0.12)"/>`;
+  }
+  if (r.normal && r.normal.length) svg += `<path d="${path(r.normal)}" fill="none" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" stroke-dasharray="4 3"/>`;
+  if (r.prior && r.prior.curve) svg += `<path d="${path(r.prior.curve)}" fill="none" stroke="#6fa8ff" stroke-width="1.2"/>`;
+  if (r.curve && r.curve.length) {
+    svg += `<path d="${path(r.curve)}" fill="none" stroke="#ffc400" stroke-width="2.2"/>`;
+    const i = r.curve.length - 1;
+    svg += `<circle cx="${x(i)}" cy="${y(r.curve[i])}" r="3" fill="#ffc400"/>`;
+  }
+  return svg;
+}
+
+function _aceRender() {
+  const tabs = document.getElementById('ace-tabs');
+  if (tabs) tabs.innerHTML = ACE_TABS.map(([k, lb]) =>
+    `<button class="spc-pick-btn${k === _aceRegion ? ' active' : ''}" onclick="_acePick('${k}')">${lb}</button>`).join('');
+  const d = _aceData, r = d && d.regions && d.regions[_aceRegion];
+  const head = document.getElementById('ace-head'), chart = document.getElementById('ace-chart'), list = document.getElementById('ace-storms');
+  if (!r) { if (head) head.textContent = d ? 'No data for this region.' : 'Loading…'; if (chart) chart.innerHTML = ''; if (list) list.innerHTML = ''; return; }
+  const hemi = ['SI', 'SP', 'SA', 'SH'].includes(_aceRegion) ? 'S' : 'N';
+  if (head) head.innerHTML = `${r.name} · ${r.season} season<br><b>${_aceFmt(r.ace)}</b> ACE so far`
+    + `<br>Normal by now ${_aceFmt(r.normal_to_date)}${r.pct_of_normal != null ? ` (${r.pct_of_normal}%)` : ''} · whole season ${_aceFmt(r.normal_season)}`
+    + (r.rank ? `<br>${_aceOrdinal(r.rank)} most active of ${r.of} seasons since 1980 at this date` : '')
+    + (r.prior ? `<br>Last season (${r.prior.season}): ${_aceFmt(r.prior.total)}` : '');
+  if (chart) chart.innerHTML = _aceChart(r, hemi);
+  if (list) {
+    let storms = r.storms || [];
+    if (!storms.length && _aceData) {
+      // A hemisphere or the globe: every member basin's storms, ranked together.
+      const members = { NH: ['NA', 'EP', 'WP', 'NI'], SH: ['SI', 'SP', 'SA'], GL: ['NA', 'EP', 'WP', 'NI', 'SI', 'SP', 'SA'] }[_aceRegion] || [];
+      storms = members.flatMap(b => (_aceData.regions[b] && _aceData.regions[b].storms || []).map(s => ({ ...s, b })))
+        .filter(s => _aceRegion !== 'GL' || s.first.slice(0, 4) === r.season.slice(0, 4))
+        .sort((a, b) => b.ace - a.ace);
+    }
+    list.innerHTML = storms.length
+      ? '<table>' + storms.slice(0, 25).map((s, i) => `<tr><td>${i + 1}</td><td>${s.name}${s.active ? ' <span class="ace-live" title="Active now">●</span>' : ''}</td>`
+          + `<td class="n">${s.peak != null ? s.peak + ' kt' : ''}</td><td class="n">${s.ace.toFixed(1)}</td></tr>`).join('') + '</table>'
+      : '<div class="ectc-cap">No storms with ACE yet this season.</div>';
+  }
+}
+
+function _aceToggle() {
+  _aceOn = !_aceOn;
+  const pill = document.getElementById('op-ace');
+  if (pill) pill.classList.toggle('active', _aceOn);
+  const ctrl = document.getElementById('ace-controls');
+  if (ctrl) ctrl.style.display = _aceOn ? 'flex' : 'none';
+  if (_aceOn) {
+    _aceRender();
+    _aceDraw(true);
+    clearInterval(_aceTimer);
+    _aceTimer = setInterval(() => _aceDraw(true), ACE_TTL);
+  } else {
+    _aceGen++;
+    clearInterval(_aceTimer); _aceTimer = null;
+    if (_aceLayer) { try { map.removeLayer(_aceLayer); } catch (e) {} _aceLayer = null; }
+  }
 }
 
 // -- LOW TRACKS: where the low pressure centres go, member by member ------------

@@ -744,6 +744,24 @@ The manifest is written **last**. A run that dies halfway leaves no manifest, so
 the site keeps serving the previous complete run instead of a half-built set of
 pictures.
 
+## Accumulated Cyclone Energy
+
+`pi/ace_pipeline.py` (hourly, `gwcfc-ace.timer`) adds up ACE for every basin,
+each hemisphere and the globe, and writes `~/wxdata/ace/ace.json` for the
+page's ACE overlay. ACE is the sum of (max wind in kt)^2 / 10,000 at each
+00/06/12/18 UTC fix while a tropical or subtropical cyclone is at least 34 kt,
+the way Triple-A Tropics and CSU count it: one minute winds, and a ten minute
+wind divided by 0.88.
+
+- The normal (1991-2020 mean with its 10th to 90th percentile band, and every
+  season since 1980 for the rank) comes from IBTrACS since 1980, a 144 MB
+  download rebuilt once a week into `~/wxdata/ace/climo.json`.
+- The current and last season come from IBTrACS' last three years and ACTIVE
+  files, with NHC's own best tracks taking the place of the Atlantic and
+  eastern/central Pacific storms (they are hours fresher).
+- Southern seasons run July to June. `python3 pi/ace_pipeline.py --climo`
+  rebuilds the normal on the spot.
+
 ## Using it from the page
 
     const idx  = await (await fetch(BASE + '/models/latest.json')).json();
