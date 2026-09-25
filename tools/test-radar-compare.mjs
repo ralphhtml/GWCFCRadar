@@ -42,9 +42,10 @@ console.log('\n1. the pieces are in the page');
      /_sevSetSplit\(idx, clientX\) \{\s*\n\s*const pct = _stripPctFromClientX\(clientX, _sevSplits, idx\);/.test(PAGE));
   ok('switching the radar off ends the comparison',
      /function _disableRadar\(\) \{[\s\S]*?_rcOff\(\)/.test(PAGE));
-  ok('a peek button and the shared hide-for-ten-seconds function exist, and radar off cleans it up',
+  // A switch now, not ten seconds: hidden stays hidden until tapped again.
+  ok('a hide button and the shared hide switch exist, and radar off cleans it up',
      PAGE.includes('id="rc-peek-btn"') && PAGE.includes("onclick=\"_cmpPeek('rc')\"")
-     && /function _cmpPeek\(prefix\) \{/.test(PAGE) && /function _cmpPeekReset\(prefix\) \{/.test(PAGE)
+     && /function _cmpPeek\(prefix, want\) \{/.test(PAGE) && /function _cmpPeekReset\(prefix\) \{/.test(PAGE)
      && /function _rcOff\(\) \{[\s\S]*?_cmpPeekReset\('rc'\)/.test(PAGE));
   ok('the rotate/peek buttons sit clear of the search bar (top:18px, z-index:1150) '
      + 'and the tool rail (top:175px), not the old spot that collided with the search bar',

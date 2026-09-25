@@ -11695,7 +11695,7 @@ body.clean-mode #clean-hint { opacity: 1; }
             onclick="_rcToggleOrientation()" style="display:none;">
       <svg class=svgi width=1em height=1em><use href=#ic-swap></use></svg>
     </button>
-    <button type="button" id="rc-peek-btn" title="Hide the divider for 10 seconds"
+    <button type="button" id="rc-peek-btn" title="Hide the divider (press again to show it)"
             onclick="_cmpPeek('rc')" style="display:none;">
       <svg class=svgi width=1em height=1em><use href=#ic-eye></use></svg>
     </button>
@@ -11710,7 +11710,7 @@ body.clean-mode #clean-hint { opacity: 1; }
             onclick="_scToggleOrientation()" style="display:none;">
       <svg class=svgi width=1em height=1em><use href=#ic-swap></use></svg>
     </button>
-    <button type="button" id="sc-peek-btn" title="Hide the divider for 10 seconds"
+    <button type="button" id="sc-peek-btn" title="Hide the divider (press again to show it)"
             onclick="_cmpPeek('sc')" style="display:none;">
       <svg class=svgi width=1em height=1em><use href=#ic-eye></use></svg>
     </button>
@@ -12277,7 +12277,13 @@ body.clean-mode #clean-hint { opacity: 1; }
   <button class="ptb-btn" id="cmp-rotate" onclick="_cmpToolRotate()" title="Rotate the whole split: side by side or stacked">
     <svg class=svgi width=1em height=1em><use href=#ic-swap></use></svg>
   </button>
-  <button class="ptb-btn" id="cmp-peek" onclick="_cmpToolPeek()" title="Hide the split lines for 10 seconds">
+  <button class="ptb-btn" id="cmp-spin" onclick="_cmpToolSpin()" title="Spin the split lines">
+    <svg class=svgi width=1em height=1em><use href=#ic-refresh-cw></use></svg>
+  </button>
+  <button class="ptb-btn" id="cmp-spin-dir" onclick="_cmpToolSpinDir()" title="Spinning clockwise: tap for anticlockwise">
+    <svg class=svgi width=1em height=1em><use href=#ic-refresh-cw></use></svg>
+  </button>
+  <button class="ptb-btn" id="cmp-peek" onclick="_cmpToolPeek()" title="Hide the split lines (until you press this again)">
     <svg class=svgi width=1em height=1em><use href=#ic-eye></use></svg>
   </button>
   <button class="ptb-btn" id="cmp-end" onclick="_cmpToolEnd()" title="End the comparison">
@@ -36674,17 +36680,29 @@ function _cmpDodgeLabel(el) {
 }
 
 const _cmpPeekTimers = {};
-function _cmpPeek(prefix) {
+// Hiding the split lines is a switch now, not a 10 second peek: hidden
+// they stay hidden until the button is pressed again (or the comparison
+// ends). `want` forces a state; left out, it flips.
+function _cmpPeek(prefix, want) {
   const dc = document.getElementById(prefix + '-dividers');
   const btn = document.getElementById(prefix + '-peek-btn');
   if (!dc) return;
-  dc.classList.add('cmp-peeking');
-  if (btn) btn.classList.add('active');
   clearTimeout(_cmpPeekTimers[prefix]);
-  _cmpPeekTimers[prefix] = setTimeout(() => {
-    dc.classList.remove('cmp-peeking');
-    if (btn) btn.classList.remove('active');
-  }, 10000);
+  const on = want === undefined ? !dc.classList.contains('cmp-peeking') : !!want;
+  dc.classList.toggle('cmp-peeking', on);
+  if (btn) btn.classList.toggle('active', on);
+  _cmpPeekSyncBtn();
+}
+function _cmpPeekSyncBtn() {
+  const any = ['xc', 'rc', 'sc'].some(p => {
+    const dc = document.getElementById(p + '-dividers');
+    return dc && dc.classList.contains('cmp-peeking');
+  });
+  const b = document.getElementById('cmp-peek');
+  if (b) {
+    b.classList.toggle('active', any);
+    b.title = any ? 'Show the split lines again' : 'Hide the split lines (until you press this again)';
+  }
 }
 // Called when a comparison ends. cmp-peeking lives on the container
 // itself, not on the divider elements _xxOff() already clears out, so
@@ -36696,6 +36714,7 @@ function _cmpPeekReset(prefix) {
   if (dc) dc.classList.remove('cmp-peeking');
   const btn = document.getElementById(prefix + '-peek-btn');
   if (btn) btn.classList.remove('active');
+  _cmpPeekSyncBtn();
 }
 
 (function _sevCompareInitDrag() {
@@ -74411,6 +74430,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-u', date: 'Sep 25, 2026',
+    text: 'Compare can spin now: the new spin button in the Compare menu turns the split lines round steadily, and the button beside it flips the direction (clockwise or anticlockwise). Stop it anywhere and the lines stay at that angle. The eye button that hides the split lines is now a switch: they stay hidden until you tap it again, instead of coming back after ten seconds.' },
   { id: '2026-09-25-t', date: 'Sep 25, 2026',
     text: 'The Inspector reads satellite temperatures exactly now. It runs the colour under the crosshair back through the satellite picture\'s own colour table, so infrared and water vapour show the real cloud-top temperature (checked against NOAA\'s own data: within about half a degree everywhere, including the coldest hurricane tops, where it used to be off by 20 degrees or more). Every pixel reader also reads the exact pixel under the crosshair instead of its neighbour.' },
   { id: '2026-09-25-s', date: 'Sep 25, 2026',
@@ -93638,9 +93659,79 @@ function _cmpToolRotate() {
   _cmpToolbarRefresh();
 }
 function _cmpToolPeek() {
-  if (_xcOn) _cmpPeek('xc');
-  if (typeof _rcOn !== 'undefined' && _rcOn) _cmpPeek('rc');
-  if (typeof _scOn !== 'undefined' && _scOn) _cmpPeek('sc');
+  // Every running comparison goes the same way, hidden or shown.
+  const act = [];
+  if (_xcOn) act.push('xc');
+  if (typeof _rcOn !== 'undefined' && _rcOn) act.push('rc');
+  if (typeof _scOn !== 'undefined' && _scOn) act.push('sc');
+  const hidden = act.some(p => {
+    const dc = document.getElementById(p + '-dividers');
+    return dc && dc.classList.contains('cmp-peeking');
+  });
+  act.forEach(p => _cmpPeek(p, !hidden));
+}
+
+// -- Spinning the split ----------------------------------------------------
+// The spin button turns every split line round its own middle, steadily,
+// until pressed again; the direction button next to it flips which way.
+// It moves the same angles the rotate handles on the lines set by hand, so
+// a spin can be stopped anywhere and the lines stay at that angle.
+const CMP_SPIN_DEG_PER_S = 24;
+const _cmpSpin = { on: false, dir: 1, raf: 0, last: 0, redraw: 0 };
+function _cmpSpinFamilies() {
+  const out = [];
+  if (_xcOn) out.push([() => _xcColRots, () => _xcRowRots, _xcUpdateClips]);
+  if (typeof _rcOn !== 'undefined' && _rcOn) out.push([() => _rcColRots, () => _rcRowRots, _rcUpdateClips]);
+  if (typeof _scOn !== 'undefined' && _scOn) out.push([() => _scColRots, () => _scRowRots, _scUpdateClips]);
+  return out;
+}
+function _cmpSpinTick(now) {
+  if (!_cmpSpin.on) { _cmpSpin.raf = 0; return; }
+  const fams = _cmpSpinFamilies();
+  if (!fams.length) { _cmpSpinStop(); return; }
+  const dt = _cmpSpin.last ? Math.min(0.1, (now - _cmpSpin.last) / 1000) : 0;
+  _cmpSpin.last = now;
+  const step = _cmpSpin.dir * CMP_SPIN_DEG_PER_S * dt;
+  // Redrawn about 30 times a second: the clip work is the costly part, and
+  // a slow spin reads just as smoothly at that rate.
+  const draw = now - _cmpSpin.redraw >= 33;
+  fams.forEach(([cols, rows, update]) => {
+    [cols(), rows()].forEach(a => { for (let i = 0; i < a.length; i++) a[i] = _cmpNormDeg((a[i] || 0) + step); });
+    if (draw) { try { update(); } catch (e) {} }
+  });
+  if (draw) _cmpSpin.redraw = now;
+  _cmpSpin.raf = requestAnimationFrame(_cmpSpinTick);
+}
+function _cmpSpinSyncBtns() {
+  const b = document.getElementById('cmp-spin'), d = document.getElementById('cmp-spin-dir');
+  if (b) {
+    b.classList.toggle('active', _cmpSpin.on);
+    b.title = _cmpSpin.on ? 'Stop spinning the split' : 'Spin the split lines';
+  }
+  if (d) {
+    d.innerHTML = '<svg class=svgi width=1em height=1em><use href=#ic-refresh-' + (_cmpSpin.dir > 0 ? 'cw' : 'ccw') + '></use></svg>';
+    d.title = _cmpSpin.dir > 0 ? 'Spinning clockwise: tap for anticlockwise' : 'Spinning anticlockwise: tap for clockwise';
+  }
+}
+function _cmpSpinStop() {
+  _cmpSpin.on = false;
+  if (_cmpSpin.raf) cancelAnimationFrame(_cmpSpin.raf);
+  _cmpSpin.raf = 0; _cmpSpin.last = 0;
+  _cmpSpinSyncBtns();
+}
+function _cmpToolSpin() {
+  if (_cmpSpin.on) { _cmpSpinStop(); return; }
+  if (!_cmpSpinFamilies().length) {
+    if (typeof showToast === 'function') showToast('Start a comparison first, then spin its split.', 3000);
+    return;
+  }
+  _cmpSpin.on = true; _cmpSpin.last = 0; _cmpSpin.redraw = 0;
+  _cmpSpinSyncBtns();
+  _cmpSpin.raf = requestAnimationFrame(_cmpSpinTick);
+}
+function _cmpToolSpinDir() {
+  _cmpSpin.dir = -_cmpSpin.dir;
+  _cmpSpinSyncBtns();
 }
 function _cmpToolEnd() {
   if (_xcOn) _xcOff();
