@@ -87,6 +87,9 @@ setTimeout(function(){var e=document.getElementById('loading');if(e){e.style.tra
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="preconnect" href="https://api.maptiler.com">
 <link rel="preconnect" href="https://mesonet.agron.iastate.edu">
+<link rel="preconnect" href="https://mesonet1.agron.iastate.edu">
+<link rel="preconnect" href="https://mesonet2.agron.iastate.edu">
+<link rel="preconnect" href="https://mesonet3.agron.iastate.edu">
 <link rel="preconnect" href="https://geo.weather.gc.ca">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- Secondary: used almost always -->
@@ -2631,6 +2634,18 @@ body.shot-mode #lvl-dock, body.ss-live #lvl-dock { display: none !important; }
   image-rendering: -webkit-optimize-contrast;
   image-rendering: crisp-edges;
   image-rendering: pixelated;
+}
+/* The per-product smoothing switches, indented under the single-site one. */
+.smooth-fams { display: flex; flex-direction: column; padding-left: 12px; border-left: 2px solid rgba(255,255,255,0.08); margin: 0 0 4px 6px; }
+.smooth-fams.off { opacity: .45; pointer-events: none; }
+/* Per product (Settings > Radar > Display): the radar pane carries
+   wx-smooth-now while the product on it is one set to be smoothed (see
+   _smoothSync). !important because the tile code stamps pixelated inline. */
+.leaflet-radar-pane.wx-smooth-now img,
+.leaflet-radar-pane.wx-smooth-now canvas,
+.leaflet-radarPane-pane.wx-smooth-now img,
+.leaflet-radarPane-pane.wx-smooth-now canvas {
+  image-rendering: auto !important;
 }
 body.wx-smooth-radar .leaflet-radar-pane img,
 body.wx-smooth-radar .leaflet-radar-pane canvas,
@@ -7617,6 +7632,17 @@ body.theme-picking, body.theme-picking * { cursor: crosshair !important; }
   overflow: hidden; max-height: calc(100vh - 160px);
 }
 #lqm-ai-overlay.lqm-panel-open { display: flex; }
+/* Drag the corner to make Asturio's window any size (double-click it to go
+   back to the default). A long chat or a pasted table needed more room than
+   a fixed 370px column gives it. */
+#lqm-ai-resize {
+  position: absolute; right: 0; bottom: 0; width: 18px; height: 18px;
+  cursor: nwse-resize; z-index: 5; touch-action: none;
+  background: linear-gradient(135deg, transparent 0 50%, rgba(255,255,255,0.35) 50% 58%, transparent 58% 68%,
+                              rgba(255,255,255,0.35) 68% 76%, transparent 76%);
+  border-bottom-right-radius: 16px;
+}
+#lqm-ai-overlay.ai-sized { max-height: none; max-width: none; }
 
 /* -- LIVE CHAT (bridged with Discord) -- */
 #lqm-chat-overlay {
@@ -12910,6 +12936,16 @@ const WZ_PX_PER_ZOOM       = 120;   // trackpad and wheel: about one notch
 const WZ_PX_PER_ZOOM_PINCH = 40;    // a trackpad pinch, which wants to be quicker
 const WZ_LINE_PX           = 16;    // one "line" of scroll, for deltaMode 1
 const WZ_MAX_STEP          = 2;     // levels per event, so a flick cannot fly
+// Zooming OUT is damped against zooming in. The same scroll covers the same
+// number of levels either way, but a level out shows four times the ground,
+// and many wheels send bigger steps downward, so out felt twice as fast as
+// in (a tester's report). Scaled again by Settings > Map > Zoom Speed.
+const WZ_OUT_DAMP          = 0.65;
+function _wzSpeed() {
+  let v = 1;
+  try { v = parseFloat(localStorage.getItem('gwcfc_zoom_speed')); } catch (e) {}
+  return isFinite(v) && v > 0 ? Math.min(2, Math.max(0.3, v)) : 1;
+}
 
 // How long the wheel has to be still before a gesture counts as finished and
 // the map commits to its new zoom (loads tiles, tells every layer).
@@ -13183,7 +13219,8 @@ function _wireWheelZoom(m) {
     // deliberate zoom gesture rather than a scroll, so it gets a shorter
     // scale: the same finger travel should cover more ground.
     const perZoom = e.ctrlKey ? WZ_PX_PER_ZOOM_PINCH : WZ_PX_PER_ZOOM;
-    let step = -dy / perZoom;
+    let step = -dy / perZoom * _wzSpeed();
+    if (step < 0) step *= WZ_OUT_DAMP;
     // One violent flick should not cross the whole scale.
     if (step >  WZ_MAX_STEP) step =  WZ_MAX_STEP;
     if (step < -WZ_MAX_STEP) step = -WZ_MAX_STEP;
@@ -13438,13 +13475,15 @@ function initMap() {
   // The keyless stand-ins, one per style. When MapTiler stops answering for
   // real (an exhausted key quota looks exactly like an outage from here),
   // retrying the same key forever leaves a black map. These serve without
-  // any key at all: CARTO's basemaps for the two street styles, Esri's
+  // any key at all: Esri's grey canvases for the two street styles, its
   // imagery and topo for the other two. Not as pretty, but a map.
   const _mtFallbackDefs = {
-    dark: ['https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-           { attribution: '© <a href="https://carto.com/">CARTO</a> © <a href="https://www.openstreetmap.org/">OpenStreetMap</a>', subdomains: 'abcd', maxZoom: 20 }],
-    light: ['https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-            { attribution: '© <a href="https://carto.com/">CARTO</a> © <a href="https://www.openstreetmap.org/">OpenStreetMap</a>', subdomains: 'abcd', maxZoom: 20 }],
+    // Esri's grey canvases for the two street styles. CARTO's were here, and
+    // CARTO now watermarks every tile served without a key.
+    dark: ['https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+           { attribution: '© Esri, HERE, Garmin, © OpenStreetMap contributors', maxZoom: 16 }],
+    light: ['https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+            { attribution: '© Esri, HERE, Garmin, © OpenStreetMap contributors', maxZoom: 16 }],
     satellite: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
                 { attribution: '© Esri, Maxar, Earthstar Geographics', maxZoom: 19 }],
     topo: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
@@ -13868,6 +13907,8 @@ let _firstValidFrame = 0;  // oldest frame index with confirmed tile data
 
 // IEM NEXRAD: pre-rendered tile cache loads in ~100ms/tile; WMS fallback on first error
 const IEM_TILE_BASE    = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-';
+// The same tiles, with {s} standing for '', '1', '2' or '3' (the mirrors).
+const IEM_TILE_SHARD   = 'https://mesonet{s}.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-';
 const IEM_NEXRAD_WMS   = 'https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q-t.cgi';
 const IEM_NEXRAD_LAYER = 'nexrad-n0q-wmst';
 // Before N0Q existed (it starts November 2010), Iowa Mesonet's national
@@ -14053,7 +14094,13 @@ function _ensureNexradLayer(i) {
   // maxNativeZoom:9 - above z9 Leaflet upscales; pixelated keeps edges crisp.
   // keepBuffer:2 - enough to pre-load one tile width around the viewport without
   // flooding the browser queue with hundreds of off-screen tiles per frame.
-  const l = L.tileLayer(IEM_TILE_BASE + frame.tileKey + '/{z}/{x}/{y}.png', {
+  // The tile server only speaks HTTP/1.1, so a browser opens at most six
+  // downloads to it at once and every other tile waits in line. Its three
+  // mirror hosts serve the same tiles, so spreading tiles across all four
+  // gives 24 lanes instead of 6. A tile always goes to the same host (picked
+  // from its x and y), so the browser's cache still finds it next time.
+  const l = L.tileLayer(IEM_TILE_SHARD + frame.tileKey + '/{z}/{x}/{y}.png', {
+    subdomains: ['', '1', '2', '3'],
     opacity: 0, zIndex: 10, pane: 'radarPane',
     noWrap: true, tileSize: 256,
     maxNativeZoom: 9,
@@ -32335,26 +32382,115 @@ function setMapType(type) {
   if (typeof _themeRender === 'function') { try { _themeRender(); } catch (e) {} }
 }
 
-// -- SMOOTH TOGGLE --
-function toggleSmooth() {
-  smoothEnabled = !smoothEnabled;
-  // The switch lives in Settings > Map. There used to be a second copy of it
-  // on a floating row beside the map, and this reached for that row without
-  // checking it was there, so removing the row would have thrown here on the
-  // first tap.
-  const box = document.getElementById('lqm-set-smooth');
-  if (box) box.checked = smoothEnabled;
-  // The map may not exist yet, or at all if the mapping library failed to
-  // load. This threw in that case long before the row was removed; it is
-  // guarded now because a settings toggle should not be able to take the
-  // page down with it.
-  if (typeof map === 'undefined' || !map) return;
-  const radarPane = map.getPane('radarPane');
-  if (radarPane) {
-    radarPane.querySelectorAll('.leaflet-tile').forEach(t => {
-      t.style.imageRendering = smoothEnabled ? 'auto' : 'pixelated';
-    });
+// -- SMOOTHING, PRODUCT BY PRODUCT (Settings > Radar > Display) ---------------
+// Every radar picture is drawn crisp by default: a cell stays a block as it
+// is magnified, so a colour band on screen is exactly a band in the data.
+// Smoothing blends as it magnifies, which reads better on some products than
+// others, so it is chosen per product: single-site products one by one
+// under a master switch, and MRMS on its own. The radar pane carries
+// wx-smooth-now while the product on it is one set to smooth; one CSS rule
+// does the rest, for tiles and decoded pictures alike.
+const SMOOTH_FAMS = [
+  ['ref', 'Reflectivity', true], ['vel', 'Velocity', false], ['sw', 'Spectrum Width', false],
+  ['cc', 'Correlation Coefficient', false], ['zdr', 'Differential Reflectivity', false],
+  ['kdp', 'Specific Differential Phase', false], ['phi', 'Differential Phase', false],
+  ['hc', 'Hydrometeor Class', false], ['acc', 'Accumulation', true],
+  ['et', 'Echo Tops', false], ['vil', 'Vertically Integrated Liquid', false],
+];
+const SMOOTH_KEY = 'gwcfc_smooth_cfg';
+function _smoothCfg() {
+  let c = null;
+  try { c = JSON.parse(localStorage.getItem(SMOOTH_KEY) || 'null'); } catch (e) {}
+  const out = { single: false, mrms: false, fam: {} };
+  SMOOTH_FAMS.forEach(([k, , d]) => { out.fam[k] = d; });
+  if (c && typeof c === 'object') {
+    out.single = !!c.single; out.mrms = !!c.mrms;
+    if (c.fam) Object.keys(out.fam).forEach(k => { if (k in c.fam) out.fam[k] = !!c.fam[k]; });
   }
+  return out;
+}
+function _smoothSet(what, on) {
+  const c = _smoothCfg();
+  if (what === 'single' || what === 'mrms') c[what] = !!on; else c.fam[what] = !!on;
+  try { localStorage.setItem(SMOOTH_KEY, JSON.stringify(c)); } catch (e) {}
+  smoothEnabled = c.single;
+  _smoothRenderUi();
+  _smoothSync();
+}
+// Which product family is on the radar pane right now.
+function _smoothFamNow() {
+  const src = typeof _radarSource !== 'undefined' ? _radarSource : 'normal';
+  const byCode = (p) => {
+    const f = typeof _meshFamily === 'function' ? _meshFamily(p) : null;
+    return f === 'onehour' || f === 'stormtotal' ? 'acc' : f;
+  };
+  if ((src === 'l2' || src === 'l3') && typeof _l3Product !== 'undefined' && _l3Product) return byCode(_l3Product) || 'ref';
+  const cp = typeof currentProduct !== 'undefined' ? currentProduct : 'radar';
+  const normal = { ref: 'ref', vel: 'vel', hc: 'hc', accum: 'acc', boha: 'acc', cc: 'cc', zdr: 'zdr', kdp: 'kdp', sw: 'sw', phi: 'phi' };
+  return normal[cp] || 'mrms';
+}
+function _smoothOnFor(fam) {
+  const c = _smoothCfg();
+  if (fam === 'mrms') return c.mrms;
+  return c.single && !!c.fam[fam];
+}
+function _smoothSync() {
+  if (typeof map === 'undefined' || !map) return;
+  const pane = map.getPane('radarPane');
+  if (!pane) return;
+  const on = _smoothOnFor(_smoothFamNow());
+  if (pane.classList.contains('wx-smooth-now') !== on) pane.classList.toggle('wx-smooth-now', on);
+}
+function _smoothRenderUi() {
+  const c = _smoothCfg();
+  const box = document.getElementById('smooth-fams');
+  if (box) {
+    box.classList.toggle('off', !c.single);
+    box.innerHTML = SMOOTH_FAMS.map(([k, label]) =>
+      `<div class="lqm-settings-row"><span class="lqm-settings-lbl">${label}</span>`
+      + `<label class="lqm-toggle"><input type="checkbox" id="smooth-fam-${k}"${c.fam[k] ? ' checked' : ''} onchange="_smoothSet('${k}', this.checked)">`
+      + `<div class="lqm-toggle-track"></div><div class="lqm-toggle-knob"></div></label></div>`).join('');
+  }
+  const m = document.getElementById('lqm-set-smooth'); if (m) m.checked = c.single;
+  const r = document.getElementById('lqm-set-smooth-mrms'); if (r) r.checked = c.mrms;
+  // The reflectivity filter shortcut shows the filter's own lower edge.
+  const rf = document.getElementById('lqm-set-reffilter'), rv = document.getElementById('lqm-reffilter-val');
+  const f = typeof _fxFilterFor === 'function' ? _fxFilterFor('ref') : null;
+  if (rf) rf.value = f ? f.min : -30;
+  if (rv) rv.textContent = f ? Math.round(f.min) + ' dBZ' : 'Off';
+}
+// Hide reflectivity below a value: the Radar Colors value filter for the
+// reflectivity family, set from one slider. All the way left is off.
+function _smoothRefFilter(v) {
+  v = Number(v);
+  if (typeof _fxFilter === 'undefined') return;
+  const hi = (RADAR_FAMS.ref && RADAR_FAMS.ref.max) || 80;
+  if (v <= -30) { if (_fxFilter.ref) _fxFilter.ref.on = false; }
+  else _fxFilter.ref = { on: true, min: v, max: hi };
+  try { _fxSave(); } catch (e) {}
+  try { if (typeof _radarFxApply === 'function') _radarFxApply(); } catch (e) {}
+  const rv = document.getElementById('lqm-reffilter-val');
+  if (rv) rv.textContent = v <= -30 ? 'Off' : v + ' dBZ';
+}
+(function _smoothBoot() {
+  const arm = () => {
+    if (typeof map === 'undefined' || !map || !map.getPane('radarPane')) { setTimeout(arm, 800); return; }
+    smoothEnabled = _smoothCfg().single;
+    _smoothRenderUi();
+    _smoothSync();
+    // The product on the pane changes from many places (menus, playback,
+    // the Time Machine, the assistant); one cheap check a second follows
+    // all of them rather than a hook in each.
+    setInterval(_smoothSync, 1000);
+  };
+  arm();
+})();
+
+// -- SMOOTH TOGGLE --
+// The single-site master switch now (Settings > Radar > Display); the
+// per-product choices under it, and MRMS, are kept in _smoothCfg.
+function toggleSmooth() {
+  _smoothSet('single', !_smoothCfg().single);
 }
 
 // -- GOES SATELLITE (CONUS IR - Iowa Mesonet WMS) --
@@ -32677,6 +32813,15 @@ async function _goesLoadCaps(host) {
     if (!xml) return null;
     const names = new Set([...xml.matchAll(/<Name>([^<]+)<\/Name>/g)].map(m => m[1]));
     if (names.size) _goesCaps.set(host, names);
+    // Where each layer is: its LatLonBoundingBox, so picking a sector can
+    // take the map to it (the floating Meso boxes move from day to day, so
+    // this is the only place their position can be read).
+    const boxes = new Map();
+    for (const m of xml.matchAll(/<Layer[^>]*>\s*<Name>([^<]+)<\/Name>[\s\S]*?<LatLonBoundingBox\s+minx="([-\d.]+)"\s+miny="([-\d.]+)"\s+maxx="([-\d.]+)"\s+maxy="([-\d.]+)"/g)) {
+      const b = [+m[3], +m[2], +m[5], +m[4]].map(Number);
+      if (b.every(isFinite)) boxes.set(m[1], [[b[0], b[1]], [b[2], b[3]]]);
+    }
+    if (boxes.size) _goesCapsBox.set(host, boxes);
     return _goesCaps.get(host) || null;
   } catch (e) { return null; }
 }
@@ -32709,6 +32854,28 @@ function _goesRegionAvailable(region, ch, ctx) {
 }
 
 let _goesRegionId  = 'auto';  // 'auto' or a GOES_REGIONS id
+// Each sector's area, from the WMS capabilities where it answered, else
+// these (roughly where each fixed sector is).
+const _goesCapsBox = new Map();
+const GOES_REGION_BOX = {
+  east: [[14, -125], [55, -55]], west: [[20, -150], [55, -95]],
+  alaska: [[50, -180], [72, -128]], hawaii: [[14, -166], [27, -148]],
+  caribbean: [[9, -82], [27, -57]],
+  pacific: [[-50, 90], [50, 180]], meteosat: [[-50, -30], [50, 50]], indian: [[-50, 20], [40, 110]],
+};
+// Where a sector is, if known: the live capabilities first (the only answer
+// for the floating Meso boxes), the fixed table second. Full disks and the
+// whole world have no box: they cover a hemisphere, so the map stays put.
+function _goesRegionBox(r) {
+  if (!r) return null;
+  try {
+    const boxes = r.url && _goesCapsBox.get(r.url);
+    const ch = typeof _goesProduct === 'function' ? _goesProduct().ch : null;
+    const b = boxes && ch && boxes.get(`${r.prefix}_${ch}`);
+    if (b) return L.latLngBounds(b);
+  } catch (e) {}
+  return GOES_REGION_BOX[r.id] ? L.latLngBounds(GOES_REGION_BOX[r.id]) : null;
+}
 // Set while the satellite menu is open, so changing product can redraw the
 // region row. A no-op when the menu is closed, which is the common case.
 let _goesRepaintRegions = () => {};
@@ -33922,6 +34089,16 @@ function _satRegionRow(wrap, kindId) {
         rRow.querySelectorAll('.sat-region-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         _setGoesRegion(r.id);
+        // A tap always shows something. With the satellite off, picking a
+        // sector turns it on (with the product last chosen); and a sector
+        // somewhere else (Hawaii, Alaska, a Meso box over the Plains) takes
+        // the map to it. Before, the sector loaded off screen, nothing
+        // visible changed, and it took tap after tap to be sure.
+        if (!activeLayers.satellite && typeof _setGoesProduct === 'function') _setGoesProduct(_goesProductId);
+        const box = _goesRegionBox(r);
+        if (box && box.isValid() && !box.contains(map.getCenter())) {
+          map.flyToBounds(box, { padding: [30, 30], duration: 0.9 });
+        }
       };
       rRow.appendChild(btn);
     });
@@ -51298,6 +51475,7 @@ function _l3Attach(img, result, product, station) {
   _l3Station  = station;
 
   const old = _l3Overlay;
+  try { _smoothSync(); } catch (e) {}
   _l3Overlay = L.imageOverlay(img.url, img.leafletBounds,
     { opacity: radarOpacity, zIndex: 10, pane: 'radarPane' }).addTo(map);
   // Remove the previous one only after the new one is added, so the two swap
@@ -61416,6 +61594,7 @@ function selectProduct(p) {
     <textarea id="lqm-ai-input" placeholder="Ask about weather, alerts, radar…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();_aiSend();}"></textarea>
     <button id="lqm-ai-send" onclick="_aiSend()">Send</button>
   </div>
+  <div id="lqm-ai-resize" title="Drag to resize (double-click to reset)"></div>
 </div>
 
 <div id="lqm-settings-overlay">
@@ -61690,18 +61869,47 @@ function selectProduct(p) {
       Double tapping the map with a finger always opens the right-click menu. Turn this on to make a mouse
       double click do the same, which gives up double click to zoom in.
     </div>
+    <div class="lqm-settings-row" title="How far one scroll of the wheel (or a trackpad pinch) zooms. Zooming out is always a little gentler than zooming in.">
+      <span class="lqm-settings-lbl">Zoom Speed</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <input type="range" id="lqm-set-zoomspeed" min="0.3" max="2" value="1" step="0.1"
+          class="lqm-slider" oninput="lqmSetZoomSpeed(this.value)">
+        <span id="lqm-zoomspeed-val" style="font-family:var(--mono);font-size:9px;color:var(--accent2);min-width:34px;">1.0×</span>
+      </div>
+    </div>
   </div>
 
   <!-- --- RADAR --- -->
   <div class="lqm-settings-group" data-merge="radar" data-merge-label="Radar" data-merge-icon="ic-storm" data-cat="radar">
     <div class="lqm-settings-category"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-storm></use></svg> Radar</div>
+    <!-- DISPLAY: smoothing chosen product by product. Smoothed, a picture is
+         blended as it is magnified; off, each cell stays a crisp block, so a
+         colour band on screen is exactly a band in the data. -->
+    <div class="lqm-settings-subhead" style="font-size:10px;letter-spacing:.8px;opacity:.7;margin:4px 0 2px">DISPLAY</div>
     <div class="lqm-settings-row">
-      <span class="lqm-settings-lbl">Smooth Animation</span>
+      <span class="lqm-settings-lbl">Single-Site Smoothing</span>
       <label class="lqm-toggle">
-        <input type="checkbox" id="lqm-set-smooth" checked onchange="lqmToggleSetting('smooth',this.checked)">
+        <input type="checkbox" id="lqm-set-smooth" onchange="lqmToggleSetting('smooth',this.checked)">
         <div class="lqm-toggle-track"></div>
         <div class="lqm-toggle-knob"></div>
       </label>
+    </div>
+    <div class="smooth-fams" id="smooth-fams"></div>
+    <div class="lqm-settings-row">
+      <span class="lqm-settings-lbl">MRMS Smoothing</span>
+      <label class="lqm-toggle">
+        <input type="checkbox" id="lqm-set-smooth-mrms" onchange="_smoothSet('mrms', this.checked)">
+        <div class="lqm-toggle-track"></div>
+        <div class="lqm-toggle-knob"></div>
+      </label>
+    </div>
+    <div class="lqm-settings-row" title="Hide reflectivity below this value, on every radar. The same filter as Radar Colors.">
+      <span class="lqm-settings-lbl">Reflectivity Filter</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <input type="range" id="lqm-set-reffilter" min="-30" max="50" value="-30" step="1"
+          class="lqm-slider" oninput="_smoothRefFilter(this.value)">
+        <span id="lqm-reffilter-val" style="font-family:var(--mono);font-size:9px;color:var(--accent2);min-width:40px;">Off</span>
+      </div>
     </div>
     <div class="lqm-settings-row">
       <span class="lqm-settings-lbl">Auto-Play on Load</span>
@@ -68664,8 +68872,68 @@ async function chatSend() {
   }
 }
 
+// Asturio's window size, from the corner handle, kept in this browser and
+// clamped to the screen every time it is applied (a size saved on a big
+// monitor must still fit a laptop).
+const AI_SIZE_KEY = 'gwcfc_ai_size';
+function _aiApplySize(el, w, h) {
+  const W = Math.max(300, Math.min(w, window.innerWidth - 16));
+  const H = Math.max(320, Math.min(h, window.innerHeight - 16));
+  el.style.width = W + 'px';
+  el.style.height = H + 'px';
+  el.classList.add('ai-sized');
+  // Then slid back on screen if the new size runs off an edge, so the grip
+  // can always be reached again.
+  const r = el.getBoundingClientRect();
+  if (r.right > window.innerWidth - 8 || r.left < 8 || r.bottom > window.innerHeight - 8) {
+    el.style.transform = 'none';
+    el.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 8 - W)) + 'px';
+    el.style.top = Math.max(8, Math.min(r.top, window.innerHeight - 8 - H)) + 'px';
+  }
+}
+function _aiRestoreSize() {
+  const el = document.getElementById('lqm-ai-overlay');
+  if (!el) return;
+  let v = null;
+  try { v = JSON.parse(localStorage.getItem(AI_SIZE_KEY) || 'null'); } catch (e) {}
+  if (v && isFinite(v.w) && isFinite(v.h)) _aiApplySize(el, v.w, v.h);
+}
+function _aiWireResize() {
+  const el = document.getElementById('lqm-ai-overlay'), grip = document.getElementById('lqm-ai-resize');
+  if (!el || !grip || grip.dataset.wired) return;
+  grip.dataset.wired = '1';
+  grip.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const r = el.getBoundingClientRect();
+    // Pinned by its top-left corner while it grows, so the corner being
+    // dragged stays under the pointer (the centring transform would move it
+    // at half speed).
+    el.style.left = r.left + 'px'; el.style.top = r.top + 'px'; el.style.transform = 'none';
+    const x0 = e.clientX, y0 = e.clientY, w0 = r.width, h0 = r.height;
+    grip.setPointerCapture(e.pointerId);
+    const move = (ev) => _aiApplySize(el, Math.min(w0 + ev.clientX - x0, window.innerWidth - r.left - 8),
+                                      Math.min(h0 + ev.clientY - y0, window.innerHeight - r.top - 8));
+    const up = () => {
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      grip.removeEventListener('pointercancel', up);
+      const b = el.getBoundingClientRect();
+      try { localStorage.setItem(AI_SIZE_KEY, JSON.stringify({ w: Math.round(b.width), h: Math.round(b.height) })); } catch (err) {}
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+    grip.addEventListener('pointercancel', up);
+  });
+  grip.addEventListener('dblclick', () => {
+    try { localStorage.removeItem(AI_SIZE_KEY); } catch (e) {}
+    el.style.width = ''; el.style.height = ''; el.classList.remove('ai-sized');
+    el.style.left = ''; el.style.top = ''; el.style.transform = '';   // back to centre, too
+  });
+}
 function lqmOpenAI() {
   document.getElementById('lqm-ai-overlay')?.classList.add('lqm-panel-open');
+  _aiWireResize();
+  _aiRestoreSize();
   _aiRenderTabs();
   _aiRenderMessages();
   _aiSyncSpeakBtn();
@@ -69078,6 +69346,9 @@ function lqmOpenSettings() {
   if (tzSel) tzSel.value = _appTZ;
   const locCb = document.getElementById('lqm-set-location');
   if (locCb) locCb.checked = (_locWatchId !== null);
+  if (typeof _smoothRenderUi === 'function') { try { _smoothRenderUi(); } catch (e) {} }
+  const zsEl = document.getElementById('lqm-set-zoomspeed');
+  if (zsEl && typeof _wzSpeed === 'function') { zsEl.value = _wzSpeed(); lqmSetZoomSpeed(_wzSpeed()); }
   const bzCb = document.getElementById('lqm-set-bootzoom');
   if (bzCb) bzCb.checked = _bootPref(BOOT_ZOOM_KEY);
   const bfCb = document.getElementById('lqm-set-bootforecast');
@@ -69125,8 +69396,8 @@ function lqmToggleSettingsPanel() {
 }
 function lqmToggleSetting(key, val) {
   if (key === 'smooth') {
-    // Toggle smooth interpolation if function exists
-    if (typeof toggleSmooth === 'function') toggleSmooth();
+    // The single-site smoothing master switch (Settings > Radar > Display).
+    _smoothSet('single', !!val);
   } else if (key === 'sweep') {
     try { localStorage.setItem('gwcfc_sweep', val ? '1' : '0'); } catch (e) {}
     if (typeof _sweepSync === 'function') _sweepSync();
@@ -73587,6 +73858,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-i', date: 'Sep 25, 2026',
+    text: 'More fixes from the testing log. Radar tiles load up to four times faster: they now download from the tile server and its three mirrors at once instead of waiting in one line of six. Smoothing is now per product (Settings > Display): Single-Site Smoothing with a switch for each product, MRMS Smoothing on its own, and a Reflectivity Filter slider. Satellite sectors work on the first tap: picking one turns the satellite on and takes the map there. The Asturio window can be resized from its corner (double-click the corner to reset). Zooming out is gentler, and there is a new Zoom Speed setting. The Forecaster Desk fits phone screens and its map no longer says API KEY REQUIRED.' },
   { id: '2026-09-25-h', date: 'Sep 25, 2026',
     text: 'Fixes from the testing log. The map now wraps round the world: pan straight across the Pacific past the date line, and storms, markers and shapes on the far side stay on screen. The broadcast sweep\'s glow now trails behind the beam instead of running ahead of it, and Settings > Radar has new sweep controls: beam colour, speed, brightness and trail length. Right-click > Radar opens that radar properly again, whatever was on screen before. And storm cones on tracks that turn sharply or double back no longer fold over themselves: the cone is drawn as all its uncertainty circles merged into one clean shape.' },
   { id: '2026-09-25-g', date: 'Sep 25, 2026',
@@ -74696,6 +74969,13 @@ function lqmSetRadarOpacity(val) {
   else if (currentProduct === 'hc' || currentProduct === 'accum' || currentProduct === 'boha') showDpFrame(_dpCurrentFrame);
   else if ((currentProduct === 'cc' || currentProduct === 'zdr' || currentProduct === 'kdp' || currentProduct === 'sw') && _l3Overlay) _l3Overlay.setOpacity(radarOpacity);
   else if (typeof showFrame === 'function') showFrame(currentFrame);
+}
+
+function lqmSetZoomSpeed(val) {
+  const v = Math.min(2, Math.max(0.3, parseFloat(val) || 1));
+  try { localStorage.setItem('gwcfc_zoom_speed', String(v)); } catch (e) {}
+  const lbl = document.getElementById('lqm-zoomspeed-val');
+  if (lbl) lbl.textContent = v.toFixed(1) + '×';
 }
 
 function lqmSetModelOpacity(val) {
