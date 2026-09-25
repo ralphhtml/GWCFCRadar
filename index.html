@@ -37640,6 +37640,7 @@ function _radarBackBubble(wrap, onBack, where) {
 
 // The top of the radar row: where the picture should come from.
 function toggleRadarSub() {
+  if (typeof _radarWorkerWarm === 'function') _radarWorkerWarm();
   // Lite-ning gets a radar menu in plain words instead of the source list;
   // see _liteRadarSub for what it offers and why.
   if (typeof _isLite === 'function' && _isLite() && typeof _liteRadarSub === 'function') {
@@ -37696,6 +37697,7 @@ function toggleRadarSub() {
 // Level 2, from one station, named on the row so it is never a guess which
 // radar you are looking at.
 function toggleRadarL2Sub() {
+  if (typeof _radarWorkerWarm === 'function') _radarWorkerWarm();
   const wrap = document.getElementById('sub-bubbles');
   _prDisable();
   wrap.innerHTML = '';
@@ -47527,6 +47529,7 @@ function _cmClose() {
 }
 
 function _cmOpen(e) {
+  if (typeof _radarWorkerWarm === 'function') _radarWorkerWarm();
   // A drawing tool owns right-click while it is active (it cancels the
   // tool); the menu is for the bare map.
   if (typeof activeTool !== 'undefined' && activeTool) return;
@@ -51807,6 +51810,37 @@ let _radarWorkerPending = null;  // { resolve, reject } for current request
 // while the same click works everywhere else.
 var RADAR_WORKER_V = '7db70fde';
 
+// -- Saying a Level 2 load is under way ------------------------------------
+let _l2LoadFor = '';
+function _l2LoadSay(station, product) {
+  _l2LoadFor = String(station || '').toLowerCase();
+  if (typeof showToast === 'function') {
+    showToast('Loading ' + String(station || '').toUpperCase() + ' radar ('
+      + String(product || 'ref').toUpperCase() + ')…', 60000);
+  }
+}
+function _l2LoadDone(station) {
+  if (String(station || '').toLowerCase() !== _l2LoadFor) return;   // a newer load owns the message
+  _l2LoadFor = '';
+  const t = document.getElementById('_toast');
+  if (t && /^Loading .* radar/.test(t.textContent || '')) { clearTimeout(t._tid); t.style.opacity = '0'; }
+}
+// The decoder is a 450 KB script that used to be fetched and started only
+// when the first volume was already downloaded and waiting for it: measured
+// here, 7 of the 12 seconds a right-click "Radar: KOKX" took. It is started
+// ahead of need now: the moment a radar menu or the right-click menu opens,
+// and on a computer a few seconds after the page settles.
+function _radarWorkerWarm() {
+  try { _getRadarWebWorker(); } catch (e) {}
+}
+(function _radarWorkerWarmSoon() {
+  const go = () => {
+    if (typeof _isIOS !== 'undefined' && _isIOS) return;     // phones warm on intent only
+    const idle = window.requestIdleCallback || ((f) => setTimeout(f, 1));
+    setTimeout(() => idle(_radarWorkerWarm), 6000);
+  };
+  if (document.readyState === 'complete') go(); else window.addEventListener('load', go);
+})();
 function _getRadarWebWorker() {
   if (_radarWebWorker) return _radarWebWorker;
   var workerUrl = new URL('assets/radar_worker.bundle.js?v=' + RADAR_WORKER_V,
@@ -53114,6 +53148,11 @@ async function _loadL3DataInner(product, stationOverride, retried, gen, signal, 
   if (!warmOnly) {
     var at = document.getElementById('anim-time');
     if (at) at.textContent = 'Loading ' + product.toUpperCase() + '…';
+    // The line above lands under the time stamp chip, where nobody sees it,
+    // so a first load of a few seconds looked like nothing happening at all
+    // (and a second click restarted it). This one is in plain sight until
+    // the picture is drawn or the load fails.
+    _l2LoadSay(station, product);
   }
 
   // The same station's volume is good for a couple of minutes, and it is a
@@ -53165,6 +53204,7 @@ async function _loadL3DataInner(product, stationOverride, retried, gen, signal, 
       // popup about a station on screen because the pointer passed over it.
       if (warmOnly) return;
       console.error('[L2] Fetch failed:', e);
+      _l2LoadDone(station);
       _dpAlert('<svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-close></use></svg> <b>' + product.toUpperCase() + ' fetch failed</b><br>' + e.message);
       return;
     }
@@ -53191,10 +53231,12 @@ async function _loadL3DataInner(product, stationOverride, retried, gen, signal, 
         _l2Tilt ? { elevation: _l2Tilt } : undefined);
     }
     console.log('[L2] Worker result: meshData length =', result.meshData?.length, 'bounds =', result.bounds);
+    _l2LoadDone(station);
   } catch(e) {
     // A superseded request lost to a newer click on purpose; the newer one
     // owns the screen and a popup for the loser would be noise.
     if (e && e.message === 'superseded') return;
+    _l2LoadDone(station);
     // A volume that parses to nothing was almost always caught mid-write: the
     // feed had opened it and not yet put a whole sweep in. The previous
     // volume is complete, so the fix is one silent retry a volume back, not a
@@ -74434,6 +74476,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-x', date: 'Sep 25, 2026',
+    text: 'Opening a radar from the right-click menu (and any first Level 2 load) is much faster: about 5 seconds instead of 12 to 17. The radar decoder now starts ahead of time instead of when the data is already waiting, and the offline cache no longer holds up the app\'s own scripts. A Loading message also shows at the bottom while the radar comes in, so it never looks like nothing happened.' },
   { id: '2026-09-25-w', date: 'Sep 25, 2026',
     text: 'Radar 3D\'s Solid surface is smooth now instead of a pile of pixel blocks. The shell is drawn where the blended radar values cross your Show above setting, pinned down between steps, and lit by the storm\'s own shape, so towers and anvils read as rounded surfaces. Lit cloud and Raw pixels are unchanged.' },
   { id: '2026-09-25-v', date: 'Sep 25, 2026',
