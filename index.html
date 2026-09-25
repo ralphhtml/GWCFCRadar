@@ -4836,12 +4836,16 @@ body.lite-mode #export-modal { display: none !important; }
   display: flex; align-items: center; gap: 8px;
   padding: 7px 10px 0;
 }
+/* Sized to their words, like Satellite 3D's: a fixed 26px was built for
+   the icon buttons, and Terrain / Walk / VR spilled out of it and over
+   each other in 14px type. The icon buttons (camera, info) stay square. */
 #r3d-panel .r3d-controls .dtb-btn {
-  width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0;
+  height: 26px; min-width: 26px; padding: 0 7px; border-radius: 7px; flex-shrink: 0;
   background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18);
-  color: #e8edf5; cursor: pointer;
+  color: #e8edf5; cursor: pointer; font-size: 10px; white-space: nowrap;
   display: flex; align-items: center; justify-content: center;
 }
+#r3d-panel .r3d-controls { flex-wrap: wrap; }
 .r3d-sliders { padding: 6px 10px 0; display: flex; flex-direction: column; gap: 4px; }
 .r3d-slider-row {
   display: flex; align-items: center; gap: 8px;
@@ -74430,6 +74434,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-v', date: 'Sep 25, 2026',
+    text: 'Radar 3D\'s Terrain, Walk and VR buttons no longer spill their words over each other: they size to fit, like the other 3D panels.' },
   { id: '2026-09-25-u', date: 'Sep 25, 2026',
     text: 'Compare can spin now: the new spin button in the Compare menu turns the split lines round steadily, and the button beside it flips the direction (clockwise or anticlockwise). Stop it anywhere and the lines stay at that angle. The eye button that hides the split lines is now a switch: they stay hidden until you tap it again, instead of coming back after ten seconds.' },
   { id: '2026-09-25-t', date: 'Sep 25, 2026',
