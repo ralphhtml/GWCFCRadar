@@ -70706,7 +70706,7 @@ function lqmSetTZ(tz) {
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-compass></use></svg></div>
       <div class="fc-title">GPS</div>
-      <p class="fc-body">Location tracking and the weather-aware navigation system. See <a href="#nav">Navigation</a> below.</p>
+      <p class="fc-body">The <strong>GPS</strong> tab holds everything about your position. <strong>Show My Location</strong> turns location off completely: switched off, the app never asks for your position, not even after a refresh. <strong>Zoom to My Location on Load</strong> and <strong>Open My Forecast on Load</strong> decide what happens when the app opens (on by default in Lite-ning, off in Wx-pert). Location tracking and the weather-aware navigation live here too; see <a href="#nav">Navigation</a> below.</p>
     </div>
     <div class="feature-card">
       <div class="fc-icon"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-siren></use></svg></div>
@@ -74119,6 +74119,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-o', date: 'Sep 25, 2026',
+    text: 'The tutorial now explains the GPS tab in Settings: Show My Location (off means the app never asks for your position, even after a refresh) and the two on-load choices, Zoom to My Location and Open My Forecast.' },
   { id: '2026-09-25-n', date: 'Sep 25, 2026',
     text: 'Tutorial corrections: the account panel is described with all six of its buttons (Messages was missing), and the Units section is called Units, matching the Settings tab.' },
   { id: '2026-09-25-m', date: 'Sep 25, 2026',

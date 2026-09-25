@@ -691,7 +691,8 @@ console.log('\n5g. the panel folds to a button and comes back');
     out.fabShown = fab.style.display !== 'none';
     out.stillOn = _navNavOn;
     // Mid-drive, the button wears the next turn's arrow, not the compass.
-    out.glyph = document.getElementById('nav-fab-ico').textContent;
+    // The face is drawn as an icon now (an SVG), not an emoji character.
+    out.glyph = document.getElementById('nav-fab-ico').innerHTML;
     // A drag moves the button and must NOT reopen the panel.
     const r0 = fab.getBoundingClientRect();
     fab.dispatchEvent(new PointerEvent('pointerdown',
@@ -723,7 +724,7 @@ console.log('\n5g. the panel folds to a button and comes back');
      r.panelHidden && r.fabShown);
   ok('guidance keeps running underneath', r.stillOn);
   ok('and the button wears the next turn\'s arrow',
-     r.glyph !== '\u{1F9ED}' && r.glyph.length > 0, r.glyph);
+     !/ic-compass|\u{1F9ED}/u.test(r.glyph) && r.glyph.length > 0, r.glyph);
   ok('dragging moves the button, remembers where, and does not reopen',
      r.dragMoved && r.stillHidden && r.posSaved);
   ok('a plain tap reopens the panel and hides the button',

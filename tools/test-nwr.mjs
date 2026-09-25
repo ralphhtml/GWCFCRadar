@@ -59,10 +59,15 @@ async function boot(mode) {
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   // A returning visitor, not a first-time one: the auto-opening tutorial
-  // must not be what is standing between a real user and their stations.
-  await page.addInitScript(() => {
+  // (and the what's-new card, which opens itself for anyone who has not seen
+  // the newest entry) must not be what is standing between a real user and
+  // their stations.
+  const clId = (readFileSync(join(ROOT, 'index.html'), 'utf8')
+    .match(/const APP_CHANGELOG = \[\s*\{ id: '([^']+)'/) || [])[1] || '';
+  await page.addInitScript((id) => {
     localStorage.setItem('gwcfc_tutorial_seen', '1');
-  });
+    localStorage.setItem('gwcfc_changelog_seen', id);
+  }, clId);
   await page.route('**://**', route => {
     const url = route.request().url();
     if (url.startsWith('file://')) return route.continue();
