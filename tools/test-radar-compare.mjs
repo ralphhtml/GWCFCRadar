@@ -78,7 +78,8 @@ console.log('\n1. the pieces are in the page');
      /function _stackApply\(\)\{[\s\S]*?_rcSyncPaneZ/.test(PAGE));
   ok('the playback decoder takes the tilt a strip needs',
      PAGE.includes('function _pbDecode(buffer, layer, extra)')
-     && PAGE.includes("options: Object.assign({ range_limit_km: far }, extra || {}) }, [buffer]);"));
+     // The MRRL noise filter rides along now; the strip's tilt still wins.
+     && /options: Object\.assign\(\{ range_limit_km: far[^}]*\}, extra \|\| \{\}\) \}, \[buffer\]\);/.test(PAGE));
   ok('no panel, and no station name in the popup: the map label and the pill say those',
      !PAGE.includes('id="rc-panel"') && !PAGE.includes('site-pop-site')
      && PAGE.includes("x.className = 'rc-x';"));
@@ -175,8 +176,9 @@ console.log('\n2. a tap on a pill asks, rather than acting');
              centred: Math.abs((pr.left + pr.width / 2) - (pill.left + pill.width / 2)) < 2,
              ref: _refStation };
   });
-  ok('the popup opens with the two choices and nothing else',
-     r.open && r.noName && r.btns.join('|') === 'View this site|Compare radar sites', JSON.stringify(r));
+  // View Past Radar joined these two (#69).
+  ok('the popup opens with its three choices and nothing else',
+     r.open && r.noName && r.btns.join('|') === 'View this site|Compare radar sites|View Past Radar', JSON.stringify(r));
   ok('above the pill, centred on it', r.above && r.centred, JSON.stringify(r));
   ok('and nothing has loaded yet', r.ref === null, String(r.ref));
 

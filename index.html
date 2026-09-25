@@ -74270,6 +74270,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-s', date: 'Sep 25, 2026',
+    text: 'Satellite 3D now follows a satellite comparison. With the Picture on What the map is showing, a 3D box drawn across the compare divider shows both products, each side wearing the product of the pane above it, and it re-splits when you move the divider or pan the map.' },
   { id: '2026-09-25-r', date: 'Sep 25, 2026',
     text: 'Every panel and popup now wears the weather-station look (all but Settings): a dark header with an icon, the title and a plain X, a thin line in your theme colour under it, a frosted glass body, and rounded corners with a light outline. Warnings and the radio and EAS panels keep their own header colours.' },
   { id: '2026-09-25-q', date: 'Sep 25, 2026',
@@ -90042,24 +90044,9 @@ function _s3dCropSkin(img, bounds, d) {
   for (let k = 3; k < px.length; k += 4) if (px[k] > 16) seen++;
   return seen >= d.w * d.h * 0.2 ? px : null;
 }
-async function _s3dSkin(fr, gen) {
-  const d = fr.data;
-  if (!d) return;
-  const product = _s3dSkinProduct();
-  const want = _s3dSkinSel + '|' + (product ? product.id : 'ir');
-  d.skinWant = want;
-  const grey = () => {
-    const n = d.w * d.h, rgb = new Uint8Array(n * 3);
-    for (let k = 0; k < n; k++) { rgb[k * 3] = rgb[k * 3 + 1] = rgb[k * 3 + 2] = d.grey[k]; }
-    return rgb;
-  };
-  if (!product) {
-    d.rgb = grey(); d.skin = null; d.skinMiss = null;
-    if (_s3dFrames[_s3dIdx] === fr) _s3dSayFrame();
-    _s3dDirty = true;
-    return;
-  }
-  const still = () => gen === _s3dGen && fr.data === d && d.skinWant === want;
+// One product's picture for this frame, cropped onto the height grid:
+// { px, gapMin }, px null when no source has it.
+async function _s3dSkinPx(product, fr, d, still) {
   let px = null, gapMin = 0;
   // At a travelled moment a plain channel comes from NOAA's own archive
   // first: that scan is exactly the moment asked for, where the map
@@ -90086,17 +90073,112 @@ async function _s3dSkin(fr, gen) {
       }
     }
   } catch (e) { px = null; }
+  return { px, gapMin };
+}
+// With a satellite comparison on the map and the Picture set to what the
+// map shows, the 3D picture is split the same way the map is: each point
+// of the box wears the product of the comparison pane it sits under, so a
+// box drawn across the divider shows both sides, divider and all. The
+// panes are cut on the screen, so this is worked out from where the box is
+// on screen now. Returns null when the whole box is one product.
+function _s3dCmpPlan(d) {
+  if (_s3dSkinSel !== 'map' || !_s3dZone || typeof _scOn === 'undefined' || !_scOn || !_scGrid
+      || typeof map === 'undefined' || typeof _cmpCellAt !== 'function') return null;
+  const z = _s3dZone;
+  let main = null;
+  try { main = _goesProduct(); } catch (e) { main = null; }
+  const products = [], index = new Map();
+  const slotOf = (p) => {
+    const key = p ? p.id : '';
+    if (!index.has(key)) { index.set(key, products.length); products.push(p); }
+    return index.get(key);
+  };
+  const owner = new Uint8Array(d.w * d.h);
+  for (let j = 0; j < d.h; j++) {
+    const lat = z.n - (j + 0.5) / d.h * (z.n - z.s);
+    for (let i = 0; i < d.w; i++) {
+      const lng = z.w + (i + 0.5) / d.w * (z.e - z.w);
+      let prod = main;
+      try {
+        const pt = map.latLngToContainerPoint([lat, lng]);
+        const c = _cmpCellAt(pt.x, pt.y, _scColSplits, _scRowSplits, _scColRots, _scRowRots);
+        const cell = c.row * _scGrid.cols + c.col;
+        const slot = cell > 0 ? _scSlots[cell - 1] : null;
+        if (slot) prod = _scProductOf(slot.productId) || main;
+      } catch (e) {}
+      owner[j * d.w + i] = slotOf(prod);
+    }
+  }
+  if (products.length < 2) return null;
+  return { owner, products, key: products.map(p => (p ? p.id : 'ir')).join('+') };
+}
+// What the comparison looks like right now, from the box's point of view:
+// when this changes (the divider dragged, the map panned under a split,
+// a strip added or removed) the 3D picture is re-split to match.
+function _s3dCmpSig() {
+  if (typeof _scOn === 'undefined' || !_scOn || !_scGrid || typeof map === 'undefined') return 'off';
+  const c = map.getCenter();
+  return [_scGrid.rows, _scGrid.cols, _scColSplits.join(','), _scRowSplits.join(','),
+          _scColRots.join(','), _scRowRots.join(','), _scSlots.map(x => x.productId).join(','),
+          c.lat.toFixed(3), c.lng.toFixed(3), map.getZoom(), (typeof _goesProductId !== 'undefined' ? _goesProductId : '')].join('|');
+}
+// Re-split once things settle: a divider mid-drag or a map mid-pan changes
+// the signature every tick, and redraping every frame for each step would
+// be wasted work, so it waits for two ticks in a row to agree.
+let _s3dCmpLast = 'off', _s3dCmpSeen = 'off';
+setInterval(() => {
+  try {
+    if (typeof _s3dOn === 'undefined' || !_s3dOn || _s3dSkinSel !== 'map') return;
+    const sig = _s3dCmpSig();
+    const settled = sig === _s3dCmpSeen;
+    _s3dCmpSeen = sig;
+    if (!settled || sig === _s3dCmpLast) return;
+    _s3dCmpLast = sig;
+    _s3dReskin();
+  } catch (e) {}
+}, 600);
+async function _s3dSkin(fr, gen) {
+  const d = fr.data;
+  if (!d) return;
+  const plan = _s3dCmpPlan(d);
+  const product = plan ? null : _s3dSkinProduct();
+  const want = _s3dSkinSel + '|' + (plan ? 'split:' + plan.key + ':' + _s3dCmpSig() : (product ? product.id : 'ir'));
+  d.skinWant = want;
+  const grey = () => {
+    const n = d.w * d.h, rgb = new Uint8Array(n * 3);
+    for (let k = 0; k < n; k++) { rgb[k * 3] = rgb[k * 3 + 1] = rgb[k * 3 + 2] = d.grey[k]; }
+    return rgb;
+  };
+  if (!plan && !product) {
+    d.rgb = grey(); d.skin = null; d.skinMiss = null;
+    if (_s3dFrames[_s3dIdx] === fr) _s3dSayFrame();
+    _s3dDirty = true;
+    return;
+  }
+  const still = () => gen === _s3dGen && fr.data === d && d.skinWant === want;
+  // One picture per product in view: every pane's, when the box is split.
+  const prods = plan ? plan.products : [product];
+  const got = await Promise.all(prods.map(pr => pr ? _s3dSkinPx(pr, fr, d, still)
+                                                  : Promise.resolve({ px: null, gapMin: 0 })));
   if (!still()) return;
-  if (!px) {
-    d.rgb = grey(); d.skin = null; d.skinMiss = product.label;
+  const any = got.some(g => g.px);
+  if (!any) {
+    d.rgb = grey(); d.skin = null;
+    d.skinMiss = prods.filter(Boolean).map(pr => pr.label).join(' / ') || null;
   } else {
     const n = d.w * d.h, rgb = new Uint8Array(n * 3);
     for (let k = 0; k < n; k++) {
-      const a = px[k * 4 + 3] / 255, g = d.grey[k] * (1 - a);
-      rgb[k * 3] = px[k * 4] * a + g; rgb[k * 3 + 1] = px[k * 4 + 1] * a + g; rgb[k * 3 + 2] = px[k * 4 + 2] * a + g;
+      const px = got[plan ? plan.owner[k] : 0].px;
+      const a = px ? px[k * 4 + 3] / 255 : 0, g = d.grey[k] * (1 - a);
+      rgb[k * 3] = (px ? px[k * 4] : 0) * a + g;
+      rgb[k * 3 + 1] = (px ? px[k * 4 + 1] : 0) * a + g;
+      rgb[k * 3 + 2] = (px ? px[k * 4 + 2] : 0) * a + g;
     }
-    d.rgb = rgb; d.skin = product.label; d.skinMiss = null;
-    d.skinGap = gapMin > 20 ? gapMin : 0;
+    d.rgb = rgb;
+    d.skin = prods.map(pr => (pr ? pr.label : 'Infrared')).join(' | ');
+    d.skinMiss = null;
+    const gap = Math.max(...got.map(g => g.gapMin || 0));
+    d.skinGap = gap > 20 ? gap : 0;
   }
   if (_s3dFrames[_s3dIdx] === fr) _s3dSayFrame();
   _s3dDirty = true;
