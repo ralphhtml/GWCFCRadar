@@ -208,7 +208,9 @@ console.log('\n7. the page carries the new fields and region names');
     return {
       missing: want.filter(w => !ids.includes(w)),
       total: ids.length,
-      noUnit: HD_FIELDS.filter(f => !f.unit).map(f => f.id),
+      // Aerosol depth, albedo and asymmetry are pure ratios: no unit is the
+      // right unit for them, so they are allowed a blank one.
+      noUnit: HD_FIELDS.filter(f => !f.unit && !['aod', 'sctaod', 'ssalb', 'asyf'].includes(f.id)).map(f => f.id),
       noLabel: HD_FIELDS.filter(f => !f.label).map(f => f.id),
       dupe: ids.filter((v, i) => ids.indexOf(v) !== i),
       conus32: _hdRegionLabel('conus32'),

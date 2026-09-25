@@ -61,7 +61,7 @@ console.log('\n2. the page says it is offline, and catches up when it is not');
   ok('the banner exists', /id="offline-bar"/.test(PAGE));
   ok('it shows on the offline event with the time the connection went',
      /window\.addEventListener\('offline', show\);/.test(PAGE)
-     && /Offline since \$\{h\}/.test(PAGE));
+     && /Offline since \$\{(h|_clockHM\([^}]*\))\}/.test(PAGE));   // the time follows the 12/24 hour setting now
   ok('the online event hides it and refreshes every live layer',
      /window\.addEventListener\('online', hide\);/.test(PAGE)
      && /_offlineRecover\(\);/.test(PAGE)
