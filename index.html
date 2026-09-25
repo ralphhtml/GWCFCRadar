@@ -71303,6 +71303,22 @@ async function _menuPlay(path, stepWait = 6000) {
 async function _menuPlayAll(raw) {
   const paths = String(raw || '').split('|').map(x => x.trim()).filter(Boolean).slice(0, 8);
   if (!paths.length) return [];
+  // The page's own start-up redraws the main menu as things finish loading.
+  // One of those landing between two taps would drop the path back to the
+  // top, so the menu is given a moment of quiet first.
+  await new Promise(done => {
+    const wrap = document.getElementById('sub-bubbles');
+    if (!wrap || typeof MutationObserver === 'undefined') return done();
+    let last = Date.now();
+    const mo = new MutationObserver(() => { last = Date.now(); });
+    mo.observe(wrap, { childList: true });
+    const t0 = Date.now();
+    const tick = () => {
+      if (Date.now() - last > 1500 || Date.now() - t0 > 8000) { mo.disconnect(); done(); }
+      else setTimeout(tick, 150);
+    };
+    tick();
+  });
   const onLayers = () => new Set(Object.keys(activeLayers).filter(k => activeLayers[k]));
   const onOv = () => new Set([...document.querySelectorAll('.ov-pill.active')].map(x => x.dataset.ovid));
   const beforeL = onLayers(), beforeO = onOv();
@@ -72500,6 +72516,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-a', date: 'Sep 25, 2026',
+    text: "The Discord bot's /map is four boxes now: place, layer, overlay and zoom. A layer is picked the way you pick it on the site, through the menu: Waves > Sea Surf. Temp > Coral Reef Watch > Actual, Radar > Level 2 > Velocity, and every other path through every menu. Type any words from it (coral actual) and it offers the matches; join several with |. Overlays work the same way, with the outlooks carrying their day and hazard: SPC Outlook > Day 2 > Tornado. The picture comes from a link that taps that exact path in the site's own menu, so it shows exactly what those taps show by hand." },
   { id: '2026-09-24-zd', date: 'Sep 24, 2026',
     text: "Try searching tung tung tung sahur. That's all. (Esc or a click clears it, and the map keeps working underneath.)" },
   { id: '2026-09-24-zc', date: 'Sep 24, 2026',
