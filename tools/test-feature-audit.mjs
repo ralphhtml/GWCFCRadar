@@ -115,14 +115,20 @@ console.log('   block clicks meant for markers underneath it');
 
   const zAudit = await page.evaluate(() => {
     const panes = [...document.querySelectorAll('.leaflet-pane')];
-    const canvases = panes.filter(p => p.querySelector('canvas'))
+    // A pane that lets clicks through (pointer-events: none) cannot cover a
+    // marker for clicking, whatever it draws on top.
+    const canvases = panes.filter(p => p.querySelector('canvas') && getComputedStyle(p).pointerEvents !== 'none')
       .map(p => ({ name: p.className, z: parseInt(getComputedStyle(p).zIndex) || 0 }));
     const markerPanes = panes.filter(p =>
       /-m-pane$|marker-?pane/i.test(p.className) && p.children.length)
       .map(p => ({ name: p.className, z: parseInt(getComputedStyle(p).zIndex) || 0 }));
     const violations = [];
+    // Same height is settled by the canvas click fall-through, which now
+    // hands a missed click on to a marker underneath; strictly higher is the
+    // case that still needs the stack fixed. A pane is never compared with
+    // itself.
     for (const c of canvases) for (const m of markerPanes) {
-      if (c.z >= m.z) violations.push(`${c.name}(z=${c.z}) >= ${m.name}(z=${m.z})`);
+      if (c.name !== m.name && c.z > m.z) violations.push(`${c.name}(z=${c.z}) >= ${m.name}(z=${m.z})`);
     }
     return { canvases: canvases.length, markerPanes: markerPanes.length, violations };
   });

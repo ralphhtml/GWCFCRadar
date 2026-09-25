@@ -227,7 +227,11 @@ console.log('\n4. loaded as a desktop, nothing changes');
   ok('the caches keep their depth',
      r.picMax === 6 && r.goesMax === 12 && r.mrmsWin === 14 && r.l2Max === 20,
      `${r.picMax} / ${r.goesMax} / ${r.mrmsWin} / ${r.l2Max}`);
-  ok('the stand-in keeps @2x tiles', r.fallbackUrl.includes('{r}'), r.fallbackUrl);
+  // The stand-in is Esri's grey canvas now (Carto's started stamping
+  // API KEY REQUIRED on its tiles), and Esri has no @2x set to ask for, so
+  // what matters is that the desktop asks for a real basemap at all.
+  ok('the stand-in is a real basemap (Esri grey canvas, or @2x where one exists)',
+     r.fallbackUrl.includes('{r}') || /arcgisonline\.com\/ArcGIS\/rest\/services\/Canvas\//.test(r.fallbackUrl), r.fallbackUrl);
   ok('and nothing threw', r.errs.length === 0, r.errs.slice(0, 3).join(' | '));
 }
 

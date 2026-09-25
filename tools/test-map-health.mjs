@@ -27,9 +27,11 @@ const ok = (name, cond, extra) => {
 
 console.log('\n1. the shape of both fixes');
 {
+  // The dark and light stand-ins are Esri's grey canvases now: Carto's
+  // keyless tiles started carrying an API KEY REQUIRED watermark.
   ok('every style has a keyless stand-in',
-     /basemaps\.cartocdn\.com\/dark_all/.test(PAGE)
-     && /basemaps\.cartocdn\.com\/light_all/.test(PAGE)
+     /Canvas\/World_Dark_Gray_Base\/MapServer\/tile/.test(PAGE)
+     && /Canvas\/World_Light_Gray_Base\/MapServer\/tile/.test(PAGE)
      && /World_Imagery\/MapServer\/tile/.test(PAGE)
      && /World_Topo_Map\/MapServer\/tile/.test(PAGE));
   ok('exhausted retries change horses instead of retrying a dead key',
@@ -97,9 +99,9 @@ console.log('\n2. the basemap fallback really swaps the layers');
   });
   ok('the active style swaps in place',
      r.wasOn && r.oldGone && r.newOn, JSON.stringify(r));
-  ok('imagery falls to Esri, streets to CARTO',
-     /arcgisonline\.com/.test(r.satUrl) && /cartocdn\.com/.test(r.darkUrl),
-     r.satUrl);
+  ok('imagery falls to Esri imagery, dark streets to Esri dark grey',
+     /World_Imagery/.test(r.satUrl) && /World_Dark_Gray_Base/.test(r.darkUrl),
+     r.satUrl + ' | ' + r.darkUrl);
   ok('a second failure does not churn the layers again', r.stable);
 }
 

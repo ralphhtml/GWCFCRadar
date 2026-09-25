@@ -15944,21 +15944,48 @@ function _simplifyGeometry(g, tol) {
 // since the same zone gets reused across many alerts and over time) and
 // splice the combined shape back onto the feature before it's ever rendered.
 const _zoneGeomCache = new Map();
+// Marine zone codes start with a water body, not a state: Atlantic (AM, AN),
+// Gulf (GM), the Great Lakes (LC, LE, LH, LM, LO, LS, SL) and the Pacific
+// (PH, PK, PM, PS, PZ). Only those are looked up as marine zones.
+const _MARINE_UGC = new Set(['AM', 'AN', 'GM', 'LC', 'LE', 'LH', 'LM', 'LO', 'LS', 'SL', 'PH', 'PK', 'PM', 'PS', 'PZ']);
+function _zoneTypesFor(ugc) {
+  if (!ugc || ugc[2] !== 'Z') return ['county'];
+  return _MARINE_UGC.has(ugc.slice(0, 2)) ? ['marine', 'forecast'] : ['forecast', 'fire'];
+}
+// A quiet day can still mean a few hundred zones to look up. Fired all at
+// once, the browser queued them and about a quarter hit their timeout while
+// still waiting in line, so those alerts never got a shape on the map. At
+// most sixteen go at a time now, so every one finishes.
+let _zoneFetchActive = 0;
+const _zoneFetchQueue = [];
+function _zoneFetch(url) {
+  return new Promise((resolve, reject) => {
+    const run = () => {
+      _zoneFetchActive++;
+      fetch(url, { signal: _abortSignal(15000) }).then(resolve, reject).finally(() => {
+        _zoneFetchActive--;
+        const next = _zoneFetchQueue.shift();
+        if (next) next();
+      });
+    };
+    if (_zoneFetchActive < 16) run(); else _zoneFetchQueue.push(run);
+  });
+}
 async function _fetchZoneGeometry(ugc) {
   if (_zoneGeomCache.has(ugc)) return _zoneGeomCache.get(ugc);
-  // 'Z'-suffixed UGCs are either land forecast zones or marine zones (same
-  // letter, different endpoint) - try forecast first since it's the common
-  // case, then fall back to marine. 'C' suffix is unambiguously a county.
-  const typesToTry = ugc[2] === 'Z' ? ['forecast', 'marine'] : ['county'];
   const promise = (async () => {
-    for (const type of typesToTry) {
+    let failed = false;
+    for (const type of _zoneTypesFor(ugc)) {
       try {
-        const r = await fetch(`https://api.weather.gov/zones/${type}/${ugc}`, { signal: _abortSignal(8000) });
-        if (!r.ok) continue;
+        const r = await _zoneFetch(`https://api.weather.gov/zones/${type}/${ugc}`);
+        if (!r.ok) { if (r.status !== 404) failed = true; continue; }
         const d = await r.json();
         if (d.geometry) return _simplifyGeometry(d.geometry);
-      } catch(e) {}
+      } catch(e) { failed = true; }
     }
+    // A network hiccup is not "this zone has no shape": forget it so the
+    // next alert refresh asks again.
+    if (failed) _zoneGeomCache.delete(ugc);
     return null;
   })();
   _zoneGeomCache.set(ugc, promise);
@@ -34331,6 +34358,12 @@ LAYER_DESCRIPTIONS['pi-diffrefl']     = LAYER_DESCRIPTIONS.zdr;
 LAYER_DESCRIPTIONS['pi-kdp']          = LAYER_DESCRIPTIONS.kdp;
 LAYER_DESCRIPTIONS['pi-spectrum']     = LAYER_DESCRIPTIONS.sw;
 LAYER_DESCRIPTIONS['pi-hydroclass']   = LAYER_DESCRIPTIONS.hc;
+// Differential phase and the hybrid-scan classifier had buttons but no
+// words, so their info button never appeared.
+LAYER_DESCRIPTIONS['l2-phi'] = "Differential phase: how far the horizontal half of the beam has fallen behind the vertical half by the time it reaches each gate. It only ever builds up through rain, so it climbs steadily behind heavy cores. Specific Differential Phase is how fast it climbs.";
+LAYER_DESCRIPTIONS['pi-phi'] = LAYER_DESCRIPTIONS['l2-phi'];
+LAYER_DESCRIPTIONS['pi-hydrohybrid'] = (LAYER_DESCRIPTIONS.hc || 'What the radar thinks it is seeing: rain, hail, snow, ice, or non-weather targets.')
+  + " This version reads the lowest clear beam at each spot, so it describes what is falling near the ground rather than aloft.";
 LAYER_DESCRIPTIONS['pi-srvelocity']   = LAYER_DESCRIPTIONS.velocity
   + " With the storm's own motion subtracted out first, so what's left is rotation relative to the storm rather than the whole field drifting with the wind - a tighter couplet for spotting a mesocyclone.";
 
@@ -48870,9 +48903,9 @@ function _applyLoadSpot() {
       });
     }
 
-    // The mouse, opt in. Kept off by default because double click means zoom
-    // to anyone holding a mouse, and silently taking that away is worse than
-    // not offering the menu on an input that already has a right button.
+    // The mouse too. On by default since #688 (double click opening the
+    // map menu was the asked-for setup); the Settings switch gives double
+    // click back to zooming for anyone who prefers that.
     map.on('dblclick', (e) => { if (wantsMouseMenu()) _cmOpen(e); });
     const syncDblZoom = () => {
       if (!map.doubleClickZoom) return;
@@ -56379,10 +56412,14 @@ function _sweepStationLL(site) {
 function _sweepRadiusPx(ll) {
   // The picture's reach in longitude at this latitude, measured in on-screen
   // pixels, so the disc hugs the real edge of the radar's data at every zoom.
+  if (!ll || typeof ll.lat !== 'number' || typeof ll.lng !== 'number') return 24;
   const east = (_sweepKmNow || RADAR_RANGE_KM) * 1000 / (111320 * Math.cos(ll.lat * Math.PI / 180));
-  const p1 = map.latLngToLayerPoint(ll);
-  const p2 = map.latLngToLayerPoint(L.latLng(ll.lat, ll.lng + east));
-  return Math.max(24, Math.abs(p2.x - p1.x));
+  try {
+    const p1 = map.latLngToLayerPoint(ll);
+    const p2 = map.latLngToLayerPoint(L.latLng(ll.lat, ll.lng + east));
+    const d = Math.abs(p2.x - p1.x);
+    return isFinite(d) ? Math.max(24, d) : 24;
+  } catch (e) { return 24; }
 }
 function _sweepClear() {
   if (_sweepMarker) { try { map.removeLayer(_sweepMarker); } catch (e) {} _sweepMarker = null; }
@@ -74080,6 +74117,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-l', date: 'Sep 25, 2026',
+    text: 'Bug sweep. Alerts issued by zone (no drawn polygon) all get their shape on the map again: about one in ten used to vanish because the page asked for hundreds of zone outlines at once and some timed out. Map pins sitting under a drawn layer can be clicked again. Differential Phase and the surface Hydrometeor Class now have their info buttons. The radar sweep can no longer trip over a half-ready map.' },
   { id: '2026-09-25-k', date: 'Sep 25, 2026',
     text: 'Fixed the radar flashing and flickering. Iowa Mesonet renamed its fast radar picture tiles, so every radar frame had been quietly falling back to a much slower backup. Frames kept swapping over as that backup loaded, which made the map flash, and clicking set off another round of reloads. The radar now uses the new names, loads fast again and stays steady.' },
   { id: '2026-09-25-j', date: 'Sep 25, 2026',
@@ -81648,10 +81687,14 @@ function _ovMarkerPane(id){
     cv.style.pointerEvents = 'none';
     try {
       const under = document.elementFromPoint(e.clientX, e.clientY);
+      // A plain marker (an office pin, a city label) under the canvas is a
+      // target too: without it, a marker in a pane at the same height as a
+      // canvas could never be clicked.
+      const pin = under && under.closest && under.closest('.leaflet-marker-icon');
       if (under && under !== cv && under.closest('.leaflet-pane')
-          && (under.tagName === 'CANVAS' || under instanceof SVGElement)) {
+          && (pin || under.tagName === 'CANVAS' || under instanceof SVGElement)) {
         const clone = new MouseEvent('click', e);
-        under.dispatchEvent(clone);
+        (pin || under).dispatchEvent(clone);
         if (clone.defaultPrevented) L.DomEvent.stop(e);
       }
     } catch (err) {}
@@ -85832,11 +85875,11 @@ async function _adDrawDone(e) {
 const _adZoneInfoCache = new Map();
 function _adZoneInfo(ugc) {
   if (_adZoneInfoCache.has(ugc)) return _adZoneInfoCache.get(ugc);
-  const types = ugc && ugc[2] === 'Z' ? ['forecast', 'marine'] : ['county'];
+  const types = _zoneTypesFor(ugc);
   const pr = (async () => {
     for (const t of types) {
       try {
-        const r = await fetch(`https://api.weather.gov/zones/${t}/${ugc}`, { signal: AbortSignal.timeout(9000) });
+        const r = await _zoneFetch(`https://api.weather.gov/zones/${t}/${ugc}`);
         if (!r.ok) continue;
         const d = await r.json();
         const p = d.properties || {};

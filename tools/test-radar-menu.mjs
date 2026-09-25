@@ -114,14 +114,14 @@ ok('offers Normal, Level 2 and Level 3',
    ['Normal', 'Level 2', 'Level 3'].every(l => sources.includes(l)),
    sources.join(','));
 
-console.log('\n3. Level 2 is single site, with the six products');
+console.log('\n3. Level 2 is single site, with its seven products');
 await page.evaluate(() => toggleRadarL2Sub());
 const l2 = await row();
 ['Reflectivity', 'Velocity', 'Corr. Coeff.', 'Diff. Refl.',
- 'Spec. Diff. Phase', 'Spectrum Width'].forEach(p =>
+ 'Spec. Diff. Phase', 'Spectrum Width', 'Diff. Phase'].forEach(p =>
   ok('offers ' + p, l2.includes(p), l2.join(',')));
 ok('and offers nothing else: the station lives on the map, not in the menu',
-   l2.length === 7, l2.join(','));
+   l2.length === 8, l2.join(','));   // Back plus the seven products
 
 console.log('\n4. opening the row is what puts the station pills up');
 const pills = await page.evaluate(() => ({
