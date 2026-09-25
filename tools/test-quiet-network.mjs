@@ -93,8 +93,8 @@ ok('Palm Beach data is asked for as TDJT / DJT now', JSON.stringify(ids.live) ==
 ok('a moment before the change still asks for PBI', JSON.stringify(ids.july) === JSON.stringify(['PBI', 'tpbi']), JSON.stringify(ids));
 ok('other radars are untouched', JSON.stringify(ids.other) === JSON.stringify(['ktlx', 'TLX']), JSON.stringify(ids));
 ok('the map still calls it TPBI, and a TDJT status report lands on it', ids.label === 'tpbi' && ids.back === 'TPBI', JSON.stringify(ids));
-ok('a first visit does not reload itself when the service worker takes charge',
-   /const _swHadController = !!navigator\.serviceWorker\.controller;/.test(PAGE) && /if \(_swReloaded \|\| !_swHadController\) return;/.test(PAGE));
+ok('the page never reloads itself when a new service worker takes charge (first visit or coming back to the tab)',
+   /addEventListener\('controllerchange'/.test(PAGE) && !/location\.reload\(\)/.test(PAGE));
 ok('the right-click menu starts loading its radar', /_l2WarmSite\(st\.id, _cmRadarProduct\(st\.id\)\)/.test(PAGE));
 ok('the Forecaster Desk header has no green note', !/fd-head-note/.test(PAGE));
 ok('no page errors', errs.length === 0, errs.join(' | '));
