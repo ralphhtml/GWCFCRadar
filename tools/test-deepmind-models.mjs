@@ -10,7 +10,7 @@
  * playbar hour, deepest first and decluttered; Wind chance counts the members
  * whose 34, 50 or 64 knot wind radii cover each place by that hour, and
  * GenCast (which has no radii) says so; the data terms are on the panel; and
- * every models panel wears heavy frost.
+ * every models panel wears subtle frost.
  */
 
 import { readFileSync } from 'node:fs';
