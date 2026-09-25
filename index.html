@@ -7654,6 +7654,66 @@ body.theme-picking, body.theme-picking * { cursor: crosshair !important; }
 }
 .panel-grip.on { display: block; }
 
+/* -- ONE LOOK FOR EVERY PANEL AND POPUP ------------------------------------
+   The weather station popup's look, asked for everywhere but Settings: a
+   dark header with an icon, the title and a plain X; a thin line in the
+   theme's accent under it; the heavy frosted body; rounded corners with a
+   thin light outline. Only the shell: what is inside each panel is left
+   exactly as it was. The script (_shScan) finds each panel's header and
+   close button and tags them; these rules do the rest. A header that
+   carries its own colour (a warning's, the orange EAS and radio ones) is
+   tagged gw-typed and keeps that colour. */
+.gw-shell {
+  border-radius: 14px !important;
+  border: 1px solid rgba(255,255,255,0.22) !important;
+  box-shadow: 0 10px 34px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.10) !important;
+}
+.gw-shell:not(.gw-typed-body) {
+  background-color: rgba(10,12,16,0.94) !important;
+  background-image: linear-gradient(180deg, rgba(22,26,32,0.60) 0%, rgba(6,8,12,0.70) 100%) !important;
+}
+:root[data-glass] .gw-shell:not(.gw-typed-body) {
+  background-color: transparent !important;
+  backdrop-filter: blur(24px) saturate(1.5) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+}
+.gw-shell-head {
+  border-top-left-radius: 13px; border-top-right-radius: 13px;
+  border-bottom: 2px solid rgba(var(--accent-rgb), 0.85) !important;
+  color: #fff;
+}
+.gw-shell-head:not(.gw-typed) {
+  background: linear-gradient(rgba(var(--accent-rgb),0.07), rgba(var(--accent-rgb),0.07)), rgb(12,12,14) !important;
+}
+.gw-shell-ico {
+  display: inline-flex; align-items: center; justify-content: center;
+  color: rgba(255,255,255,0.55); margin-right: 8px; font-size: 1.15em; flex-shrink: 0;
+}
+.gw-shell-x {
+  background: none !important; border: none !important; box-shadow: none !important;
+  color: rgba(255,255,255,0.55) !important; cursor: pointer;
+}
+.gw-shell-x:hover { color: #fff !important; background: none !important; }
+/* Map popups: the same box, and the same X. */
+.leaflet-container .leaflet-popup.gw-pop .leaflet-popup-content-wrapper {
+  border-radius: 14px !important;
+  border: 1px solid rgba(255,255,255,0.22) !important;
+  overflow: hidden;
+  background-color: rgba(10,12,16,0.94) !important;
+  background-image: linear-gradient(180deg, rgba(22,26,32,0.60) 0%, rgba(6,8,12,0.70) 100%) !important;
+}
+:root[data-glass] .leaflet-container .leaflet-popup.gw-pop .leaflet-popup-content-wrapper {
+  background-color: transparent !important;
+  backdrop-filter: blur(24px) saturate(1.5) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+}
+.leaflet-container .leaflet-popup.gw-pop .leaflet-popup-tip { background: rgba(10,12,16,0.9) !important; }
+.leaflet-container .leaflet-popup.gw-pop .leaflet-popup-close-button {
+  color: rgba(255,255,255,0.55) !important; background: none !important;
+  font-size: 20px !important; top: 10px !important; right: 10px !important; z-index: 3;
+}
+.leaflet-container .leaflet-popup.gw-pop .leaflet-popup-close-button:hover { color: #fff !important; }
+
 /* -- LIVE CHAT (bridged with Discord) -- */
 #lqm-chat-overlay {
   position: fixed; top: 64px; right: 12px; z-index: 1400;
@@ -69131,8 +69191,99 @@ function _prAttach(el, key) {
     }
   }
 }
+// -- The shared shell: find each open panel's header and X, and tag them --
+// Settings keeps its own look, by request; so do the full-screen lock and
+// the zoom buttons, which are not panels.
+const _SH_SKIP = /^(lqm-settings-overlay|lqm-set-shell|tab-lock-overlay|zoom-controls)$/;
+// Headers carrying their own colour keep it: the EAS panel's orange and the
+// radio recorder's.
+const _SH_TYPED = /^(eas-panel|nwr-rec-panel)$/;
+// A fitting icon for each panel, by its id; anything unnamed gets the info mark.
+const _SH_ICONS = [
+  [/alerts/, 'siren'], [/^eas/, 'megaphone'], [/forecast/, 'cloud-sun'], [/spaghetti/, 'noodles'],
+  [/run-models|^gm/, 'chart-up'], [/ai-cyclones|cyc-ens/, 'robot'], [/^nav/, 'car'], [/export/, 'image'],
+  [/xsec/, 'ruler'], [/^r3d/, 'radar3d'], [/^s3d/, 'satellite'], [/l3d|m3d/, 'terrain3d'], [/nwr/, 'radio'],
+  [/chat/, 'chat'], [/lqm-ai/, 'robot'], [/tutorial/, 'book'], [/auth/, 'lock'], [/profile/, 'user'],
+  [/avatar/, 'camera'], [/stormcone|^sc-/, 'cyclone'], [/^spc/, 'storm'], [/^wpc/, 'drop'], [/^ace|ectc/, 'cyclone'],
+  [/^lows/, 'compass'], [/^fw/, 'fire'], [/^cpc/, 'calendar'], [/^ec-/, 'warning'], [/storm-reports/, 'clipboard'],
+  [/meso/, 'doc'], [/tornado/, 'tornado'], [/^cc-/, 'camera'], [/credits/, 'star'], [/feedback|^dm-/, 'mail'],
+  [/^ad-/, 'siren'], [/^fd-/, 'desktop'], [/^snd/, 'chart-up'], [/^mtg|sev-compare/, 'chart-bar'], [/^hd-/, 'sliders'],
+  [/^ens/, 'dice'], [/^tm-|^htm/, 'clock'], [/changelog/, 'sparkle'], [/mode|ss-firstrun/, 'gear'],
+  [/radc/, 'antenna'], [/dtb-color/, 'palette'],
+];
+function _shIcon(key) {
+  const hit = _SH_ICONS.find(([re]) => re.test(key));
+  return '<span class="gw-shell-ico" aria-hidden="true"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-'
+    + (hit ? hit[1] : 'info') + '></use></svg></span>';
+}
+const _SH_HEAD_SEL = '.models-panel-header, .ov-panel-header-row, .xs-head, .cc-head, .sc-popover-title, '
+  + '[id$="-header"], [id$="-head"], .ap-header, [class*="-header"], [class*="-head"]';
+function _shFindHead(el) {
+  const top = el.getBoundingClientRect().top;
+  for (const h of el.querySelectorAll(_SH_HEAD_SEL)) {
+    if (h.closest('.gw-shell') && h.closest('.gw-shell') !== el) continue;   // a panel inside a panel
+    const r = h.getBoundingClientRect();
+    if (r.height > 0 && r.height < 90 && r.top - top < 70) return h;
+  }
+  const first = [...el.children].find(k => !k.classList.contains('panel-grip') && k.offsetHeight > 0);
+  if (first && first.offsetHeight < 70 && /\S/.test(first.textContent)
+      && !/^(INPUT|SELECT|TEXTAREA|CANVAS|IMG)$/.test(first.tagName)) return first;
+  return null;
+}
+function _shIsClose(b) {
+  const oc = (b.getAttribute('onclick') || '') + ' ' + (b.id || '') + ' ' + (b.className && b.className.baseVal === undefined ? b.className : '');
+  const t = (b.textContent || '').trim();
+  return /close/i.test(oc) || t === '✕' || t === '×' || t === '✖' || !!b.querySelector('use[href="#ic-close"]');
+}
+function _shApply(el, key) {
+  el.dataset.gwShell = '1';
+  el.classList.add('gw-shell');
+  if (_SH_TYPED.test(key)) el.classList.add('gw-typed-body');
+  const head = _shFindHead(el);
+  if (head) {
+    head.classList.add('gw-shell-head');
+    if (_SH_TYPED.test(key) || (head.getAttribute('style') || '').includes('background')) head.classList.add('gw-typed');
+    if (!head.querySelector('svg, img, .ap-event-icon, .gw-shell-ico')) {
+      // In front of the title, after any drag handle.
+      const after = [...head.children].find(k => !k.classList.contains('dtb-drag'));
+      const tmp = document.createElement('span');
+      tmp.innerHTML = _shIcon(key);
+      head.insertBefore(tmp.firstChild, after || null);
+    }
+  }
+  const hb = head ? head.getBoundingClientRect() : null;
+  el.querySelectorAll('button, .close, [role="button"], span[onclick], div[onclick]').forEach(b => {
+    if (!_shIsClose(b)) return;
+    // Only the X in the top strip, not every "close" deeper in the panel.
+    const r = b.getBoundingClientRect();
+    const topEdge = hb ? hb.bottom + 4 : el.getBoundingClientRect().top + 60;
+    if (r.height > 0 && r.top <= topEdge) b.classList.add('gw-shell-x');
+  });
+}
+function _shScan() {
+  document.querySelectorAll(_PR_SEL).forEach(c => {
+    if (c.dataset.gwShell || _SH_SKIP.test(c.id) || c.closest('.leaflet-pane, [data-no-resize], #lqm-settings-overlay')) return;
+    let el = c, r = _prShown(c);
+    if (!r) return;
+    if (_prCovers(r)) {
+      el = null;
+      for (const k of c.children) {
+        const kr = _prShown(k);
+        if (kr && !_prCovers(kr)) { el = k; break; }
+      }
+      if (!el || el.dataset.gwShell) return;
+      c.dataset.gwShell = 'backdrop';
+    }
+    if (el.parentElement && el.parentElement.closest('.gw-shell')) return;   // a panel inside a panel
+    _shApply(el, el.id || c.id || '');
+  });
+  // Every map popup: the box and the X (their headers are already dark).
+  document.querySelectorAll('.leaflet-popup:not(.gw-pop)').forEach(p => p.classList.add('gw-pop'));
+}
+
 function _prScan() {
   if (document.hidden || !document.body) return;
+  try { _shScan(); } catch (e) {}
   const seen = new Set();
   const phone = window.innerWidth < 700;
   document.querySelectorAll(_PR_SEL).forEach(c => {
@@ -74119,6 +74270,8 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-25-r', date: 'Sep 25, 2026',
+    text: 'Every panel and popup now wears the weather-station look (all but Settings): a dark header with an icon, the title and a plain X, a thin line in your theme colour under it, a frosted glass body, and rounded corners with a light outline. Warnings and the radio and EAS panels keep their own header colours.' },
   { id: '2026-09-25-q', date: 'Sep 25, 2026',
     text: 'The main map tiles use a fresh MapTiler key.' },
   { id: '2026-09-25-p', date: 'Sep 25, 2026',
