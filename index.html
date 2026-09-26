@@ -2753,11 +2753,10 @@ img.wx-model-smooth {
   #gm-side { flex: 1 1 auto; border-left: 0; border-top: 1px solid rgba(255,255,255,0.1); }
 }
 
-/* -- ALERT DESK: compose and issue your own practice warnings --
-   Everything issued here is a simulated product. The styling leans on that
-   deliberately: the dashed polygon, the amber SIM chips and the standing
-   corner badge exist so a screenshot of this app can never be mistaken for
-   a real National Weather Service warning. */
+/* -- ALERT DESK: GWCFC forecasters compose and issue the office's warnings --
+   The dashed polygon, the amber chips and the standing corner badge are for
+   fun alerts only (made with the Storm Cone tool), so a screenshot of one can
+   never be mistaken for a real warning. GWCFC products are drawn solid. */
 /* -- FORECASTER DESK -----------------------------------------------------
    The issuing desk, for accounts the owner has marked as forecasters. It
    deliberately borrows the Alert Desk's shell and its .ad-* controls rather
@@ -3350,6 +3349,7 @@ img.wx-model-smooth {
   font-family: var(--mono); font-size: 9px; font-weight: 700;
   color: #fff; background: var(--accent2);
 }
+.alert-card .ad-gwcfc-meta { color: var(--accent2); font-weight: 700; letter-spacing: 0.8px; }
 /* The transport is now literally Run Models' playbar, sharing its rules
    rather than imitating them: the hand-rolled range input and its two
    vendor-prefixed thumbs are gone, and #tanim-play wears .sev-play-btn.
@@ -6365,7 +6365,7 @@ body.lite-mode #export-modal { display: none !important; }
 .sc-empty { text-align: center !important; color: rgba(255,230,200,0.4); padding: 14px 6px !important; }
 
 /* Style + per-point curve popovers - same popover shell as #stormcone-panel */
-#sc-style-panel, #sc-points-panel {
+#sc-style-panel, #sc-points-panel, #sc-fun-panel {
   display: none;
   position: fixed;
   flex-direction: column;
@@ -6381,10 +6381,18 @@ body.lite-mode #export-modal { display: none !important; }
   font-size: 10px;
   color: rgba(255,230,200,0.85);
 }
-#sc-style-panel.open, #sc-points-panel.open { display: flex; }
+#sc-style-panel.open, #sc-points-panel.open, #sc-fun-panel.open { display: flex; }
 #sc-style-panel::-webkit-scrollbar, #sc-points-panel::-webkit-scrollbar { width: 3px; }
 #sc-style-panel::-webkit-scrollbar-thumb, #sc-points-panel::-webkit-scrollbar-thumb { background: rgba(200,80,0,0.5); border-radius: 2px; }
 #sc-style-panel, #sc-points-panel { scrollbar-width: thin; scrollbar-color: rgba(200,80,0,0.5) transparent; }
+.sc-fun-btns { display: flex; gap: 6px; padding: 6px 12px; flex-wrap: wrap; }
+.sc-fun-btns .dtb-btn { flex: 1 1 auto; }
+#sc-fun-list { display: flex; flex-direction: column; gap: 4px; padding: 2px 12px 4px; }
+.sc-fun-item { display: flex; align-items: center; gap: 6px; font-size: 10px; }
+.sc-fun-item span { flex: 1 1 auto; min-width: 0; }
+.sc-fun-item button { padding: 1px 7px; }
+#sc-fun-list .sc-fun-clear { width: 100%; white-space: nowrap; justify-content: center; margin-top: 2px; }
+.sc-fun-note { padding: 4px 12px 10px; font-family: var(--mono); font-size: 8.5px; line-height: 1.5; opacity: 0.7; }
 .sc-popover-title {
   padding: 8px 12px 6px;
   font-family: var(--display);
@@ -15871,7 +15879,7 @@ function _buildAlertPopupHTML(p, color) {
       <div class="ap-event-name">${ev.toUpperCase()}</div>
     </div>
     <div class="ap-body">
-      ${p._simulated ? `<div class="ap-sim-banner">SIMULATED PRACTICE PRODUCT - NOT ISSUED BY THE NATIONAL WEATHER SERVICE</div>` : ''}
+      ${p._simulated ? `<div class="ap-sim-banner">JUST FOR FUN - NOT A REAL ALERT</div>` : p._gwcfc ? `<div class="ap-gwcfc-banner">GWCFC</div>` : ''}
       <div class="ap-meta-grid">
         <div class="ap-meta-cell"><div class="ap-meta-lbl">ISSUED</div><div class="ap-meta-val">${issued}</div></div>
         <div class="ap-meta-cell"><div class="ap-meta-lbl">EXPIRES</div><div class="ap-meta-val">${expires}</div></div>
@@ -16476,7 +16484,7 @@ function renderAlerts(features) {
     // chain used everywhere else in this function.
     div.dataset.alertId = p.id || p['@id'] || f.id || '';
     const expiresLabel = _fmtAlertTime(p.expires);
-    div.innerHTML = `<div class="alert-event"><span>${_ccEsc(ev)}</span>${expiresLabel ? `<span class="alert-event-time">until ${expiresLabel}</span>` : ''}</div><div class="alert-area">${_ccEsc(p.areaDesc || '')}</div>${p._approxZone ? `<div class="alert-meta">zone boundary (approximate)</div>` : ''}${p._simulated ? `<div class="alert-meta ad-sim-meta">SIMULATED - practice product, not from the NWS</div>` : ''}`;
+    div.innerHTML = `<div class="alert-event"><span>${_ccEsc(ev)}</span>${expiresLabel ? `<span class="alert-event-time">until ${expiresLabel}</span>` : ''}</div><div class="alert-area">${_ccEsc(p.areaDesc || '')}</div>${p._approxZone ? `<div class="alert-meta">zone boundary (approximate)</div>` : ''}${p._simulated ? `<div class="alert-meta ad-sim-meta">Just for fun - not a real alert</div>` : p._gwcfc ? `<div class="alert-meta ad-gwcfc-meta">GWCFC</div>` : ''}`;
 
 div.onclick = () => {
   try {
@@ -43958,9 +43966,7 @@ function _gwaDrawInto(alerts, sink, paneId) {
       const poly = L.polygon(pts, { pane, color, weight: 2.5, opacity: 1,
         fillColor: color, fillOpacity: 0.18 });
       poly.bindPopup(
-        `<div class="ap-gwcfc-banner">GWCFC FORECAST OFFICE PRODUCT - `
-        + `issued from the Forecasting Portal, not the National Weather `
-        + `Service</div>`
+        `<div class="ap-gwcfc-banner">GWCFC</div>`
         + `<div style="font-family:'Comfortaa',sans-serif;font-size:12px;`
         + `font-weight:700;color:${color}">${_ccEsc(event)}</div>`
         + `<div style="font-family:var(--mono);font-size:10px;">`
@@ -45673,6 +45679,7 @@ function _scClosePanel() {
   function outside(e) {
     if (_scResultsOpen && !e.target.closest('#stormcone-panel') && !e.target.closest('#sc-results-btn')) _scClosePanel();
     if (_scStyleOpen && !e.target.closest('#sc-style-panel') && !e.target.closest('#sc-style-btn')) _scCloseStylePanel();
+    if (_scFunOpenNow && !e.target.closest('#sc-fun-panel') && !e.target.closest('#sc-fun-btn')) _scCloseFun();
     if (_scPointsOpen && !e.target.closest('#sc-points-panel') && !e.target.closest('#sc-points-btn')) _scClosePointsPanel();
   }
   document.addEventListener('mousedown', outside);
@@ -47309,6 +47316,172 @@ function _scOpenStylePanel() {
 function _scCloseStylePanel() {
   document.getElementById('sc-style-panel')?.classList.remove('open');
   _scStyleOpen = false;
+}
+
+// -- FUN ALERT ----------------------------------------------------------------
+// Making a warning for fun, the thing the Alert Desk used to be for everyone.
+// It lives here now because it is the same kind of thing a storm cone is: a
+// drawing of weather you imagine. Two ways in: draw a box, or turn the cone
+// you have into the warning's area. What comes out is an Alert Desk product
+// of the 'fun' kind (see _adIsFun), so the map, the Alerts panel and the
+// popup all show it the way they show any warning, dashed and marked as not
+// real, and it is never published.
+let _scFunOpenNow = false;
+function _scToggleFun(ev) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  _scFunOpenNow ? _scCloseFun() : _scFunOpenPanel();
+}
+function _scFunOpenPanel() {
+  const panel = document.getElementById('sc-fun-panel');
+  const btn = document.getElementById('sc-fun-btn');
+  if (!panel || !btn) return;
+  const sel = document.getElementById('sc-fun-code');
+  if (sel && !sel.options.length && typeof AD_PRODUCTS !== 'undefined') {
+    sel.innerHTML = AD_PRODUCTS.map(P => `<option value="${P.id}">${P.event}</option>`).join('');
+    _scFunSyncMins();
+  }
+  const r = btn.getBoundingClientRect();
+  panel.style.bottom = (window.innerHeight - r.top + 8) + 'px';
+  panel.style.left = Math.max(8, Math.min(window.innerWidth - 250, r.left - 60)) + 'px';
+  panel.classList.add('open');
+  _scFunOpenNow = true;
+  _scFunRenderList();
+}
+function _scCloseFun() {
+  document.getElementById('sc-fun-panel')?.classList.remove('open');
+  _scFunOpenNow = false;
+}
+// Open from anywhere (the search bar): the Storm Cone tool first.
+function _scFunOpen() {
+  if (typeof activeTool !== 'undefined' && activeTool !== 'stormcone' && typeof toggleStormConeTool === 'function') toggleStormConeTool();
+  setTimeout(_scFunOpenPanel, 50);
+}
+function _scFunSyncMins() {
+  const sel = document.getElementById('sc-fun-code'), m = document.getElementById('sc-fun-mins');
+  if (!sel || !m || typeof _adProduct !== 'function') return;
+  const P = _adProduct(sel.value);
+  m.value = Math.min(P.mins, 720);
+}
+function _scFunRenderList() {
+  const box = document.getElementById('sc-fun-list');
+  if (!box || typeof _adState === 'undefined') return;
+  const mine = _adState.items.filter(a => a.status === 'active' && _adIsFun(a));
+  box.innerHTML = mine.length
+    ? mine.map(a => `<div class="sc-fun-item"><span>${_adEsc(_adEventName(a))}, until ${_adEsc(_adFmtClock(a.expires))}</span>`
+        + `<button type="button" class="dtb-btn" title="Remove" onclick="_scFunRemove('${_adEsc(a.uid)}')">&times;</button></div>`).join('')
+      + (mine.length > 1 ? `<button type="button" class="dtb-btn sc-fun-clear" onclick="_scFunRemove('*')">Clear all fun alerts</button>` : '')
+    : '';
+}
+function _scFunRemove(uid) {
+  _adState.items = _adState.items.filter(a => !(_adIsFun(a) && (uid === '*' ? a.status === 'active' : a.uid === uid)));
+  _adSave();
+  _adRedrawAlerts();
+  _scFunRenderList();
+}
+// Make one from a ring of places ([lat, lng] or LatLng).
+function _scFunMake(ring, what) {
+  const pts = (ring || []).map(q => Array.isArray(q) ? { lat: q[0], lng: q[1] } : { lat: q.lat, lng: q.lng })
+    .filter(q => isFinite(q.lat) && isFinite(q.lng));
+  if (pts.length < 3) {
+    if (typeof showToast === 'function') showToast('A fun alert needs an area of at least three corners.', 3000);
+    return null;
+  }
+  const sel = document.getElementById('sc-fun-code');
+  const code = (sel && sel.value) || 'TOR';
+  const P = _adProduct(code);
+  const minsEl = document.getElementById('sc-fun-mins');
+  const mins = Math.max(5, Math.min(4320, Number(minsEl && minsEl.value) || P.mins));
+  const coords = pts.map(q => [Number(q.lng.toFixed(5)), Number(q.lat.toFixed(5))]);
+  coords.push(coords[0].slice());
+  // Named for the nearest town to the middle of it, the way a real one reads.
+  let areaDesc = what || 'the drawn area';
+  try {
+    const c = pts.reduce((o, q) => ({ lat: o.lat + q.lat / pts.length, lng: o.lng + q.lng / pts.length }), { lat: 0, lng: 0 });
+    const near = typeof _cmNearestCity === 'function' ? _cmNearestCity(c.lat, c.lng) : null;
+    if (near && near.city && near.miles < 60) areaDesc = (what ? what + ' near ' : 'near ') + near.city.name;
+  } catch (e) {}
+  const now = Date.now();
+  const haz = {};
+  P.haz.forEach(k => { haz[k] = { lvl: k === P.haz[0] ? 2 : 0, amt: '' }; });
+  const a = {
+    uid: 'fun-' + now.toString(36) + '-' + Math.random().toString(36).slice(2, 7),
+    kind: 'fun', code, haz, tag: 'none', source: 'Radar indicated', extra: '', body: null,
+    areaDesc, geometry: { type: 'Polygon', coordinates: [coords] },
+    issued: now, expires: now + mins * 60000, status: 'active',
+    area: { mode: 'draw', poly: pts.map(q => [q.lat, q.lng]), zones: [] },
+  };
+  _adState.items.unshift(a);
+  _adSave();
+  _adRedrawAlerts();
+  _scFunRenderList();
+  if (typeof showToast === 'function') showToast(P.event + ' (just for fun) is on your map until ' + _adFmtClock(a.expires) + '.', 3500);
+  return a;
+}
+function _scFunFromCone() {
+  let track = (typeof _scTrack !== 'undefined' && _scTrack) || null;
+  if (!track && typeof _scCones !== 'undefined' && _scCones.length) track = _scCones[_scCones.length - 1].track;
+  if (!track || !track.ring || track.ring.length < 3) {
+    if (typeof showToast === 'function') showToast('Draw a storm cone first, then press Use this cone.', 3000);
+    return null;
+  }
+  return _scFunMake(track.ring, 'the storm cone');
+}
+// Draw a box: tap the corners, then tap the first again, double-click or
+// press Enter. Esc cancels. The cone tool's own clicks are held off while it
+// is drawing, so a corner never starts a cone.
+let _scFunDrawing = false, _scFunPts = [], _scFunPrev = null, _scFunDown = null, _scFunDbl = true;
+function _scFunDraw() {
+  if (_scFunDrawing) return;
+  _scCloseFun();
+  _scFunDrawing = true; _scFunPts = [];
+  const c = map.getContainer();
+  c.style.cursor = 'crosshair';
+  try { _scFunDbl = map.doubleClickZoom.enabled(); map.doubleClickZoom.disable(); } catch (e) {}
+  c.addEventListener('pointerdown', _scFunPDown, true);
+  c.addEventListener('click', _scFunClick, true);
+  c.addEventListener('dblclick', _scFunDblClick, true);
+  document.addEventListener('keydown', _scFunKey, true);
+  if (typeof showToast === 'function') showToast('Tap the corners of your warning box. Tap the first corner again, double-click or press Enter to finish; Esc cancels.', 5000);
+}
+function _scFunDrawStop() {
+  if (!_scFunDrawing) return;
+  _scFunDrawing = false;
+  const c = map.getContainer();
+  c.style.cursor = '';
+  c.removeEventListener('pointerdown', _scFunPDown, true);
+  c.removeEventListener('click', _scFunClick, true);
+  c.removeEventListener('dblclick', _scFunDblClick, true);
+  document.removeEventListener('keydown', _scFunKey, true);
+  if (_scFunDbl) { try { map.doubleClickZoom.enable(); } catch (e) {} }
+  if (_scFunPrev) { try { map.removeLayer(_scFunPrev); } catch (e) {} _scFunPrev = null; }
+}
+function _scFunFinish() {
+  const pts = _scFunPts.slice();
+  _scFunDrawStop();
+  _scFunPts = [];
+  return _scFunMake(pts);
+}
+function _scFunPDown(e) { _scFunDown = { x: e.clientX, y: e.clientY }; }
+function _scFunClick(e) {
+  if (e.target && e.target.closest && e.target.closest('.leaflet-control')) return;
+  if (_scFunDown && Math.hypot(e.clientX - _scFunDown.x, e.clientY - _scFunDown.y) > 6) return;
+  e.stopPropagation(); e.preventDefault();
+  const r = map.getContainer().getBoundingClientRect();
+  const pt = L.point(e.clientX - r.left, e.clientY - r.top);
+  if (_scFunPts.length >= 3 && map.latLngToContainerPoint(_scFunPts[0]).distanceTo(pt) < 12) { _scFunFinish(); return; }
+  _scFunPts.push(map.containerPointToLatLng(pt));
+  if (_scFunPrev) { try { map.removeLayer(_scFunPrev); } catch (err) {} }
+  _scFunPrev = L.polyline(_scFunPts.concat(_scFunPts.length > 2 ? [_scFunPts[0]] : []),
+    { color: '#ffe066', weight: 2, dashArray: '4 4', interactive: false }).addTo(map);
+}
+function _scFunDblClick(e) {
+  e.stopPropagation(); e.preventDefault();
+  if (_scFunPts.length > 3) _scFunPts.pop();
+  _scFunFinish();
+}
+function _scFunKey(e) {
+  if (e.key === 'Escape') { e.stopPropagation(); _scFunDrawStop(); _scFunPts = []; }
+  else if (e.key === 'Enter') { e.stopPropagation(); _scFunFinish(); }
 }
 
 // -- PER-POINT CURVE EDITING -----------------------------------------------
@@ -64176,14 +64349,18 @@ function selectProduct(p) {
         <span id="lqm-alertopacity-val" style="font-family:var(--mono);font-size:9px;color:var(--accent2);min-width:28px;">65%</span>
       </div>
     </div>
-    <div class="lqm-settings-row">
+    <div class="lqm-settings-row" id="lqm-ad-row" style="display:none">
       <span class="lqm-settings-lbl">Alert Desk</span>
       <button class="lqm-settings-btn" onclick="_adUiOpen()">Write an Alert</button>
     </div>
     <div class="lqm-settings-row" style="display:none" id="lqm-sst-anchor"></div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:6px 0 2px;line-height:1.5;display:none" id="lqm-ad-note">
+      The Alert Desk is where GWCFC forecasters write and issue the office's warnings and watches. Everything
+      issued there is labelled GWCFC and goes out to everyone.
+    </div>
     <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:6px 0 2px;line-height:1.5;">
-      The Alert Desk is where you write your own warnings and watches. Everything issued there is marked
-      SIMULATED wherever it appears, so it can never be mistaken for a real National Weather Service product.
+      Want to make a warning just for fun? Open the Storm Cone tool and press Fun Alert: draw a box, or turn
+      your cone into a warning. It shows only on your screen and is marked as not real.
     </div>
   </div>
 
@@ -75824,6 +76001,7 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-26-f', date: 'Sep 26, 2026', text: 'Alerts issued by GWCFC forecasters are now labelled GWCFC everywhere they appear (the map, the Alerts panel, popups and notifications) and no longer say simulated. The Alert Desk is now for forecasters only. Making a warning just for fun has moved to the Storm Cone tool: press Fun Alert, pick a warning type, and either draw a box or turn your cone into the warning. Fun alerts show only on your own screen, are marked as not real, and are never shared. Any practice alerts you made before are kept as fun alerts.' },
   { id: '2026-09-26-e', date: 'Sep 26, 2026', text: 'Keyboard shortcuts, tested key by key and fixed. The GR2Analyst Shift+Comma key (Open Settings) now works; it never did, because Shift turns the comma into a different character. Option shortcuts on a Mac are saved properly instead of as a symbol. Holding a key down no longer flickers an overlay on and off (holding Right still scrubs frames). Leaving Settings while a key was waiting to be rebound no longer lets the next keypress quietly rebind it. Ctrl, Command and Tab are refused with a note instead of being saved as keys that never work. Keys typed while composing Chinese, Japanese or accented letters no longer fire shortcuts. A shortcut for a picked button never presses the wrong button after a list is reordered. Changing keys in another tab now shows up in this one. Every shortcut responds in well under a millisecond.' },
   { id: '2026-09-26-d', date: 'Sep 26, 2026', text: 'Settings is rebuilt for phones: it fills the screen, opens on a list of every category by name, one tap takes you into a category, and a back button takes you out. A search box at the top (on computers too) finds any setting in any category. And you can now make a keyboard shortcut for anything in the app: in Settings > Keyboard, search for any overlay, radar product, menu, panel or tool and give it a key, or press Pick a button on screen and tap any button to bind it. Your own shortcuts are kept when you switch shortcut sets.' },
   { id: '2026-09-26-c', date: 'Sep 26, 2026', text: 'A comparison polygon now follows the shape you drew exactly: a finished Polygon tool shape works (the polygon popup has a Compare button too), circles trace the exact circle on the map, lines and arrows are skipped because they have no inside, and no second outline is drawn over your own. Also fixed striped radar: some radars, terminal ones like TBOS especially, could come out solid near the radar and in thin stripes with dark gaps further out, because each beam was drawn half as wide as it really is. Every beam now uses the width the radar itself reports.' },
@@ -76583,11 +76761,14 @@ function _srchBuildCatalog() {
        ['warnings', 'watches', 'alerts']);
   tool('EAS Alerts Panel', 'siren', typeof toggleEASPanel === 'function' ? toggleEASPanel : null,
        ['emergency alert system', 'eas', 'broadcast']);
-  tool('Alert Desk', 'siren', typeof _adUiOpen === 'function' ? _adUiOpen : null,
-       ['write a warning', 'issue', 'simulated', 'practice', 'desk']);
+  // Making a warning for fun is the Storm Cone tool's now, and open to all.
+  tool('Fun Alert', 'siren', typeof _scFunOpen === 'function' ? _scFunOpen : null,
+       ['fake warning', 'fun', 'pretend', 'make a warning', 'storm cone']);
   // Only offered to an account that may actually use it, for the same reason
   // the toolbar button is hidden rather than disabled.
   if (typeof _fdIsForecaster === 'function' && _fdIsForecaster(_fdProfile)) {
+    tool('Alert Desk', 'siren', typeof _adUiOpen === 'function' ? _adUiOpen : null,
+         ['write a warning', 'issue', 'gwcfc', 'desk']);
     tool('Forecaster Desk', 'siren', typeof _fdOpen === 'function' ? _fdOpen : null,
          ['issue products', 'outlook', 'publish', 'zones', 'cone', 'gwcfc']);
   }
@@ -78302,6 +78483,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="dtb-sep"></div>
     <button class="dtb-btn" id="sc-results-btn" onclick="_scToggleResults(event)" title="Show city list"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-menu></use></svg> Cities</button>
     <button class="dtb-btn" id="sc-new-btn" onclick="_scNew()" title="Start a new cone">+ New</button>
+    <button class="dtb-btn" id="sc-fun-btn" onclick="_scToggleFun(event)" title="Make a warning just for fun: draw a box, or turn this cone into one. Only on your screen, marked as not real">&#127881; Fun Alert</button>
     <button class="dtb-btn" id="sc-issue-btn" onclick="_scIssue()" style="display:none" title="Forecasters: issue these cones to everyone as part of the GWCFC outlook">&#128227; Issue</button>
   </div>
   <div id="sc-tb-list"></div>
@@ -78324,6 +78506,20 @@ document.addEventListener('DOMContentLoaded', () => {
 </div>
 
 <!-- Style popover: cone outline/fill/line/dot colors + opacity -->
+<!-- Fun Alert: a warning made for fun, the other thing a storm cone can be.
+     Drawn on your own screen only, dashed and marked as not real, never
+     published. Real warnings are the forecasters', at the Alert Desk. -->
+<div id="sc-fun-panel">
+  <div class="sc-popover-title">Fun Alert</div>
+  <div class="sc-style-row"><label for="sc-fun-code">Warning</label><select id="sc-fun-code" onchange="_scFunSyncMins()"></select></div>
+  <div class="sc-style-row"><label for="sc-fun-mins">Lasts (minutes)</label><input type="number" id="sc-fun-mins" min="5" max="4320" step="5" value="30" style="width:70px"></div>
+  <div class="sc-fun-btns">
+    <button type="button" class="dtb-btn" onclick="_scFunDraw()">Draw a box</button>
+    <button type="button" class="dtb-btn" onclick="_scFunFromCone()">Use this cone</button>
+  </div>
+  <div id="sc-fun-list"></div>
+  <div class="sc-fun-note">Just for fun: it shows only on your screen, is marked as not a real alert wherever it appears, and is never shared.</div>
+</div>
 <div id="sc-style-panel">
   <div class="sc-popover-title">Cone Style</div>
   <div class="sc-style-row"><label for="sc-style-outline">Outline color</label><input type="color" id="sc-style-outline" value="#000000" oninput="_scSetStyle('outline', this.value)"></div>
@@ -84752,6 +84948,7 @@ function closeCredits() {
 #stormcone-panel,
 #sc-style-panel,
 #sc-points-panel,
+#sc-fun-panel,
 #gps-hud,
 #inspector-readout,
 #ov-info-tooltip,
@@ -85583,6 +85780,7 @@ body {
 :root[data-glass] #stormcone-panel,
 :root[data-glass] #sc-style-panel,
 :root[data-glass] #sc-points-panel,
+:root[data-glass] #sc-fun-panel,
 :root[data-glass] #gps-hud,
 :root[data-glass] #inspector-readout,
 :root[data-glass] #ov-info-tooltip,
@@ -87023,16 +87221,37 @@ setTimeout(() => { if (_ssCfg.enabled) _ssStart(); }, 4000);
 // draws on the map, files into the Alerts panel, rides along to the pop-out
 // window, and StormStream can cycle to it.
 //
-// One rule runs through all of it: nothing issued here may ever be mistaken
-// for a real National Weather Service product. Every copy of it carries the
-// word SIMULATED - in the headline, on the panel card, in the popup, in the
-// text itself - the polygon is drawn dashed instead of solid, and a badge
-// sits in the corner of the map the whole time one is live, so it lands in
-// any screenshot or stream frame. That is how training products are marked
-// in real life, and it costs nothing to keep.
+// Products come in two kinds (see _adIsFun). A GWCFC forecaster's product is
+// the office's own issuance: labelled GWCFC, drawn solid, published to all.
+// A fun alert, made with the Storm Cone tool, is marked as not real in the
+// headline, on the panel card, in the popup and in the text, drawn dashed,
+// with a badge on the map while one is up, and never published, so it can
+// never be mistaken for a real warning from anyone.
 
 const AD_KEY = 'gwcfc_alertdesk';
+// The line the old desk stamped on everything; kept only to find it in text
+// written before products came in two kinds.
 const AD_SIM_LINE = 'SIMULATED PRODUCT. NOT ISSUED BY THE NATIONAL WEATHER SERVICE.';
+
+// Two kinds of product now, told apart everywhere they appear:
+//
+//   'gwcfc'  written at the Alert Desk by a GWCFC forecaster. The office's
+//            own issuance: labelled GWCFC, drawn solid, published to everyone.
+//   'fun'    made with the Storm Cone tool's Fun Alert, by anyone. On that
+//            person's screen only, never published, and marked as not real
+//            in every place it shows, dashed, with a badge on the map.
+//
+// A product saved before the kinds existed counts as fun until a forecaster
+// signs in on that device, when their old products are claimed as GWCFC
+// (they were the ones published under the office's name).
+const AD_GWCFC_LINE = 'ISSUED BY GWCFC.';
+const AD_FUN_LINE = 'JUST FOR FUN. NOT A REAL ALERT.';
+function _adIsFun(a) { return !a || a.kind !== 'gwcfc'; }
+function _adClaimOld() {
+  let changed = false;
+  _adState.items.forEach(a => { if (a && !a.kind) { a.kind = 'gwcfc'; changed = true; } });
+  if (changed) { _adSave(); try { _adRedrawAlerts(); } catch (e) {} }
+}
 
 // ==========================================================================
 // -- GWCFC PRODUCT TEMPLATES -----------------------------------------------
@@ -87339,7 +87558,9 @@ function gwcfcReformat(raw, opts) {
     if (!t) { cur = null; return; }
     // Drop a simulation banner the text already carries, ours or another
     // desk's, so reformatting twice does not stack banners.
-    if (t === AD_SIM_LINE || (/^\*{3,}/.test(t) && /SIMULAT/i.test(t))) return;
+    if (t === AD_SIM_LINE || t === AD_GWCFC_LINE
+        || (typeof AD_FUN_LINE !== 'undefined' && t === AD_FUN_LINE)
+        || (/^\*{3,}/.test(t) && /SIMULAT/i.test(t))) return;
     if (t === GWCFC_TPL_DISCLAIMER) return;
     const f = FIELD.exec(t);
     if (f) {
@@ -87390,12 +87611,10 @@ function gwcfcReformat(raw, opts) {
   if (notes.length) v.notes = notes.join('\n');
 
   const body = gwcfcBuildProduct(haz, kind, tier, v);
-  // The Alert Desk is explicitly a practice desk, so what leaves it keeps the
-  // simulation banner regardless of format. The format's own disclaimer says
-  // it is not from an official agency, which is a different claim: this one
-  // says the product itself is not real.
+  // What leaves the Alert Desk is a GWCFC forecaster's product, so it says so
+  // at the top and the bottom, the same stamp the desk's own text carries.
   return opts.simulated === false ? body
-    : AD_SIM_LINE + '\n\n' + body + '\n' + AD_SIM_LINE + '\n';
+    : AD_GWCFC_LINE + '\n\n' + body + '\n' + AD_GWCFC_LINE + '\n';
 }
 
 
@@ -87554,6 +87773,8 @@ function _adNewDraft(code) {
   const haz = {};
   P.haz.forEach(k => { haz[k] = { lvl: 0, amt: '' }; });
   return {
+    // Written at the desk, so the office's: the preview reads as it will go out.
+    kind: 'gwcfc',
     code: P.id, haz,
     areaMode: 'draw', poly: [], zones: [], zoneType: 'county',
     areaName: '', mins: P.mins, tag: 'none',
@@ -87611,10 +87832,11 @@ function _adText(a) {
   // wins EVERYWHERE: this function is the single source of the product text
   // for the preview, the map popup and the published record alike, so an
   // edit made at the desk is the text the public sees.
-  if (a && typeof a.body === 'string' && a.body.trim()) return a.body;
+  const stamp = _adIsFun(a) ? AD_FUN_LINE : AD_GWCFC_LINE;
+  if (a && typeof a.body === 'string' && a.body.trim()) return a.body.split(AD_SIM_LINE).join(stamp);
   const P = _adProduct(a.code);
   const L = [];
-  L.push(AD_SIM_LINE);
+  L.push(stamp);
   L.push('');
 
   const whats = Object.keys(a.haz || {})
@@ -87669,7 +87891,7 @@ function _adText(a) {
   if (tags.length) { L.push(''); L.push(...tags); }
 
   L.push('');
-  L.push(AD_SIM_LINE);
+  L.push(stamp);
   return L.join('\n');
 }
 
@@ -87680,8 +87902,9 @@ function _adJoin(list) {
 }
 
 function _adHeadline(a) {
-  return 'SIMULATED ' + _adEventName(a) + ' issued for ' + _adAreaDesc(a)
-    + ' until ' + _adFmtClock(a.expires);
+  return _adIsFun(a)
+    ? 'JUST FOR FUN: ' + _adEventName(a) + ' for ' + _adAreaDesc(a) + ' until ' + _adFmtClock(a.expires)
+    : _adEventName(a) + ' issued by GWCFC for ' + _adAreaDesc(a) + ' until ' + _adFmtClock(a.expires);
 }
 
 function _adMaxLevel(a) {
@@ -87714,10 +87937,14 @@ function _adToFeature(a) {
       severity: _adSeverity(a),
       certainty: _adProduct(a.code).kind === 'watch' ? 'Possible' : 'Observed',
       urgency: _adProduct(a.code).kind === 'watch' ? 'Future' : 'Immediate',
-      senderName: 'Alert Desk (simulated)',
+      senderName: _adIsFun(a) ? 'Just for fun (Storm Cone tool)' : 'GWCFC',
       sent: iso(a.issued), effective: iso(a.issued), onset: iso(a.issued),
       expires: iso(a.expires), ends: iso(a.expires),
-      _simulated: true,
+      // _simulated is what dashes the outline, adds the not-real banner and
+      // keeps a product out of StormStream unless asked for: fun ones only.
+      _simulated: _adIsFun(a),
+      _gwcfc: !_adIsFun(a),
+      _adDesk: true,
       _adCode: a.code,
     },
   };
@@ -87731,7 +87958,7 @@ function _adToFeature(a) {
 let _adRealFeatures = [];
 function _adMergeIntoAlerts(features) {
   if (Array.isArray(features)) {
-    _adRealFeatures = features.filter(f => !(f.properties && f.properties._simulated));
+    _adRealFeatures = features.filter(f => !(f.properties && (f.properties._simulated || f.properties._adDesk)));
   }
   _adExpireSweep(false);
   const mine = _adState.items
@@ -87764,12 +87991,13 @@ setInterval(() => _adExpireSweep(true), 15000);
 
 function _adSimBadge() {
   let el = document.getElementById('ad-sim-badge');
-  const live = _adState.items.some(a => a.status === 'active');
+  // Only for fun ones: a GWCFC product is a real issuance, not a drill.
+  const live = _adState.items.some(a => a.status === 'active' && _adIsFun(a));
   if (!el) {
     if (!live) return;
     el = document.createElement('div');
     el.id = 'ad-sim-badge';
-    el.textContent = 'SIMULATED PRODUCTS ON SCREEN';
+    el.textContent = 'JUST-FOR-FUN ALERTS ON SCREEN';
     document.body.appendChild(el);
   }
   el.classList.toggle('on', live);
@@ -88054,7 +88282,8 @@ function _adIssue() {
   const d = _adDraft;
   const now = Date.now();
   const a = {
-    uid: 'sim-' + now.toString(36) + '-' + Math.random().toString(36).slice(2, 7),
+    uid: 'gw-' + now.toString(36) + '-' + Math.random().toString(36).slice(2, 7),
+    kind: 'gwcfc',
     code: d.code,
     haz: JSON.parse(JSON.stringify(d.haz)),
     tag: d.tag, source: d.source, extra: d.extra,
@@ -88086,7 +88315,7 @@ function _adAnnounce(a) {
     if (typeof _fireNotification === 'function' && typeof Notification !== 'undefined'
         && Notification.permission === 'granted') {
       const rank = (typeof _NWS_SEV_RANK === 'object' && _NWS_SEV_RANK[_adSeverity(a)]) || 2;
-      _fireNotification('ad-' + a.uid, 'SIMULATED: ' + _adEventName(a),
+      _fireNotification('ad-' + a.uid, (_adIsFun(a) ? 'Just for fun: ' : 'GWCFC: ') + _adEventName(a),
         _adAreaDesc(a) + ' until ' + _adFmtClock(a.expires), rank, a.uid);
     }
   } catch (e) {}
@@ -88170,7 +88399,19 @@ function _adReuse(uid) {
 }
 
 // -- The panel -------------------------------------------------------------
-function _adOpen() {
+// The desk is the office's: only a GWCFC forecaster opens it. Everyone else
+// is pointed at the Storm Cone tool's Fun Alert, which is where making a
+// warning for fun lives now.
+async function _adOpen() {
+  let may = false;
+  try { may = typeof _fdIsForecaster === 'function' && _fdIsForecaster(await _fdLoadProfile()); } catch (e) {}
+  if (!may) {
+    if (typeof showToast === 'function') {
+      showToast('The Alert Desk is for GWCFC forecasters. To make a warning for fun, open the Storm Cone tool and press Fun Alert.', 5500);
+    }
+    return false;
+  }
+  _adClaimOld();
   let el = document.getElementById('ad-modal');
   if (!el) { el = _adBuild(); document.body.appendChild(el); }
   el.style.display = 'flex';
@@ -88205,7 +88446,7 @@ function _adBuild() {
     <div id="ad-shell">
       <div id="ad-head">
         <span id="ad-title">Alert Desk</span>
-        <span id="ad-head-note">Everything issued here is marked SIMULATED</span>
+        <span id="ad-head-note">Issued as GWCFC products</span>
         <span class="ad-spacer"></span>
         <button type="button" class="ad-btn" onclick="_adClose()">Close</button>
       </div>
@@ -88406,8 +88647,8 @@ function _adSyncDraftUi() {
     const head = _adHeadline(preview);
     const body = _adText(preview);
     pv.innerHTML = `<span class="ad-sim-line">${_adEsc(head)}</span>\n\n`
-      + _adEsc(body).split(AD_SIM_LINE)
-          .join(`<span class="ad-sim-line">${AD_SIM_LINE}</span>`);
+      + _adEsc(body).split(AD_GWCFC_LINE)
+          .join(`<span class="ad-sim-line">${AD_GWCFC_LINE}</span>`);
   }
   _adSyncBodyUi();
   const btn = document.getElementById('ad-issue');
@@ -88536,9 +88777,9 @@ function _adLoadTemplate() {
     v.office = gwcfcOfficeLine(code);
     v.officeCode = code;
   }
-  // The desk is a practice desk, so its templates carry the banner too.
-  const body = AD_SIM_LINE + '\n\n' + gwcfcBuildProduct(haz, kind, tier, v)
-             + '\n' + AD_SIM_LINE + '\n';
+  // A template loaded at the desk is a GWCFC product, stamped as one.
+  const body = AD_GWCFC_LINE + '\n\n' + gwcfcBuildProduct(haz, kind, tier, v)
+             + '\n' + AD_GWCFC_LINE + '\n';
   _adDraft.body = body;
   const row = document.getElementById('ad-body-row');
   if (row) row.style.display = '';
@@ -88669,8 +88910,9 @@ function _adRenderList() {
   const act = document.getElementById('ad-active');
   const hist = document.getElementById('ad-history');
   if (!act || !hist) return;
-  const live = _adState.items.filter(a => a.status === 'active');
-  const gone = _adState.items.filter(a => a.status !== 'active');
+  // The desk lists the office's products; fun alerts live in the Storm Cone tool.
+  const live = _adState.items.filter(a => a.status === 'active' && !_adIsFun(a));
+  const gone = _adState.items.filter(a => a.status !== 'active' && !_adIsFun(a));
   act.innerHTML = live.length
     ? live.map(a => _adItemHtml(a, true)).join('')
     : '<div class="ad-empty">Nothing of yours is on the map right now.</div>';
@@ -88790,6 +89032,13 @@ async function _fdSyncButton() {
   if (!g) return;
   let may = false;
   try { may = _fdIsForecaster(await _fdLoadProfile()); } catch (e) {}
+  // A forecaster's products from before there were two kinds are claimed as
+  // GWCFC ones, and the Alert Desk row in Settings is theirs alone.
+  if (may && typeof _adClaimOld === 'function') { try { _adClaimOld(); } catch (e) {} }
+  const adRow = document.getElementById('lqm-ad-row');
+  if (adRow) adRow.style.display = may ? '' : 'none';
+  const adNote = document.getElementById('lqm-ad-note');
+  if (adNote) adNote.style.display = may ? '' : 'none';
   // The whole group, heading and all. Revealing only the button would leave a
   // Forecaster Desk heading over an empty space for everyone else, which
   // announces the feature to exactly the people who cannot use it.
@@ -88959,7 +89208,9 @@ function _fdRemovePubCone(pid) {
 
 // The Alert Desk's products, exactly as it stores them.
 function _fdSerializeDesk() {
-  try { return _adLoad().items.filter(a => a && a.status === 'active'); }
+  // GWCFC products only. A fun alert from the Storm Cone tool never leaves
+  // the screen it was made on.
+  try { return _adLoad().items.filter(a => a && a.status === 'active' && a.kind === 'gwcfc'); }
   catch (e) { return []; }
 }
 

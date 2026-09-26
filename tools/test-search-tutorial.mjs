@@ -242,7 +242,9 @@ console.log('\n6. typing finds the thing');
   ok('"velocity" finds the velocity product', r.velocity.some(l => /Velocity/.test(l)), r.velocity.join(' | '));
   ok('"lightning" finds the lightning overlay', r.lightning.some(l => /Lightning/.test(l)), r.lightning.join(' | '));
   ok('"hail" finds something', r.hail.length > 0, r.hail.join(' | '));
-  ok('"warning" finds the Alert Desk', r.desk.some(l => /Alert Desk/.test(l)), r.desk.join(' | '));
+  // The Alert Desk is a forecaster tool now; everyone else is offered the
+  // Storm Cone tool's Fun Alert for making a warning.
+  ok('"warning" finds Fun Alert (the Alert Desk is for forecasters)', r.desk.some(l => /Fun Alert/.test(l)) && !r.desk.some(l => /Alert Desk/.test(l)), r.desk.join(' | '));
   ok('"eas" finds the EAS panel', r.eas.some(l => /EAS/.test(l)), r.eas.join(' | '));
   ok('"county" finds the county borders switch', r.county.some(l => /County/.test(l)), r.county.join(' | '));
   // METAR Stations came back as a real overlay; the search catalogue picks

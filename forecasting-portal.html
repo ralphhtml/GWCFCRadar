@@ -5740,16 +5740,20 @@ function _scDeleteCone(id) {
 // draws on the map, files into the Alerts panel, rides along to the pop-out
 // window, and StormStream can cycle to it.
 //
-// One rule runs through all of it: nothing issued here may ever be mistaken
-// for a real National Weather Service product. Every copy of it carries the
-// word SIMULATED - in the headline, on the panel card, in the popup, in the
-// text itself - the polygon is drawn dashed instead of solid, and a badge
-// sits in the corner of the map the whole time one is live, so it lands in
-// any screenshot or stream frame. That is how training products are marked
-// in real life, and it costs nothing to keep.
+// Products come in two kinds (see _adIsFun). A GWCFC forecaster's product is
+// the office's own issuance: labelled GWCFC, drawn solid, published to all.
+// A fun alert, made with the Storm Cone tool, is marked as not real in the
+// headline, on the panel card, in the popup and in the text, drawn dashed,
+// with a badge on the map while one is up, and never published, so it can
+// never be mistaken for a real warning from anyone.
 
 const AD_KEY = 'gwcfc_alertdesk';
 const AD_SIM_LINE = 'SIMULATED PRODUCT. NOT ISSUED BY THE NATIONAL WEATHER SERVICE.';
+// Everything written here is issued as a GWCFC product. The radar app keeps
+// its Storm Cone fun alerts in the same browser storage; those are 'fun' and
+// are never shown, listed or published from the portal.
+const AD_GWCFC_LINE = 'ISSUED BY GWCFC.';
+function _adIsFun(a) { return !!a && a.kind === 'fun'; }
 
 // ==========================================================================
 // -- GWCFC PRODUCT TEMPLATES -----------------------------------------------
@@ -6056,7 +6060,9 @@ function gwcfcReformat(raw, opts) {
     if (!t) { cur = null; return; }
     // Drop a simulation banner the text already carries, ours or another
     // desk's, so reformatting twice does not stack banners.
-    if (t === AD_SIM_LINE || (/^\*{3,}/.test(t) && /SIMULAT/i.test(t))) return;
+    if (t === AD_SIM_LINE || t === AD_GWCFC_LINE
+        || (typeof AD_FUN_LINE !== 'undefined' && t === AD_FUN_LINE)
+        || (/^\*{3,}/.test(t) && /SIMULAT/i.test(t))) return;
     if (t === GWCFC_TPL_DISCLAIMER) return;
     const f = FIELD.exec(t);
     if (f) {
@@ -6107,12 +6113,10 @@ function gwcfcReformat(raw, opts) {
   if (notes.length) v.notes = notes.join('\n');
 
   const body = gwcfcBuildProduct(haz, kind, tier, v);
-  // The Alert Desk is explicitly a practice desk, so what leaves it keeps the
-  // simulation banner regardless of format. The format's own disclaimer says
-  // it is not from an official agency, which is a different claim: this one
-  // says the product itself is not real.
+  // What leaves the Alert Desk is a GWCFC forecaster's product, so it says so
+  // at the top and the bottom, the same stamp the desk's own text carries.
   return opts.simulated === false ? body
-    : AD_SIM_LINE + '\n\n' + body + '\n' + AD_SIM_LINE + '\n';
+    : AD_GWCFC_LINE + '\n\n' + body + '\n' + AD_GWCFC_LINE + '\n';
 }
 
 
@@ -6328,10 +6332,10 @@ function _adText(a) {
   // wins EVERYWHERE: this function is the single source of the product text
   // for the preview, the map popup and the published record alike, so an
   // edit made at the desk is the text the public sees.
-  if (a && typeof a.body === 'string' && a.body.trim()) return a.body;
+  if (a && typeof a.body === 'string' && a.body.trim()) return a.body.split(AD_SIM_LINE).join(AD_GWCFC_LINE);
   const P = _adProduct(a.code);
   const L = [];
-  L.push(AD_SIM_LINE);
+  L.push(AD_GWCFC_LINE);
   L.push('');
 
   const whats = Object.keys(a.haz || {})
@@ -6379,7 +6383,7 @@ function _adText(a) {
   if (tags.length) { L.push(''); L.push(...tags); }
 
   L.push('');
-  L.push(AD_SIM_LINE);
+  L.push(AD_GWCFC_LINE);
   return L.join('\n');
 }
 
@@ -6390,7 +6394,7 @@ function _adJoin(list) {
 }
 
 function _adHeadline(a) {
-  return 'SIMULATED ' + _adEventName(a) + ' issued for ' + _adAreaDesc(a)
+  return _adEventName(a) + ' issued by GWCFC for ' + _adAreaDesc(a)
     + ' until ' + _adFmtClock(a.expires);
 }
 
@@ -6424,10 +6428,12 @@ function _adToFeature(a) {
       severity: _adSeverity(a),
       certainty: _adProduct(a.code).kind === 'watch' ? 'Possible' : 'Observed',
       urgency: _adProduct(a.code).kind === 'watch' ? 'Future' : 'Immediate',
-      senderName: 'Alert Desk (simulated)',
+      senderName: 'GWCFC',
       sent: iso(a.issued), effective: iso(a.issued), onset: iso(a.issued),
       expires: iso(a.expires), ends: iso(a.expires),
-      _simulated: true,
+      _simulated: false,
+      _gwcfc: true,
+      _adDesk: true,
       _adCode: a.code,
     },
   };
@@ -6441,11 +6447,11 @@ function _adToFeature(a) {
 let _adRealFeatures = [];
 function _adMergeIntoAlerts(features) {
   if (Array.isArray(features)) {
-    _adRealFeatures = features.filter(f => !(f.properties && f.properties._simulated));
+    _adRealFeatures = features.filter(f => !(f.properties && (f.properties._simulated || f.properties._adDesk)));
   }
   _adExpireSweep(false);
   const mine = _adState.items
-    .filter(a => a.status === 'active' && a.geometry)
+    .filter(a => a.status === 'active' && a.geometry && !_adIsFun(a))
     .map(_adToFeature);
   setTimeout(_adSimBadge, 0);
   return mine.concat(_adRealFeatures);
@@ -6474,12 +6480,13 @@ setInterval(() => _adExpireSweep(true), 15000);
 
 function _adSimBadge() {
   let el = document.getElementById('ad-sim-badge');
-  const live = _adState.items.some(a => a.status === 'active');
+  // No drill badge: what is issued here is the office's real product.
+  const live = false;
   if (!el) {
     if (!live) return;
     el = document.createElement('div');
     el.id = 'ad-sim-badge';
-    el.textContent = 'SIMULATED PRODUCTS ON SCREEN';
+    el.textContent = 'JUST-FOR-FUN ALERTS ON SCREEN';
     document.body.appendChild(el);
   }
   el.classList.toggle('on', live);
@@ -6764,7 +6771,8 @@ function _adIssue() {
   const d = _adDraft;
   const now = Date.now();
   const a = {
-    uid: 'sim-' + now.toString(36) + '-' + Math.random().toString(36).slice(2, 7),
+    uid: 'gw-' + now.toString(36) + '-' + Math.random().toString(36).slice(2, 7),
+    kind: 'gwcfc',
     code: d.code,
     haz: JSON.parse(JSON.stringify(d.haz)),
     tag: d.tag, source: d.source, extra: d.extra,
@@ -6796,7 +6804,7 @@ function _adAnnounce(a) {
     if (typeof _fireNotification === 'function' && typeof Notification !== 'undefined'
         && Notification.permission === 'granted') {
       const rank = (typeof _NWS_SEV_RANK === 'object' && _NWS_SEV_RANK[_adSeverity(a)]) || 2;
-      _fireNotification('ad-' + a.uid, 'SIMULATED: ' + _adEventName(a),
+      _fireNotification('ad-' + a.uid, 'GWCFC: ' + _adEventName(a),
         _adAreaDesc(a) + ' until ' + _adFmtClock(a.expires), rank, a.uid);
     }
   } catch (e) {}
@@ -6915,7 +6923,7 @@ function _adBuild() {
     <div id="ad-shell">
       <div id="ad-head">
         <span id="ad-title">Alert Desk</span>
-        <span id="ad-head-note">Everything issued here is marked SIMULATED</span>
+        <span id="ad-head-note">Issued as GWCFC products</span>
         <span class="ad-spacer"></span>
         <button type="button" class="ad-btn" onclick="_adClose()">Close</button>
       </div>
@@ -7116,8 +7124,8 @@ function _adSyncDraftUi() {
     const head = _adHeadline(preview);
     const body = _adText(preview);
     pv.innerHTML = `<span class="ad-sim-line">${_adEsc(head)}</span>\n\n`
-      + _adEsc(body).split(AD_SIM_LINE)
-          .join(`<span class="ad-sim-line">${AD_SIM_LINE}</span>`);
+      + _adEsc(body).split(AD_GWCFC_LINE)
+          .join(`<span class="ad-sim-line">${AD_GWCFC_LINE}</span>`);
   }
   _adSyncBodyUi();
   const btn = document.getElementById('ad-issue');
@@ -7246,9 +7254,9 @@ function _adLoadTemplate() {
     v.office = gwcfcOfficeLine(code);
     v.officeCode = code;
   }
-  // The desk is a practice desk, so its templates carry the banner too.
-  const body = AD_SIM_LINE + '\n\n' + gwcfcBuildProduct(haz, kind, tier, v)
-             + '\n' + AD_SIM_LINE + '\n';
+  // A template loaded at the desk is a GWCFC product, stamped as one.
+  const body = AD_GWCFC_LINE + '\n\n' + gwcfcBuildProduct(haz, kind, tier, v)
+             + '\n' + AD_GWCFC_LINE + '\n';
   _adDraft.body = body;
   const row = document.getElementById('ad-body-row');
   if (row) row.style.display = '';
@@ -7379,8 +7387,8 @@ function _adRenderList() {
   const act = document.getElementById('ad-active');
   const hist = document.getElementById('ad-history');
   if (!act || !hist) return;
-  const live = _adState.items.filter(a => a.status === 'active');
-  const gone = _adState.items.filter(a => a.status !== 'active');
+  const live = _adState.items.filter(a => a.status === 'active' && !_adIsFun(a));
+  const gone = _adState.items.filter(a => a.status !== 'active' && !_adIsFun(a));
   act.innerHTML = live.length
     ? live.map(a => _adItemHtml(a, true)).join('')
     : '<div class="ad-empty">Nothing of yours is on the map right now.</div>';
@@ -7522,7 +7530,7 @@ function renderAlerts() {
 // The desk's issued products, exactly as the desk stores them.
 function portalSerializeDesk() {
   try {
-    return _adLoad().items.filter(a => a && a.status === 'active');
+    return _adLoad().items.filter(a => a && a.status === 'active' && !_adIsFun(a));
   } catch (e) { return []; }
 }
 </script>
