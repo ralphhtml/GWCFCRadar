@@ -555,8 +555,8 @@ console.log('\n6. the app\'s real Alert Desk, running in the portal');
     out.issued = stored.filter(a => a.status === 'active').length;
     const f = _adToFeature(stored[0]);
     out.event = f.properties.event;
-    out.sim = f.properties._simulated === true;
-    out.textHasSim = /SIMULATED PRODUCT/.test(_adText(stored[0]));
+    out.sim = f.properties._gwcfc === true && f.properties._simulated === false;
+    out.textHasSim = /ISSUED BY GWCFC/.test(_adText(stored[0])) && !/SIMULATED/.test(_adText(stored[0]));
     renderAlerts();
     let layers = 0; _portalDeskLayer.eachLayer(() => layers++);
     out.drawn = layers;
@@ -570,7 +570,7 @@ console.log('\n6. the app\'s real Alert Desk, running in the portal');
   ok('issuing stores the product exactly as the app does',
      r.issued === 1 && r.event === 'Tornado Warning' && r.sim,
      JSON.stringify(r));
-  ok('every product carries the SIMULATED line, portal or app alike',
+  ok('every product is issued by GWCFC, never marked simulated, portal or app alike',
      r.textHasSim);
   ok('the issued warning draws on the outlook map in its warning colour',
      r.drawn >= 1, String(r.drawn));
@@ -611,7 +611,7 @@ console.log('\n6b. the product text can be rewritten by hand');
     return out;
   });
   ok('the generated text is what you start from',
-     /WHAT\.\.\./.test(r.generated) && /SIMULATED/.test(r.generated));
+     /WHAT\.\.\./.test(r.generated) && /ISSUED BY GWCFC/.test(r.generated));
   ok('typing over it changes the product text',
      /tornado on the ground near the bay/.test(r.overridden) && r.manual);
   ok('the edited words are what actually gets issued',
@@ -643,8 +643,9 @@ console.log('\n6c. somebody else\'s text, reformatted into ours');
     const prose = _adReformat('Just a line about a storm with no bullets at all.');
     const empty = _adReformat('   ');
     return { once, twice, prose, empty,
-             simCount: (once.match(/SIMULATED PRODUCT/g) || []).length,
-             twiceSimCount: (twice.match(/SIMULATED PRODUCT/g) || []).length };
+             simCount: (once.match(/ISSUED BY GWCFC\./g) || []).length,
+             twiceSimCount: (twice.match(/ISSUED BY GWCFC\./g) || []).length,
+             anySim: /SIMULATED/.test(once + twice) };
   });
   // The office has its own product format now. These used to check that the
   // Weather Service's bullet layout came back in our order; the answer is no
@@ -658,7 +659,7 @@ console.log('\n6c. somebody else\'s text, reformatted into ours');
      r.once.slice(0, 200));
   ok('and it is the product the text named',
      /^SEVERE THUNDERSTORM WARNING /m.test(r.once), r.once.split('\n')[2]);
-  ok('it wears our banner, top and bottom', r.simCount === 2, String(r.simCount));
+  ok('it wears the GWCFC stamp, top and bottom, never "simulated"', r.simCount === 2 && !r.anySim, String(r.simCount));
   // The tag lines are not copied through any more, they are READ: a hail
   // measurement belongs in the hail row, which is the whole point of having
   // named rows rather than a block of tags at the bottom.

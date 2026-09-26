@@ -204,7 +204,7 @@ console.log('\n5. pasted text comes back as one of ours');
       'SOME UNKNOWN TAG...keep me',
     ].join('\n');
     return { out: gwcfcReformat(paste, { haz: 'thunderstorm' }),
-             empty: gwcfcReformat('   \n  \n'), sim: AD_SIM_LINE };
+             empty: gwcfcReformat('   \n  \n'), sim: AD_GWCFC_LINE };
   });
   ok('it is a GWCFC product now, not a bullet list',
      /THUNDERSTORM WARNING/.test(r.out) && !/^\* WHAT/m.test(r.out));
@@ -227,8 +227,8 @@ console.log('\n5. pasted text comes back as one of ours');
   // Top and bottom, and compared against the banner itself rather than a
   // prefix of it: the line goes on to say NOT ISSUED BY THE NATIONAL WEATHER
   // SERVICE, and matching only the first three words tests almost nothing.
-  ok('the desk still marks its output simulated, top and bottom',
-     r.out.startsWith(r.sim) && r.out.trimEnd().endsWith(r.sim),
+  ok('the desk marks its output as issued by GWCFC, top and bottom, never simulated',
+     r.out.startsWith(r.sim) && r.out.trimEnd().endsWith(r.sim) && !/SIMULATED/.test(r.out),
      JSON.stringify(r.out.slice(-70)));
   ok('and empty input reformats to nothing rather than a blank product',
      r.empty === '', JSON.stringify(r.empty).slice(0, 60));
@@ -281,8 +281,9 @@ console.log('\n7. hail is gone from the desk, because Hailstorm replaced it');
 
 console.log('\n8. the picker offers all of them, and loading one fills the box');
 {
-  const r = await page.evaluate(() => {
-    _adOpen();
+  const r = await page.evaluate(async () => {
+    window._fdLoadProfile = async () => ({ forecaster: true }); window._fdIsForecaster = () => true;
+    await _adOpen();
     const sel = (id) => document.getElementById(id);
     const counts = {
       haz: sel('ad-tpl-haz') ? sel('ad-tpl-haz').options.length : 0,

@@ -157,9 +157,12 @@ console.log('\n4. what a written product says');
      /tornado/i.test(t) && /gust/i.test(t) && !/rainfall/i.test(t), t);
   ok('a spotter report is tagged as observed, not radar indicated',
      /TORNADO\.\.\.OBSERVED/.test(t), t);
-  ok('the product says it is simulated, at the top and the bottom',
-     (t.match(/SIMULATED PRODUCT/g) || []).length === 2);
-  ok('so does the headline', /^SIMULATED /.test(r.head), r.head);
+  // A forecaster's product is the office's own issuance: GWCFC, never
+  // "simulated" (fun alerts, from the Storm Cone tool, are the marked ones).
+  ok('the product says it is issued by GWCFC, at the top and the bottom',
+     (t.match(/ISSUED BY GWCFC\./g) || []).length === 2 && !/SIMULATED/.test(t), t);
+  ok('so does the headline, without calling itself simulated',
+     /issued by GWCFC/.test(r.head) && !/SIMULATED/i.test(r.head), r.head);
 }
 
 console.log('\n5. the optional amount beside the severity');
@@ -225,9 +228,10 @@ console.log('\n6. it behaves like an alert once issued');
     _adSetLevel('tornado', 3);
     _adIssue();
 
-    const mine = _lastAlertFeatures.filter(f => f.properties._simulated);
+    const mine = _lastAlertFeatures.filter(f => f.properties._adDesk);
     const cards = [...document.querySelectorAll('#alerts-panel-body .alert-card')];
-    const simCards = cards.filter(c => /SIMULATED/.test(c.textContent));
+    const gwCards = cards.filter(c => /GWCFC/.test(c.textContent));
+    const simCards = cards.filter(c => /SIMULATED|not a real alert/i.test(c.textContent));
     const badge = document.getElementById('ad-sim-badge');
 
     // The drawn polygon, straight off the Leaflet layer the map is using.
@@ -237,24 +241,44 @@ console.log('\n6. it behaves like an alert once issued');
 
     const popup = _buildAlertPopupHTML(mine[0].properties, '#ff0000');
 
+    // And a fun one from the Storm Cone tool beside it.
+    const fun = _scFunMake(__box(29.5, -82.3, 0.3).map(q => [q.lat, q.lng]));
+    const funF = _lastAlertFeatures.find(f => f.properties.id === fun.uid);
+    const funLyr = _alertLayerById[fun.uid];
+    const cards2 = [...document.querySelectorAll('#alerts-panel-body .alert-card')];
+    const badge2 = document.getElementById('ad-sim-badge');
+    const funOut = {
+      marked: !!funF && funF.properties._simulated === true,
+      dashed: funLyr && funLyr.options ? funLyr.options.dashArray : null,
+      card: cards2.some(c => /not a real alert/i.test(c.textContent)),
+      badge: !!badge2 && badge2.classList.contains('on'),
+      popup: funF ? /NOT A REAL ALERT/.test(_buildAlertPopupHTML(funF.properties, '#ff0000')) : false,
+      published: _fdSerializeDesk().some(a => a.uid === fun.uid),
+    };
+
     return {
       realKept: _lastAlertFeatures.some(f => f.properties.id === 'real-1'),
       mineCount: mine.length,
       totalCards: cards.length,
       simCards: simCards.length,
+      gwCards: gwCards.length,
       dashed,
       badgeOn: !!badge && badge.classList.contains('on'),
-      popupMarked: /NOT ISSUED BY THE NATIONAL WEATHER SERVICE/.test(popup),
+      popupGwcfc: /ap-gwcfc-banner">GWCFC</.test(popup) && !/SIMULATED|NOT ISSUED/i.test(popup),
+      funOut,
       sev: mine[0].properties.severity,
     };
   });
   ok('the real alert is still there', r.realKept);
   ok('and yours is on the map beside it', r.mineCount === 1, r.mineCount);
   ok('both appear in the alerts panel', r.totalCards === 2, r.totalCards);
-  ok('exactly the simulated one is marked on its card', r.simCards === 1, r.simCards);
-  ok('its polygon is drawn dashed, not solid', r.dashed === '9 6', r.dashed);
-  ok('the corner badge is up while it is live', r.badgeOn);
-  ok('its popup carries the banner too', r.popupMarked);
+  ok('its card says GWCFC and nothing says simulated', r.gwCards === 1 && r.simCards === 0, JSON.stringify([r.gwCards, r.simCards]));
+  ok('a GWCFC product is drawn solid, like a real warning', !r.dashed, r.dashed);
+  ok('no drill badge for a GWCFC product', !r.badgeOn);
+  ok('its popup carries the GWCFC banner, not a simulated one', r.popupGwcfc);
+  ok('a Storm Cone fun alert is marked as not real', r.funOut.marked && r.funOut.card && r.funOut.popup, JSON.stringify(r.funOut));
+  ok('drawn dashed, with the badge up while it is live', r.funOut.dashed === '9 6' && r.funOut.badge, JSON.stringify(r.funOut));
+  ok('and never published with the GWCFC products', r.funOut.published === false, JSON.stringify(r.funOut));
   ok('a tornado warning files as a severe alert', r.sev === 'Severe', r.sev);
 }
 
@@ -298,14 +322,14 @@ console.log('\n8. expiry, continuation and cancellation');
     _adSetLevel('wind', 2);
     _adIssue();
     const uid = _adState.items[0].uid;
-    const onMapNow = _lastAlertFeatures.filter(f => f.properties._simulated).length;
+    const onMapNow = _lastAlertFeatures.filter(f => f.properties._adDesk).length;
 
     // Wind the clock past the expiry and let the sweep settle it.
     _adState.items[0].expires = Date.now() - 1000;
     _adExpireSweep(true);
     const afterExpiry = {
       status: _adState.items[0].status,
-      onMap: _lastAlertFeatures.filter(f => f.properties._simulated).length,
+      onMap: _lastAlertFeatures.filter(f => f.properties._adDesk).length,
       badge: document.getElementById('ad-sim-badge').classList.contains('on'),
     };
 
@@ -313,7 +337,7 @@ console.log('\n8. expiry, continuation and cancellation');
     _adExtend(uid, 15);
     const afterExtend = {
       status: _adState.items[0].status,
-      onMap: _lastAlertFeatures.filter(f => f.properties._simulated).length,
+      onMap: _lastAlertFeatures.filter(f => f.properties._adDesk).length,
       note: _adState.items[0].note,
     };
 
@@ -324,7 +348,7 @@ console.log('\n8. expiry, continuation and cancellation');
     _adCancelProduct(uid);
     const afterCancel = {
       status: _adState.items[0].status,
-      onMap: _lastAlertFeatures.filter(f => f.properties._simulated).length,
+      onMap: _lastAlertFeatures.filter(f => f.properties._adDesk).length,
       note: _adState.items[0].note,
     };
     return { onMapNow, afterExpiry, afterExtend, upgraded, afterCancel };
@@ -332,7 +356,7 @@ console.log('\n8. expiry, continuation and cancellation');
   ok('it is on the map while valid', r.onMapNow === 1);
   ok('once the expiry passes it comes off on its own',
      r.afterExpiry.status === 'expired' && r.afterExpiry.onMap === 0, JSON.stringify(r.afterExpiry));
-  ok('and the corner badge goes with it', r.afterExpiry.badge === false);
+  ok('and no badge is left behind', r.afterExpiry.badge === false);
   ok('continuing it puts it back up with a note saying so',
      r.afterExtend.status === 'active' && r.afterExtend.onMap === 1
      && /Continued until/.test(r.afterExtend.note || ''), JSON.stringify(r.afterExtend));
@@ -343,7 +367,7 @@ console.log('\n8. expiry, continuation and cancellation');
      && /Cancelled/.test(r.afterCancel.note || ''), JSON.stringify(r.afterCancel));
 }
 
-console.log('\n9. StormStream only cycles yours when you ask it to');
+console.log('\n9. StormStream: GWCFC products always, fun ones only when asked');
 {
   const r = await page.evaluate(() => {
     __reset();
@@ -353,16 +377,20 @@ console.log('\n9. StormStream only cycles yours when you ask it to');
     _adDraft.areaName = 'Brevard County';
     _adSetLevel('tornado', 2);
     _adIssue();
+    _scFunMake(__box(29.5, -81.3, 0.3).map(q => [q.lat, q.lng]));
     _adUiIncludeSS(true);
     const on = _ssActiveInCoverage().filter(f => f.properties._simulated).length;
+    const gwOn = _ssActiveInCoverage().filter(f => f.properties._gwcfc).length;
     _adUiIncludeSS(false);
     const off = _ssActiveInCoverage().filter(f => f.properties._simulated).length;
+    const gwOff = _ssActiveInCoverage().filter(f => f.properties._gwcfc).length;
     const stored = JSON.parse(localStorage.getItem('gwcfc_stormstream') || '{}').includeMine;
     _adUiIncludeSS(true);
-    return { on, off, stored };
+    return { on, off, gwOn, gwOff, stored };
   });
-  ok('with the toggle on it is in the rotation', r.on === 1, r.on);
-  ok('with it off StormStream skips it', r.off === 0, r.off);
+  ok('a GWCFC product is always in the rotation, like any real warning', r.gwOn === 1 && r.gwOff === 1, JSON.stringify(r));
+  ok('a fun alert is in it with the toggle on', r.on === 1, r.on);
+  ok('and skipped with it off', r.off === 0, r.off);
   ok('and the choice is remembered', r.stored === false, r.stored);
 }
 
@@ -449,22 +477,23 @@ console.log('\n11. it survives a reload');
     return {
       count: _adState.items.length,
       uid: a && a.uid,
-      onMap: (_lastAlertFeatures || []).filter(f => f.properties._simulated).length,
+      onMap: (_lastAlertFeatures || []).filter(f => f.properties._adDesk).length,
       text: a ? _adText(a) : '',
-      badge: !!document.getElementById('ad-sim-badge'),
+      kind: a && a.kind,
     };
   });
   ok('the product is still there after a refresh', after.count === 1 && after.uid === before.uid,
      after.uid);
   ok('word for word the same', after.text === before.text);
   ok('back on the map without anyone reissuing it', after.onMap === 1, after.onMap);
-  ok('and the badge is back with it', after.badge);
+  ok('still a GWCFC product after the refresh', after.kind === 'gwcfc', after.kind);
 }
 
 console.log('\n12. the desk panel itself');
 {
-  const r = await page.evaluate(() => {
-    _adOpen();
+  const r = await page.evaluate(async () => {
+    window._fdLoadProfile = async () => ({ forecaster: true }); window._fdIsForecaster = () => true;
+    await _adOpen();
     const modal = document.getElementById('ad-modal');
     const compose = document.getElementById('ad-compose');
     const preview = document.getElementById('ad-preview');
@@ -492,10 +521,10 @@ console.log('\n12. the desk panel itself');
     _adClose();
     return {
       shown, closed: modal.style.display, segs, amts,
-      previewMarked: /SIMULATED/.test(preview.textContent),
+      previewMarked: /ISSUED BY GWCFC/.test(preview.textContent) && !/SIMULATED/.test(preview.textContent),
       hasActive: /Flash Flood Warning/.test(active),
       blocked, allowed, kept, polyKept,
-      headNote: /marked SIMULATED/i.test(document.getElementById('ad-head-note').textContent),
+      headNote: /GWCFC/.test(document.getElementById('ad-head-note').textContent),
     };
   });
   ok('the desk opens', r.shown === 'flex');
@@ -503,7 +532,7 @@ console.log('\n12. the desk panel itself');
   // Two on a TOR draft since hail moved out: tornado and wind.
   ok('every hazard gets a five-stop severity picker', r.segs >= 2, r.segs);
   ok('and an amount box beside it', r.amts === r.segs, r.amts + ' vs ' + r.segs);
-  ok('the live preview says the product is simulated', r.previewMarked);
+  ok('the live preview says the product is issued by GWCFC', r.previewMarked);
   ok('the header says so too, before anything is written', r.headNote);
   ok('what is already on the air is listed', r.hasActive);
   ok('a product with no area cannot be issued', r.blocked);

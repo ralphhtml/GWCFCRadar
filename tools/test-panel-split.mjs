@@ -498,8 +498,8 @@ console.log('\n5. the GWCFC Alerts overlay draws the desk\'s live products');
   // desk's simulation costume: the desk's products are dashed with amber
   // SIM chips; a published GWCFC product is solid with a teal GWCFC chip
   // and a banner that names the office.
-  ok('the popup opens with the GWCFC office banner',
-     /GWCFC FORECAST OFFICE PRODUCT/.test(s.popup), s.popup.slice(0, 120));
+  ok('the popup opens with the GWCFC banner',
+     /class="ap-gwcfc-banner">GWCFC</.test(s.popup), s.popup.slice(0, 120));
   ok('and never calls itself simulated',
      !/SIMULATED/i.test(s.popup));
   ok('the polygon is solid, not the desk\'s simulation dashes', !s.dashed);
