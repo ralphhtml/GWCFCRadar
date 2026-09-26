@@ -92,18 +92,30 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
 
+    // Whether the SIGNED-IN account is banned, by its account id or by its
+    // email. Both come off the sign-in token, which the browser cannot
+    // forge, so these two kinds of ban hold even against someone writing to
+    // the database directly. The owner can never be banned, so a mistake in
+    // the bans list can never lock the owner out of fixing it.
+    function banned() {
+      return isSignedIn() && !isOwner() && (
+        exists(/databases/$(database)/documents/bans/$('uid:' + request.auth.uid))
+        || (request.auth.token.email != null
+            && exists(/databases/$(database)/documents/bans/$('email:' + request.auth.token.email.lower()))));
+    }
+
     // -- EXISTING - unchanged ----------------------------------------------
 
     match /cloudcam/{doc} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow write: if isSignedIn() && !banned();
     }
 
     // Shared alerts: anyone can read, people manage their own.
     match /sharedAlerts/{alertId} {
       allow read: if true;
-      allow create: if isSignedIn();
-      allow update, delete: if isSignedIn() && request.auth.uid == resource.data.uid;
+      allow create: if isSignedIn() && !banned();
+      allow update, delete: if isSignedIn() && !banned() && request.auth.uid == resource.data.uid;
     }
 
     // Hit counter: anyone can read, only an increment by one is accepted.
@@ -129,13 +141,15 @@ service cloud.firestore {
       allow create: if isOwner()
         || (isSignedIn() && request.auth.uid == uid
             && !exists(/databases/$(database)/documents/deletedAccounts/$(uid))
+            && !banned()
             && !('staffRole' in request.resource.data)
             && !('forecaster' in request.resource.data)
             && !('chatBlocked' in request.resource.data));
 
       allow update: if isOwner()
         || (isSignedIn() && request.auth.uid == uid && !touchesRoleFields()
-            && !exists(/databases/$(database)/documents/deletedAccounts/$(uid)));
+            && !exists(/databases/$(database)/documents/deletedAccounts/$(uid))
+            && !banned());
 
       // The owner can delete any account's profile, and anyone their own.
       allow delete: if isOwner() || (isSignedIn() && request.auth.uid == uid);
@@ -151,6 +165,18 @@ service cloud.firestore {
       allow read: if isOwner() || (isSignedIn() && request.auth.uid == uid);
       allow create, update: if isOwner() || (isSignedIn() && request.auth.uid == uid);
       allow delete: if isOwner();
+    }
+
+    // Bans. Each document id says what is banned: 'uid:<account id>',
+    // 'email:<address>', 'ip:<address>' or 'device:<id>'. Anyone may look up
+    // one ban by its exact id, which is how a browser checks itself on load,
+    // but only the owner may list them all, add them or lift them. Account
+    // and email bans are also enforced by banned() above; IP and device bans
+    // are checked by the site itself, because the database never sees an
+    // IP address or a device.
+    match /bans/{banId} {
+      allow get: if true;
+      allow list, write: if isOwner();
     }
 
     // Discord account linking, as a handshake through a scratch document.
@@ -282,7 +308,7 @@ service cloud.firestore {
         && (
           (request.resource.data.source == 'radar' && realAccount()
             && request.resource.data.uid == request.auth.uid
-            && !isChatBlocked())
+            && !isChatBlocked() && !banned())
           || (request.resource.data.source == 'discord' && isSignedIn())
         )
         // Mentions are optional, and bounded when present. This list is only
@@ -482,7 +508,7 @@ service cloud.firestore {
 
     match /outlooks/{docId} {
       allow read: if true;
-      allow create, update: if isForecasterAccount();
+      allow create, update: if isForecasterAccount() && !banned();
       allow delete: if isOwner();
     }
 
@@ -509,7 +535,7 @@ service cloud.firestore {
       // A thread names exactly its two members, in order, and its id must
       // be exactly those two joined, so an id and its membership can never
       // disagree. Either member may open the thread.
-      allow create: if realAccount()
+      allow create: if realAccount() && !banned()
         && request.auth.uid in threadId.split('__')
         && request.resource.data.members is list
         && request.resource.data.members.size() == 2
@@ -520,7 +546,7 @@ service cloud.firestore {
 
       // The header carries display sugar (names, the last line, a clock).
       // Membership is frozen: a thread can never be re-pointed at somebody.
-      allow update: if realAccount()
+      allow update: if realAccount() && !banned()
         && request.auth.uid in threadId.split('__')
         && request.resource.data.members == resource.data.members;
 
@@ -529,7 +555,7 @@ service cloud.firestore {
       match /messages/{msgId} {
         allow read: if realAccount()
           && request.auth.uid in threadId.split('__');
-        allow create: if realAccount()
+        allow create: if realAccount() && !banned()
           && request.auth.uid in threadId.split('__')
           && request.resource.data.from == request.auth.uid
           && request.resource.data.text is string
@@ -553,7 +579,7 @@ service cloud.firestore {
     // signed-in real accounts only, and only ever written by its subject.
     match /dmDirectory/{uid} {
       allow read: if realAccount();
-      allow write: if realAccount() && request.auth.uid == uid
+      allow write: if realAccount() && !banned() && request.auth.uid == uid
         && request.resource.data.name is string
         && request.resource.data.name.size() >= 2
         && request.resource.data.name.size() <= 40
@@ -592,6 +618,10 @@ WHAT THESE RULES GUARANTEE
   blocked account cannot clear that flag off its own document - nor post a
   chat message at all, even by writing to Firestore directly rather than
   through the page.
+- Only the owner can see, add or lift bans. An account or email the owner
+  has banned cannot post in chat, send messages, publish or save its
+  profile, even by writing to Firestore directly. IP and device bans are
+  checked by the site itself, since the database never sees either.
 
 
 DIRECT MESSAGES

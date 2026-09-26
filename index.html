@@ -9406,6 +9406,56 @@ footer {
   background: linear-gradient(180deg, rgba(200,30,30,0.45) 0%, rgba(120,10,10,0.45) 100%);
 }
 .lqm-staff-del:hover { border-color: #ff6b6b; color: #fff; }
+.lqm-staff-ban {
+  flex: 0 0 auto; padding: 3px 8px; border-radius: 6px; cursor: pointer;
+  font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: 0.6px;
+  color: #ffe2b0; border: 1px solid rgba(255,170,60,0.55);
+  background: linear-gradient(180deg, rgba(190,110,20,0.45) 0%, rgba(110,55,5,0.45) 100%);
+}
+.lqm-staff-ban:hover { border-color: #ffb347; color: #fff; }
+.lqm-ban-tag {
+  font-family: var(--mono); font-size: 8px; font-weight: 700; letter-spacing: 0.6px;
+  color: #fff; padding: 1px 5px; border-radius: 4px; vertical-align: 1px;
+  background: linear-gradient(180deg, #c62828 0%, #8e0000 100%);
+}
+.lqm-ban-form { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+.lqm-ban-form select, .lqm-ban-form input, #lqm-ban-reason {
+  flex: 1 1 120px; min-width: 0; padding: 6px 8px; border-radius: 6px; outline: none;
+  font-family: 'Comfortaa', sans-serif; font-size: 12px; color: #fff;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.4) 100%);
+}
+.lqm-ban-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px 4px;
+  border-top: 1px solid rgba(255,255,255,0.08); font-size: 12px;
+}
+.lqm-ban-type { flex: 0 0 76px; font-family: var(--mono); font-size: 9px; font-weight: 700; color: #ffb347; }
+.lqm-ban-val { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lqm-ban-unban, .lqm-ban-cancel {
+  flex: 0 0 auto; padding: 3px 8px; border-radius: 6px; cursor: pointer;
+  font-family: var(--mono); font-size: 9px; font-weight: 700; color: #fff;
+  border: 1px solid rgba(255,255,255,0.25);
+  background: linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.04) 100%);
+}
+#lqm-ban-dialog, #ban-lockout {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 16px; background: linear-gradient(180deg, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.82) 100%);
+}
+#lqm-ban-dialog { z-index: 100050; }
+#ban-lockout { z-index: 2147483000; background: linear-gradient(180deg, #0b0b0b 0%, #1a0505 100%); }
+.lqm-ban-card, .ban-lk-card {
+  width: min(420px, 100%); padding: 16px; border-radius: 12px; color: #fff;
+  font-family: 'Comfortaa', sans-serif; font-size: 13px;
+  border: 1px solid rgba(255,90,90,0.45);
+  background: linear-gradient(180deg, rgba(40,10,10,0.96) 0%, rgba(15,5,5,0.96) 100%);
+}
+.lqm-ban-head, .ban-lk-title { font-weight: 700; font-size: 15px; margin-bottom: 10px; color: #ff8a80; }
+.lqm-ban-opt { display: flex; align-items: center; gap: 6px; margin: 6px 0; cursor: pointer; }
+#lqm-ban-reason { width: 100%; margin: 8px 0; box-sizing: border-box; }
+.lqm-ban-btns { display: flex; justify-content: flex-end; gap: 8px; }
+.ban-lk-card p { margin: 8px 0; line-height: 1.45; }
+.ban-lk-why { color: #ffd0d0; }
+.ban-lk-small { font-size: 11px; opacity: 0.75; }
 .lqm-profile-delete-btn {
   display: block; margin: 8px auto 0; padding: 4px 10px; cursor: pointer;
   background: none; border: none; color: rgba(255,120,120,0.8);
@@ -73548,6 +73598,8 @@ function _fbInit() {
     _fbAuth = auth;
     _fbDb   = db;
     _fbAuth.onAuthStateChanged(u => u ? _onSignedIn(u) : _onSignedOut());
+    // Banned devices and networks are turned away before anyone signs in.
+    _banBootCheck();
     // Coming back from Discord, finish the sign-in. Deliberately after auth is
     // wired up, so onAuthStateChanged catches the result.
     _handleDiscordReturn().catch(e => console.warn('discord return:', e));
@@ -73571,6 +73623,9 @@ function _onSignedIn(user) {
     // so its settings are never written back under it.
     _acctCheckRemoved(user).then(removed => {
       if (removed || _currentUser !== user) return;
+      // Checked alongside, not before, so a ban lookup never slows the
+      // sign-in down; a banned account is covered the moment it answers.
+      _banCheckAccount(user);
       _updateProfileBadge(user);
       _loadUserPrefs(user.uid);
       // A different account has different rights, so the Forecaster Desk
@@ -73609,6 +73664,266 @@ async function _acctCheckRemoved(user) {
     showToast('This GWCFC account has been deleted, so you have been signed out. You can create a new account at any time.', 7000);
   }
   return true;
+}
+
+// -- Bans ---------------------------------------------------------------------
+// The owner can ban four things, each a document in bans/ whose id says what
+// it is: 'uid:<account id>', 'email:<address>', 'ip:<address>' and
+// 'device:<id>'. Account and email bans are also enforced by the database
+// rules, so a banned account cannot post or save anything even by going
+// around this page. IP and device bans can only be checked here, because the
+// database never sees either: they stop anyone casual, but someone who
+// changes network, clears the browser or switches browser gets past them,
+// and an IP ban also shuts out everyone else on that network.
+const BAN_TYPES = { uid: 'Account', email: 'Email', ip: 'IP address', device: 'Device' };
+let _banMyIpPr = null;
+let _banShown = null;
+
+function _banNorm(type, value) {
+  let v = String(value == null ? '' : value).trim().replace(/\//g, '');
+  if (type === 'email' || type === 'ip') v = v.toLowerCase();
+  return v.slice(0, 200);
+}
+function _banId(type, value) { return type + ':' + _banNorm(type, value); }
+
+// A random id for this browser, made once and kept. It is not a fingerprint:
+// it says nothing about the person or the machine, it only lets the same
+// browser be recognised again.
+function _banDeviceId() {
+  let id = '';
+  try { id = localStorage.getItem('gwcfc_device_id') || ''; } catch (e) {}
+  if (!/^[a-z0-9-]{8,64}$/.test(id)) {
+    id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+      : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+    try { localStorage.setItem('gwcfc_device_id', id); } catch (e) {}
+  }
+  return id;
+}
+
+// This visitor's public IP address, as the parsing server sees it. A web
+// page cannot read its own IP, so it asks our own server, never a third
+// party. Null when the server is down, which simply means no IP check.
+function _banMyIp() {
+  if (_banMyIpPr) return _banMyIpPr;
+  _banMyIpPr = (async () => {
+    try {
+      const base = (typeof _hdResolveBase === 'function' && await _hdResolveBase()) || HD_FIXED_BASE;
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 5000);
+      const r = await fetch(base.replace(/\/+$/, '') + '/whoami', { cache: 'no-store', signal: ctl.signal });
+      clearTimeout(t);
+      if (!r.ok) return null;
+      const ip = String((await r.json()).ip || '').trim().toLowerCase();
+      return /^[0-9a-f:.]{3,45}$/.test(ip) ? ip : null;
+    } catch (e) { return null; }
+  })();
+  return _banMyIpPr;
+}
+
+// The first ban that matches any of the given [type, value] pairs, or null.
+async function _banFind(pairs) {
+  if (typeof _fbDb === 'undefined' || !_fbDb) return null;
+  const want = pairs.filter(p => p[1]);
+  const snaps = await Promise.all(want.map(([t, v]) =>
+    _fbDb.collection('bans').doc(_banId(t, v)).get().catch(() => null)));
+  for (let i = 0; i < snaps.length; i++) {
+    const sn = snaps[i];
+    if (sn && sn.exists) return Object.assign({ type: want[i][0] }, sn.data() || {});
+  }
+  return null;
+}
+
+async function _banBootCheck() {
+  const ban = await _banFind([['device', _banDeviceId()], ['ip', await _banMyIp()]]);
+  if (ban && !_isOwner()) _banLockout(ban);
+}
+
+async function _banCheckAccount(user) {
+  if (!user || user.isAnonymous) return;
+  if (_isOwner()) { _banUnlock(); return; }   // the owner is never locked out
+  const ip = await _banMyIp();
+  const dev = _banDeviceId();
+  const ban = await _banFind([['uid', user.uid], ['email', user.email],
+                              ['device', dev], ['ip', ip]]);
+  if (_currentUser !== user) return;
+  if (ban) { _banLockout(ban); return; }
+  // Where this account last signed in from, so a ban from Manage Members
+  // can reach its network and browser too. Only the owner and the account
+  // itself can read its profile, so nobody else ever sees these.
+  try {
+    await _fbDb.collection('users').doc(user.uid).set(
+      { lastIp: ip || '', deviceId: dev, lastSeenAt: new Date().toISOString() },
+      { merge: true });
+  } catch (e) {}
+}
+
+// A full-page cover. Account bans also sign out, so nothing more is sent
+// under that account from this browser.
+function _banLockout(ban) {
+  _banShown = ban;
+  let el = document.getElementById('ban-lockout');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'ban-lockout';
+    el.setAttribute('role', 'alertdialog');
+    document.body.appendChild(el);
+  }
+  const why = ban.reason ? `<p class="ban-lk-why">Reason: ${_escapeHtml(String(ban.reason).slice(0, 300))}</p>` : '';
+  el.innerHTML = `<div class="ban-lk-card">
+      <div class="ban-lk-title">Access blocked</div>
+      <p>This ${_escapeHtml((BAN_TYPES[ban.type] || 'account').toLowerCase())} has been banned from GWCFC Radar.</p>
+      ${why}
+      <p class="ban-lk-small">If you think this is a mistake, contact GWCFC staff on Discord.</p>
+    </div>`;
+  if ((ban.type === 'uid' || ban.type === 'email') && _fbAuth) {
+    try { localStorage.removeItem('gwcfc_had_account'); } catch (e) {}
+    _fbAuth.signOut().catch(() => {});
+  }
+}
+function _banUnlock() {
+  _banShown = null;
+  document.getElementById('ban-lockout')?.remove();
+}
+
+// -- Owner: banning, from Manage Members --
+let _bans = [];
+
+function _banErrText(e) {
+  return (e && (e.code === 'permission-denied' || /insufficient permissions/i.test(e.message || '')))
+    ? 'The database refused it: publish the latest rules from firebase/FIRESTORE_RULES.txt in the Firebase console, then try again.'
+    : 'Could not save: ' + ((e && e.message) || e);
+}
+
+async function _banLoadList() {
+  if (!_isOwner() || !_fbDb) return;
+  try {
+    const snap = await _fbDb.collection('bans').get();
+    _bans = snap.docs.map(d => Object.assign({ id: d.id }, d.data() || {}))
+      .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+    _banRenderList();
+  } catch (e) {
+    _bans = [];
+    const box = document.getElementById('lqm-ban-list');
+    if (box) box.innerHTML = `<div class="lqm-staff-note">${_escapeHtml(_banErrText(e))}</div>`;
+  }
+}
+
+function _banIsBanned(type, value) {
+  return !!value && _bans.some(b => b.id === _banId(type, value));
+}
+
+function _banRenderList() {
+  const box = document.getElementById('lqm-ban-list');
+  if (!box) return;
+  box.innerHTML = _bans.length ? _bans.map(b => `<div class="lqm-ban-row">
+      <span class="lqm-ban-type">${_escapeHtml(BAN_TYPES[b.type] || b.type || '?')}</span>
+      <span class="lqm-ban-val" title="${_escapeHtml(b.id)}">${_escapeHtml(b.label || b.value || b.id)}${b.reason ? ` <span class="lqm-staff-uid">&middot; ${_escapeHtml(b.reason)}</span>` : ''}</span>
+      <button type="button" class="lqm-ban-unban" data-id="${_escapeHtml(b.id)}" onclick="staffUnban(this.dataset.id)">Unban</button>
+    </div>`).join('')
+    : `<div class="lqm-staff-note">Nobody is banned.</div>`;
+}
+
+// Refuses anything that would lock the owner out: their own account, email,
+// network or browser.
+async function _banIsSelf(type, value) {
+  const v = _banNorm(type, value);
+  if (!_currentUser) return false;
+  if (type === 'uid') return v === _currentUser.uid;
+  if (type === 'email') return _isOwnerEmail(v);
+  if (type === 'device') return v === _banDeviceId();
+  if (type === 'ip') return v === (await _banMyIp());
+  return false;
+}
+
+async function staffBan(type, value, reason, label) {
+  if (!_isOwner() || !_fbDb || !BAN_TYPES[type]) return false;
+  const v = _banNorm(type, value);
+  if (!v) { showToast('Nothing to ban: that field is empty.', 4000); return false; }
+  if (await _banIsSelf(type, v)) {
+    showToast('That is your own ' + BAN_TYPES[type].toLowerCase() + ', so it was not banned.', 5000);
+    return false;
+  }
+  try {
+    await _fbDb.collection('bans').doc(_banId(type, v)).set({
+      type, value: v, reason: String(reason || '').slice(0, 300),
+      label: String(label || v).slice(0, 200),
+      at: new Date().toISOString(), by: 'owner',
+    });
+    await _banLoadList();
+    _staffRenderList(document.getElementById('lqm-staff-search')?.value || '');
+    return true;
+  } catch (e) { showToast(_banErrText(e), 7000); return false; }
+}
+
+async function staffUnban(id) {
+  if (!_isOwner() || !_fbDb) return false;
+  try {
+    await _fbDb.collection('bans').doc(id).delete();
+    await _banLoadList();
+    _staffRenderList(document.getElementById('lqm-staff-search')?.value || '');
+    showToast('Unbanned.', 3000);
+    return true;
+  } catch (e) { showToast(_banErrText(e), 7000); return false; }
+}
+
+// The Ban button on a member's row: tick what to ban, give a reason.
+function staffBanMember(uid) {
+  if (!_isOwner()) return;
+  const u = _staffUsers.find(x => x.uid === uid);
+  if (!u || u.staffRole === 'owner') return;
+  const name = (u.name && u.name !== '(no name)') ? u.name : 'Unnamed account';
+  const opt = (type, value, text, on) => value ? `<label class="lqm-ban-opt">
+      <input type="checkbox" data-type="${type}" data-value="${_escapeHtml(value)}" ${on ? 'checked' : ''}>
+      ${text} <span class="lqm-staff-uid">${_escapeHtml(value)}</span></label>` : '';
+  let dlg = document.getElementById('lqm-ban-dialog');
+  if (!dlg) {
+    dlg = document.createElement('div');
+    dlg.id = 'lqm-ban-dialog';
+    document.body.appendChild(dlg);
+  }
+  dlg.dataset.uid = uid;
+  dlg.innerHTML = `<div class="lqm-ban-card">
+      <div class="lqm-ban-head">Ban ${_escapeHtml(name)}</div>
+      ${opt('uid', u.uid, 'Account', true)}
+      ${opt('email', u.email, 'Email', true)}
+      ${opt('ip', u.lastIp, 'Last IP', false)}
+      ${opt('device', u.deviceId, 'Device', false)}
+      ${(!u.lastIp && !u.deviceId) ? '<div class="lqm-staff-note">No IP or device on record yet: they fill in the next time this account signs in.</div>' : ''}
+      <input id="lqm-ban-reason" type="text" maxlength="300" placeholder="Reason (they will see this)" autocomplete="off">
+      <div class="lqm-ban-btns">
+        <button type="button" class="lqm-ban-cancel" onclick="document.getElementById('lqm-ban-dialog').remove()">Cancel</button>
+        <button type="button" class="lqm-staff-del" onclick="staffBanConfirm()">Ban</button>
+      </div>
+    </div>`;
+}
+
+async function staffBanConfirm() {
+  const dlg = document.getElementById('lqm-ban-dialog');
+  if (!dlg) return;
+  const u = _staffUsers.find(x => x.uid === dlg.dataset.uid);
+  const name = u && u.name && u.name !== '(no name)' ? u.name : (u && u.email) || 'account';
+  const reason = document.getElementById('lqm-ban-reason')?.value || '';
+  const picks = [...dlg.querySelectorAll('input[type=checkbox]:checked')];
+  if (!picks.length) { showToast('Tick at least one thing to ban.', 3500); return; }
+  let n = 0;
+  for (const cb of picks) {
+    if (await staffBan(cb.dataset.type, cb.dataset.value, reason,
+                       name + ' (' + BAN_TYPES[cb.dataset.type].toLowerCase() + ')')) n++;
+  }
+  dlg.remove();
+  if (n) showToast(name + ' banned (' + n + ' of ' + picks.length + ').', 4000);
+}
+
+// The "ban anything" form under the list.
+async function staffBanManual() {
+  const type = document.getElementById('lqm-ban-type')?.value;
+  const val = document.getElementById('lqm-ban-value');
+  const why = document.getElementById('lqm-ban-why');
+  if (await staffBan(type, val?.value, why?.value, '')) {
+    showToast(BAN_TYPES[type] + ' banned.', 3000);
+    if (val) val.value = '';
+    if (why) why.value = '';
+  }
 }
 
 // The owner, from Manage Members.
@@ -74173,9 +74488,12 @@ async function lqmOpenStaffView() {
         emoji: v.avatarEmoji || v.emoji || '',
         staffRole: _staffRoleFor(v.email, v.staffRole),
         forecaster: v.forecaster === true,
-        chatBlocked: v.chatBlocked === true
+        chatBlocked: v.chatBlocked === true,
+        lastIp: typeof v.lastIp === 'string' ? v.lastIp : '',
+        deviceId: typeof v.deviceId === 'string' ? v.deviceId : ''
       };
     });
+    _banLoadList();
     // Names for the blank rows can often be found where the account already
     // spoke publicly; done before the first paint so rows do not rename
     // themselves in front of you.
@@ -74242,7 +74560,8 @@ function _staffRenderList(filter) {
   const rows = _staffUsers.filter(u =>
     !q || (u.name || '').toLowerCase().includes(q)
        || (u.email || '').toLowerCase().includes(q)
-       || (u.phone || '').includes(q));
+       || (u.phone || '').includes(q)
+       || (u.lastIp || '').includes(q));
 
   if (!rows.length) {
     list.innerHTML = `<div class="lqm-staff-note">${_staffUsers.length ? 'No members match that search.' : 'No accounts yet.'}</div>`;
@@ -74278,18 +74597,23 @@ function _staffRenderList(filter) {
             + `it fills in when they next sign in &middot; ${_escapeHtml(u.uid)}</div>`;
       // Everything about this member on hover as well, so a row can be read
       // without the panel being wide enough to lay it all out.
-      const tip = `${shownName}\n${u.email || (u.phone ? 'phone: ' + u.phone : 'no email')}\n${u.uid}`;
+      const tip = `${shownName}\n${u.email || (u.phone ? 'phone: ' + u.phone : 'no email')}\n${u.uid}`
+        + (u.lastIp ? `\nlast IP: ${u.lastIp}` : '');
+      const isBanned = _banIsBanned('uid', u.uid) || _banIsBanned('email', u.email)
+        || _banIsBanned('ip', u.lastIp) || _banIsBanned('device', u.deviceId);
       return `<div class="lqm-staff-row" title="${_escapeHtml(tip)}">
         ${av}
         <div class="lqm-staff-meta">
-          <div class="lqm-staff-name">${_escapeHtml(shownName)}${nameNote}</div>
+          <div class="lqm-staff-name">${_escapeHtml(shownName)}${nameNote}${isBanned ? ' <span class="lqm-ban-tag">BANNED</span>' : ''}</div>
           ${who}
+          ${u.lastIp ? `<div class="lqm-staff-email lqm-staff-uid">IP ${_escapeHtml(u.lastIp)}</div>` : ''}
         </div>
         <select class="lqm-staff-sel" ${isOwnerRow ? 'disabled' : ''} onchange="staffSetRole('${u.uid}', this.value, this)">${opts}</select>
         <label class="lqm-staff-fc" title="Forecaster: may publish outlooks and alerts to everyone from the Forecasting Portal. Only you can grant this.">
           <input type="checkbox" ${isOwnerRow ? 'checked disabled' : (u.forecaster ? 'checked' : '')} onchange="staffSetForecaster('${u.uid}', this.checked, this)"> FC</label>
         <label class="lqm-staff-block" title="Blocked from the live chat. They keep every other part of the site - this only stops them posting here.">
           <input type="checkbox" ${isOwnerRow ? 'disabled' : (u.chatBlocked ? 'checked' : '')} onchange="staffSetChatBlock('${u.uid}', this.checked, this)"> Block chat</label>
+        ${isOwnerRow ? '' : `<button type="button" class="lqm-staff-ban" onclick="staffBanMember('${u.uid}')" title="Ban this account, its email, its network or its browser">Ban</button>`}
         ${isOwnerRow ? '' : `<button type="button" class="lqm-staff-del" onclick="staffDeleteAccount('${u.uid}')" title="Delete this account">Delete</button>`}
       </div>`;
     }).join('');
@@ -76138,6 +76462,7 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-26-h', date: 'Sep 26, 2026', text: 'The owner can now ban people from Manage Members: by account, email, IP address or device, with a reason, and lift any ban from the new Bans list. A banned visitor sees a full-page block, and NWRchive turns them away too.' },
   { id: '2026-09-26-g', date: 'Sep 26, 2026', text: 'Accounts can now be deleted. In Manage Members the owner has a Delete button on every member, and anyone can delete their own account with Delete my account at the bottom of their account panel. A deleted account is signed out and removed the next time it opens the site. Recording NOAA Weather Radio (the Rec button and AUTO) now needs a GWCFC account; listening does not. NWRchive, the weather radio archive, now opens only for signed-in GWCFC accounts, using the same account as the radar.' },
   { id: '2026-09-26-f', date: 'Sep 26, 2026', text: 'Alerts issued by GWCFC forecasters are now labelled GWCFC everywhere they appear (the map, the Alerts panel, popups and notifications) and no longer say simulated. The Alert Desk is now for forecasters only. Making a warning just for fun has moved to the Storm Cone tool: press Fun Alert, pick a warning type, and either draw a box or turn your cone into the warning. Fun alerts show only on your own screen, are marked as not real, and are never shared. Any practice alerts you made before are kept as fun alerts.' },
   { id: '2026-09-26-e', date: 'Sep 26, 2026', text: 'Keyboard shortcuts, tested key by key and fixed. The GR2Analyst Shift+Comma key (Open Settings) now works; it never did, because Shift turns the comma into a different character. Option shortcuts on a Mac are saved properly instead of as a symbol. Holding a key down no longer flickers an overlay on and off (holding Right still scrubs frames). Leaving Settings while a key was waiting to be rebound no longer lets the next keypress quietly rebind it. Ctrl, Command and Tab are refused with a note instead of being saved as keys that never work. Keys typed while composing Chinese, Japanese or accented letters no longer fire shortcuts. A shortcut for a picked button never presses the wrong button after a list is reordered. Changing keys in another tab now shows up in this one. Every shortcut responds in well under a millisecond.' },
@@ -78468,6 +78793,19 @@ document.addEventListener('DOMContentLoaded', () => {
       <input id="lqm-staff-search" type="text" placeholder="Search name or email…" oninput="_staffRenderList(this.value)" autocomplete="off"/>
       <div id="lqm-staff-list"></div>
       <p class="lqm-staff-note" id="lqm-staff-note"></p>
+      <div class="lqm-edit-label">Bans</div>
+      <div class="lqm-ban-form">
+        <select id="lqm-ban-type" aria-label="What to ban">
+          <option value="email">Email</option>
+          <option value="ip">IP address</option>
+          <option value="uid">Account id</option>
+          <option value="device">Device id</option>
+        </select>
+        <input id="lqm-ban-value" type="text" placeholder="Email, IP, account or device id" autocomplete="off"/>
+        <input id="lqm-ban-why" type="text" maxlength="300" placeholder="Reason (optional)" autocomplete="off"/>
+        <button type="button" class="lqm-staff-del" onclick="staffBanManual()">Ban</button>
+      </div>
+      <div id="lqm-ban-list"></div>
     </div>
 
     <div id="lqm-view-edit">
