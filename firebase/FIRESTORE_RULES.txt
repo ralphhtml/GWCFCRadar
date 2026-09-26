@@ -29,7 +29,8 @@ HOW TO PUBLISH THEM
 This is the COMPLETE ruleset for everything the console currently needs to
 know about: it covers every collection the apps use (users, chat, guests,
 cloudcam, sharedAlerts, analytics, discordLinks, asturioSync, modelCache,
-omBudget, piEndpoint, chatBridge, chatRoster, discordEconomy, outlooks).
+omBudget, piEndpoint, chatBridge, chatRoster, discordEconomy, outlooks,
+deletedAccounts).
 It fully REPLACES
 whatever is in the console, nothing needs to be merged by hand. It is kept
 in step with firebase/firestore.rules with one deliberate exception, the
@@ -123,15 +124,32 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if isOwner() || (isSignedIn() && request.auth.uid == uid);
 
+      // A deleted account cannot write itself back into existence: its
+      // own browser may still hold a session from before the delete.
       allow create: if isOwner()
         || (isSignedIn() && request.auth.uid == uid
+            && !exists(/databases/$(database)/documents/deletedAccounts/$(uid))
             && !('staffRole' in request.resource.data)
             && !('forecaster' in request.resource.data)
             && !('chatBlocked' in request.resource.data));
 
       allow update: if isOwner()
-        || (isSignedIn() && request.auth.uid == uid && !touchesRoleFields());
+        || (isSignedIn() && request.auth.uid == uid && !touchesRoleFields()
+            && !exists(/databases/$(database)/documents/deletedAccounts/$(uid)));
 
+      // The owner can delete any account's profile, and anyone their own.
+      allow delete: if isOwner() || (isSignedIn() && request.auth.uid == uid);
+    }
+
+    // Accounts that have been deleted. The owner deletes someone from Manage
+    // Members; a person deletes themselves from their account panel. The
+    // marker is what finishes the job: a web page cannot remove another
+    // person's sign-in, so the next time that account signs in, its own
+    // browser reads this, deletes its sign-in and signs out. Only the owner
+    // or the account itself may write it, and only they may read it.
+    match /deletedAccounts/{uid} {
+      allow read: if isOwner() || (isSignedIn() && request.auth.uid == uid);
+      allow create, update: if isOwner() || (isSignedIn() && request.auth.uid == uid);
       allow delete: if isOwner();
     }
 

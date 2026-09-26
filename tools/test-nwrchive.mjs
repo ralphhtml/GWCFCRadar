@@ -75,9 +75,25 @@ const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', e => errors.push(e.message));
 const audioAsked = [];
+// NWRchive opens only for a signed-in GWCFC account (tools/test-accounts-nwr.mjs
+// covers the gate itself). These scenes are about the archive, so the Firebase
+// scripts are replaced by a stand-in that is already signed in.
+const SIGNED_IN_FIREBASE = `window.firebase = {
+  initializeApp() {},
+  auth: Object.assign(() => ({
+    currentUser: { uid: 'tester', email: 't@x.test', displayName: 'Tester', isAnonymous: false },
+    onAuthStateChanged(cb) { setTimeout(() => cb(this.currentUser), 0); },
+    signOut: async () => {},
+  }), { GoogleAuthProvider: function () {} }),
+  firestore: () => ({ collection: () => ({ doc: () => ({ get: async () => ({ exists: false }) }) }) }),
+};`;
 await page.route('**://**', route => {
   const url = route.request().url();
   if (url.startsWith('file://')) return route.continue();
+  if (/gstatic\.com\/firebasejs\/.*firebase-app-compat/.test(url))
+    return route.fulfill({ contentType: 'application/javascript', body: SIGNED_IN_FIREBASE });
+  if (/gstatic\.com\/firebasejs\//.test(url))
+    return route.fulfill({ contentType: 'application/javascript', body: '' });
   if (url === BASE + '/index.json')
     return route.fulfill({ contentType: 'application/json',
       body: JSON.stringify(FAKE_INDEX) });
