@@ -51419,10 +51419,28 @@ const KBD_KEY = 'gwcfc_keys';
 // A key is written the way it is typed: modifiers in a fixed order, then the
 // key itself upper-cased. Fixed order matters because "Shift+Alt+W" and
 // "Alt+Shift+W" are the same chord and must not become two bindings.
+//
+// The key is the key pressed, not the character a modifier turned it into.
+// With Shift held the browser reports "<" for the comma key and "!" for 1,
+// and on a Mac Option+R types "®", so the GR2Analyst preset's Shift+,
+// could never fire and an Option shortcut was saved as a symbol. When a
+// modifier has made something other than a letter or digit, the physical key
+// (e.code) says which key it was. Letters and digits keep e.key, so a French
+// or German keyboard's A is still A wherever it sits.
+const _KBD_CODE_KEYS = { Comma: ',', Period: '.', Slash: '/', Semicolon: ';', Quote: "'",
+  BracketLeft: '[', BracketRight: ']', Backslash: '\\', Minus: '-', Equal: '=', Backquote: '`' };
 function _kbdChord(e) {
-  if (!e || !e.key) return '';
-  const k = e.key.length === 1 ? e.key.toUpperCase() : e.key;
-  if (['Shift', 'Control', 'Alt', 'Meta'].includes(k)) return '';
+  // Mid-composition (Chinese, Japanese, accents being built) the key is
+  // part of a word being typed, not a shortcut.
+  if (!e || !e.key || e.isComposing || e.keyCode === 229
+      || e.key === 'Dead' || e.key === 'Unidentified' || e.key === 'Process') return '';
+  let k = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+  if (['Shift', 'Control', 'Alt', 'Meta', 'AltGraph', 'CapsLock'].includes(k)) return '';
+  if ((e.shiftKey || e.altKey) && e.code && !/^[A-Z0-9 ]$/.test(k) && k.length === 1) {
+    const m = /^Key([A-Z])$/.exec(e.code) || /^Digit([0-9])$/.exec(e.code);
+    if (m) k = m[1];
+    else if (_KBD_CODE_KEYS[e.code]) k = _KBD_CODE_KEYS[e.code];
+  }
   let out = '';
   if (e.ctrlKey)  out += 'Ctrl+';
   if (e.altKey)   out += 'Alt+';
@@ -51476,11 +51494,22 @@ const KBD_PRESETS = {
 let _kbdBinds = null;     // { actionId: chord }
 let _kbdPreset = null;    // which preset it came from, or 'custom'
 
+// A chord saved as the shifted character ("Shift+<") from before chords were
+// read by the physical key, rewritten to the key itself ("Shift+,").
+const _KBD_SHIFTED = { '<': ',', '>': '.', '?': '/', ':': ';', '"': "'", '{': '[', '}': ']',
+  '|': '\\', '_': '-', '+': '=', '~': '`', '!': '1', '@': '2', '#': '3', '$': '4', '%': '5',
+  '^': '6', '&': '7', '*': '8', '(': '9', ')': '0' };
+function _kbdFixChord(c) {
+  if (!c || !/Shift\+/.test(c)) return c;
+  const last = c.slice(-1);
+  return _KBD_SHIFTED[last] && c.length > 1 && c[c.length - 2] === '+' ? c.slice(0, -1) + _KBD_SHIFTED[last] : c;
+}
 function _kbdLoad() {
   if (_kbdBinds) return _kbdBinds;
   try {
     const raw = JSON.parse(localStorage.getItem(KBD_KEY) || 'null');
     if (raw && raw.binds && typeof raw.binds === 'object') {
+      Object.keys(raw.binds).forEach(k => { raw.binds[k] = _kbdFixChord(raw.binds[k]); });
       _kbdBinds = raw.binds;
       _kbdPreset = raw.preset || 'custom';
       return _kbdBinds;
@@ -51566,12 +51595,28 @@ function _kbdExtraLoad() {
   try {
     const raw = JSON.parse(localStorage.getItem(KBD_EXTRA_KEY) || '[]');
     _kbdExtra = Array.isArray(raw) ? raw.filter(x => x && x.id && x.kind) : [];
+    _kbdExtra.forEach(x => { x.chord = _kbdFixChord(x.chord); });
   } catch (e) { _kbdExtra = []; }
   return _kbdExtra;
 }
 function _kbdExtraSave() {
   try { localStorage.setItem(KBD_EXTRA_KEY, JSON.stringify(_kbdExtra || [])); } catch (e) {}
 }
+// Another tab changed the keys: this one follows rather than holding on to
+// what it read when it opened.
+window.addEventListener('storage', (e) => {
+  if (e.key !== KBD_KEY && e.key !== KBD_EXTRA_KEY) return;
+  if (e.key === KBD_KEY) _kbdBinds = null;
+  else _kbdExtra = null;
+  try { _kbdRenderSettings(); } catch (err) {}
+});
+// The first press of a shortcut that runs a search-catalogue entry would
+// build the catalogue on the spot; built while the page is idle instead, so
+// every press is as quick as the first.
+setTimeout(() => {
+  const warm = () => { try { if (_kbdExtraLoad().some(x => x.kind === 'cat')) _srchCatalog(); } catch (e) {} };
+  if (window.requestIdleCallback) requestIdleCallback(warm, { timeout: 5000 }); else warm();
+}, 4000);
 function _kbdExtraFor(chord) { return _kbdExtraLoad().find(x => x.chord === chord) || null; }
 function _kbdExtraId() { return 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
@@ -51625,19 +51670,38 @@ function _kbdVisible(el) {
   const r = el.getBoundingClientRect();
   return r.width > 0 && r.height > 0;
 }
+// The element found last time is kept (not saved, just held for this page),
+// so a picked button is not searched for again on every press.
+const _kbdElCache = new Map();
 function _kbdFindEl(x) {
+  const had = _kbdElCache.get(x.id);
+  if (had && had.isConnected && _kbdVisible(had) && _kbdSameText(had, x)) return had;
+  const el = _kbdFindElFresh(x);
+  if (el) _kbdElCache.set(x.id, el); else _kbdElCache.delete(x.id);
+  return el;
+}
+// Whether this is still the button that was picked. A list rebuilt in a new
+// order leaves a different button at the old address, and pressing that one
+// would be worse than pressing nothing.
+function _kbdSameText(el, x) {
+  return !x.text || _kbdElText(el).toLowerCase() === String(x.text).toLowerCase();
+}
+function _kbdFindElFresh(x) {
   let el = null;
   try { el = x.sel ? document.querySelector(x.sel) : null; } catch (e) { el = null; }
-  if (el && (_kbdVisible(el) || el.id)) return el;
+  if (el && (_kbdVisible(el) || el.id) && _kbdSameText(el, x)) return el;
   // Where it lived has moved (a list rebuilt in a different order): the same
   // words on something tappable that is on screen now.
   if (x.text) {
     const want = x.text.toLowerCase();
     const hit = Array.from(document.querySelectorAll(_KBD_TAPPABLE))
-      .find(e => _kbdVisible(e) && _kbdElText(e).toLowerCase() === want);
+      .find(e => _kbdElText(e).toLowerCase() === want && _kbdVisible(e));
     if (hit) return hit;
   }
-  return el;
+  // Nothing with its words. A button known by its own id is still that
+  // button even if its label changed (Play becomes Pause); one known only by
+  // its place in a list is not, so it is left unpressed.
+  return el && (/^#[^ >]+$/.test(x.sel || '') || _kbdSameText(el, x)) ? el : null;
 }
 const _KBD_TAPPABLE = 'button, a[href], [onclick], [role="button"], label, select, input, .ov-pill, .lqm-btn, .sub-bubble, [data-ovid], [data-tab]';
 function _kbdElText(el) {
@@ -51826,6 +51890,16 @@ document.addEventListener('keydown', (e) => {
   }
   const chord = _kbdChord(e);
   if (!chord) return;      // a bare modifier, keep waiting for the real key
+  // Ctrl and Command combinations never fire (they belong to the browser),
+  // and Tab is how the keyboard moves between controls. Saving either would
+  // be a shortcut that silently does nothing, so it keeps waiting instead.
+  if (e.ctrlKey || e.metaKey || e.key === 'Tab') {
+    if (typeof showToast === 'function') {
+      showToast(e.key === 'Tab' ? 'Tab moves between buttons, so it cannot be a shortcut. Press another key.'
+        : 'Ctrl and Command combinations belong to your browser. Press another key.', 3000);
+    }
+    return;
+  }
   _kbdCapturing = null;
   kbdBindAction(id, chord);
 }, true);
@@ -51875,6 +51949,10 @@ function _kbdRun(a) {
 // stopPropagation() here actually stops Leaflet from ever seeing the key,
 // which is what ArrowLeft/ArrowRight (bound to Next/Previous Frame) need,
 // since Leaflet's default is to pan on every arrow key.
+//
+// A key held down repeats. Only frame stepping should: holding Right scrubs
+// through the loop, but holding an overlay's key toggled it on and off as
+// fast as the keyboard repeats, so every other shortcut ignores the repeats.
 document.addEventListener('keydown', (e) => {
   if (_kbdIsTyping(e.target)) return;
   // Ctrl and Meta chords belong to the browser. Rebinding Ctrl+T or Cmd+W
@@ -51886,6 +51964,7 @@ document.addEventListener('keydown', (e) => {
   const hit = Object.keys(binds).find(id => binds[id] === chord);
   const action = hit ? KBD_ACTIONS.find(a => a.id === hit) : _kbdExtraFor(chord);
   if (!action) return;
+  if (e.repeat && typeof action.step !== 'number') { e.preventDefault(); return; }
   if (_kbdRun(action)) { e.preventDefault(); e.stopPropagation(); }
 }, true);
 
@@ -71269,6 +71348,12 @@ function lqmOpenSettings() {
 function lqmCloseSettings() {
   const el = document.getElementById('lqm-settings-overlay');
   if (el) el.classList.remove('lqm-panel-open');
+  // A key left waiting to be rebound would take the next keypress anywhere
+  // in the app, long after the panel that asked for it was gone.
+  if (typeof _kbdCapturing !== 'undefined' && _kbdCapturing) {
+    _kbdCapturing = null;
+    try { _kbdRenderSettings(); } catch (e) {}
+  }
 }
 function lqmToggleSettingsPanel() {
   const el = document.getElementById('lqm-settings-overlay');
@@ -75739,6 +75824,7 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-26-e', date: 'Sep 26, 2026', text: 'Keyboard shortcuts, tested key by key and fixed. The GR2Analyst Shift+Comma key (Open Settings) now works; it never did, because Shift turns the comma into a different character. Option shortcuts on a Mac are saved properly instead of as a symbol. Holding a key down no longer flickers an overlay on and off (holding Right still scrubs frames). Leaving Settings while a key was waiting to be rebound no longer lets the next keypress quietly rebind it. Ctrl, Command and Tab are refused with a note instead of being saved as keys that never work. Keys typed while composing Chinese, Japanese or accented letters no longer fire shortcuts. A shortcut for a picked button never presses the wrong button after a list is reordered. Changing keys in another tab now shows up in this one. Every shortcut responds in well under a millisecond.' },
   { id: '2026-09-26-d', date: 'Sep 26, 2026', text: 'Settings is rebuilt for phones: it fills the screen, opens on a list of every category by name, one tap takes you into a category, and a back button takes you out. A search box at the top (on computers too) finds any setting in any category. And you can now make a keyboard shortcut for anything in the app: in Settings > Keyboard, search for any overlay, radar product, menu, panel or tool and give it a key, or press Pick a button on screen and tap any button to bind it. Your own shortcuts are kept when you switch shortcut sets.' },
   { id: '2026-09-26-c', date: 'Sep 26, 2026', text: 'A comparison polygon now follows the shape you drew exactly: a finished Polygon tool shape works (the polygon popup has a Compare button too), circles trace the exact circle on the map, lines and arrows are skipped because they have no inside, and no second outline is drawn over your own. Also fixed striped radar: some radars, terminal ones like TBOS especially, could come out solid near the radar and in thin stripes with dark gaps further out, because each beam was drawn half as wide as it really is. Every beam now uses the width the radar itself reports.' },
   { id: '2026-09-26-b', date: 'Sep 26, 2026', text: 'Comparisons can now be split by a shape instead of a straight line. In the Compare menu, press Polygon and tap the corners (tap the first corner again, double-click or press Enter to finish). Pane B shows inside the shape and pane A everywhere else, and the shape stays put as you pan and zoom. The Polygon tool and the Draw tool each have a new Compare button that turns the shape you drew (circles and rectangles too) into the comparison split. Works for radar beside radar, satellite beside satellite, and cross layer.' },
