@@ -43811,12 +43811,20 @@ function _gwcfcDraw(out, into, paneKey) {
   return drew;
 }
 
+// What the overlay last drew, so the minute-by-minute check redraws and
+// speaks up only when something was actually issued or taken down.
+let _gwcfcLastKey = null;
 async function _gwcfcRefresh() {
   const out = await _gwcfcDocFresh();
   if (!_gwcfcOn) return;
+  let key = '';
+  try { key = JSON.stringify(out); } catch (e) { key = String(Date.now()); }
+  const changed = key !== _gwcfcLastKey;
+  if (!changed && (_gwcfcLayers.length || !out)) return;
+  _gwcfcLastKey = key;
   if (!out) {
     _gwcfcClear();
-    if (typeof showToast === 'function') {
+    if (changed && typeof showToast === 'function') {
       if (_gwcfcBlocked) {
         showToast('The database rules are blocking the outlook: the '
                 + 'outlooks block from firebase/firestore.rules has not '
@@ -43830,6 +43838,7 @@ async function _gwcfcRefresh() {
     return;
   }
   const drew = _gwcfcDraw(out);
+  if (!changed) return;
   if (drew && out.issued && typeof showToast === 'function') {
     const when = String(out.issued).slice(0, 16).replace('T', ' ');
     showToast(`GWCFC outlook by ${out.forecaster || 'the desk'}, `
@@ -43845,11 +43854,18 @@ function _gwcfcOutlookToggle() {
     _gwcfcRefresh();
     // A forecaster can republish at any moment, so while the overlay is up
     // it checks back the way the alert feeds do.
-    _gwcfcTimer = setInterval(_gwcfcRefresh, 5 * 60 * 1000);
+    // Every minute, so a cone or area issued a moment ago is on everyone's
+    // map within a minute rather than up to five. It is one small document.
+    _gwcfcTimer = setInterval(() => {
+      if (document.hidden) return;
+      _gwcfcDocCache = { at: 0, doc: null };
+      _gwcfcRefresh();
+    }, 60 * 1000);
   } else {
     clearInterval(_gwcfcTimer);
     _gwcfcTimer = null;
     _gwcfcClear();
+    _gwcfcLastKey = null;
   }
 }
 
@@ -47808,8 +47824,9 @@ async function _scIssue() {
   const n = _scCones.length + (_scTrack && _scTrack.ring ? 1 : 0);
   if (!n) { _scSetStatus('Draw a cone first, then issue it.'); return; }
   const ok = window.confirm(`Issue ${n} forecast cone${n === 1 ? '' : 's'} to everyone now?\n\n`
-    + 'They replace the cones in the GWCFC outlook in force. Its storms and '
-    + 'areas stay as they are.');
+    + 'They join the cones already in the GWCFC outlook in force, and its '
+    + 'storms and areas stay as they are. They show up in the Forecasting '
+    + 'Portal and on the GWCFC Outlooks overlay for everyone.');
   if (!ok) return;
   const btn = document.getElementById('sc-issue-btn');
   if (btn) btn.disabled = true;
@@ -75319,6 +75336,7 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-26-a', date: 'Sep 26, 2026', text: 'Forecast cones issued by a forecaster now show up everywhere. A cone issued from the radar appears in the Forecasting Portal (even one that is already open, within a minute), and a cone from the portal appears in the radar\'s Forecaster Desk. Issuing new cones adds to the ones already out instead of wiping them, and each published cone can be removed on its own. The GWCFC Outlooks overlay draws every issued cone and now checks for new ones every minute instead of every five.' },
   { id: '2026-09-25-zzzzzzzzzzz', date: 'Sep 25, 2026', text: 'Right-click, Radar is now instant: opening the menu gets the nearest radar ready, and clicking Radar puts its picture on the map in well under a millisecond. The menus and loop catch up a frame later. A radar nobody has loaded yet still has to download first, which takes a few seconds.' },
   { id: '2026-09-25-zzzzzzzzzz', date: 'Sep 25, 2026',
     text: 'Every panel and popup that wore heavy frost now wears subtle frost, the same gentle blur and firmer fill as the rest of the app: the shared panel look, map popups, the alerts, EAS and forecast panels, alert and radio popups, the outlook controls, the 3D panels, the station popup, the search dropdown and the Did You Know card.' },
@@ -79249,7 +79267,7 @@ const OV_DESCRIPTIONS = {
   'spc-reports':      'Tornado, hail, and wind reports logged by local National Weather Service offices today.',
   'nhc-outlook':      "The National Hurricane Center's 5 day tropical outlook, including any active hurricanes or tropical storms and their forecast tracks. Tap a shaded area for the forecaster's own written Tropical Weather Outlook discussion.",
   'jtwc-outlook':     "The Joint Typhoon Warning Center's active systems, which is everything the National Hurricane Center does not cover: the western Pacific, the Indian Ocean and the southern hemisphere. That is the basin that produces the most tropical cyclones on Earth, and without this the map goes blank across it. A typhoon and a hurricane are the same thing with two names, so they are drawn with the same icons. JTWC is the US Navy rather than the National Weather Service, and it issues on a six hourly cycle. If the layer draws nothing, run _jtwcCheck() in the browser console to tell an empty basin apart from an unreachable server.",
-  'gwcfc-outlook':    "Our own outlook, drawn by GWCFC forecasters on the Forecasting Portal and published from there. Everything on the published outlook appears here exactly as the forecaster composed it: development-chance areas (Low through Extreme), alert areas, storm markers, forecast cones with their centre line and time dots, and any alerts the desk has in force (unless the GWCFC Alerts overlay is on, which then owns them). Refreshes every five minutes while on. If nothing draws, no outlook is currently published.",
+  'gwcfc-outlook':    "Our own outlook, drawn by GWCFC forecasters on the Forecasting Portal and published from there. Everything on the published outlook appears here exactly as the forecaster composed it: development-chance areas (Low through Extreme), alert areas, storm markers, forecast cones with their centre line and time dots, and any alerts the desk has in force (unless the GWCFC Alerts overlay is on, which then owns them). Published from the portal or from the radar itself (the Forecaster Desk, or the Issue button on the Storm Cone toolbar). Checks for a new issue every minute while on. If nothing draws, no outlook is currently published.",
   'gwcfc-alerts':     "Warnings, watches and statements issued from the Forecasting Portal's alert desk: the GWCFC's own products, drawn as polygons in standard alert colours. Only alerts still in force appear, and an expired one leaves the map on its own. Tap a polygon for the product, the area it covers and when it ends. Checks for new issuances every minute while on.",
       'radar-normal':     "The radar products this site has always shown, served as tiles: MRMS, reflectivity, velocity, hydrometeor class and the two accumulations.",
   'radar-l2':         "Level 2 is what the radar itself produces: every gate of every sweep, streamed straight from the live feed and decoded in your browser. Pick any station on the map, including the T pills, which are the terminal radars at major airports.",
@@ -88092,6 +88110,12 @@ let _fdWanted = false;           // the desk was asked for before sign-in
 let _fdActive = false;           // composing: the preview is on the map
 let _fdSeeded = false;
 let _fdOutlook = { storms: [], areas: [] };
+// The cones already published, whoever issued them and from wherever (this
+// page's Storm Cone toolbar, or the portal). Kept apart from the Storm Cone
+// tool's own cones, because the tool only knows the cones drawn on this
+// screen: publishing only those used to wipe every cone somebody else had
+// out, and a cone issued here never came back into the portal at all.
+let _fdPubCones = [];
 let _fdArmed = null;             // { kind:'storm', cat }
 let _fdZone  = null;             // an area being clicked out
 let _fdPick  = null;             // counties / zones / provinces being clicked
@@ -88262,6 +88286,9 @@ function _fdSerializeCones() {
   const ll = (x) => [Number(x.lat.toFixed(4)), Number(x.lng.toFixed(4))];
   const cones = (typeof _scCones !== 'undefined' && _scCones) ? _scCones : [];
   const list = cones.map(c => ({
+    // A stable name for this cone across publishes, so issuing it again
+    // replaces its earlier copy instead of stacking a second one on top.
+    pid: c.pid || (c.pid = _fdRid()),
     id: c.id, speed: c.speed, curve: c.curve, dots: c.dots, offset: c.offset,
     width: c.width == null ? null : c.width,
     style: c.style || null,
@@ -88277,7 +88304,8 @@ function _fdSerializeCones() {
   // without pressing New should not quietly drop it from the outlook.
   const live = (typeof _scTrack !== 'undefined') ? _scTrack : null;
   if (live && live.ring && !cones.some(c => c.track === live)) {
-    list.push({ id: 'live', speed: null, curve: null, dots: null, offset: null,
+    list.push({ pid: live.pid || (live.pid = _fdRid()),
+      id: 'live', speed: null, curve: null, dots: null, offset: null,
       style: (typeof _scStyle !== 'undefined' ? _scStyle : null),
       cats: live.pointCats || null,
       mode: live.mode || null,
@@ -88287,7 +88315,14 @@ function _fdSerializeCones() {
       ring: live.ring.map(ll),
       center: _scCentreOf(live).map(ll) });
   }
-  return list;
+  // Then every cone already out there that is not one of these.
+  const mine = new Set(list.map(c => c.pid));
+  return _fdPubCones.filter(c => !mine.has(c.pid)).concat(list);
+}
+function _fdRemovePubCone(pid) {
+  _fdPubCones = _fdPubCones.filter(c => c.pid !== pid);
+  // A cone still drawn with the Storm Cone tool is removed there, not here.
+  _fdRedraw();
 }
 
 // The Alert Desk's products, exactly as it stores them.
@@ -88311,6 +88346,10 @@ async function _fdSeedFromPublished() {
   if (Array.isArray(out.areas)) {
     _fdOutlook.areas = out.areas
       .map(a => Object.assign({}, a, { id: a.id || _fdRid() }));
+  }
+  if (Array.isArray(out.cones)) {
+    _fdPubCones = out.cones.filter(c => c && Array.isArray(c.ring) && c.ring.length > 2)
+      .map(c => Object.assign({}, c, { pid: c.pid || _fdRid() }));
   }
 }
 
@@ -88582,8 +88621,9 @@ function _fdToggleRound(id) {
   _fdRedraw();
 }
 function _fdClearAll() {
-  if (!_fdOutlook.storms.length && !_fdOutlook.areas.length) return;
+  if (!_fdOutlook.storms.length && !_fdOutlook.areas.length && !_fdPubCones.length) return;
   _fdOutlook = { storms: [], areas: [] };
+  _fdPubCones = [];
   _fdRedraw();
   _fdStatus('Cleared. Nothing is published until you press Issue.');
 }
@@ -88637,6 +88677,9 @@ async function _fdPublish() {
     // a forecaster who issues and then turns the overlay on to check is shown
     // the previous outlook and reasonably concludes it did not work.
     _gwcfcDocCache = { at: 0, doc: null };
+    // What went out is now what is in force, so it stays on the next issue
+    // even if the Storm Cone tool is cleared in between.
+    _fdPubCones = cones.map(c => Object.assign({}, c));
     if (typeof _gwcfcOn !== 'undefined' && _gwcfcOn
         && typeof _gwcfcRefresh === 'function') _gwcfcRefresh();
     _fdStatus('Issued at ' + doc.issued.slice(11, 16) + 'Z as ' + name + '.');
@@ -88813,11 +88856,27 @@ function _fdRenderList() {
       + `<button type="button" class="ad-btn ad-mini ad-danger"`
       + ` onclick="_fdRemove('areas','${a.id}')">Remove</button></div>`);
   });
-  const cones = _fdSerializeCones().length;
+  const all = _fdSerializeCones();
+  const pubOnly = new Set(_fdPubCones.map(c => c.pid));
+  const toolN = all.filter(c => !pubOnly.has(c.pid)
+    || (typeof _scCones !== 'undefined' && _scCones.some(t => t.pid === c.pid))
+    || (typeof _scTrack !== 'undefined' && _scTrack && _scTrack.pid === c.pid)).length;
   const alerts = _fdSerializeDesk().length;
-  if (cones) rows.push(`<div class="fd-item"><span class="fd-grow">`
-    + `${cones} forecast cone${cones === 1 ? '' : 's'} from the Storm Cone `
+  if (toolN) rows.push(`<div class="fd-item"><span class="fd-grow">`
+    + `${toolN} forecast cone${toolN === 1 ? '' : 's'} from the Storm Cone `
     + `tool</span></div>`);
+  // Cones already published and not on this screen's tool: listed one by
+  // one so any of them can be taken off the outlook.
+  all.forEach((c, i) => {
+    if (!pubOnly.has(c.pid)) return;
+    if (typeof _scCones !== 'undefined' && _scCones.some(t => t.pid === c.pid)) return;
+    if (typeof _scTrack !== 'undefined' && _scTrack && _scTrack.pid === c.pid) return;
+    const at = (c.center && c.center[0]) || c.start || c.ring[0];
+    rows.push(`<div class="fd-item"><span class="fd-grow">Published forecast cone`
+      + (at ? ` from ${Number(at[0]).toFixed(1)}, ${Number(at[1]).toFixed(1)}` : '')
+      + `</span><button type="button" class="ad-btn ad-mini ad-danger"`
+      + ` onclick="_fdRemovePubCone('${_ccEsc(String(c.pid))}')">Remove</button></div>`);
+  });
   if (alerts) rows.push(`<div class="fd-item"><span class="fd-grow">`
     + `${alerts} alert${alerts === 1 ? '' : 's'} in force at the Alert Desk`
     + `</span></div>`);
