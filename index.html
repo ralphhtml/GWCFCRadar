@@ -7043,6 +7043,8 @@ html.ios-lite #site-pop { background: linear-gradient(180deg, rgba(22,26,32,0.94
 .rc-divider.angled { top: -150vmax; bottom: -150vmax; }
 .rc-divider.horizontal.angled { top: auto; bottom: auto; left: -150vmax; right: -150vmax; }
 #rc-dividers, #sc-dividers, #xc-dividers { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 650; }
+/* A comparison polygon replaces the straight split line. */
+body.cmp-poly-on #rc-dividers .rc-divider, body.cmp-poly-on #sc-dividers .rc-divider, body.cmp-poly-on #xc-dividers .rc-divider { display: none; }
 /* The rotate, peek and split-size buttons that used to float in the map's
    corner beside each comparison live in the Compare tool's menu bar now. */
 #rc-rotate-btn, #sc-rotate-btn, #rc-peek-btn, #sc-peek-btn, .cmp-grid-btn { display: none !important; }
@@ -12116,6 +12118,10 @@ body.clean-mode #clean-hint { opacity: 1; }
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
   </button>
   <!-- Close -->
+  <!-- Use the newest drawn shape as a comparison split -->
+  <button class="dtb-btn" id="dtb-compare" onclick="_cmpFromDrawing()" title="Compare: one layer inside the last shape drawn, another outside">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" width="17" height="17"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 2v20"/></svg>
+  </button>
   <button id="dtb-close" onclick="deactivateTool()" title="Exit draw mode"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-close></use></svg></button>
 </div>
 <div id="dtb-status">Drawing mode paused</div>
@@ -12278,6 +12284,10 @@ body.clean-mode #clean-hint { opacity: 1; }
   <button class="ptb-btn" id="ptb-filter" onclick="_polyToggleFilter()" title="Apply polygon filter to all layers">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
   </button>
+  <!-- Use the polygon as a comparison split -->
+  <button class="ptb-btn" id="ptb-compare" onclick="_cmpFromPolygon()" title="Compare: one layer inside this polygon, another outside">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" width="17" height="17"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 2v20"/></svg>
+  </button>
   <!-- View the polygon's area in 3D -->
   <button class="ptb-btn" id="ptb-3d" onclick="_r3dFromPolygon(event)" title="View this polygon in 3D (Radar, Satellite, Model or a layer), shaped like the polygon">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" width="17" height="17"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
@@ -12307,6 +12317,9 @@ body.clean-mode #clean-hint { opacity: 1; }
   </div>
   <div class="dtb-sep"></div>
   <button class="ptb-btn cmp-wide" id="cmp-grid" onclick="_cmpToolGrid()" title="Cycle the split: double, quad, octo">Double</button>
+  <button class="ptb-btn cmp-wide" id="cmp-poly" onclick="_cmpToolPoly()" title="Draw a comparison polygon: pane B inside it, pane A outside">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" width="13" height="13" style="vertical-align:-2px"><polyline points="12,3 21,9 18,20 6,20 3,9 12,3"/></svg> Polygon
+  </button>
   <button class="ptb-btn" id="cmp-rotate" onclick="_cmpToolRotate()" title="Rotate the whole split: side by side or stacked">
     <svg class=svgi width=1em height=1em><use href=#ic-swap></use></svg>
   </button>
@@ -56724,6 +56737,11 @@ function _cmpClipHalf(poly, g, sign) {
 // this cell sits on. Returns the pane's clip-path (in the pane's own layer
 // pixels, which ride the pan) and where its label belongs (view pixels).
 function _cmpCellGeometry(row, col, colSplits, rowSplits, colRots, rowRots) {
+  // A comparison polygon replaces the straight split of a two-pane
+  // comparison: pane A outside it, pane B inside.
+  if (_cmpPolyActive() && colSplits.length + rowSplits.length === 1) {
+    return _cmpPolyCellGeometry(row + col > 0);
+  }
   const pos = (map._mapPane && L.DomUtil.getPosition(map._mapPane)) || { x: 0, y: 0 };
   const size = map.getSize();
   const cut = (poly) => {
@@ -56744,6 +56762,48 @@ function _cmpCellGeometry(row, col, colSplits, rowSplits, colRots, rowRots) {
   const pts = big.map(([x, y]) => [x - pos.x, y - pos.y]);
   return { polygon, pts, leftView: lx, topView: ly, visible: seen.length >= 3 };
 }
+
+// -- The comparison polygon --------------------------------------------------
+// Instead of a straight line down the map, a shape drawn by hand: pane B
+// shows inside it and pane A everywhere else. Held as places on the map
+// (latitude and longitude), not screen pixels, so it stays over the same
+// towns as the map pans and zooms. It works for every comparison with two
+// panes: radar beside radar, satellite beside satellite, and cross layer.
+let _cmpPolyLL = null;          // [L.LatLng], three or more
+let _cmpPolyOutline = null;     // the dashed outline drawn on top
+function _cmpPolyActive() {
+  return !!(_cmpPolyLL && _cmpPolyLL.length >= 3 && typeof map !== 'undefined' && map);
+}
+function _cmpPolyCellGeometry(inside) {
+  const pos = (map._mapPane && L.DomUtil.getPosition(map._mapPane)) || { x: 0, y: 0 };
+  const size = map.getSize(), W = size.x, H = size.y;
+  // Pane pixels, which is what a clip-path on a pane is measured in.
+  const poly = _cmpPolyLL.map(ll => { const q = map.latLngToLayerPoint(ll); return [q.x, q.y]; });
+  const ring = (pts) => 'M' + pts.map(([x, y]) => x.toFixed(1) + ' ' + y.toFixed(1)).join(' L') + ' Z';
+  const rect = [[-5 * W - pos.x, -5 * H - pos.y], [6 * W - pos.x, -5 * H - pos.y],
+                [6 * W - pos.x, 6 * H - pos.y], [-5 * W - pos.x, 6 * H - pos.y]];
+  if (inside) {
+    // The label sits by the shape's top corner, on screen.
+    let lx = 0, ly = 0, best = Infinity;
+    poly.forEach(([x, y]) => { const vx = x + pos.x, vy = y + pos.y; if (vy < best) { best = vy; lx = vx; ly = vy; } });
+    const d = ring(poly);
+    return { polygon: `path('${d}')`, pts: poly, d, rule: 'nonzero',
+             leftView: Math.max(0, Math.min(W - 120, lx)), topView: Math.max(0, Math.min(H - 30, ly)), visible: true };
+  }
+  // Everything but the shape: the whole map with the shape cut out of it.
+  const d = ring(rect) + ' ' + ring(poly);
+  return { polygon: `path(evenodd, '${d}')`, pts: rect, d, rule: 'evenodd',
+           leftView: 0, topView: 0, visible: true };
+}
+function _cmpPolyContains(vx, vy) {
+  const pts = _cmpPolyLL.map(ll => { const q = map.latLngToContainerPoint(ll); return [q.x, q.y]; });
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [xi, yi] = pts[i], [xj, yj] = pts[j];
+    if ((yi > vy) !== (yj > vy) && vx < (xj - xi) * (vy - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
 // Where one line's element sits and how it is turned. An unturned line is
 // exactly as before; a turned one is made long enough to cross the whole
 // map at any angle, still centred on its pivot.
@@ -56759,6 +56819,10 @@ function _cmpPlaceLine(el, axis, pct, rot) {
 // lines, and past how many row lines, it is. Angled lines included, so the
 // answer always matches the cut the panes are actually drawn with.
 function _cmpCellAt(vx, vy, colSplits, rowSplits, colRots, rowRots) {
+  if (_cmpPolyActive() && colSplits.length + rowSplits.length === 1) {
+    const inn = _cmpPolyContains(vx, vy) ? 1 : 0;
+    return colSplits.length ? { row: 0, col: inn } : { row: inn, col: 0 };
+  }
   const size = map.getSize();
   const past = (g) => (vx - g.px) * g.nx + (vy - g.py) * g.ny > 0;
   let col = 0, row = 0;
@@ -75336,6 +75400,7 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-26-b', date: 'Sep 26, 2026', text: 'Comparisons can now be split by a shape instead of a straight line. In the Compare menu, press Polygon and tap the corners (tap the first corner again, double-click or press Enter to finish). Pane B shows inside the shape and pane A everywhere else, and the shape stays put as you pan and zoom. The Polygon tool and the Draw tool each have a new Compare button that turns the shape you drew (circles and rectangles too) into the comparison split. Works for radar beside radar, satellite beside satellite, and cross layer.' },
   { id: '2026-09-26-a', date: 'Sep 26, 2026', text: 'Forecast cones issued by a forecaster now show up everywhere. A cone issued from the radar appears in the Forecasting Portal (even one that is already open, within a minute), and a cone from the portal appears in the radar\'s Forecaster Desk. Issuing new cones adds to the ones already out instead of wiping them, and each published cone can be removed on its own. The GWCFC Outlooks overlay draws every issued cone and now checks for new ones every minute instead of every five.' },
   { id: '2026-09-25-zzzzzzzzzzz', date: 'Sep 25, 2026', text: 'Right-click, Radar is now instant: opening the menu gets the nearest radar ready, and clicking Radar puts its picture on the map in well under a millisecond. The menus and loop catch up a frame later. A radar nobody has loaded yet still has to download first, which takes a few seconds.' },
   { id: '2026-09-25-zzzzzzzzzz', date: 'Sep 25, 2026',
@@ -94666,9 +94731,15 @@ function _xcUpdateClips() {
     }
     // One outline per pane it was given, as one path: a layer in two panes
     // shows in both.
-    const d = idx.map(i => geoms[i].pts).filter(pts => pts && pts.length >= 3)
-      .map(pts => 'M' + pts.map(([x, y]) => x.toFixed(1) + ' ' + y.toFixed(1)).join(' L') + ' Z').join(' ');
-    const clip = d ? `path('${d}')` : 'polygon(0px 0px, 0px 0px, 0px 0px)';
+    const d = idx.map(i => geoms[i].d || ((geoms[i].pts && geoms[i].pts.length >= 3)
+        ? 'M' + geoms[i].pts.map(([x, y]) => x.toFixed(1) + ' ' + y.toFixed(1)).join(' L') + ' Z' : ''))
+      .filter(Boolean).join(' ');
+    // The same layer both inside and outside a comparison polygon is simply
+    // the whole map; the area outside alone has a hole in it.
+    const whole = idx.length > 1 && idx.some(i => geoms[i].rule === 'evenodd');
+    const odd = !whole && idx.some(i => geoms[i].rule === 'evenodd');
+    const clip = whole ? '' : !d ? 'polygon(0px 0px, 0px 0px, 0px 0px)'
+      : odd ? `path(evenodd, '${d}')` : `path('${d}')`;
     els.forEach(el => { if (el.style.clipPath !== clip) el.style.clipPath = clip; _xcClipped.add(el); });
   });
   _xcLabelEls.forEach((el, i) => {
@@ -94763,6 +94834,15 @@ function _cmpToolbarRefresh() {
   // one when its second radar joins); End just needs something running.
   ['cmp-grid', 'cmp-rotate', 'cmp-peek'].forEach(id => { $(id).disabled = !grid; });
   $('cmp-end').disabled = !act;
+  // A polygon outlives nothing: with no comparison left, it goes too.
+  if (!act && _cmpPolyActive()) _cmpPolyClear();
+  const pb = $('cmp-poly');
+  if (pb) {
+    pb.classList.toggle('active', _cmpPolyActive() || _cmpPolyDrawing);
+    pb.title = _cmpPolyActive() ? 'Remove the comparison polygon (back to a straight split)'
+      : _cmpPolyDrawing ? 'Cancel drawing the polygon'
+      : 'Draw a comparison polygon: pane B inside it, pane A outside';
+  }
   // One picker per pane in a cross-layer split.
   const wrap = $('cmp-cells');
   if (cross && _xcOn) {
@@ -94817,6 +94897,8 @@ function _cmpToolSat() {
   _cmpToolbarRefresh();
 }
 function _cmpToolGrid() {
+  // Quad and octo are cut by lines; a polygon only splits two panes.
+  if (_cmpPolyActive()) { _cmpPolyClear(); _cmpToolbarRefresh(); return; }
   const a = _cmpActive();
   if (a === 'xc') _xcGridCycle();
   if (a === 'rc' || (typeof _rcOn !== 'undefined' && _rcOn && a !== 'xc')) _rcGridCycle();
@@ -94905,11 +94987,179 @@ function _cmpToolSpinDir() {
   _cmpSpinSyncBtns();
 }
 function _cmpToolEnd() {
+  _cmpPolyClear();
   if (_xcOn) _xcOff();
   if (typeof _rcOn !== 'undefined' && _rcOn) _rcOff();
   if (typeof _scOn !== 'undefined' && _scOn) _scOff();
   _cmpToolbarRefresh();
 }
+// -- Making and removing the comparison polygon ------------------------------
+function _cmpPolyRedrawAll() {
+  try { if (typeof _xcOn !== 'undefined' && _xcOn) _xcUpdateClips(); } catch (e) {}
+  try { if (typeof _rcOn !== 'undefined' && _rcOn) _rcUpdateClips(); } catch (e) {}
+  try { if (typeof _scOn !== 'undefined' && _scOn) _scUpdateClips(); } catch (e) {}
+}
+function _cmpPolyClear() {
+  if (_cmpPolyOutline) { try { map.removeLayer(_cmpPolyOutline); } catch (e) {} _cmpPolyOutline = null; }
+  const had = !!_cmpPolyLL;
+  _cmpPolyLL = null;
+  document.body.classList.remove('cmp-poly-on');
+  if (had) {
+    try { map.off('zoomend moveend viewreset', _cmpPolyRedrawAll); } catch (e) {}
+    _cmpPolyRedrawAll();
+  }
+}
+// Use a shape as the split. Any list of places with three or more corners:
+// one drawn here, the Polygon tool's, or a shape from the Draw tool. With no
+// comparison running, a cross-layer one starts (radar inside, satellite
+// outside, or whatever the panes are then set to); a quad or octo split
+// becomes a double, since a shape has one inside and one outside.
+function _cmpPolySet(latlngs) {
+  const pts = (latlngs || []).map(q => L.latLng(q.lat, q.lng != null ? q.lng : q.lon))
+    .filter(q => isFinite(q.lat) && isFinite(q.lng));
+  if (pts.length < 3) {
+    if (typeof showToast === 'function') showToast('A comparison polygon needs at least three corners.', 3000);
+    return false;
+  }
+  const rcOn = typeof _rcOn !== 'undefined' && _rcOn, scOn = typeof _scOn !== 'undefined' && _scOn;
+  if (!_xcOn && !rcOn && !scOn) _xcStart();
+  const two = (g) => g && g.rows * g.cols === 2;
+  if (_xcOn && !two(_xcGrid)) { _xcSetGrid(1, 2); _xcRefreshDOM(); }
+  if (rcOn && _rcGrid && !two(_rcGrid) && _rcSetGrid(1, 2)) _rcRefreshDOM();
+  if (scOn && _scGrid && !two(_scGrid) && _scSetGrid(1, 2)) _scRefreshDOM();
+  _cmpPolyClear();
+  _cmpPolyLL = pts;
+  if (!map.getPane('cmpPolyPane')) {
+    const pane = map.createPane('cmpPolyPane');
+    pane.style.zIndex = 640;
+    pane.style.pointerEvents = 'none';
+  }
+  _cmpPolyOutline = L.polygon(pts, { pane: 'cmpPolyPane', color: '#ffffff', weight: 2.5,
+    opacity: 0.95, dashArray: '8 6', fill: false, interactive: false }).addTo(map);
+  document.body.classList.add('cmp-poly-on');
+  map.on('zoomend moveend viewreset', _cmpPolyRedrawAll);
+  _cmpPolyRedrawAll();
+  _cmpToolbarRefresh();
+  if (rcOn && !_rcGrid && typeof showToast === 'function') {
+    showToast('Polygon set. Tap a second radar pill: that radar shows inside the shape.', 4500);
+  } else if (typeof showToast === 'function') {
+    showToast('Comparison polygon on: pane B inside the shape, pane A outside. Pick what each shows in the Compare menu.', 4500);
+  }
+  return true;
+}
+
+// Drawing one straight from the Compare menu: tap the corners, then tap the
+// first corner again, double-click, or press Enter. Esc cancels. The map
+// still pans between taps.
+let _cmpPolyDrawing = false, _cmpPolyDraft = [], _cmpPolyPreview = null, _cmpPolyDown = null, _cmpPolyDbl = true;
+function _cmpToolPoly() {
+  if (_cmpPolyDrawing) { _cmpPolyDrawStop(); return; }
+  if (_cmpPolyActive()) { _cmpPolyClear(); _cmpToolbarRefresh(); return; }
+  _cmpPolyDrawStart();
+}
+function _cmpPolyDrawStart() {
+  _cmpPolyDrawing = true;
+  _cmpPolyDraft = [];
+  const c = map.getContainer();
+  c.style.cursor = 'crosshair';
+  try { _cmpPolyDbl = map.doubleClickZoom.enabled(); map.doubleClickZoom.disable(); } catch (e) {}
+  c.addEventListener('pointerdown', _cmpPolyPDown, true);
+  c.addEventListener('click', _cmpPolyClick, true);
+  c.addEventListener('dblclick', _cmpPolyDblClick, true);
+  document.addEventListener('keydown', _cmpPolyKey, true);
+  if (typeof showToast === 'function') showToast('Tap the corners of the shape. Tap the first corner again, double-click or press Enter to finish; Esc cancels.', 5000);
+  _cmpToolbarRefresh();
+}
+function _cmpPolyDrawStop() {
+  if (!_cmpPolyDrawing) return;
+  _cmpPolyDrawing = false;
+  const c = map.getContainer();
+  c.style.cursor = '';
+  c.removeEventListener('pointerdown', _cmpPolyPDown, true);
+  c.removeEventListener('click', _cmpPolyClick, true);
+  c.removeEventListener('dblclick', _cmpPolyDblClick, true);
+  document.removeEventListener('keydown', _cmpPolyKey, true);
+  if (_cmpPolyDbl) { try { map.doubleClickZoom.enable(); } catch (e) {} }
+  if (_cmpPolyPreview) { try { map.removeLayer(_cmpPolyPreview); } catch (e) {} _cmpPolyPreview = null; }
+  _cmpPolyDraft = [];
+  _cmpToolbarRefresh();
+}
+function _cmpPolyFinish() {
+  const pts = _cmpPolyDraft.slice();
+  _cmpPolyDrawStop();
+  if (pts.length >= 3) _cmpPolySet(pts);
+  else if (typeof showToast === 'function') showToast('A comparison polygon needs at least three corners.', 3000);
+}
+function _cmpPolyPDown(e) { _cmpPolyDown = { x: e.clientX, y: e.clientY }; }
+function _cmpPolyClick(e) {
+  if (e.target && e.target.closest && e.target.closest('.leaflet-control')) return;
+  // A drag that pans the map ends in a click too; that one is not a corner.
+  if (_cmpPolyDown && Math.hypot(e.clientX - _cmpPolyDown.x, e.clientY - _cmpPolyDown.y) > 6) return;
+  e.stopPropagation(); e.preventDefault();
+  const r = map.getContainer().getBoundingClientRect();
+  const pt = L.point(e.clientX - r.left, e.clientY - r.top);
+  if (_cmpPolyDraft.length >= 3) {
+    const first = map.latLngToContainerPoint(_cmpPolyDraft[0]);
+    if (first.distanceTo(pt) < 12) { _cmpPolyFinish(); return; }
+  }
+  _cmpPolyDraft.push(map.containerPointToLatLng(pt));
+  if (_cmpPolyPreview) { try { map.removeLayer(_cmpPolyPreview); } catch (err) {} }
+  _cmpPolyPreview = L.polyline(_cmpPolyDraft.concat(_cmpPolyDraft.length > 2 ? [_cmpPolyDraft[0]] : []),
+    { color: '#ffffff', weight: 2, dashArray: '4 4', interactive: false }).addTo(map);
+}
+function _cmpPolyDblClick(e) {
+  e.stopPropagation(); e.preventDefault();
+  // The double-click's own two clicks each added a corner at the same spot.
+  if (_cmpPolyDraft.length > 3) _cmpPolyDraft.pop();
+  _cmpPolyFinish();
+}
+function _cmpPolyKey(e) {
+  if (e.key === 'Escape') { e.stopPropagation(); _cmpPolyDrawStop(); }
+  else if (e.key === 'Enter') { e.stopPropagation(); _cmpPolyFinish(); }
+}
+// From the Polygon tool's menu: the polygon being drawn there.
+function _cmpFromPolygon() {
+  const pts = (typeof _polyPts !== 'undefined' && _polyPts) || [];
+  if (pts.length < 3) {
+    if (typeof showToast === 'function') showToast('Draw a polygon with at least three corners first.', 2600);
+    return false;
+  }
+  return _cmpPolySet(pts);
+}
+// From the Draw tool's menu: the newest closed shape drawn (rectangle,
+// circle, ellipse, triangle, diamond, star) or a freehand loop.
+function _cmpDrawnShapePts(layer) {
+  if (!layer) return null;
+  if (layer instanceof L.Circle) {
+    const c = layer.getLatLng(), rM = layer.getRadius(), out = [];
+    for (let i = 0; i < 48; i++) {
+      const a = i / 48 * 2 * Math.PI;
+      out.push(L.latLng(c.lat + (rM * Math.cos(a)) / 111320,
+        c.lng + (rM * Math.sin(a)) / (111320 * Math.cos(c.lat * Math.PI / 180))));
+    }
+    return out;
+  }
+  if (layer.getLatLngs) {
+    let ll = layer.getLatLngs();
+    while (Array.isArray(ll) && Array.isArray(ll[0])) ll = ll[0];
+    return Array.isArray(ll) && ll.length >= 3 ? ll : null;
+  }
+  if (layer.getLayers) {
+    const kids = layer.getLayers();
+    for (let i = kids.length - 1; i >= 0; i--) { const p = _cmpDrawnShapePts(kids[i]); if (p) return p; }
+  }
+  return null;
+}
+function _cmpFromDrawing() {
+  const list = (typeof _allToolLayers !== 'undefined' && _allToolLayers) || [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const pts = _cmpDrawnShapePts(list[i]);
+    if (pts) return _cmpPolySet(pts);
+  }
+  if (typeof showToast === 'function') showToast('Draw a shape first (a rectangle, circle, triangle, star or a freehand loop), then press Compare.', 3500);
+  return false;
+}
+
 (function _cmpWireToolbar() {
   const bar = document.getElementById('cmp-toolbar');
   if (!bar) return;
