@@ -1056,6 +1056,31 @@ async function acctRemoved(user) {
   try { await user.delete(); } catch (e) { try { await _fbAuth.signOut(); } catch (e2) {} }
   return true;
 }
+// Bans set by the owner in the radar app hold here too: by account, email,
+// this browser's device id (the same one the radar app made, since both
+// pages share a site) and the network's IP as our parsing server sees it.
+async function acctBanned(user) {
+  if (!_fbDb || String(user.email || '').toLowerCase() === 'ralphies1005@gmail.com') return null;
+  let dev = '', ip = '';
+  try { dev = localStorage.getItem('gwcfc_device_id') || ''; } catch (e) {}
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 5000);
+    const r = await fetch('https://gwcfc.pythonsden.net/whoami', { cache: 'no-store', signal: ctl.signal });
+    clearTimeout(t);
+    if (r.ok) ip = String((await r.json()).ip || '').trim().toLowerCase();
+  } catch (e) {}
+  const ids = [['uid', user.uid], ['email', String(user.email || '').trim().toLowerCase()],
+               ['device', dev], ['ip', /^[0-9a-f:.]{3,45}$/.test(ip) ? ip : '']]
+    .filter(p => p[1]).map(p => p[0] + ':' + String(p[1]).replace(/\//g, ''));
+  for (const id of ids) {
+    try {
+      const snap = await _fbDb.collection('bans').doc(id).get();
+      if (snap.exists) return snap.data() || {};
+    } catch (e) {}
+  }
+  return null;
+}
 async function onAccount(user) {
   const who = document.getElementById('acct-who');
   if (!user || user.isAnonymous) {
@@ -1066,6 +1091,12 @@ async function onAccount(user) {
   }
   if (await acctRemoved(user)) {
     gateShow('That GWCFC account has been deleted. Create a new one on the GWCFC Radar to listen.', true);
+    return;
+  }
+  const ban = await acctBanned(user);
+  if (ban) {
+    document.getElementById('app').innerHTML = '';
+    gateShow('This account has been banned from GWCFC.' + (ban.reason ? ' Reason: ' + String(ban.reason).slice(0, 300) : ''), true);
     return;
   }
   document.getElementById('acct-gate').classList.add('off');

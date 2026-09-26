@@ -263,6 +263,9 @@ class CORSHandler(SimpleHTTPRequestHandler):
     # The read-side doors; every other GET is plain file serving.
     def do_GET(self):
         head = self.path.split("?")[0]
+        if head == "/whoami":
+            self._whoami()
+            return
         if head == "/relay/ambient":
             self._relay_ambient()
             return
@@ -1014,6 +1017,29 @@ class CORSHandler(SimpleHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except OSError:
+            pass
+
+    # The address a visitor is connecting from, told back to that visitor
+    # only. The radar app uses it for one thing: checking the owner's IP ban
+    # list, since a web page cannot see its own address and the database
+    # rules cannot either. Behind the tunnel every connection arrives from
+    # localhost, so the address is the one the tunnel forwards. Nothing is
+    # logged or kept here.
+    def _client_ip(self):
+        return (self.headers.get("CF-Connecting-IP")
+                or self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                or self.client_address[0])
+
+    def _whoami(self):
+        body = json.dumps({"ip": self._client_ip()}).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         try:
             self.wfile.write(body)
