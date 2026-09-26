@@ -51511,21 +51511,220 @@ function kbdApplyPreset(id) {
   _kbdBinds = Object.assign({}, P.binds);
   _kbdPreset = id;
   _kbdSave();
+  // Your own shortcuts stay; one on a key the preset now uses gives it up.
+  const taken = new Set(Object.values(_kbdBinds));
+  _kbdExtraLoad().forEach(x => { if (x.chord && taken.has(x.chord)) x.chord = ''; });
+  _kbdExtraSave();
   if (typeof _kbdRenderSettings === 'function') _kbdRenderSettings();
 }
 
 function kbdBindAction(actionId, chord) {
   _kbdLoad();
-  if (!chord) { delete _kbdBinds[actionId]; }
-  else {
-    // One chord, one action. Leaving a duplicate would make which one runs
-    // depend on the order of a list nobody can see.
+  _kbdExtraLoad();
+  // One chord, one action, across the built-in list and your own. Leaving a
+  // duplicate would make which one runs depend on the order of a list nobody
+  // can see.
+  if (chord) {
     Object.keys(_kbdBinds).forEach(k => { if (_kbdBinds[k] === chord) delete _kbdBinds[k]; });
-    _kbdBinds[actionId] = chord;
+    _kbdExtra.forEach(x => { if (x.chord === chord) x.chord = ''; });
   }
-  _kbdPreset = 'custom';
-  _kbdSave();
+  const extra = _kbdExtra.find(x => x.id === actionId);
+  if (extra) {
+    extra.chord = chord || '';
+    _kbdExtraSave();
+    _kbdSave();
+  } else {
+    if (!chord) delete _kbdBinds[actionId];
+    else _kbdBinds[actionId] = chord;
+    _kbdPreset = 'custom';
+    _kbdSave();
+    _kbdExtraSave();
+  }
   if (typeof _kbdRenderSettings === 'function') _kbdRenderSettings();
+}
+
+// -- Shortcuts for anything ----------------------------------------------------
+// The list above is the radar products and playback, which is what most
+// people want keys for. Anything else in the app gets a key here, two ways:
+//
+//   From the list: every entry the search bar knows (each overlay, radar
+//   product, menu, panel, tool and Settings category), read from the same
+//   catalogue the search builds, so a new overlay can be bound the day it
+//   exists. It runs exactly what choosing it in the search runs.
+//
+//   By pointing: "Pick a button" puts Settings away and the next thing tapped
+//   (any button, pill, toggle or menu row anywhere) becomes the shortcut. It
+//   is remembered by where it lives on the page, and by its words as a
+//   fallback, and the key presses it the way a tap would.
+//
+// Kept apart from the presets, so picking GR2Analyst style never throws away
+// the keys you made yourself.
+const KBD_EXTRA_KEY = 'gwcfc_keys_extra';
+let _kbdExtra = null;       // [{ id, kind: 'cat'|'el', label, type?, sel?, text?, chord }]
+function _kbdExtraLoad() {
+  if (_kbdExtra) return _kbdExtra;
+  try {
+    const raw = JSON.parse(localStorage.getItem(KBD_EXTRA_KEY) || '[]');
+    _kbdExtra = Array.isArray(raw) ? raw.filter(x => x && x.id && x.kind) : [];
+  } catch (e) { _kbdExtra = []; }
+  return _kbdExtra;
+}
+function _kbdExtraSave() {
+  try { localStorage.setItem(KBD_EXTRA_KEY, JSON.stringify(_kbdExtra || [])); } catch (e) {}
+}
+function _kbdExtraFor(chord) { return _kbdExtraLoad().find(x => x.chord === chord) || null; }
+function _kbdExtraId() { return 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+// Add one and go straight to asking for its key.
+function kbdAddExtra(def) {
+  _kbdExtraLoad();
+  const same = _kbdExtra.find(x => x.kind === def.kind
+    && (def.kind === 'cat' ? x.label === def.label && x.type === def.type : x.sel === def.sel));
+  const x = same || Object.assign({ id: _kbdExtraId(), chord: '' }, def);
+  if (!same) { _kbdExtra.push(x); _kbdExtraSave(); }
+  const f = document.getElementById('lqm-kbd-find');
+  if (f) f.value = '';
+  _kbdFindQ = '';
+  _kbdCapturing = x.id;
+  _kbdRenderSettings();
+  return x.id;
+}
+function kbdRemoveExtra(id) {
+  _kbdExtraLoad();
+  _kbdExtra = _kbdExtra.filter(x => x.id !== id);
+  if (_kbdCapturing === id) _kbdCapturing = null;
+  _kbdExtraSave();
+  _kbdRenderSettings();
+}
+
+// Pressing the key.
+function _kbdRunExtra(x) {
+  try {
+    if (x.kind === 'cat' && typeof _srchCatalog === 'function') {
+      const find = () => _srchCatalog().find(c => c.label === x.label && (!x.type || c.type === x.type))
+        || _srchCatalog().find(c => c.label === x.label);
+      let c = find();
+      // The catalogue is built once; something that appeared since (signing
+      // in as a forecaster, an overlay added) is found on a fresh build.
+      if (!c && typeof _srchCat !== 'undefined') { _srchCat = null; c = find(); }
+      if (c && typeof c.action === 'function') { c.action(); return true; }
+    }
+    if (x.kind === 'el') {
+      const el = _kbdFindEl(x);
+      if (el) { el.click(); return true; }
+      if (typeof showToast === 'function') {
+        showToast('"' + (x.label || 'That button') + '" is not on screen right now. Open the menu it lives in, then press the key again.', 3500);
+      }
+      return true;     // the key was ours, even if its button is away
+    }
+  } catch (e) { console.warn('shortcut ' + x.label + ':', e); }
+  return false;
+}
+function _kbdVisible(el) {
+  if (!el || !el.isConnected) return false;
+  const r = el.getBoundingClientRect();
+  return r.width > 0 && r.height > 0;
+}
+function _kbdFindEl(x) {
+  let el = null;
+  try { el = x.sel ? document.querySelector(x.sel) : null; } catch (e) { el = null; }
+  if (el && (_kbdVisible(el) || el.id)) return el;
+  // Where it lived has moved (a list rebuilt in a different order): the same
+  // words on something tappable that is on screen now.
+  if (x.text) {
+    const want = x.text.toLowerCase();
+    const hit = Array.from(document.querySelectorAll(_KBD_TAPPABLE))
+      .find(e => _kbdVisible(e) && _kbdElText(e).toLowerCase() === want);
+    if (hit) return hit;
+  }
+  return el;
+}
+const _KBD_TAPPABLE = 'button, a[href], [onclick], [role="button"], label, select, input, .ov-pill, .lqm-btn, .sub-bubble, [data-ovid], [data-tab]';
+function _kbdElText(el) {
+  return String(el.getAttribute('aria-label') || el.textContent || el.getAttribute('title') || '')
+    .replace(/\s+/g, ' ').trim().slice(0, 48);
+}
+// Where an element lives, written so it can be found again after a reload:
+// its own id if it has one, otherwise the path down from the nearest thing
+// that does, using stable attributes before position.
+function _kbdSelectorFor(el) {
+  if (el.id) return '#' + CSS.escape(el.id);
+  const parts = [];
+  let cur = el;
+  while (cur && cur.nodeType === 1 && cur !== document.body && parts.length < 8) {
+    if (cur.id) { parts.unshift('#' + CSS.escape(cur.id)); break; }
+    let seg = cur.tagName.toLowerCase();
+    const attr = ['data-ovid', 'data-tab', 'data-id', 'data-sub', 'data-cat', 'data-product', 'data-level', 'name']
+      .find(a => cur.hasAttribute(a));
+    if (attr) seg += '[' + attr + '="' + CSS.escape(cur.getAttribute(attr)) + '"]';
+    else if (cur.parentElement) {
+      const same = Array.from(cur.parentElement.children).filter(c => c.tagName === cur.tagName);
+      if (same.length > 1) seg += ':nth-of-type(' + (same.indexOf(cur) + 1) + ')';
+    }
+    parts.unshift(seg);
+    cur = cur.parentElement;
+  }
+  return parts.join(' > ');
+}
+
+// Pick a button: Settings steps aside, the next tap anywhere is the choice.
+let _kbdPicking = false;
+function kbdPickStart() {
+  _kbdPicking = true;
+  if (typeof lqmCloseSettings === 'function') lqmCloseSettings();
+  document.body.classList.add('kbd-picking');
+  if (typeof showToast === 'function') {
+    showToast('Tap the button, pill or menu item you want a shortcut for. Esc cancels.', 5000);
+  }
+  document.addEventListener('click', _kbdPickClick, true);
+  document.addEventListener('keydown', _kbdPickKey, true);
+}
+function _kbdPickEnd() {
+  _kbdPicking = false;
+  document.body.classList.remove('kbd-picking');
+  document.removeEventListener('click', _kbdPickClick, true);
+  document.removeEventListener('keydown', _kbdPickKey, true);
+}
+function _kbdPickKey(e) {
+  if (e.key !== 'Escape') return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  _kbdPickEnd();
+  _kbdReopenKeyboard();
+}
+function _kbdReopenKeyboard() {
+  if (typeof lqmOpenSettings === 'function') lqmOpenSettings();
+  if (typeof lqmSettingsCat === 'function') lqmSettingsCat('keyboard');
+}
+function _kbdPickClick(e) {
+  const raw = e.target;
+  const el = raw && raw.closest ? raw.closest(_KBD_TAPPABLE) : null;
+  // The map itself is not a button: a tap on it is ignored and picking goes on.
+  if (!el || el.closest('.leaflet-pane') || el === document.body) {
+    if (typeof showToast === 'function') showToast('That is the map, not a button. Tap a button, pill or menu item.', 2600);
+    e.preventDefault(); e.stopImmediatePropagation();
+    return;
+  }
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  _kbdPickEnd();
+  const text = _kbdElText(el);
+  const def = { kind: 'el', sel: _kbdSelectorFor(el), text,
+                label: text || el.getAttribute('title') || el.id || 'Button' };
+  _kbdReopenKeyboard();
+  kbdAddExtra(def);
+}
+
+// The search box that lists what can be bound.
+let _kbdFindQ = '';
+function kbdFind(q) { _kbdFindQ = String(q || ''); _kbdRenderSettings(); }
+function _kbdFindMatches() {
+  const q = _kbdFindQ.trim().toLowerCase();
+  if (!q || typeof _srchCatalog !== 'function') return [];
+  const words = q.split(/\s+/);
+  return _srchCatalog().filter(c => {
+    const hay = (c.label + ' ' + (c.type || '') + ' ' + (c.kw || []).join(' ')).toLowerCase();
+    return words.every(w => hay.includes(w));
+  }).slice(0, 12);
 }
 
 // Typing must never trigger a shortcut. The chat box, the alert desk's text
@@ -51558,6 +51757,7 @@ function _kbdRenderSettings() {
       : _kbdPreset === 'custom' ? 'Your own set. Changing any key puts you here.'
       : 'No set chosen yet. Pick one, or bind keys yourself below.';
   }
+  _kbdRenderExtras();
   const list = document.getElementById('lqm-kbd-list');
   if (!list) return;
   list.innerHTML = KBD_ACTIONS.map(a => {
@@ -51569,6 +51769,42 @@ function _kbdRenderSettings() {
         style="min-width:104px;${cap ? 'outline:1px solid var(--accent2);' : ''}">${txt}</button>
     </div>`;
   }).join('');
+}
+
+function _kbdRenderExtras() {
+  const esc = (t) => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const box = document.getElementById('lqm-kbd-extra');
+  if (box) {
+    const xs = _kbdExtraLoad();
+    box.innerHTML = xs.length ? xs.map(x => {
+      const cap = _kbdCapturing === x.id;
+      const txt = cap ? 'Press a key...' : _kbdLabel(x.chord);
+      const kind = x.kind === 'el' ? 'Button' : (x.type ? x.type.charAt(0) + x.type.slice(1).toLowerCase() : 'Action');
+      return `<div class="lqm-settings-row kbd-extra-row" data-kbd-extra="${esc(x.id)}">
+        <span class="lqm-settings-lbl">${esc(x.label)} <span class="kbd-kind">${esc(kind)}</span></span>
+        <span style="display:flex;gap:6px;align-items:center">
+          <button type="button" class="lqm-settings-btn" onclick="_kbdCapture('${esc(x.id)}')"
+            style="min-width:104px;${cap ? 'outline:1px solid var(--accent2);' : ''}">${esc(txt)}</button>
+          <button type="button" class="lqm-settings-btn kbd-x" onclick="kbdRemoveExtra('${esc(x.id)}')" title="Remove this shortcut" aria-label="Remove this shortcut">&times;</button>
+        </span>
+      </div>`;
+    }).join('') : '<div class="kbd-empty">None yet. Find something below, or pick a button on screen.</div>';
+  }
+  const res = document.getElementById('lqm-kbd-results');
+  if (res) {
+    const hits = _kbdFindMatches();
+    res.innerHTML = _kbdFindQ.trim()
+      ? (hits.length ? hits.map((c, i) => `<button type="button" class="kbd-result" onclick="_kbdAddFound(${i})">
+            <span class="kbd-res-ic">${c.icon || ''}</span><span class="kbd-res-lbl">${esc(c.label)}</span>
+            <span class="kbd-kind">${esc(c.type || '')}</span></button>`).join('')
+        : '<div class="kbd-empty">Nothing by that name. Try "Pick a button on screen" instead.</div>')
+      : '';
+  }
+}
+function _kbdAddFound(i) {
+  const c = _kbdFindMatches()[i];
+  if (!c) return;
+  kbdAddExtra({ kind: 'cat', label: c.label, type: c.type || '' });
 }
 
 function _kbdCapture(actionId) {
@@ -51602,6 +51838,8 @@ function _kbdIsTyping(t) {
 }
 
 function _kbdRun(a) {
+  // One of your own (see "Shortcuts for anything").
+  if (a && a.kind) return _kbdRunExtra(a);
   try {
     if (a.sub && typeof RADAR_SUB_BUBBLES !== 'undefined') {
       const b = RADAR_SUB_BUBBLES.find(x => x.id === a.sub);
@@ -51646,8 +51884,7 @@ document.addEventListener('keydown', (e) => {
   const chord = _kbdChord(e);
   if (!chord) return;
   const hit = Object.keys(binds).find(id => binds[id] === chord);
-  if (!hit) return;
-  const action = KBD_ACTIONS.find(a => a.id === hit);
+  const action = hit ? KBD_ACTIONS.find(a => a.id === hit) : _kbdExtraFor(chord);
   if (!action) return;
   if (_kbdRun(action)) { e.preventDefault(); e.stopPropagation(); }
 }, true);
@@ -62760,8 +62997,16 @@ function selectProduct(p) {
 
 <div id="lqm-settings-overlay">
   <div class="dtb-drag" id="lqm-settings-drag" title="Drag to move" style="width:100%;justify-content:center;padding:0 0 4px;">⠿</div>
-  <button id="lqm-settings-close" onclick="lqmCloseSettings()"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-close></use></svg></button>
-  <div class="lqm-settings-title"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg> Settings</div>
+  <!-- The header stays put while the settings scroll under it: the title,
+       the close button, the way back to the list of categories (phones) and
+       a search across every setting. -->
+  <div id="lqm-set-head">
+    <button id="lqm-settings-close" onclick="lqmCloseSettings()" aria-label="Close settings"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-close></use></svg></button>
+    <button type="button" id="lqm-set-back" onclick="lqmSettingsHome()" aria-label="All settings">&#8249; <span>All settings</span></button>
+    <div class="lqm-settings-title"><svg class=svgi width=1em height=1em style=vertical-align:-.15em><use href=#ic-gear></use></svg> <span id="lqm-set-title-text">Settings</span></div>
+    <input type="search" id="lqm-set-find" placeholder="Search settings" autocomplete="off"
+           oninput="lqmSettingsFind(this.value)" aria-label="Search settings">
+  </div>
 
   <!-- The rail, and one card at a time beside it.
        Everything used to be one long scroll: fifteen headings deep, so the
@@ -63884,6 +64129,20 @@ function selectProduct(p) {
       Click a key to rebind it, then press the combination you want. Escape cancels, Backspace clears
       it. Shortcuts never fire while you are typing in a box, and Ctrl and Command combinations are
       left alone because those belong to your browser.
+    </div>
+    <!-- Anything else in the app, by name or by pointing at it. -->
+    <div class="kbd-sub-head">Your own shortcuts</div>
+    <div id="lqm-kbd-extra"></div>
+    <div class="lqm-settings-row" style="flex-wrap:wrap;gap:8px">
+      <input type="search" id="lqm-kbd-find" class="kbd-find" placeholder="Find anything: an overlay, product, tool, menu..."
+             autocomplete="off" oninput="kbdFind(this.value)" aria-label="Find something to make a shortcut for">
+      <button type="button" class="lqm-settings-btn" onclick="kbdPickStart()">Pick a button on screen</button>
+    </div>
+    <div id="lqm-kbd-results"></div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:2px 0 8px;line-height:1.5;">
+      Any overlay, radar product, menu, panel, tool or Settings page can have a key: search for it and
+      tap it, then press the key. For anything else, "Pick a button on screen" puts Settings away and
+      the next button you tap becomes the shortcut. Choosing a shortcut set above never removes these.
     </div>
   </div>
 
@@ -70859,7 +71118,71 @@ function lqmSettingsCat(id) {
   // Back to the top of the card: switching category and landing half way
   // down the new one reads as the panel having jumped.
   const sc = document.getElementById('lqm-settings-overlay');
+  if (sc) { sc.scrollTop = 0; sc.classList.remove('lqm-set-home'); }
+  // On a phone the category's name is the header, since the list of
+  // categories is a screen of its own rather than a strip beside it.
+  const tab = document.querySelector('#lqm-set-rail .lqm-set-tab[data-tab="' + id + '"] span');
+  const tt = document.getElementById('lqm-set-title-text');
+  if (tt) tt.textContent = _lqmSetPhone() && tab ? tab.textContent : 'Settings';
+}
+
+// -- Settings on a phone -----------------------------------------------------
+// A phone gets the panel the way its own Settings app works: the whole
+// screen, a list of categories with their names first, one category at a time
+// after a tap, and a back button to the list. The desktop rail squeezed onto
+// a phone was a strip of unlabelled icons twice the width of the screen, so
+// most categories were off the edge and none of them said what they were.
+function _lqmSetPhone() {
+  try { return window.matchMedia('(max-width: 640px)').matches; } catch (e) { return false; }
+}
+function lqmSettingsHome() {
+  const sc = document.getElementById('lqm-settings-overlay');
+  if (!sc) return;
+  const f = document.getElementById('lqm-set-find');
+  if (f && f.value) { f.value = ''; lqmSettingsFind(''); }
+  sc.classList.add('lqm-set-home');
+  sc.scrollTop = 0;
+  const tt = document.getElementById('lqm-set-title-text');
+  if (tt) tt.textContent = 'Settings';
+}
+
+// Search across every setting, in every category at once. A row shows when
+// its own words or its category's name match; a category shows when any of
+// its rows do. Cleared, the panel goes back to the one category it was on.
+function lqmSettingsFind(q) {
+  const sc = document.getElementById('lqm-settings-overlay');
+  q = String(q || '').trim().toLowerCase();
+  const groups = Array.from(document.querySelectorAll('#lqm-set-content .lqm-settings-group'));
+  groups.forEach(g => g.querySelectorAll('[data-find-hide]').forEach(r => r.removeAttribute('data-find-hide')));
+  if (sc) sc.classList.toggle('lqm-set-finding', !!q);
+  if (!q) {
+    lqmSettingsCat(_lqmSetCat);
+    if (_lqmSetPhone() && sc) sc.classList.add('lqm-set-home');
+    return 0;
+  }
+  if (sc) sc.classList.remove('lqm-set-home');
+  let rows = 0;
+  groups.forEach(g => {
+    if (g.dataset.gated && g.style.display === 'none') { g.hidden = true; return; }
+    const head = g.querySelector('.lqm-settings-category');
+    const headHit = !!head && head.textContent.toLowerCase().includes(q);
+    let any = false;
+    Array.from(g.children).forEach(ch => {
+      if (ch.classList.contains('lqm-settings-category')) return;
+      // What a control says as well as what it is called: an option in a
+      // select ("Satellite") is a setting people search for by name.
+      const words = (ch.textContent || '') + ' '
+        + Array.from(ch.querySelectorAll('[title],[placeholder],[aria-label]'))
+            .map(e => (e.getAttribute('title') || '') + ' ' + (e.getAttribute('placeholder') || '')
+                      + ' ' + (e.getAttribute('aria-label') || '')).join(' ');
+      const hit = headHit || words.toLowerCase().includes(q);
+      if (hit) { any = true; if (ch.classList.contains('lqm-settings-row')) rows++; }
+      else ch.setAttribute('data-find-hide', '');
+    });
+    g.hidden = !any;
+  });
   if (sc) sc.scrollTop = 0;
+  return rows;
 }
 
 function lqmOpenSettings() {
@@ -70872,6 +71195,15 @@ function lqmOpenSettings() {
   let want = _lqmSetCat;
   try { want = localStorage.getItem(LQM_SET_CAT_KEY) || want; } catch (e) {}
   lqmSettingsCat(want);   // a null or unknown id falls back to the first card
+  const _find = document.getElementById('lqm-set-find');
+  if (_find && _find.value) { _find.value = ''; lqmSettingsFind(''); }
+  // A phone opens on the list of categories, not inside whichever one was
+  // last used, so every category is one tap away and each says its name.
+  // Any position left over from dragging the desktop panel is let go too.
+  if (_lqmSetPhone()) {
+    if (el) ['top', 'bottom', 'left', 'right', 'transform'].forEach(k => el.style.removeProperty(k));
+    lqmSettingsHome();
+  }
   // Sync toggles with current app state
   const _clkSel = document.getElementById('lqm-set-clock');
   if (_clkSel) _clkSel.value = _appClock;
@@ -75407,6 +75739,7 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-26-d', date: 'Sep 26, 2026', text: 'Settings is rebuilt for phones: it fills the screen, opens on a list of every category by name, one tap takes you into a category, and a back button takes you out. A search box at the top (on computers too) finds any setting in any category. And you can now make a keyboard shortcut for anything in the app: in Settings > Keyboard, search for any overlay, radar product, menu, panel or tool and give it a key, or press Pick a button on screen and tap any button to bind it. Your own shortcuts are kept when you switch shortcut sets.' },
   { id: '2026-09-26-c', date: 'Sep 26, 2026', text: 'A comparison polygon now follows the shape you drew exactly: a finished Polygon tool shape works (the polygon popup has a Compare button too), circles trace the exact circle on the map, lines and arrows are skipped because they have no inside, and no second outline is drawn over your own. Also fixed striped radar: some radars, terminal ones like TBOS especially, could come out solid near the radar and in thin stripes with dark gaps further out, because each beam was drawn half as wide as it really is. Every beam now uses the width the radar itself reports.' },
   { id: '2026-09-26-b', date: 'Sep 26, 2026', text: 'Comparisons can now be split by a shape instead of a straight line. In the Compare menu, press Polygon and tap the corners (tap the first corner again, double-click or press Enter to finish). Pane B shows inside the shape and pane A everywhere else, and the shape stays put as you pan and zoom. The Polygon tool and the Draw tool each have a new Compare button that turns the shape you drew (circles and rectangles too) into the comparison split. Works for radar beside radar, satellite beside satellite, and cross layer.' },
   { id: '2026-09-26-a', date: 'Sep 26, 2026', text: 'Forecast cones issued by a forecaster now show up everywhere. A cone issued from the radar appears in the Forecasting Portal (even one that is already open, within a minute), and a cone from the portal appears in the radar\'s Forecaster Desk. Issuing new cones adds to the ones already out instead of wiping them, and each published cone can be removed on its own. The GWCFC Outlooks overlay draws every issued cone and now checks for new ones every minute instead of every five.' },
@@ -77053,6 +77386,10 @@ function _clearOfSearchBar(el) {
   if (cs.position !== 'fixed' || cs.transform !== 'none') return;
   const r = el.getBoundingClientRect();
   if (!r.width || !r.height) return;
+  // A sheet that fills the screen (Settings on a phone) covers the bar on
+  // purpose; pushing it down would only cut its bottom off.
+  if (r.width >= window.innerWidth - 2 && r.height >= window.innerHeight - 2) return;
+  if (el.id === 'lqm-settings-overlay' && typeof _lqmSetPhone === 'function' && _lqmSetPhone()) return;
   const floor = _searchBarFloor(r.left, r.width);
   if (r.top >= floor) return;
   el.style.setProperty('top', floor + 'px', 'important');
@@ -85401,6 +85738,142 @@ body {
   background-image: linear-gradient(180deg,
     rgba(26,26,32,var(--glass-a-panel)) 0%, rgba(11,11,14,var(--glass-a-panel)) 100%);
 }
+
+/* -- SETTINGS: the header, the search, and the phone layout --------------- */
+#lqm-set-head {
+  position: sticky; top: -14px; z-index: 3;
+  display: flex; flex-direction: column; align-items: stretch; gap: 9px;
+  margin: -14px -16px 0; padding: 14px 16px 10px;
+  background-image: var(--grad-panel, linear-gradient(180deg, #202027 0%, #0a0a0d 100%));
+}
+#lqm-set-head #lqm-settings-close { top: 10px; right: 12px; }
+#lqm-set-back { display: none; }
+#lqm-set-find {
+  width: 100%; box-sizing: border-box;
+  background: linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.38) 100%); color: var(--text);
+  border: 1px solid var(--edge-red, rgba(var(--brand-red-rgb),0.45)); border-radius: 10px;
+  padding: 8px 12px; font-family: var(--sans); font-size: 13px;
+}
+#lqm-set-find:focus { outline: none; border-color: var(--accent2); }
+/* Your own shortcuts: the list, the finder and its results. */
+.kbd-sub-head {
+  margin-top: 8px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.09);
+  font-family: var(--display); font-size: 11px; font-weight: 700; letter-spacing: 1.4px;
+  text-transform: uppercase; color: var(--accent2);
+}
+.kbd-kind { font-family: var(--mono); font-size: 9px; letter-spacing: 0.6px; opacity: 0.55; text-transform: uppercase; margin-left: 6px; }
+.kbd-x { min-width: 32px; padding: 4px 8px; font-size: 15px; line-height: 1; }
+.kbd-empty { font-family: var(--mono); font-size: 10px; color: var(--muted); padding: 4px 0 8px; }
+.kbd-find {
+  flex: 1 1 220px; min-width: 0; box-sizing: border-box;
+  background: linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.38) 100%); color: var(--text);
+  border: 1px solid var(--edge-red, rgba(var(--brand-red-rgb),0.45)); border-radius: 9px;
+  padding: 7px 10px; font-family: var(--sans); font-size: 12px;
+}
+.kbd-find:focus { outline: none; border-color: var(--accent2); }
+#lqm-kbd-results { display: flex; flex-direction: column; gap: 4px; margin: 2px 0 6px; }
+.kbd-result {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  padding: 8px 10px; border-radius: 9px; cursor: pointer;
+  background: linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 100%);
+  border: 1px solid rgba(255,255,255,0.08); color: var(--text);
+  font-family: var(--sans); font-size: 12px;
+}
+.kbd-result:hover { border-color: var(--accent2); background: linear-gradient(180deg, rgba(var(--accent2-rgb),0.16) 0%, rgba(var(--accent2-rgb),0.06) 100%); }
+.kbd-res-lbl { flex: 1 1 auto; }
+/* While a button is being picked, everything tappable says so. */
+body.kbd-picking button:hover, body.kbd-picking [onclick]:hover, body.kbd-picking .ov-pill:hover,
+body.kbd-picking [role="button"]:hover, body.kbd-picking label:hover {
+  outline: 2px dashed var(--accent2) !important; outline-offset: 2px; cursor: crosshair !important;
+}
+@media (max-width: 640px) {
+  .kbd-find { font-size: 16px; padding: 10px 12px; }
+  .kbd-result { min-height: 44px; font-size: 14px; }
+}
+/* Searching lays every matching category out at once, rail aside. */
+#lqm-settings-overlay.lqm-set-finding #lqm-set-rail { display: none; }
+#lqm-set-content [data-find-hide] { display: none !important; }
+
+@media (max-width: 640px) {
+  /* The whole screen, above everything, clear of the notch and home bar.
+     !important because dragging the desktop panel leaves inline positions. */
+  #lqm-settings-overlay {
+    top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+    width: 100% !important; height: 100% !important; height: 100dvh !important;
+    max-height: none !important; box-sizing: border-box;
+    border: 0; border-radius: 0;
+    padding: 0 14px calc(env(safe-area-inset-bottom, 0px) + 22px);
+    transform: translateY(14px) !important;
+    z-index: 9000; gap: 12px;
+    -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  }
+  #lqm-settings-overlay.lqm-panel-open { transform: none !important; }
+  #lqm-settings-drag { display: none !important; }
+  #lqm-set-head {
+    top: 0; margin: 0 -14px; gap: 10px;
+    padding: calc(env(safe-area-inset-top, 0px) + 12px) 14px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .lqm-settings-title { font-size: 16px; letter-spacing: 1.5px; text-align: left; padding: 8px 52px 0 2px; min-height: 26px; }
+  #lqm-settings-overlay:not(.lqm-set-home):not(.lqm-set-finding) .lqm-settings-title { padding-left: 2px; }
+  #lqm-set-head #lqm-settings-close {
+    top: calc(env(safe-area-inset-top, 0px) + 8px); right: 12px;
+    width: 42px; height: 42px; border-radius: 12px; font-size: 20px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.05) 100%); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+  }
+  /* The way back to the list, whenever a category is open. */
+  #lqm-settings-overlay:not(.lqm-set-home):not(.lqm-set-finding) #lqm-set-back {
+    display: inline-flex; align-self: flex-start; align-items: center; gap: 6px;
+    min-height: 36px; padding: 4px 12px 4px 8px; margin-bottom: -4px;
+    border-radius: 10px; border: 1px solid rgba(255,255,255,0.12);
+    background: linear-gradient(180deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.03) 100%); color: var(--accent2);
+    font-family: 'Comfortaa', sans-serif; font-size: 14px; font-weight: 700; cursor: pointer;
+  }
+  #lqm-set-back span { font-size: 13px; }
+  #lqm-set-find { font-size: 16px; padding: 11px 14px; border-radius: 12px; } /* 16px: no zoom on focus in iOS */
+
+  #lqm-set-shell { flex-direction: column; gap: 0; background: none !important; }
+  /* The list of categories: full width rows with their names. */
+  #lqm-set-rail {
+    flex: 0 0 auto; flex-direction: column; position: static; align-items: stretch;
+    width: 100%; box-sizing: border-box;
+    overflow: visible; gap: 8px; padding: 2px 0 0;
+    background: none !important; border: 0 !important;
+  }
+  .lqm-set-tab {
+    width: 100%; box-sizing: border-box;
+    min-height: 54px; padding: 12px 16px; gap: 14px;
+    font-size: 15px; border-radius: 14px; white-space: normal;
+  }
+  .lqm-set-tab .svgi { width: 1.25em; height: 1.25em; }
+  .lqm-set-tab span, .lqm-set-tab.on span { display: inline; flex: 1 1 auto; }
+  .lqm-set-tab::after { content: '\203A'; font-size: 22px; line-height: 1; opacity: 0.55; }
+  /* In the list, the last-used category is not "selected": nothing is yet. */
+  #lqm-settings-overlay.lqm-set-home .lqm-set-tab.on {
+    background-image: var(--grad-card); color: rgba(var(--text-rgb),0.85);
+    box-shadow: var(--edge-3d-soft); border-color: transparent;
+  }
+  #lqm-settings-overlay.lqm-set-home #lqm-set-content { display: none; }
+  #lqm-settings-overlay:not(.lqm-set-home) #lqm-set-rail { display: none; }
+  #lqm-set-content { background: none !important; gap: 14px; }
+  /* The header already names the category; the card does not say it twice.
+     Searching shows several categories at once, so there the names stay. */
+  #lqm-settings-overlay:not(.lqm-set-finding) .lqm-settings-group > .lqm-settings-category:not(.lqm-sub-head) { display: none; }
+
+  /* Rows sized for a thumb: a label that can wrap, a control beside it or
+     under it when the two will not fit on one line. */
+  .lqm-settings-group { padding: 14px 14px 16px; border-radius: 14px; }
+  .lqm-settings-category { font-size: 13px; }
+  .lqm-settings-row { min-height: 46px; flex-wrap: wrap; row-gap: 8px; }
+  .lqm-settings-lbl { font-size: 13.5px; line-height: 1.35; flex: 1 1 52%; min-width: 0; }
+  .lqm-settings-row .lqm-settings-select,
+  .lqm-settings-row select { min-height: 40px; font-size: 14px; max-width: 100%; }
+  .lqm-settings-row .lqm-settings-btn { min-height: 40px; font-size: 13px; padding: 8px 14px; }
+  .lqm-settings-row input[type="range"] { min-height: 32px; flex: 1 1 140px; }
+  .lqm-toggle { transform: scale(1.2); transform-origin: right center; margin-right: 4px; }
+}
+
 </style>
 <div id="feedback-modal-overlay" onclick="if(event.target===this)closeFeedback()">
   <div id="feedback-modal">
