@@ -2,6 +2,7 @@ import { Buffer } from 'buffer';
 import { Level2Radar } from './level2/src/index.js';
 import nexradLevel3Data from './level3/src/browser.js';
 import { dealiasVelocityRadials } from './dealias.js';
+import { rayWidth } from './raywidth.js';
 import decompressL2 from './level2/src/decompress.js';
 import { RandomAccessFile, BIG_ENDIAN } from './level2/src/classes/RandomAccessFile.js';
 import { DERIVED_LAYERS, beamHeightKm, groundKm, slantForGround, readCut, valueAt,
@@ -380,8 +381,13 @@ const processRadarData = (radar, radarLocation, extent, layer, options = {}) => 
     // thinSweep), before anything else touches it.
     let headers = radar.getHeader();
     const thin = options.thin === false ? null : (data, hs) => thinSweep(data, hs, layer);
+    // How many radials thinning folds into one, so a kept radial's own
+    // declared width can be scaled to the ground it now covers.
+    let thinK = 1;
     if (thin && Array.isArray(headers) && headers.length === radarData.length) {
+        const before = headers.length;
         ({ data: radarData, headers } = thin(radarData, headers));
+        thinK = Math.max(1, Math.round(before / Math.max(1, headers.length)));
     }
     const numberOfRadarIterations = radarData.length;
     const range = readRangeOptions(options);
@@ -512,6 +518,9 @@ const processRadarData = (radar, radarLocation, extent, layer, options = {}) => 
             }
         }
 
+        // GWCFC: the radial's own declared width wins over a gap that
+        // cannot be its width (see raywidth.js).
+        delta = rayWidth(delta, current.ars, thinK);
         const az2 = az1 + (Number.isFinite(delta) && delta > 0 ? delta : 1);
         return { az1, az2 };
     };
