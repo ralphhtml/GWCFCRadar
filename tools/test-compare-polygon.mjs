@@ -115,7 +115,7 @@ const q = await p.evaluate(async () => {
   // A circle from the Draw tool.
   const circ = L.circle([35, -97], { radius: 150000 }).addTo(map);
   _allToolLayers.push(circ);
-  out.fromCircle = _cmpFromDrawing() && _cmpPolyLL.length === 48;
+  out.fromCircle = _cmpFromDrawing() && _cmpPolyLL.length === 96;
   const c = map.latLngToContainerPoint([35, -97]);
   const box = map.getContainer().getBoundingClientRect();
   out.circleInside = _xcLayerAt(box.left + c.x, box.top + c.y) === _xcCells[1];
@@ -131,6 +131,57 @@ ok('a quad or octo split becomes a double for the polygon', q.quadToDouble, JSON
 ok('ending the comparison removes the polygon', q.endClears, JSON.stringify(q));
 ok('the Draw tool\'s Compare button uses the newest shape, circles included', q.fromCircle && q.circleInside, JSON.stringify(q));
 ok('fewer than three corners is refused', q.tooFew, JSON.stringify(q));
+console.log('\n3. The split lands exactly on the drawn line');
+const m = await p.evaluate(async () => {
+  const out = {};
+  _cmpToolEnd();
+  const box = map.getContainer().getBoundingClientRect();
+  // A finished Polygon tool shape: finishing empties the tool's corner list,
+  // so the finished polygon itself on the map is what gets used.
+  const poly = L.polygon([[34, -99], [37.5, -98], [36, -94], [33.5, -95.5]]).addTo(map);
+  _allToolLayers.push(poly);
+  _polyPts = [];
+  out.finished = _cmpFromPolygon() && _cmpPolyLL.length === 4
+    && _cmpPolyLL.every((q, i) => q.equals(poly.getLatLngs()[0][i]));
+  out.noSecondOutline = !_cmpPolyOutline;
+  _cmpToolEnd(); _allToolLayers.pop(); map.removeLayer(poly);
+  // The finish popup offers Compare.
+  _showPolyFilterPopup(L.latLng(35, -97));
+  out.popupButton = !!document.getElementById('_pfp-compare');
+  document.getElementById('_poly-filter-popup').remove();
+  // A Draw tool rectangle, drawn the way a mouse draws it.
+  toggleDrawTool(); _dtbSetShape('rect');
+  _onDrawDown({ latlng: L.latLng(36.5, -99) }); _onDrawMove({ latlng: L.latLng(34, -95) }); _onDrawUp();
+  const rect = _allToolLayers[_allToolLayers.length - 1];
+  out.rect = _cmpFromDrawing() && _cmpPolyLL.length === rect.getLatLngs().length
+    && _cmpPolyLL.every((q, i) => q.equals(rect.getLatLngs()[i]));
+  _cmpToolEnd();
+  // A straight line is not a zone: the newest real shape is used instead.
+  _dtbSetShape('line');
+  _onDrawDown({ latlng: L.latLng(35, -100) }); _onDrawMove({ latlng: L.latLng(36, -93) }); _onDrawUp();
+  out.skipsLine = _cmpFromDrawing() && _cmpPolyLL.every((q, i) => q.equals(rect.getLatLngs()[i]));
+  _cmpToolEnd();
+  deactivateTool();
+  // A circle: every traced corner sits on the circle Leaflet drew.
+  const circ = L.circle([35, -97], { radius: 200000 }).addTo(map);
+  _allToolLayers.push(circ);
+  _cmpFromDrawing();
+  let worst = 0;
+  _cmpPolyLL.forEach(q => {
+    const lp = map.project(q).subtract(map.getPixelOrigin()), c = circ._point;
+    const e = ((lp.x - c.x) / circ._radius) ** 2 + ((lp.y - c.y) / (circ._radiusY || circ._radius)) ** 2;
+    worst = Math.max(worst, Math.abs(Math.sqrt(e) - 1) * circ._radius);
+  });
+  out.circleErrPx = worst;
+  _cmpToolEnd(); _allToolLayers.pop(); map.removeLayer(circ);
+  return out;
+});
+ok('a finished Polygon tool shape is used corner for corner', m.finished, JSON.stringify(m));
+ok('no second outline is drawn over a shape that already has its own', m.noSecondOutline, JSON.stringify(m));
+ok('the polygon finish popup has a Compare button', m.popupButton, JSON.stringify(m));
+ok('a Draw tool rectangle is used point for point', m.rect, JSON.stringify(m));
+ok('a straight line is skipped for the newest real shape', m.skipsLine, JSON.stringify(m));
+ok(`a circle follows the drawn circle (worst ${m.circleErrPx.toFixed(2)} px off)`, m.circleErrPx < 0.5, JSON.stringify(m));
 ok('no page errors', errs.length === 0, errs.join(' | '));
 await b.close();
 console.log(fail ? `\n${fail} FAILED, ${pass} passed` : `\nall ${pass} passed`);

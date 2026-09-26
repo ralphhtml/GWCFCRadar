@@ -29164,6 +29164,10 @@ function _showPolyFilterPopup(center) {
         background:rgba(255,255,255,0.06);color:var(--muted);font-family:var(--mono);font-size:11px;cursor:pointer;">
         Cancel
       </button>
+      <button id="_pfp-compare" title="Compare: one layer inside this polygon, another outside" style="flex:1;padding:8px 0;border-radius:8px;border:1px solid rgba(255,255,255,0.25);
+        background:rgba(255,255,255,0.08);color:#fff;font-family:var(--mono);font-size:11px;cursor:pointer;">
+        Compare
+      </button>
       <button id="_pfp-apply" style="flex:1;padding:8px 0;border-radius:8px;border:1px solid var(--accent2);
         background:rgba(var(--accent2-rgb),0.18);color:var(--accent2);font-family:var(--mono);font-size:11px;
         cursor:pointer;font-weight:700;">
@@ -29174,6 +29178,7 @@ function _showPolyFilterPopup(center) {
   document.body.appendChild(pop);
 
   document.getElementById('_pfp-cancel').onclick = () => pop.remove();
+  document.getElementById('_pfp-compare').onclick = () => { pop.remove(); _cmpFromPolygon(); };
   document.getElementById('_pfp-apply').onclick = () => {
     pop.remove();
     const newPolys = _collectPolygons();
@@ -44527,6 +44532,7 @@ function _onDrawTouchStart(e) {
   _drawing = true; _drawPts = [latlng];
   _drawAnchor = _dtbShape === 'free' ? null : latlng;
   _drawStroke = L.polyline(_drawPts, _getDrawStyle()).addTo(map);
+  _drawStroke._dtbShape = _dtbShape;   // which kind, so Compare can tell a zone from a line
   _allToolLayers.push(_drawStroke);
   _dtbRedoStack.length = 0; // new stroke clears redo history
   document.getElementById('dtb-redo-btn')?.classList.remove('active');
@@ -44580,6 +44586,7 @@ function _onDrawDown(e) {
   // outline from that anchor rather than appending to a trail.
   _drawAnchor = _dtbShape === 'free' ? null : e.latlng;
   _drawStroke = L.polyline(_drawPts, _getDrawStyle()).addTo(map);
+  _drawStroke._dtbShape = _dtbShape;   // which kind, so Compare can tell a zone from a line
   _allToolLayers.push(_drawStroke);
   _dtbRedoStack.length = 0; // new stroke clears redo history
   document.getElementById('dtb-redo-btn')?.classList.remove('active');
@@ -52457,7 +52464,7 @@ let _radarWorkerPending = null;  // { resolve, reject } for current request
 // is a new URL, and a page from before the build keeps the URL its decoder
 // answers to. A mismatched pair is how "Parse failed" appears on one device
 // while the same click works everywhere else.
-var RADAR_WORKER_V = '7db70fde';
+var RADAR_WORKER_V = 'e50e2977';
 
 // -- Saying a Level 2 load is under way ------------------------------------
 let _l2LoadFor = '';
@@ -75400,6 +75407,7 @@ function lqmOpenTutorial() {
 // panel's Updates button. A brand-new visitor never gets it, because a
 // history of a site you have never used is nobody's first question.
 const APP_CHANGELOG = [
+  { id: '2026-09-26-c', date: 'Sep 26, 2026', text: 'A comparison polygon now follows the shape you drew exactly: a finished Polygon tool shape works (the polygon popup has a Compare button too), circles trace the exact circle on the map, lines and arrows are skipped because they have no inside, and no second outline is drawn over your own. Also fixed striped radar: some radars, terminal ones like TBOS especially, could come out solid near the radar and in thin stripes with dark gaps further out, because each beam was drawn half as wide as it really is. Every beam now uses the width the radar itself reports.' },
   { id: '2026-09-26-b', date: 'Sep 26, 2026', text: 'Comparisons can now be split by a shape instead of a straight line. In the Compare menu, press Polygon and tap the corners (tap the first corner again, double-click or press Enter to finish). Pane B shows inside the shape and pane A everywhere else, and the shape stays put as you pan and zoom. The Polygon tool and the Draw tool each have a new Compare button that turns the shape you drew (circles and rectangles too) into the comparison split. Works for radar beside radar, satellite beside satellite, and cross layer.' },
   { id: '2026-09-26-a', date: 'Sep 26, 2026', text: 'Forecast cones issued by a forecaster now show up everywhere. A cone issued from the radar appears in the Forecasting Portal (even one that is already open, within a minute), and a cone from the portal appears in the radar\'s Forecaster Desk. Issuing new cones adds to the ones already out instead of wiping them, and each published cone can be removed on its own. The GWCFC Outlooks overlay draws every issued cone and now checks for new ones every minute instead of every five.' },
   { id: '2026-09-25-zzzzzzzzzzz', date: 'Sep 25, 2026', text: 'Right-click, Radar is now instant: opening the menu gets the nearest radar ready, and clicking Radar puts its picture on the map in well under a millisecond. The menus and loop catch up a frame later. A radar nobody has loaded yet still has to download first, which takes a few seconds.' },
@@ -95014,7 +95022,7 @@ function _cmpPolyClear() {
 // comparison running, a cross-layer one starts (radar inside, satellite
 // outside, or whatever the panes are then set to); a quad or octo split
 // becomes a double, since a shape has one inside and one outside.
-function _cmpPolySet(latlngs) {
+function _cmpPolySet(latlngs, opts) {
   const pts = (latlngs || []).map(q => L.latLng(q.lat, q.lng != null ? q.lng : q.lon))
     .filter(q => isFinite(q.lat) && isFinite(q.lng));
   if (pts.length < 3) {
@@ -95034,8 +95042,13 @@ function _cmpPolySet(latlngs) {
     pane.style.zIndex = 640;
     pane.style.pointerEvents = 'none';
   }
-  _cmpPolyOutline = L.polygon(pts, { pane: 'cmpPolyPane', color: '#ffffff', weight: 2.5,
-    opacity: 0.95, dashArray: '8 6', fill: false, interactive: false }).addTo(map);
+  // A shape drawn here gets a dashed outline. One taken from the Polygon or
+  // Draw tool already has its own outline on the map, and the split follows
+  // that exact line, so a second one on top would only blur the edge.
+  if (!(opts && opts.ownOutline)) {
+    _cmpPolyOutline = L.polygon(pts, { pane: 'cmpPolyPane', color: '#ffffff', weight: 2.5,
+      opacity: 0.95, dashArray: '8 6', fill: false, interactive: false }).addTo(map);
+  }
   document.body.classList.add('cmp-poly-on');
   map.on('zoomend moveend viewreset', _cmpPolyRedrawAll);
   _cmpPolyRedrawAll();
@@ -95118,24 +95131,45 @@ function _cmpPolyKey(e) {
   else if (e.key === 'Enter') { e.stopPropagation(); _cmpPolyFinish(); }
 }
 // From the Polygon tool's menu: the polygon being drawn there.
+// The one being drawn, or once it is finished (finishing hands its corners
+// over to the map and empties the tool), the newest finished polygon.
 function _cmpFromPolygon() {
-  const pts = (typeof _polyPts !== 'undefined' && _polyPts) || [];
+  let pts = (typeof _polyPts !== 'undefined' && _polyPts) || [];
+  if (pts.length < 3) {
+    const list = (typeof _allToolLayers !== 'undefined' && _allToolLayers) || [];
+    pts = [];
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (list[i] instanceof L.Polygon && !list[i]._dtbShape) { pts = _cmpDrawnShapePts(list[i]) || []; break; }
+    }
+  }
   if (pts.length < 3) {
     if (typeof showToast === 'function') showToast('Draw a polygon with at least three corners first.', 2600);
     return false;
   }
-  return _cmpPolySet(pts);
+  return _cmpPolySet(pts, { ownOutline: true });
 }
 // From the Draw tool's menu: the newest closed shape drawn (rectangle,
 // circle, ellipse, triangle, diamond, star) or a freehand loop.
 function _cmpDrawnShapePts(layer) {
   if (!layer) return null;
+  // A line or an arrow has no inside to compare.
+  if (layer._dtbShape === 'line' || layer._dtbShape === 'arrow') return null;
   if (layer instanceof L.Circle) {
-    const c = layer.getLatLng(), rM = layer.getRadius(), out = [];
-    for (let i = 0; i < 48; i++) {
-      const a = i / 48 * 2 * Math.PI;
-      out.push(L.latLng(c.lat + (rM * Math.cos(a)) / 111320,
-        c.lng + (rM * Math.sin(a)) / (111320 * Math.cos(c.lat * Math.PI / 180))));
+    // Traced from the circle Leaflet actually drew (its centre and its two
+    // radii in map pixels), so the split lands on the drawn line itself
+    // rather than on a circle worked out a second way.
+    const out = [], N = 96;
+    const c = layer._point, rx = layer._radius, ry = layer._radiusY || layer._radius;
+    for (let i = 0; i < N; i++) {
+      const a = i / N * 2 * Math.PI;
+      if (c && rx) out.push(map.layerPointToLatLng(L.point(c.x + rx * Math.cos(a), c.y + ry * Math.sin(a))));
+    }
+    if (out.length === N) return out;
+    const cc = layer.getLatLng(), rM = layer.getRadius();
+    for (let i = 0; i < N; i++) {
+      const a = i / N * 2 * Math.PI;
+      out.push(L.latLng(cc.lat + (rM * Math.sin(a)) / 111320,
+        cc.lng + (rM * Math.cos(a)) / (111320 * Math.cos(cc.lat * Math.PI / 180))));
     }
     return out;
   }
@@ -95154,7 +95188,7 @@ function _cmpFromDrawing() {
   const list = (typeof _allToolLayers !== 'undefined' && _allToolLayers) || [];
   for (let i = list.length - 1; i >= 0; i--) {
     const pts = _cmpDrawnShapePts(list[i]);
-    if (pts) return _cmpPolySet(pts);
+    if (pts) return _cmpPolySet(pts, { ownOutline: true });
   }
   if (typeof showToast === 'function') showToast('Draw a shape first (a rectangle, circle, triangle, star or a freehand loop), then press Compare.', 3500);
   return false;

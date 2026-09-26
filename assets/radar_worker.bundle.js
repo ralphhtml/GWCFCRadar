@@ -11938,6 +11938,16 @@
     return radials;
   }
 
+  // src/parse/raywidth.js
+  init_inject_buffer();
+  var rayWidth = (delta, ars, thinK = 1) => {
+    const declared = ars === 1 ? 0.5 : ars === 2 ? 1 : null;
+    if (declared && !(thinK > 1)) {
+      if (!(delta > 0.7 * declared) || delta > Math.max(5, 4 * declared)) return declared;
+    }
+    return Number.isFinite(delta) && delta > 0 ? delta : 1;
+  };
+
   // src/parse/derived.js
   init_inject_buffer();
   var DEG = Math.PI / 180;
@@ -12550,8 +12560,11 @@
     }
     let headers = radar.getHeader();
     const thin = options.thin === false ? null : (data, hs) => thinSweep(data, hs, layer);
+    let thinK = 1;
     if (thin && Array.isArray(headers) && headers.length === radarData.length) {
+      const before = headers.length;
       ({ data: radarData, headers } = thin(radarData, headers));
+      thinK = Math.max(1, Math.round(before / Math.max(1, headers.length)));
     }
     const numberOfRadarIterations = radarData.length;
     const range = readRangeOptions(options);
@@ -12662,6 +12675,7 @@
           delta = Number.isFinite(prevDelta) ? prevDelta : 1;
         }
       }
+      delta = rayWidth(delta, current.ars, thinK);
       const az2 = az1 + (Number.isFinite(delta) && delta > 0 ? delta : 1);
       return { az1, az2 };
     };
