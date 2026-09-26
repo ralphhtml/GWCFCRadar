@@ -1511,6 +1511,7 @@ function drawAll() {
   layers.cones.clearLayers();
 
   OUTLOOK.areas.forEach(a => zoneDraw(a));
+  pubConesOnly().forEach(c => drawPubCone(c));
 
   OUTLOOK.storms.forEach(s => {
     const html = '<div class="storm-stack">' + stormSVG(s.cat, 64)
@@ -1523,6 +1524,71 @@ function drawAll() {
   });
 
   renderLists();
+}
+// The published cones not also on this screen's Storm Cone tool (those the
+// tool draws itself, and drawing them twice would double every line).
+function toolConePids() {
+  const out = new Set();
+  (typeof _scCones !== 'undefined' ? _scCones : []).forEach(c => { if (c.pid) out.add(c.pid); });
+  if (typeof _scTrack !== 'undefined' && _scTrack && _scTrack.pid) out.add(_scTrack.pid);
+  return out;
+}
+function pubConesOnly() {
+  const mine = toolConePids();
+  return OUTLOOK.cones.filter(c => !mine.has(c.pid));
+}
+// A published cone, drawn the way the radar's GWCFC Outlooks overlay draws
+// it: ring in the forecaster's colours, dashed centre line, time dots, and a
+// category icon wherever one was marked.
+function pubConeCentre(c) {
+  if (Array.isArray(c.center) && c.center.length > 1) return c.center;
+  const ring = c.ring || [];
+  if (ring.length < 7 || (ring.length - 1) % 3) return [];
+  const N = (ring.length - 1) / 3, out = [];
+  for (let i = 0; i <= N; i++) {
+    const a = ring[i], b = ring[ring.length - 1 - i];
+    out.push([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
+  }
+  return out;
+}
+function drawPubCone(c) {
+  const st = c.style || {};
+  L.polygon(c.ring, { color: st.outline || '#000000', weight: 4,
+    opacity: st.outlineOpacity != null ? st.outlineOpacity : 0.95,
+    fillColor: st.fill || '#aa0000',
+    fillOpacity: st.fillOpacity != null ? st.fillOpacity : 0.2,
+    interactive: false }).addTo(layers.cones);
+  const centre = pubConeCentre(c);
+  if (centre.length < 2) return;
+  L.polyline(centre, { color: st.line || '#ffe066', weight: 2, opacity: 0.9,
+    dashArray: '6 5', interactive: false }).addTo(layers.cones);
+  const N0 = centre.length - 1, idxs = new Set();
+  if (c.mode === 'multi' && Array.isArray(c.dotIdx) && c.dotIdx.length) {
+    c.dotIdx.forEach(i => idxs.add(Number(i)));
+  } else {
+    const n = Math.max(0, Number(c.dots) || 0);
+    for (let d = 1; d <= n; d++) idxs.add(Math.round((d / (n + 1)) * N0));
+  }
+  const cats = c.cats || {};
+  Object.keys(cats).forEach(k => { if (cats[k]) idxs.add(Number(k)); });
+  idxs.forEach(i => {
+    const pt = centre[i];
+    if (!pt) return;
+    const cat = cats[i] || cats[String(i)];
+    if (cat && typeof _ttbMakeIcon === 'function' && typeof TTB_ICONS !== 'undefined'
+        && TTB_ICONS[String(cat).toLowerCase()]) {
+      L.marker(pt, { interactive: false,
+        icon: _ttbMakeIcon(String(cat).toLowerCase(), false) }).addTo(layers.cones);
+    } else {
+      L.circleMarker(pt, { radius: 4, color: st.dotStroke || '#ffb347', weight: 1.5,
+        fillColor: st.dotFill || '#ffe066', fillOpacity: 0.95,
+        interactive: false }).addTo(layers.cones);
+    }
+  });
+}
+function removePubCone(pid) {
+  OUTLOOK.cones = OUTLOOK.cones.filter(c => c.pid !== pid);
+  drawAll();
 }
 function removeItem(kind, id) {
   OUTLOOK[kind] = OUTLOOK[kind].filter(x => x.id !== id);
@@ -1550,6 +1616,13 @@ function renderLists() {
             + ' onclick="zoneToggleRound(\'' + a.id + '\')">'
             + (a.round ? 'Square the corners' : 'Round it out') + '</button>' : '')
         + '</div>';
+    }))
+    .concat(pubConesOnly().map(c => {
+      const at = (c.center && c.center[0]) || c.start || c.ring[0];
+      return '<div class="item"><button class="del" onclick="removePubCone(\'' + esc(String(c.pid)) + '\')"><svg class=\"ic\"><use href=\"#ic-trash\"></use></svg></button>'
+        + '<div class="t">Published forecast cone</div>'
+        + '<div class="m">' + (at ? Number(at[0]).toFixed(1) + ', ' + Number(at[1]).toFixed(1) : '')
+        + ' - issued earlier; stays on the outlook until removed</div></div>';
     }));
   if (tl) tl.innerHTML = items.length ? items.join('')
     : '<div class="empty">Nothing placed yet.</div>';
@@ -1844,7 +1917,12 @@ async function publishOutlook() {
                     at: doc.issued, v: JSON.stringify(desk) },
     }, { merge: true });
     OUTLOOK.issued = doc.issued;
+    // What went out is what is in force now, and stays on the next publish
+    // even if the Storm Cone tool is cleared in between.
+    OUTLOOK.cones = cones.map(c => Object.assign({}, c));
+    OUTLOOK.cones.forEach(c => SEEN_CONES.add(c.pid));
     stampHeader();
+    drawAll();
     toast('Outlook published at ' + document.getElementById('two-time').textContent);
   } catch (e) {
     // "Missing or insufficient permissions" is Firestore's way of saying the
@@ -1878,14 +1956,45 @@ async function loadLatest() {
     }
     OUTLOOK.storms = d.storms || [];
     OUTLOOK.areas = d.areas || [];
-    OUTLOOK.cones = d.cones || [];      // kept for the record
+    // Every cone in force, whoever issued it (here, or from the radar's
+    // Storm Cone toolbar). They were only kept for the record, never drawn
+    // and never published again, so a cone issued from the radar did not
+    // show here, and the next Publish from here quietly deleted it.
+    OUTLOOK.cones = (d.cones || [])
+      .filter(c => c && Array.isArray(c.ring) && c.ring.length > 2)
+      .map(c => Object.assign({}, c, { pid: c.pid || rid() }));
     OUTLOOK.alerts = d.alerts || [];
     OUTLOOK.issued = d.issued || null;
+    OUTLOOK.cones.forEach(c => SEEN_CONES.add(c.pid));
     if (d.view && map) map.setView([d.view.lat, d.view.lon], d.view.zoom);
     stampHeader();
     drawAll();
   } catch (e) {}
 }
+
+// A cone issued somewhere else (the radar's Storm Cone toolbar, or another
+// forecaster) while this page is open. Once a minute the outlook in force is
+// read, and any cone this page has never seen joins the map. Only new ones:
+// what a forecaster here removed stays removed, and nothing else being
+// edited is touched.
+const SEEN_CONES = new Set();
+async function pollNewCones() {
+  if (!_fbDb || document.hidden) return;
+  try {
+    const snap = await _fbDb.collection('outlooks').doc('latest').get();
+    if (!snap.exists) return;
+    const d = snap.data() || {};
+    if (typeof d.v === 'string') { try { Object.assign(d, JSON.parse(d.v)); } catch (e) {} }
+    const fresh = (d.cones || []).filter(c => c && c.pid && !SEEN_CONES.has(c.pid)
+      && Array.isArray(c.ring) && c.ring.length > 2);
+    if (!fresh.length) return;
+    fresh.forEach(c => { SEEN_CONES.add(c.pid); OUTLOOK.cones.push(Object.assign({}, c)); });
+    drawAll();
+    toast(fresh.length + ' forecast cone' + (fresh.length === 1 ? '' : 's')
+      + ' just issued by ' + (d.forecaster || 'a forecaster') + ' added to the map.');
+  } catch (e) {}
+}
+setInterval(pollNewCones, 60 * 1000);
 
 // == BOOT ================================================================
 function loadFirebase() {
@@ -7354,6 +7463,9 @@ function _scCentreOf(track) {
 function portalSerializeCones() {
   const ll = (x) => [Number(x.lat.toFixed(4)), Number(x.lng.toFixed(4))];
   const list = (typeof _scCones !== 'undefined' ? _scCones : []).map(c => ({
+    // A stable name across publishes, so publishing a cone again replaces
+    // its earlier copy instead of stacking a second one on top.
+    pid: c.pid || (c.pid = rid()),
     id: c.id,
     speed: c.speed, curve: c.curve, dots: c.dots, offset: c.offset,
     width: c.width == null ? null : c.width,
@@ -7370,7 +7482,8 @@ function portalSerializeCones() {
   // without pressing New should not lose it from the outlook.
   if (typeof _scTrack !== 'undefined' && _scTrack && _scTrack.ring
       && !(typeof _scCones !== 'undefined' && _scCones.some(c => c.track === _scTrack))) {
-    list.push({ id: 'live', speed: null, curve: null, dots: null, offset: null,
+    list.push({ pid: _scTrack.pid || (_scTrack.pid = rid()),
+      id: 'live', speed: null, curve: null, dots: null, offset: null,
       style: (typeof _scStyle !== 'undefined' ? _scStyle : null),
       cats: _scTrack.pointCats || null,
       mode: _scTrack.mode || null,
@@ -7380,7 +7493,10 @@ function portalSerializeCones() {
       ring: _scTrack.ring.map(ll),
       center: _scCentreOf(_scTrack).map(ll) });
   }
-  return list;
+  // Then every cone already published that is not one of these, so a cone
+  // issued from the radar stays out when this page publishes.
+  const mine = new Set(list.map(c => c.pid));
+  return OUTLOOK.cones.filter(c => !mine.has(c.pid)).concat(list);
 }
 
 // The desk calls renderAlerts() after every change; in the app that is the
